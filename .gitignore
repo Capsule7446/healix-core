@@ -1,0 +1,15 @@
+# OS metadata
+.DS_Store
+
+# Go build and test artifacts
+/bin/
+*.test
+*.out
+coverage.out
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/

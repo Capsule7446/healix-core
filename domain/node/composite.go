@@ -1,0 +1,271 @@
+package node
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/interpolation"
+)
+
+// WaitKind 是 WaitNode 的等待条件类型。
+type WaitKind string
+
+const (
+	// WaitSleep 固定时长等待（duration）。
+	WaitSleep WaitKind = "sleep"
+	// WaitElement 轮询等待某个元素可被定位，直到成功或超时。
+	WaitElement WaitKind = "element"
+	// WaitNetworkIdle 等待页面网络空闲，直到满足或超时。
+	WaitNetworkIdle WaitKind = "network_idle"
+)
+
+// DefaultWaitTimeout 是条件等待（element/network_idle）未显式配置 timeout
+// 时的默认上限。
+const DefaultWaitTimeout = 10 * time.Second
+
+// waitPollInterval 是 WaitElement 的轮询间隔。
+const waitPollInterval = 100 * time.Millisecond
+
+// WaitNode 暂停执行，直到条件满足：固定时长（sleep）、元素出现（element）
+// 或网络空闲（network_idle）。条件等待有自己独立的 Timeout，与外层 step
+// 超时无关——超时未满足条件即判失败。
+type WaitNode struct {
+	NodeID   string
+	Kind     WaitKind
+	Duration time.Duration        // WaitSleep：等待时长
+	Target   fingerprint.NodeSpec // WaitElement：要等的元素
+	Timeout  time.Duration        // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
+}
+
+func (w *WaitNode) ID() string { return w.NodeID }
+
+func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
+	if err := rt.waitBeforeStep(ctx); err != nil {
+		return fmt.Errorf("wait %s: wait step interval: %w", w.NodeID, err)
+	}
+	if err := rt.emit(ctx, w.NodeID, PhaseRunning); err != nil {
+		return fmt.Errorf("wait %s: enter running phase: %w", w.NodeID, err)
+	}
+
+	var err error
+	switch w.Kind {
+	case WaitSleep, "":
+		err = w.sleep(ctx)
+	case WaitElement:
+		err = w.waitElement(ctx, rt)
+	case WaitNetworkIdle:
+		err = w.waitNetworkIdle(ctx, rt)
+	default:
+		err = fmt.Errorf("unknown wait kind %q", w.Kind)
+	}
+
+	if err != nil {
+		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
+			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), emitErr)
+		}
+		return fmt.Errorf("wait %s: %w", w.NodeID, err)
+	}
+	if err := rt.emit(ctx, w.NodeID, PhaseSucceeded); err != nil {
+		return fmt.Errorf("wait %s: enter succeeded phase: %w", w.NodeID, err)
+	}
+	return nil
+}
+
+func (w *WaitNode) sleep(ctx context.Context) error {
+	select {
+	case <-time.After(w.Duration):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *WaitNode) timeout() time.Duration {
+	if w.Timeout > 0 {
+		return w.Timeout
+	}
+	return DefaultWaitTimeout
+}
+
+func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime) error {
+	ctx, cancel := context.WithTimeout(ctx, w.timeout())
+	defer cancel()
+
+	var lastErr error
+	for {
+		if _, err := rt.Driver.Locate(ctx, rt.effectiveSpec(w.Target)); err == nil {
+			return nil
+		} else if !errors.Is(err, ErrElementNotFound) {
+			return fmt.Errorf("locate element %q: %w", w.Target.ID, err)
+		} else if !errors.Is(err, context.DeadlineExceeded) {
+			lastErr = err
+		}
+		select {
+		case <-time.After(waitPollInterval):
+		case <-ctx.Done():
+			return fmt.Errorf("element %q did not appear within %s: %w", w.Target.ID, w.timeout(), lastErr)
+		}
+	}
+}
+
+func (w *WaitNode) waitNetworkIdle(ctx context.Context, rt *Runtime) error {
+	ctx, cancel := context.WithTimeout(ctx, w.timeout())
+	defer cancel()
+	if err := rt.Driver.WaitNetworkIdle(ctx); err != nil {
+		return fmt.Errorf("network not idle within %s: %w", w.timeout(), err)
+	}
+	return nil
+}
+
+// RepeatNode 按顺序把 Children 运行 Times 次，一旦某个子节点出错就中止。
+type RepeatNode struct {
+	NodeID   string
+	Times    int
+	Children []Node
+}
+
+func (r *RepeatNode) ID() string { return r.NodeID }
+
+func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
+	if err := rt.emit(ctx, r.NodeID, PhaseRunning); err != nil {
+		return fmt.Errorf("repeat %s: enter running phase: %w", r.NodeID, err)
+	}
+	for i := 0; i < r.Times; i++ {
+		for _, c := range r.Children {
+			if err := c.Run(ctx, rt); err != nil {
+				if emitErr := rt.emitTerminal(ctx, r.NodeID, failurePhase(ctx)); emitErr != nil {
+					return errors.Join(fmt.Errorf("repeat %s iteration %d: %w", r.NodeID, i, err), emitErr)
+				}
+				return fmt.Errorf("repeat %s iteration %d: %w", r.NodeID, i, err)
+			}
+		}
+	}
+	if err := rt.emit(ctx, r.NodeID, PhaseSucceeded); err != nil {
+		return fmt.Errorf("repeat %s: enter succeeded phase: %w", r.NodeID, err)
+	}
+	return nil
+}
+
+// WorkflowNode 按顺序运行 Children。Application 编译器从锁定的 Workspace
+// 版本快照构造它；它也是 Workflow 相互引用时被引用的不可变执行单元。
+//
+// 注：早期版本曾有并行节点。已决定取消并行执行——每个分支需要独立的
+// browser page 隔离（方案 §10.5），复杂度收益比不划算；跨流程调度由
+// Application 层的 TestTask Scheduler 统一负责。
+type WorkflowNode struct {
+	NodeID   string
+	Children []Node
+}
+
+func (w *WorkflowNode) ID() string { return w.NodeID }
+
+func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
+	if err := rt.emit(ctx, w.NodeID, PhaseRunning); err != nil {
+		return fmt.Errorf("workflow %s: enter running phase: %w", w.NodeID, err)
+	}
+	for _, c := range w.Children {
+		if err := c.Run(ctx, rt); err != nil {
+			if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
+				return errors.Join(err, emitErr)
+			}
+			return err
+		}
+	}
+	if err := rt.emit(ctx, w.NodeID, PhaseSucceeded); err != nil {
+		return fmt.Errorf("workflow %s: enter succeeded phase: %w", w.NodeID, err)
+	}
+	return nil
+}
+
+// WorkflowCallNode applies reference-edge parameter bindings for the duration
+// of a child Workflow invocation. The referenced immutable WorkflowNode stays
+// reusable while each call receives an isolated parameter scope.
+type WorkflowCallNode struct {
+	NodeID   string
+	Target   *WorkflowNode
+	Bindings map[string]string
+}
+
+func (w *WorkflowCallNode) ID() string {
+	if w.NodeID != "" {
+		return w.NodeID
+	}
+	if w.Target == nil {
+		return ""
+	}
+	return w.Target.ID()
+}
+
+func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
+	if w.Target == nil {
+		return errors.New("workflow call target is required")
+	}
+	id := w.ID()
+	if err := rt.emit(ctx, id, PhaseRunning); err != nil {
+		return fmt.Errorf("workflow call %s: enter running phase: %w", id, err)
+	}
+	err := w.runTarget(ctx, rt)
+	if err != nil {
+		if emitErr := rt.emitTerminal(ctx, id, failurePhase(ctx)); emitErr != nil {
+			return errors.Join(err, emitErr)
+		}
+		return err
+	}
+	if err := rt.emit(ctx, id, PhaseSucceeded); err != nil {
+		return fmt.Errorf("workflow call %s: enter succeeded phase: %w", id, err)
+	}
+	return nil
+}
+
+func (w *WorkflowCallNode) runTarget(ctx context.Context, rt *Runtime) error {
+	if len(w.Bindings) == 0 {
+		return w.Target.Run(ctx, rt)
+	}
+	if rt.Scratchpad == nil {
+		rt.Scratchpad = map[string]any{}
+	}
+	resolved := make(map[string]string, len(w.Bindings))
+	variables := workflowBindingContext{rt: rt}
+	for name, expression := range w.Bindings {
+		value, err := interpolation.Expand(expression, variables)
+		if err != nil {
+			return fmt.Errorf("workflow %s parameter %s: %w", w.Target.ID(), name, err)
+		}
+		resolved[name] = value
+	}
+	type previousValue struct {
+		value  any
+		exists bool
+	}
+	previous := make(map[string]previousValue, len(resolved)*2)
+	for name, value := range resolved {
+		for _, scopedName := range []string{name, "params." + name} {
+			old, exists := rt.Scratchpad[scopedName]
+			previous[scopedName] = previousValue{value: old, exists: exists}
+			rt.Scratchpad[scopedName] = value
+		}
+	}
+	defer func() {
+		for name, old := range previous {
+			if old.exists {
+				rt.Scratchpad[name] = old.value
+			} else {
+				delete(rt.Scratchpad, name)
+			}
+		}
+	}()
+	return w.Target.Run(ctx, rt)
+}
+
+type workflowBindingContext struct{ rt *Runtime }
+
+func (c workflowBindingContext) Variable(name string) (string, bool) {
+	value, ok := c.rt.Scratchpad[name]
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprint(value), true
+}

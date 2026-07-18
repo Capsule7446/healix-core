@@ -1,0 +1,163 @@
+package workspace
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestWorkflowAggregateValidateAcceptsStandaloneValidation(t *testing.T) {
+	aggregate := validationWorkflow(WorkflowStep{
+		ID: "validation-status", DisplayName: "验证订单状态", Kind: StepValidation,
+		NodeID: "node-status", NodeVersionID: "node-version-status",
+		Validation: &ValidationConfig{
+			Assertion: ValidationAssertion{Kind: ValidationTextEquals, Expected: "成功"},
+			Wait:      ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500},
+		},
+	})
+	if err := aggregate.Validate(); err != nil {
+		t.Fatalf("standalone validation rejected: %v", err)
+	}
+}
+
+func TestValidationAssertionNormalizedClearsIncompatibleComparisonFields(t *testing.T) {
+	visible := (ValidationAssertion{Kind: ValidationVisible, Expected: "true", ExpectedValues: []string{"true"}, Attribute: "aria-hidden", IgnoreCase: true}).Normalized()
+	if err := visible.Validate(); err != nil {
+		t.Fatalf("normalized visible assertion rejected: %v", err)
+	}
+	if visible.Expected != "" || len(visible.ExpectedValues) != 0 || visible.Attribute != "" || visible.IgnoreCase {
+		t.Fatalf("visible comparison fields were retained: %#v", visible)
+	}
+
+	attribute := (ValidationAssertion{Kind: ValidationAttributeEquals, Expected: "ready", ExpectedValues: []string{"stale"}, Attribute: "data-state", IgnoreCase: true}).Normalized()
+	if err := attribute.Validate(); err != nil {
+		t.Fatalf("normalized attribute assertion rejected: %v", err)
+	}
+	if len(attribute.ExpectedValues) != 0 || attribute.Expected != "ready" || attribute.Attribute != "data-state" || !attribute.IgnoreCase {
+		t.Fatalf("attribute fields were not preserved correctly: %#v", attribute)
+	}
+}
+
+func TestWorkflowAggregateValidateAcceptsValidationGroup(t *testing.T) {
+	aggregate := validationWorkflow(WorkflowStep{
+		ID: "validation-group", DisplayName: "订单结果", Kind: StepValidationGroup,
+		ValidationGroup: &ValidationGroup{
+			Wait: ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500},
+			Branches: []ValidationBranch{
+				{ID: "success", Name: "成功", Steps: []WorkflowStep{validationMember("status-success", "状态为成功")}},
+				{ID: "pending", Name: "处理中", Steps: []WorkflowStep{validationMember("status-pending", "状态为处理中")}},
+			},
+		},
+	})
+	if err := aggregate.Validate(); err != nil {
+		t.Fatalf("validation group rejected: %v", err)
+	}
+}
+
+func TestWorkflowAggregateValidateRejectsInvalidValidationConfiguration(t *testing.T) {
+	valid := WorkflowStep{
+		ID: "validation", DisplayName: "验证", Kind: StepValidation,
+		NodeID: "node", NodeVersionID: "node-version",
+		Validation: &ValidationConfig{
+			Assertion: ValidationAssertion{Kind: ValidationTextEquals, Expected: "成功"},
+			Wait:      ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500},
+		},
+	}
+	cases := []struct {
+		name string
+		step WorkflowStep
+		want string
+	}{
+		{name: "missing one assertion config", step: func() WorkflowStep { s := valid; s.Validation = nil; return s }(), want: "requires validation configuration"},
+		{name: "missing exact node version", step: func() WorkflowStep { s := valid; s.NodeVersionID = ""; return s }(), want: "exact node reference"},
+		{name: "invalid wait", step: func() WorkflowStep {
+			s := valid
+			s.Validation = &ValidationConfig{Assertion: s.Validation.Assertion, Wait: ValidationWait{MaxWaitMS: 999, StabilityMS: 200}}
+			return s
+		}(), want: "maximum wait"},
+		{name: "invalid regex", step: func() WorkflowStep {
+			s := valid
+			s.Validation = &ValidationConfig{Assertion: ValidationAssertion{Kind: ValidationTextMatches, Expected: "["}, Wait: s.Validation.Wait}
+			return s
+		}(), want: "invalid regular expression"},
+		{name: "nested in repeat", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []WorkflowStep{valid}}, want: "must be a root step"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validationWorkflow(tc.step).Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestWorkflowAggregateValidateRejectsInvalidValidationGroup(t *testing.T) {
+	validGroup := func() WorkflowStep {
+		return WorkflowStep{ID: "group", DisplayName: "验证组", Kind: StepValidationGroup,
+			ValidationGroup: &ValidationGroup{Wait: ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500},
+				Branches: []ValidationBranch{{ID: "branch-a", Name: "分支 A", Steps: []WorkflowStep{validationMember("member-a", "条件 A")}}}}}
+	}
+	cases := []struct {
+		name string
+		step WorkflowStep
+		want string
+	}{
+		{name: "empty branch", step: func() WorkflowStep { s := validGroup(); s.ValidationGroup.Branches[0].Steps = nil; return s }(), want: "requires 1-10 validation steps"},
+		{name: "member action", step: func() WorkflowStep {
+			s := validGroup()
+			s.ValidationGroup.Branches[0].Steps[0].Kind = StepAction
+			return s
+		}(), want: "only accepts VALIDATION"},
+		{name: "member wait", step: func() WorkflowStep {
+			s := validGroup()
+			s.ValidationGroup.Branches[0].Steps[0].Validation.Wait = ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500}
+			return s
+		}(), want: "must inherit the group wait"},
+		{name: "nested group", step: func() WorkflowStep {
+			s := validGroup()
+			s.ValidationGroup.Branches[0].Steps[0].ValidationGroup = &ValidationGroup{}
+			return s
+		}(), want: "contains unsupported action or child configuration"},
+		{name: "too many branches", step: func() WorkflowStep {
+			s := validGroup()
+			for index := 0; index < 5; index++ {
+				s.ValidationGroup.Branches = append(s.ValidationGroup.Branches, ValidationBranch{ID: "extra-" + string(rune('a'+index)), Name: "额外", Steps: []WorkflowStep{validationMember("extra-member-"+string(rune('a'+index)), "额外条件")}})
+			}
+			return s
+		}(), want: "requires 1-5 branches"},
+		{name: "too many total members", step: func() WorkflowStep {
+			s := validGroup()
+			s.ValidationGroup.Branches = nil
+			for branch := 0; branch < 3; branch++ {
+				members := make([]WorkflowStep, 0, 10)
+				for member := 0; member < 10; member++ {
+					members = append(members, validationMember(string(rune('a'+branch))+string(rune('a'+member)), "条件"))
+				}
+				s.ValidationGroup.Branches = append(s.ValidationGroup.Branches, ValidationBranch{ID: "branch-" + string(rune('a'+branch)), Name: "分支", Steps: members})
+			}
+			return s
+		}(), want: "maximum is 20"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validationWorkflow(tc.step).Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func validationWorkflow(step WorkflowStep) WorkflowAggregate {
+	return WorkflowAggregate{
+		Workflow: Workflow{ID: "workflow", DisplayName: "验证流程", Properties: Properties{}, CurrentVersionID: "workflow-version"},
+		Current: WorkflowVersion{ID: "workflow-version", WorkflowID: "workflow", VersionNumber: 1,
+			Definition: WorkflowDefinition{Steps: []WorkflowStep{step}}},
+	}
+}
+
+func validationMember(id, name string) WorkflowStep {
+	return WorkflowStep{ID: id, DisplayName: name, Kind: StepValidation,
+		NodeID: "node-" + id, NodeVersionID: "version-" + id,
+		Validation: &ValidationConfig{Assertion: ValidationAssertion{Kind: ValidationVisible}}}
+}
