@@ -9,7 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Thresholds 是双档置信阈值（方案 §7.3）。
+// Thresholds defines the confidence boundaries used to classify healing decisions.
 type Thresholds struct {
 	AppliedCap float64 // 分数 >= AppliedCap：直接应用
 	ReviewCap  float64 // ReviewCap <= 分数 < AppliedCap：应用，但强制待审 + 录屏
@@ -35,16 +35,15 @@ func (t Thresholds) Validate() error {
 	return nil
 }
 
-// DefaultHealer 是 Healer 接口确定性、可替换（方案 §15）的默认实现：
-// 阶段一路径 LCS 缩小候选集，阶段二加权启发式打分，再用双档阈值决策。
-// 纯计算、零外部依赖，因此与 domain/node 的验证求值逻辑一样，直接留在 domain
-// 层，而不是拆到 application（本包内不存在任何 LLM 调用，方案 G2）。
+// DefaultHealer is the deterministic implementation of Healer. It narrows
+// candidates by ancestor-path similarity, scores the remaining candidates, and
+// classifies the best result with the configured thresholds.
 type DefaultHealer struct {
 	Weights    Weights
 	Thresholds Thresholds
 }
 
-// NewDefaultHealer 用方案文档给出的默认权重/阈值构建一个 DefaultHealer。
+// NewDefaultHealer constructs a DefaultHealer with the package defaults.
 func NewDefaultHealer() *DefaultHealer {
 	policy := DefaultPolicyV1()
 	return &DefaultHealer{Weights: policy.Weights, Thresholds: policy.Thresholds}

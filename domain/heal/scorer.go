@@ -9,10 +9,10 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Weights 是阶段二启发式节点距离的权重系数（方案 §7.2 的 8 维，外加
+// Weights 是启发式节点距离的权重系数（包含标准维度与
 // LabelText/Container 两个 Healix 自己扩展的维度）。Healenium 自身的权重
 // 未公开（由 ML 学得）；这里给出的是有文档记录的确定性初始值，在被真正
-// 信任之前，必须用真实回归集调参（方案 Caveats）。score() 按加权平均归一化
+// 信任之前，必须用真实回归集调参。score() 按加权平均归一化
 // （Σw_i·sim_i / Σw_i），所以这些权重只表示彼此的相对重要性，不要求总和为 1。
 type Weights struct {
 	Tag       float64
@@ -27,7 +27,7 @@ type Weights struct {
 	Container float64
 }
 
-// DefaultWeights 返回一份全新的默认权重。前 8 项与方案 §7.2 表格一致；
+// DefaultWeights returns a fresh set of heuristic weights for deterministic scoring.
 // LabelText/Container 是 Healix 扩展维度。函数返回值避免调用方修改全局默认值。
 func DefaultWeights() Weights {
 	return Weights{
@@ -174,7 +174,7 @@ func (s preparedTargetScorer) simKeyAttributes(candidate map[string]string) floa
 	return float64(matched) / float64(len(s.keyAttributes))
 }
 
-// score 计算 score(candidate) = Σ w_i·sim_i / Σ w_i（方案 §7.2），但只在
+// score 计算 score(candidate) = Σ w_i·sim_i / Σ w_i，但只在
 // target 确实带有对应信号的维度上做加权平均的重新归一化（例如 target 本身
 // 就没有 "id" 属性时会排除该维度）。如果不这样处理，一个本来就没有
 // id/class/testid 的元素，即使匹配到它的精确克隆，也永远达不到
@@ -360,7 +360,7 @@ func min3(a, b, c int) int {
 	return m
 }
 
-// simIndex 是 1 - |Δsibling_index| / max(target, candidate, 1)（方案 §7.2）。
+// simIndex 是 1 - |Δsibling_index| / max(target, candidate, 1)。
 func simIndex(target, candidate int) float64 {
 	maxIdx := target
 	if candidate > maxIdx {

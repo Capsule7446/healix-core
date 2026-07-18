@@ -1,7 +1,5 @@
-// Package node 实现执行引擎的 Node 树（方案 §6）：
-// step/wait/repeat/workflow 节点构成的判别联合、逐 step 的状态机，
-// 以及由基础设施适配器实现的 Runtime 端口（Driver/Healer/Recorder/
-// ExecutionSink）。
+// Package node defines executable workflow nodes, lifecycle state machines, and
+// runtime ports implemented by host adapters.
 package node
 
 import (
@@ -30,7 +28,7 @@ type Program struct {
 }
 
 // Phase 是某个 step 在 RUNNING -> [HEALING] -> TRANSITIONING ->
-// [VALIDATING] -> SUCCEEDED/FAILED 状态机中所处的位置（方案 §6）。
+// [VALIDATING] -> SUCCEEDED/FAILED 状态机中所处的位置。
 type Phase string
 
 const (
@@ -126,11 +124,11 @@ type Element interface {
 	// Hover 把鼠标移到元素上（触发 mouseover/mouseenter）。
 	Hover(ctx context.Context) error
 	// WaitStable 会阻塞，直到元素的位置/尺寸停止变化后才尝试执行动作
-	// （方案 §10.3——避免在动画进行中点击一个还在移动的目标）。
+	// 避免在动画进行中点击移动目标。
 	WaitStable(ctx context.Context) error
 }
 
-// Driver 按优先级顺序（方案 §10.2）将 NodeSpec 的选择器与实时页面比对解析、
+// Driver 按优先级顺序将 NodeSpec 的选择器与实时页面比对解析、
 // 执行导航，并为自愈提供 DOMSnapshot。
 type Driver interface {
 	Navigate(ctx context.Context, url string) error

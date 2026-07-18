@@ -151,10 +151,8 @@ func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 
 // WorkflowNode 按顺序运行 Children。Application 编译器从锁定的 Workspace
 // 版本快照构造它；它也是 Workflow 相互引用时被引用的不可变执行单元。
-//
-// 注：早期版本曾有并行节点。已决定取消并行执行——每个分支需要独立的
-// browser page 隔离（方案 §10.5），复杂度收益比不划算；跨流程调度由
-// Application 层的 TestTask Scheduler 统一负责。
+// Workflow execution is sequential; cross-workflow scheduling belongs to the
+// application layer.
 type WorkflowNode struct {
 	NodeID   string
 	Children []Node

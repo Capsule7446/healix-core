@@ -28,9 +28,8 @@ type RuntimeNodeIdentity struct {
 	NodeVersionID string
 }
 
-// CompiledExecution is the in-memory replacement for temporary YAML/JSONL
-// artifacts. Program is consumed by RunProgram; the indexes are consumed by
-// host evidence adapters.
+// CompiledExecution is the in-memory execution artifact consumed by RunProgram
+// and host evidence adapters.
 type CompiledExecution struct {
 	Program      node.Program
 	Metadata     map[string]StepMetadata

@@ -24,7 +24,7 @@ func lcsLength(a, b []string) int {
 	return dp[len(columns)]
 }
 
-// narrowByPathLCS 是两阶段算法的阶段一（方案 §7.2）：对每个候选的祖先路径与
+// narrowByPathLCS 是候选筛选算法：对每个候选的祖先路径与
 // target 的路径计算 LCS 分数，只保留分数并列最大值的候选——这与
 // Healenium/EPAM 所述的优化思路一致，即只对路径距离已达到观测最大值的节点，
 // 才去跑（更昂贵的）启发式节点距离阶段。

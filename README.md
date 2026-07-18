@@ -1,6 +1,6 @@
 # healix-core
 
-`healix-core` 是完整的 HealiX Product Domain + Execution Core，可由 Desktop、CLI、CI Runner 或 Server 复用。当前处于 `v0` 迁移期；导出 API 尚未承诺 `v1` 兼容性。
+`healix-core` 是完整的 HealiX Product Domain + Execution Core，可由 Desktop、CLI、CI Runner 或 Server 复用。当前导出 API 属于 v0，尚未承诺 v1 兼容性。
 
 ## 公开包
 

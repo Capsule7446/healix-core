@@ -12,7 +12,7 @@ import (
 )
 
 // Node 是 workflow 的 step 树的执行单元——一个封闭的判别联合：
-// *StepNode、*WaitNode、*RepeatNode、*WorkflowNode（方案 §6）。
+// *StepNode、*WaitNode、*RepeatNode、*WorkflowNode。
 type Node interface {
 	ID() string
 	Run(ctx context.Context, rt *Runtime) error

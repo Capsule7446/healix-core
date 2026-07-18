@@ -25,8 +25,9 @@ const (
 	// The captured artifacts remain usable, but the session cannot resume.
 	StatusInterrupted Status = "interrupted"
 
-	// Kept as aliases for callers of the earlier in-process sampling API.  The
-	// host products use the explicit lifecycle names above.
+	// StatusCompleted and StatusFailed are compatibility aliases for terminal
+	// lifecycle statuses. New callers should prefer StatusEnded and
+	// StatusInterrupted.
 	StatusCompleted Status = StatusEnded
 	StatusFailed    Status = StatusInterrupted
 )

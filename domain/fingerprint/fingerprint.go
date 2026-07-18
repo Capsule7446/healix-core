@@ -1,6 +1,5 @@
-// Package fingerprint 存放描述"如何定位某个页面元素"的值对象：
-// 它按优先级排序的选择器（§10.2 定位优先级），以及当所有选择器都失败时，
-// Healer 用来对替换候选打分的多维指纹（方案 §5.1、§7.2）。
+// Package fingerprint defines selector and element-identity value objects used
+// by execution, sampling, and deterministic healing.
 package fingerprint
 
 import (
@@ -50,7 +49,7 @@ func (s Selector) Validate() error {
 	return nil
 }
 
-// ARIA 记录无障碍访问的 role/name 组合——依方案 §5.1，
+// ARIA 记录无障碍访问的 role/name 组合——
 // 这是与 data-testid 并列的两个权重最高、最稳定的自愈信号之一。
 type ARIA struct {
 	Role string
@@ -66,7 +65,7 @@ type Neighbors struct {
 }
 
 // Fingerprint 是为某个元素记录的完整特征集合，使其在选择器全部失效后，
-// 仍可通过纯算法打分重新定位（方案 §5.1）。不记录视口边界框（bbox）——
+// 仍可通过纯算法打分重新定位。不记录视口边界框（bbox）——
 // 页面布局、视口尺寸、缩放比例在不同录制/回放之间无法保证一致，位置信号
 // 并不稳定，纳入进来只会引入噪音。
 type Fingerprint struct {
