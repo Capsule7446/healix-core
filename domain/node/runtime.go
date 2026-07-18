@@ -1,5 +1,4 @@
-// Package node defines executable workflow nodes, lifecycle state machines, and
-// runtime ports implemented by host adapters.
+// 包节点定义了由主机适配器实现的可执行工作流节点、生命周期状态机和运行时端口。
 package node
 
 import (
@@ -14,14 +13,10 @@ import (
 
 const terminalEventTimeout = 5 * time.Second
 
-// ErrElementNotFound is the Driver contract's explicit business signal that
-// every locator for a NodeSpec was exhausted. Cancellation, malformed
-// selectors and browser failures must remain distinguishable errors.
+// ErrElementNotFound 是 Driver 合约的显式业务信号，表明 NodeSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
 var ErrElementNotFound = errors.New("node: element not found")
 
-// Program is an immutable-by-convention executable tree plus the exact
-// NodeSpec index captured for one WorkflowExecution. Compilers build a fresh
-// Program per execution; Runtime overlays never mutate Specs.
+// 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 NodeSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
 type Program struct {
 	Root  Node
 	Specs map[string]fingerprint.NodeSpec
@@ -84,9 +79,7 @@ func (e *StepExecution) CanTransition(next Phase) error {
 	return nil
 }
 
-// ValidatePhaseTransition exposes the same domain guard to persistence
-// adapters so a partial or duplicate write cannot manufacture an impossible
-// StepExecution history.
+// ValidatePhaseTransition 向持久性适配器公开相同的域保护，因此部分或重复写入无法产生不可能的 StepExecution 历史记录。
 func ValidatePhaseTransition(current, next Phase) error {
 	if _, ok := stepPhaseTransitions[current][next]; !ok {
 		return fmt.Errorf("invalid step phase transition %q -> %q", current, next)
@@ -161,9 +154,7 @@ type ExecutionSink interface {
 // Runtime 是贯穿整棵 Node 树的、每次运行专属的执行上下文。
 type Runtime struct {
 	RunID string
-	// StepInterval controls the minimum pause between executable leaf Steps.
-	// The first leaf Step starts immediately; container nodes and validation
-	// group members do not consume additional intervals.
+	// StepInterval 控制可执行叶步骤之间的最小暂停时间。第一个叶子步骤立即开始；容器节点和验证组成员不消耗额外的时间间隔。
 	StepInterval time.Duration
 	// Specs 按 ID 索引每个 StepNode 的 NodeSpec，使断言可以引用
 	// 该 step 自身目标以外的其他元素。
@@ -194,10 +185,7 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 	return nil
 }
 
-// emitTerminal gives terminal audit events a bounded cleanup context. A step
-// timeout or process signal cancels the execution context before FAILED is
-// emitted; reusing that context would make the persistence attempt fail
-// deterministically and leave the node without a terminal event.
+// emitTerminal 为终端审核事件提供有界清理上下文。步骤超时或进程信号在发出 FAILED 之前取消执行上下文；重用该上下文将使持久性尝试确定性失败，并使节点没有终止事件。
 func (rt *Runtime) emitTerminal(ctx context.Context, nodeID string, phase Phase) error {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
 	defer cancel()

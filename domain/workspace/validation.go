@@ -17,10 +17,7 @@ const (
 	validationMaxGroupSteps  = 20
 )
 
-// ValidationAssertionKind is a framework-independent statement evaluated
-// against one exactly versioned Node. Framework adapters convert DOM/ARIA
-// details to these meanings; no framework-specific selector or class belongs
-// here.
+// ValidationAssertionKind 是一种独立于框架的语句，针对一个精确版本化的 Node 进行评估。框架适配器将 DOM/ARIA 详细信息转换为这些含义；没有特定于框架的选择器或类属于这里。
 type ValidationAssertionKind string
 
 const (
@@ -54,23 +51,17 @@ const (
 	ValidationAttributeContains     ValidationAssertionKind = "attribute_contains"
 )
 
-// ValidationAssertion is intentionally singular. A Validation step represents
-// exactly one statement; callers express conjunction/disjunction with a
-// ValidationGroup rather than embedding assertion trees in a node.
+// ValidationAssertion 故意是单一的。验证步骤仅代表一个语句；调用者使用 ValidationGroup 表达合取/析取，而不是在节点中嵌入断言树。
 type ValidationAssertion struct {
 	Kind     ValidationAssertionKind
 	Expected string
-	// ExpectedValues is used only by selected_set_* and represents an unordered
-	// collection. An empty slice is meaningful: it asserts no item is selected.
+	// ExpectedValues 仅由 selected_set_* 使用，表示无序集合。空切片是有意义的：它断言没有选择任何项目。
 	ExpectedValues []string
 	Attribute      string
 	IgnoreCase     bool
 }
 
-// Normalized removes fields that have no meaning for the selected assertion
-// kind. Adapters use it when a user switches kinds or when a browser sampler
-// provides a semantic recommendation, while Validate remains strict for raw
-// domain inputs.
+// 规范化删除对所选断言类型没有意义的字段。当用户切换类型或浏览器采样器提供语义建议时，适配器会使用它，而验证对原始域输入仍然严格。
 func (a ValidationAssertion) Normalized() ValidationAssertion {
 	a.Kind = ValidationAssertionKind(strings.TrimSpace(string(a.Kind)))
 	switch a.Kind {
@@ -119,8 +110,7 @@ func (a ValidationAssertion) Validate() error {
 		if len(a.ExpectedValues) != 0 || a.Attribute != "" || a.IgnoreCase {
 			return fmt.Errorf("validation %q accepts only a regular expression", a.Kind)
 		}
-		// A runtime expression is compiled only after its variables are expanded.
-		// Compiling ${env.pattern} here would reject a valid persisted template.
+		// 运行时表达式仅在其变量展开后才进行编译。此处编译 ${env.pattern} 将拒绝有效的持久模板。
 		if !strings.Contains(a.Expected, "${") {
 			if _, err := regexp.Compile(a.Expected); err != nil {
 				return fmt.Errorf("validation %q has invalid regular expression: %w", a.Kind, err)
@@ -148,8 +138,7 @@ func (a ValidationAssertion) Validate() error {
 	}
 }
 
-// ValidationWait defines the bounded wait and continuous-stability windows for
-// a standalone validation node or an entire validation group.
+// ValidationWait 为独立验证节点或整个验证组定义有界等待和连续稳定性窗口。
 type ValidationWait struct {
 	MaxWaitMS   int
 	StabilityMS int
@@ -170,30 +159,23 @@ func (w ValidationWait) Validate() error {
 
 func (w ValidationWait) isZero() bool { return w.MaxWaitMS == 0 && w.StabilityMS == 0 }
 
-// ValidationConfig belongs to a StepValidation. The wait is meaningful only
-// for a standalone validation; group members inherit ValidationGroup.Wait.
+// ValidationConfig 属于 StepValidation。等待仅对独立验证有意义；组成员继承ValidationGroup.Wait。
 type ValidationConfig struct {
 	Assertion ValidationAssertion
 	Wait      ValidationWait
-	// Actual/SuggestedKinds are sampling-time editor hints, not executable
-	// truth. They make the captured semantic recommendation inspectable while
-	// keeping the persisted assertion itself independent of a UI framework.
+	// Actual/SuggestedKinds 是采样时间编辑器提示，而不是可执行的事实。它们使捕获的语义建议可检查，同时保持持久断言本身独立于 UI 框架。
 	Actual         string
 	SupportedKinds []ValidationAssertionKind
 }
 
-// ValidationBranch is one AND branch in the fixed (AND...) OR (AND...) group
-// grammar. Steps are kept as WorkflowStep values so DTO mappers and the
-// materializer can use one recursive schema, while aggregate validation
-// prevents any other kind from entering a branch.
+// ValidationBranch 是固定 (AND...) OR (AND...) 组语法中的一个 AND 分支。步骤保留为 WorkflowStep 值，以便 DTO 映射器和实现器可以使用一种递归模式，而聚合验证则阻止任何其他类型进入分支。
 type ValidationBranch struct {
 	ID    string
 	Name  string
 	Steps []WorkflowStep
 }
 
-// ValidationGroup is a one-level disjunction of AND branches. Its Wait is
-// inherited by every member node; nested groups and action nodes are invalid.
+// ValidationGroup 是 AND 分支的一级析取。它的Wait被每个成员节点继承；嵌套组和操作节点无效。
 type ValidationGroup struct {
 	Wait     ValidationWait
 	Branches []ValidationBranch

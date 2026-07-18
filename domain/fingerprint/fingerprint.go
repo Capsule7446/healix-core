@@ -1,5 +1,4 @@
-// Package fingerprint defines selector and element-identity value objects used
-// by execution, sampling, and deterministic healing.
+// 包指纹定义了执行、采样和确定性修复所使用的选择器和元素标识值对象。
 package fingerprint
 
 import (
@@ -29,7 +28,7 @@ type Selector struct {
 	Priority int
 }
 
-// Validate rejects selectors that cannot be resolved by any Driver adapter.
+// 验证拒绝任何 Driver 适配器无法解析的选择器。
 func (s Selector) Validate() error {
 	var problems []string
 	switch s.Type {
@@ -97,8 +96,7 @@ type NodeSpec struct {
 	Fingerprint Fingerprint
 }
 
-// Validate protects the minimum identity and locator invariants shared by all
-// configuration sources and Driver implementations.
+// 验证保护所有配置源和 Driver 实现共享的最小身份和定位器不变量。
 func (s NodeSpec) Validate() error {
 	var problems []string
 	if s.UUID != "" && !validUUID(s.UUID) {

@@ -21,8 +21,7 @@ const (
 	IssueDependencyChanged = "DEPENDENCY_CHANGED"
 )
 
-// ValidationIssue is safe to return to the UI: it identifies keys and paths
-// but never contains parameter or environment values.
+// ValidationIssue 可以安全地返回到 UI：它标识键和路径，但从不包含参数或环境值。
 type ValidationIssue struct {
 	Code           string
 	ItemSequence   int
@@ -504,8 +503,7 @@ func (from ExecutionStatus) CanTransitionTo(to ExecutionStatus) error {
 	return nil
 }
 
-// EnvironmentKeys scans exactly the interpolated string fields selected by
-// callers. Names are case-sensitive and returned without the "env." prefix.
+// EnvironmentKeys 精确扫描调用者选择的内插字符串字段。名称区分大小写，返回时不带“env”。前缀。
 func EnvironmentKeys(values ...string) ([]string, error) {
 	set := map[string]bool{}
 	for _, value := range values {

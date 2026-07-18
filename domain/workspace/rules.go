@@ -6,9 +6,7 @@ import (
 	"strings"
 )
 
-// VersionMeta is the minimum information required by version lifecycle rules.
-// Deleted versions remain part of the sequence and therefore still contribute
-// to the next version number.
+// VersionMeta 是版本生命周期规则所需的最少信息。删除的版本仍然是序列的一部分，因此仍然会影响下一个版本号。
 type VersionMeta struct {
 	ID            string
 	VersionNumber int
@@ -48,9 +46,7 @@ const (
 	HealSucceeded         HealOutcome = "SUCCEEDED"
 )
 
-// HealDecisionBand preserves the deterministic healer's confidence gate in
-// the workspace ledger. UNKNOWN observations are retained as evidence but do
-// not become reviewable candidates.
+// HealDecisionBand 将确定性治疗者的置信门保留在工作区分类帐中。未知的观察结果将作为证据保留，但不会成为可审查的候选者。
 type HealDecisionBand string
 
 const (
@@ -96,9 +92,7 @@ const (
 	HealApprovalRejected    HealApprovalStatus = "REJECTED"
 )
 
-// HealCandidateReviewCommand carries the stable candidate identity and audit
-// metadata for either approval or rejection. PromotedVersionID is required
-// only by approval because the adapter creates that version atomically.
+// HealCandidateReviewCommand 携带稳定的候选人身份和审核元数据以进行批准或拒绝。仅在批准时才需要PromotedVersionID，因为适配器会自动创建该版本。
 type HealCandidateReviewCommand struct {
 	NodeID            string
 	BaseNodeVersionID string
@@ -145,9 +139,7 @@ type HealStreakDecision struct {
 	Promote     bool
 }
 
-// Observe applies the three streak reset rules: the original node recovered,
-// healing failed, or another candidate succeeded. A candidate can only be
-// promoted while its base version is still current.
+// 观察应用三个连续重置规则：原始节点恢复、修复失败或另一个候选节点成功。仅当候选版本的基本版本仍然有效时才能升级。
 func (streak HealStreak) Observe(outcome HealOutcome, candidateHash string, baseIsCurrent bool) (HealStreakDecision, error) {
 	switch outcome {
 	case HealOriginalRecovered, HealFailed:

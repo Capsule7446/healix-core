@@ -6,10 +6,8 @@ import (
 )
 
 var (
-	// ErrNotFound marks lookups whose subject does not exist. Adapters wrap it
-	// with the entity kind and ID so callers can errors.Is-discriminate
-	// "missing" from storage failures instead of collapsing both into one
-	// business conclusion.
+	// ErrNotFound 表示目标不存在。适配器会用实体类型和 ID 包装此错误，
+	// 以便调用方通过 errors.Is 区分“缺失”与存储故障，避免将两者归为同一业务结论。
 	ErrNotFound                    = errors.New("not found")
 	ErrTestTaskRunNotFound         = errors.New("test task run not found")
 	ErrTestTaskRunNotDeletable     = errors.New("test task run must be terminal before deletion")
@@ -67,8 +65,7 @@ type DashboardReader interface {
 	Dashboard(ctx context.Context) (Dashboard, error)
 }
 
-// WorkspaceReader is the host façade composition. Individual use cases can
-// depend on the aggregate/query-specific ports above.
+// WorkspaceReader 是主机外观组合。各个用例可能取决于上面的聚合/特定于查询的端口。
 type WorkspaceReader interface {
 	FolderReader
 	EnvironmentReader
@@ -132,8 +129,7 @@ type MaintenanceWriter interface {
 	SetParameterSnapshotDeleted(ctx context.Context, snapshotID string, deleted bool, at int64) error
 }
 
-// WorkspaceWriter is the host façade composition. Persistence guards remain a
-// safety net; transition policy stays in domain behavior.
+// WorkspaceWriter 是主机外观组合。持久性守卫仍然是一个安全网；转换策略保留在域行为中。
 type WorkspaceWriter interface {
 	FolderWriter
 	EnvironmentWriter
@@ -145,39 +141,31 @@ type WorkspaceWriter interface {
 	MaintenanceWriter
 }
 
-// Store is the composition-root contract for adapters implementing both sides.
-// Consumers should depend on WorkspaceReader, WorkspaceWriter or a narrower
-// use-case-local interface instead of Store whenever possible.
+// Store 是实现双方的适配器的组合根契约。消费者应尽可能依赖 WorkspaceReader、WorkspaceWriter 或更窄的用例本地接口，而不是 Store。
 type Store interface {
 	WorkspaceReader
 	WorkspaceWriter
 }
 
-// ExecutionFactCommitter owns the atomic Step/validation/healing fact
-// boundary used by the application execution coordinator.
+// ExecutionFactCommitter 拥有应用程序执行协调器使用的原子步骤/验证/修复事实边界。
 type ExecutionFactCommitter interface {
 	CommitStepTransition(context.Context, StepTransitionCommit) (StepTransitionCommitResult, error)
 }
 
-// ExecutionProgressWriter owns non-terminal execution facts and the narrow
-// post-commit error attachment operation. Terminal transitions and their
-// final facts must go through ExecutionFactCommitter.
+// ExecutionProgressWriter 拥有非终端执行事实和狭窄的提交后错误附加操作。终端转换及其最终事实必须通过 ExecutionFactCommitter。
 type ExecutionProgressWriter interface {
 	RecordStepProgress(context.Context, StepPhaseEvent) error
 	RecordValidationProgress(context.Context, ValidationObservation) error
 	AttachTerminalStepError(context.Context, StepPhaseEvent) error
 }
 
-// HealCandidateGovernance exposes the strong Candidate/NodeVersion approval
-// protocol without granting unrelated workspace mutations.
+// HealCandidateGovernance 公开了强大的 Candidate/NodeVersion 批准协议，而不授予不相关的工作空间突变。
 type HealCandidateGovernance interface {
 	ApproveHealCandidate(context.Context, HealCandidateReviewCommand) (string, error)
 	RejectHealCandidate(context.Context, HealCandidateReviewCommand) error
 }
 
-// SamplingPublisher persists one temporary Workflow and all of its Node
-// decisions in a single transaction. It is separate from Store so sampling
-// remains an optional application capability in unit tests.
+// SamplingPublisher 在单个事务中保留一个临时工作流及其所有节点决策。它与 Store 是分开的，因此采样仍然是单元测试中的可选应用程序功能。
 type SamplingPublisher interface {
 	PublishSamplingWorkflow(context.Context, SamplingPublication) (SamplingPublicationResult, error)
 }

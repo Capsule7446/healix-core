@@ -151,8 +151,7 @@ func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 
 // WorkflowNode 按顺序运行 Children。Application 编译器从锁定的 Workspace
 // 版本快照构造它；它也是 Workflow 相互引用时被引用的不可变执行单元。
-// Workflow execution is sequential; cross-workflow scheduling belongs to the
-// application layer.
+// Workflow 按顺序执行；跨 Workflow 调度由应用层负责。
 type WorkflowNode struct {
 	NodeID   string
 	Children []Node
@@ -178,9 +177,7 @@ func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
 	return nil
 }
 
-// WorkflowCallNode applies reference-edge parameter bindings for the duration
-// of a child Workflow invocation. The referenced immutable WorkflowNode stays
-// reusable while each call receives an isolated parameter scope.
+// WorkflowCallNode 在子工作流调用期间应用参考边参数绑定。当每个调用接收一个隔离的参数范围时，引用的不可变 WorkflowNode 保持可重用。
 type WorkflowCallNode struct {
 	NodeID   string
 	Target   *WorkflowNode

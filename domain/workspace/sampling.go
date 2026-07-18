@@ -25,9 +25,7 @@ const (
 	SamplingCaptureInterrupted SamplingCaptureStatus = "INTERRUPTED"
 )
 
-// SamplingLifecycle is owned by each temporary workflow.  CaptureStatus is a
-// workspace projection for controls, while this value keeps ended/interrupted
-// drafts distinguishable after another browser session starts.
+// SamplingLifecycle 属于每个临时工作流程。  CaptureStatus 是控件的工作区投影，而此值在另一个浏览器会话启动后可以区分已结束/中断的草稿。
 type SamplingLifecycle string
 
 const (
@@ -90,9 +88,7 @@ type TemporarySamplingWorkflow struct {
 	EndedAt       int64
 	InterruptedAt int64
 	Lifecycle     SamplingLifecycle
-	// Validation insertion is an optional paused-editor choice.  It affects
-	// only the next validation capture; ordinary actions always remain root
-	// steps and an invalid/deleted branch is cleared by the application layer.
+	// 验证插入是一个可选的暂停编辑器选择。  它只影响下一次验证捕获；普通操作始终保留根步骤，并且应用程序层清除无效/已删除的分支。
 	ValidationInsertGroupID     string
 	ValidationInsertBranchID    string
 	ValidationCapturedActionIDs []string
@@ -106,10 +102,7 @@ type TemporarySamplingWorkflow struct {
 	SavedVersionNumber          int
 }
 
-// RebuildTemporaryNodeReferences derives the temporary Node -> Step projection
-// from the editable workflow tree. Temporary sampling data is intentionally
-// in-memory only, therefore this is the single source of truth after any
-// capture, edit, delete, or reorder operation.
+// RebuildTemporaryNodeReferences 从可编辑工作流树中派生临时 Node -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
 func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	if workflow == nil {
 		return errors.New("temporary sampling workflow is required")

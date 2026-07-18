@@ -1,5 +1,4 @@
-// Package workspace defines versioned automation assets, runs, facts and host
-// ports. It has no knowledge of UI frameworks, serialization, databases or files.
+// 包工作区定义版本化自动化资产、运行、事实和主机端口。它不了解 UI 框架、序列化、数据库或文件。
 package workspace
 
 import (
@@ -247,15 +246,11 @@ type WorkflowStep struct {
 	ID          string
 	DisplayName string
 	Kind        StepKind
-	// CaptureScreenshot belongs to the immutable WorkflowVersion definition.
-	// It only expresses the user's intent; browser capture and file output stay
-	// in host execution infrastructure.
+	// CaptureScreenshot 属于不可变的 WorkflowVersion 定义。它仅表达用户的意图；浏览器捕获和文件输出保留在主机执行基础设施中。
 	CaptureScreenshot bool
 	Action            string
 	NodeID            string
-	// NodeVersionID is part of the immutable WorkflowVersion definition.  It
-	// deliberately sits beside NodeID because a single run may legitimately
-	// contain two versions of the same stable Node.
+	// NodeVersionID 是不可变的 WorkflowVersion 定义的一部分。  它故意位于 NodeID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
 	NodeVersionID string
 	Value         string
 	Values        []string
@@ -263,12 +258,9 @@ type WorkflowStep struct {
 	WaitMS        int
 	RepeatCount   int
 	Optional      bool
-	// Validation is the one semantic assertion of a first-class validation
-	// step. Validation never performs an action and owns its waiting policy.
+	// 验证是一流验证步骤的一个语义断言。验证从不执行任何操作并拥有其等待策略。
 	Validation *ValidationConfig
-	// ValidationGroup is only populated when Kind is StepValidationGroup. Its
-	// branches are one level of OR; every branch contains validation steps that
-	// are combined with AND.
+	// 仅当 Kind 为 StepValidationGroup 时才会填充 ValidationGroup。其分支是一级OR；每个分支都包含与 AND 组合的验证步骤。
 	ValidationGroup *ValidationGroup
 	Reference       *WorkflowReference
 	Children        []WorkflowStep
@@ -312,9 +304,7 @@ type WorkflowQueryResult struct {
 	LastRunAt     int64
 }
 
-// ValidateFor validates an exact immutable version selected from a run
-// snapshot. It deliberately does not claim that the selected historical
-// version is still the stable asset's current version.
+// ValidateFor 验证从运行快照中选择的确切不可变版本。它故意不声明所选的历史版本仍然是稳定资产的当前版本。
 func (v WorkflowVersion) ValidateFor(workflow Workflow) error {
 	selected := workflow
 	selected.CurrentVersionID = v.ID

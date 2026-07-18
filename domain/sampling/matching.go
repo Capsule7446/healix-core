@@ -2,17 +2,14 @@ package sampling
 
 import "github.com/Capsule7446/healix-core/domain/fingerprint"
 
-// MatchProfile is the framework-neutral identity signal used to compare a
-// captured element with an existing baseline. It deliberately contains no
-// workspace aggregate or persistence concern.
+// MatchProfile 是框架中立的身份信号，用于将捕获的元素与现有基线进行比较。它故意不包含工作空间聚合或持久性问题。
 type MatchProfile struct {
 	Selectors   []fingerprint.Selector
 	Fingerprint fingerprint.Fingerprint
 	Origin      string
 }
 
-// Match measures selector overlap and stable fingerprint agreement. The
-// weights are domain policy: callers only map their aggregate into profiles.
+// 匹配测量选择器重叠和稳定的指纹一致性。权重是域策略：调用者仅将其聚合映射到配置文件中。
 func Match(sampled, baseline MatchProfile) (similarity float64, selectorOverlap int) {
 	selectorOverlap = overlap(sampled.Selectors, baseline.Selectors)
 	union := uniqueSelectorCount(sampled.Selectors) + uniqueSelectorCount(baseline.Selectors) - selectorOverlap

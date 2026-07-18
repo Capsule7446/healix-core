@@ -8,10 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// candidateLess defines the complete candidate order. Score remains the
-// semantic ranking signal; the remaining fields are deterministic arbitration
-// keys only and do not claim that one equally-scored candidate is more likely
-// to be correct than another.
+// CandidateLess 定义完整的候选顺序。分数仍然是语义排名信号；其余字段仅是确定性仲裁密钥，并不表明一个得分相同的候选者比另一个候选者更有可能是正确的。
 func candidateLess(left, right Candidate) bool {
 	if left.Score != right.Score {
 		return left.Score > right.Score
@@ -36,9 +33,7 @@ func sameCandidate(left, right Candidate) bool {
 		fingerprintCanonicalKey(left.Fingerprint) == fingerprintCanonicalKey(right.Fingerprint)
 }
 
-// fingerprintCanonicalKey serializes every fingerprint field with explicit
-// length prefixes and sorted map keys. It is deliberately independent of Go's
-// map iteration order and of infrastructure JSON encoders.
+// FingerprintCanonicalKey 使用显式长度前缀和排序的映射键序列化每个指纹字段。它故意独立于 Go 的映射迭代顺序和基础设施 JSON 编码器。
 func fingerprintCanonicalKey(value fingerprint.Fingerprint) string {
 	var out strings.Builder
 	writeCanonicalString(&out, value.Tag)
