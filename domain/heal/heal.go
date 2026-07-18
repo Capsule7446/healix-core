@@ -9,7 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// 结果对持久性和下游执行决策的修复尝试的结果进行分类。
+// Outcome：结果对持久性和下游执行决策的修复尝试的结果进行分类。
 type Outcome string
 
 const (

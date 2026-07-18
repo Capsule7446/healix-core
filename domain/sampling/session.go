@@ -251,7 +251,7 @@ func (s *Session) Complete() error {
 	return s.End()
 }
 
-// 暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
+// Pause：暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
 func (s *Session) Pause() error {
 	if s == nil {
 		return fmt.Errorf("sampling: nil session cannot pause")

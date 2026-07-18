@@ -9,7 +9,7 @@ type MatchProfile struct {
 	Origin      string
 }
 
-// 匹配测量选择器重叠和稳定的指纹一致性。权重是域策略：调用者仅将其聚合映射到配置文件中。
+// Match：匹配测量选择器重叠和稳定的指纹一致性。权重是域策略：调用者仅将其聚合映射到配置文件中。
 func Match(sampled, baseline MatchProfile) (similarity float64, selectorOverlap int) {
 	selectorOverlap = overlap(sampled.Selectors, baseline.Selectors)
 	union := uniqueSelectorCount(sampled.Selectors) + uniqueSelectorCount(baseline.Selectors) - selectorOverlap
