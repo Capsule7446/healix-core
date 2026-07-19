@@ -8,6 +8,11 @@ func lcsLength(a, b []string) int {
 		rows, columns = columns, rows
 	}
 	dp := make([]int, len(columns)+1)
+	return lcsLengthWithBuffer(rows, columns, dp)
+}
+
+func lcsLengthWithBuffer(rows, columns []string, dp []int) int {
+	clear(dp)
 	for _, rowValue := range rows {
 		diagonal := 0
 		for columnIndex, columnValue := range columns {
@@ -34,8 +39,13 @@ func narrowByPathLCS(targetPath []string, candidates []SnapshotCandidate) []Snap
 	}
 	distances := make([]int, len(candidates))
 	maxDist := 0
+	workspace := make([]int, shortestPathLength(targetPath, candidates))
 	for i, c := range candidates {
-		d := lcsLength(targetPath, c.Fingerprint.Path)
+		rows, columns := targetPath, c.Fingerprint.Path
+		if len(columns) > len(rows) {
+			rows, columns = columns, rows
+		}
+		d := lcsLengthWithBuffer(rows, columns, workspace[:len(columns)+1])
 		distances[i] = d
 		if d > maxDist {
 			maxDist = d
@@ -48,4 +58,18 @@ func narrowByPathLCS(targetPath []string, candidates []SnapshotCandidate) []Snap
 		}
 	}
 	return narrowed
+}
+
+func shortestPathLength(targetPath []string, candidates []SnapshotCandidate) int {
+	length := 0
+	for _, candidate := range candidates {
+		candidateLength := len(candidate.Fingerprint.Path)
+		if len(targetPath) < candidateLength {
+			candidateLength = len(targetPath)
+		}
+		if candidateLength > length {
+			length = candidateLength
+		}
+	}
+	return length + 1
 }
