@@ -1,0 +1,16 @@
+version: '1'
+run:
+  timeout: 5m
+linters:
+  enable:
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - unused
+    - govet
+    - gosec
+issues:
+  exclude-rules:
+    - linters:
+        - gosec
+      text: 'G104'
