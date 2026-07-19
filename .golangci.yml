@@ -1,8 +1,7 @@
-version: '2'
+version: '1'
 run:
   timeout: 5m
 linters:
-  default: standard
   enable:
     - errcheck
     - ineffassign
@@ -10,8 +9,8 @@ linters:
     - unused
     - govet
     - gosec
-  exclusions:
-    generated: lax
-    rules:
-      - linters: [gosec]
-        text: 'G104'
+issues:
+  exclude-rules:
+    - linters:
+        - gosec
+      text: 'G104'
