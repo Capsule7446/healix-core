@@ -20,9 +20,18 @@ jobs:
           cache: true
       - name: Verify
         run: |
+          test -z "$(gofmt -l .)"
           go test ./...
+          go test -race ./...
           go vet ./...
           go build ./...
+          go test -coverprofile=coverage.out ./...
+          ./scripts/check-coverage.sh coverage.out 80
+      - name: Static analysis
+        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84
+        with:
+          version: v1.64
+          args: --timeout=5m
 
   publish:
     name: Publish release
