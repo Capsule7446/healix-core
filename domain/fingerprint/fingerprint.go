@@ -28,7 +28,7 @@ type Selector struct {
 	Priority int
 }
 
-// Validate：验证拒绝任何 Driver 适配器无法解析的选择器。
+// Validate 验证拒绝任何 Driver 适配器无法解析的选择器。
 func (s Selector) Validate() error {
 	var problems []string
 	switch s.Type {
@@ -96,7 +96,7 @@ type NodeSpec struct {
 	Fingerprint Fingerprint
 }
 
-// Validate：验证保护所有配置源和 Driver 实现共享的最小身份和定位器不变量。
+// Validate 验证保护所有配置源和 Driver 实现共享的最小身份和定位器不变量。
 func (s NodeSpec) Validate() error {
 	var problems []string
 	if s.UUID != "" && !validUUID(s.UUID) {

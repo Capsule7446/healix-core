@@ -61,7 +61,7 @@ type ValidationAssertion struct {
 	IgnoreCase     bool
 }
 
-// Normalized：规范化删除对所选断言类型没有意义的字段。当用户切换类型或浏览器采样器提供语义建议时，适配器会使用它，而验证对原始域输入仍然严格。
+// Normalized 规范化删除对所选断言类型没有意义的字段。当用户切换类型或浏览器采样器提供语义建议时，适配器会使用它，而验证对原始域输入仍然严格。
 func (a ValidationAssertion) Normalized() ValidationAssertion {
 	a.Kind = ValidationAssertionKind(strings.TrimSpace(string(a.Kind)))
 	switch a.Kind {

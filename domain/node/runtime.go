@@ -16,7 +16,7 @@ const terminalEventTimeout = 5 * time.Second
 // ErrElementNotFound 是 Driver 合约的显式业务信号，表明 NodeSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
 var ErrElementNotFound = errors.New("node: element not found")
 
-// Program：程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 NodeSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
+// Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 NodeSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
 type Program struct {
 	Root  Node
 	Specs map[string]fingerprint.NodeSpec

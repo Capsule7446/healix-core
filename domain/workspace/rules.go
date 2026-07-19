@@ -139,7 +139,7 @@ type HealStreakDecision struct {
 	Promote     bool
 }
 
-// Observe：观察应用三个连续重置规则：原始节点恢复、修复失败或另一个候选节点成功。仅当候选版本的基本版本仍然有效时才能升级。
+// Observe 观察应用三个连续重置规则：原始节点恢复、修复失败或另一个候选节点成功。仅当候选版本的基本版本仍然有效时才能升级。
 func (streak HealStreak) Observe(outcome HealOutcome, candidateHash string, baseIsCurrent bool) (HealStreakDecision, error) {
 	switch outcome {
 	case HealOriginalRecovered, HealFailed:

@@ -9,7 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Thresholds：阈值定义用于对治疗决策进行分类的置信边界。
+// Thresholds 阈值定义用于对治疗决策进行分类的置信边界。
 type Thresholds struct {
 	AppliedCap float64 // 分数 >= AppliedCap：直接应用
 	ReviewCap  float64 // ReviewCap <= 分数 < AppliedCap：应用，但强制待审 + 录屏

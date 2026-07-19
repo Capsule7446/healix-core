@@ -103,7 +103,7 @@ type ObservationFact struct {
 	Succeeded         bool
 }
 
-// Query：查询是包含/不包含 UTC 毫秒范围。零政策意味着所有政策；非零值过滤到一个精确的冻结策略。
+// Query 查询是包含/不包含 UTC 毫秒范围。零政策意味着所有政策；非零值过滤到一个精确的冻结策略。
 type Query struct {
 	FromMS            int64
 	ThroughMS         int64
@@ -120,7 +120,7 @@ func (query Query) Validate() error {
 	return nil
 }
 
-// Bucket：存储桶按 UTC 日、冻结策略和决策范围分组。计数是主要的；利率是纯粹的派生值，永远不会作为事实存在。
+// Bucket 存储桶按 UTC 日、冻结策略和决策范围分组。计数是主要的；利率是纯粹的派生值，永远不会作为事实存在。
 type Bucket struct {
 	Day               string
 	Policy            PolicySnapshot
@@ -158,7 +158,7 @@ func (bucket Bucket) NoCandidateRate() float64 {
 	return Rate(bucket.NoCandidate, bucket.ClassifiedAttempts())
 }
 
-// Rate：比率是每个质量比率的唯一零分母政策。
+// Rate 比率是每个质量比率的唯一零分母政策。
 func Rate(numerator, denominator int) float64 {
 	if numerator <= 0 || denominator <= 0 {
 		return 0
@@ -183,7 +183,7 @@ type bucketKey struct {
 	band   DecisionBand
 }
 
-// Project：项目对事实进行一次验证和分类，然后返回适合适配器和应用程序视图的确定性日期/策略/频带排序。
+// Project 项目对事实进行一次验证和分类，然后返回适合适配器和应用程序视图的确定性日期/策略/频带排序。
 func Project(query Query, facts []ObservationFact) (Report, error) {
 	if err := query.Validate(); err != nil {
 		return Report{}, err
