@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// HealObservationCommit keeps the preallocated promotion identity beside the
-// immutable observation fact so a retry cannot create a different version.
+// HealObservationCommit 将预先分配的升级身份保留在不可变的观察事实旁边，因此重试无法创建不同的版本。
 type HealObservationCommit struct {
 	Observation       HealObservation
 	PromotedVersionID string
@@ -19,8 +18,7 @@ type HealCandidateReset struct {
 	ObservedAt        int64
 }
 
-// StepTransitionCommit is the atomic unit of work for one terminal phase
-// change. Final validation and healing facts can only be persisted here.
+// StepTransitionCommit 是一个终端相变的原子工作单元。最终验证和治愈事实只能保留在这里。
 type StepTransitionCommit struct {
 	CommitID               string
 	Event                  StepPhaseEvent

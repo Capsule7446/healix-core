@@ -1,5 +1,4 @@
-// Package interpolation owns the variable-expression grammar shared by the
-// execution and workspace bounded contexts.
+// 包插值拥有由执行和工作空间有界上下文共享的变量表达式语法。
 package interpolation
 
 import (
@@ -44,7 +43,7 @@ func Expand(value string, resolver Resolver) (string, error) {
 	}
 }
 
-// Names parses the same grammar as Expand without resolving values.
+// Names 解析与 Expand 相同的语法，但不解析值。
 func Names(value string) ([]string, error) {
 	if !strings.Contains(value, "${") {
 		return nil, nil

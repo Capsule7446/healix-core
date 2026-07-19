@@ -1,7 +1,6 @@
 package workspace
 
-// TestTask is the stable, mutable-name asset. Executable configuration lives
-// exclusively in immutable TestTaskVersion values.
+// TestTask 是稳定的、名称可变的资产。可执行配置仅存在于不可变的 TestTaskVersion 值中。
 type TestTask struct {
 	ID               string
 	DisplayName      string
@@ -44,9 +43,7 @@ type TestTaskQueryResult struct {
 	LastRunAt     int64
 }
 
-// TestTaskVersionPlan carries a publication candidate plus the exact graph
-// used for its environment-free validation. The adapter rechecks this graph
-// inside the same transaction that publishes the version.
+// TestTaskVersionPlan 带有候选出版物以及用于其无环境验证的精确图表。适配器在发布版本的同一事务内重新检查该图。
 type TestTaskVersionPlan struct {
 	Task                  TestTask
 	ExpectedTaskUpdatedAt int64
@@ -181,8 +178,7 @@ type WorkflowExecutionPlan struct {
 	ParameterSnapshot     ExecutionParameterSnapshot
 }
 
-// WorkflowParameterScope is an occurrence-specific resolved parameter copy.
-// Path distinguishes repeated/nested appearances of the same WorkflowVersion.
+// WorkflowParameterScope 是特定于事件的已解析参数副本。路径区分相同 WorkflowVersion 的重复/嵌套外观。
 type WorkflowParameterScope struct {
 	TestTaskItemID    string
 	Path              string

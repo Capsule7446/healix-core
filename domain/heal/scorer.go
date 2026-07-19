@@ -27,7 +27,7 @@ type Weights struct {
 	Container float64
 }
 
-// DefaultWeights returns a fresh set of heuristic weights for deterministic scoring.
+// DefaultWeights 返回一组新的启发式权重，用于确定性打分。
 // LabelText/Container 是 Healix 扩展维度。函数返回值避免调用方修改全局默认值。
 func DefaultWeights() Weights {
 	return Weights{

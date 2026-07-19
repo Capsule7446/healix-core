@@ -49,10 +49,7 @@ func (observation HealObservation) Validate() error {
 	return ValidateHealDecisionBand(observation.CandidateHash, observation.DecisionBand)
 }
 
-// ValidationObservation is one retained change point from a validation poll.
-// It belongs to the execution evidence lifecycle, never to a WorkflowVersion.
-// Actual and Expected must already be redacted by the execution adapter when
-// the asserted input is sensitive.
+// ValidationObservation 是验证轮询中保留的一个更改点。它属于执行证据生命周期，而不属于 WorkflowVersion。当断言输入敏感时，执行适配器必须已对实际和预期进行了编辑。
 type ValidationObservation struct {
 	ID                    string
 	RunID                 string
@@ -98,8 +95,7 @@ func (observation ValidationObservation) Validate() error {
 	}
 }
 
-// HealObservationDetail enriches the immutable fact for replay and review
-// without making presentation fields part of the write-side observation.
+// HealObservationDetail 丰富了重播和审查的不可变事实，而不使表示字段成为写入端观察的一部分。
 type HealObservationDetail struct {
 	Observation       HealObservation
 	OldSelectors      []fingerprint.Selector

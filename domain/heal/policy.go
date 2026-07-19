@@ -2,22 +2,17 @@ package heal
 
 import "fmt"
 
-// PolicyVersionV1 identifies the first persisted/configurable DefaultHealer
-// policy shape. The version travels with execution snapshots so later policy
-// changes do not make an already-created run irreproducible.
+// PolicyVersionV1 标识第一个持久/可配置的 DefaultHealer 策略形状。该版本随执行快照一起传播，因此以后的策略更改不会使已创建的运行变得不可重现。
 const PolicyVersionV1 = 1
 
-// PolicyV1 is the complete deterministic configuration of DefaultHealer.
-// Callers should construct it with DefaultPolicyV1 and replace only the fields
-// they intentionally customize.
+// PolicyV1 是 DefaultHealer 的完整确定性配置。调用者应使用 DefaultPolicyV1 构建它，并仅替换他们有意自定义的字段。
 type PolicyV1 struct {
 	Version    int
 	Weights    Weights
 	Thresholds Thresholds
 }
 
-// DefaultPolicyV1 returns a fresh value so callers cannot mutate the defaults
-// observed by later runs through a shared pointer.
+// DefaultPolicyV1 返回一个新值，因此调用者无法通过共享指针改变稍后运行观察到的默认值。
 func DefaultPolicyV1() PolicyV1 {
 	return PolicyV1{
 		Version:    PolicyVersionV1,

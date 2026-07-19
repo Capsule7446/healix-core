@@ -8,10 +8,7 @@ import (
 
 const HealerPolicySnapshotVersionV1 = 1
 
-// HealerWeightsSnapshotV1 is the workspace-side ACL representation of the
-// execution domain's healer weights. Keeping this snapshot local prevents the
-// workspace bounded context from importing domain/heal while still allowing a
-// queued run to freeze its deterministic policy.
+// HealerWeightsSnapshotV1 是执行域的修复器权重的工作区端 ACL 表示形式。将此快照保留在本地可防止工作区有界上下文导入域/修复，同时仍允许排队运行冻结其确定性策略。
 type HealerWeightsSnapshotV1 struct {
 	Tag       float64
 	ID        float64
@@ -44,9 +41,7 @@ func DefaultHealerPolicySnapshotV1() HealerPolicySnapshotV1 {
 	}
 }
 
-// NormalizeHealerPolicySnapshotV1 maps a missing pre-policy JSON value to the
-// V1 defaults. Once Version is present, every supplied value is authoritative;
-// in particular, a zero weight is not replaced by its default.
+// NormalizeHealerPolicySnapshotV1 将缺失的策略前 JSON 值映射到 V1 默认值。一旦版本存在，每个提供的值都是权威的；特别是，零权重不会被默认值取代。
 func NormalizeHealerPolicySnapshotV1(policy HealerPolicySnapshotV1) HealerPolicySnapshotV1 {
 	if policy.Version == 0 {
 		return DefaultHealerPolicySnapshotV1()

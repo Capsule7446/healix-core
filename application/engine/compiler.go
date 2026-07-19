@@ -9,8 +9,8 @@ import (
 	workspace "github.com/Capsule7446/healix-core/domain/workspace"
 )
 
-// StepMetadata maps an execution-tree ID back to the immutable workspace step
-// that owns evidence, screenshots and user-facing progress.
+// StepMetadata 将执行树 ID 映射回拥有证据、截图和面向用户进度信息的
+// 不可变工作区步骤。
 type StepMetadata struct {
 	WorkflowStepID    string
 	DisplayName       string
@@ -21,23 +21,22 @@ type StepMetadata struct {
 	CaptureScreenshot bool
 }
 
-// RuntimeNodeIdentity maps a runtime NodeSpec ID (the exact NodeVersion ID) to
-// its stable workspace Node identity.
+// RuntimeNodeIdentity 将运行时 NodeSpec ID（即精确的 NodeVersion ID）映射到
+// 其稳定的工作区 Node 标识。
 type RuntimeNodeIdentity struct {
 	NodeID        string
 	NodeVersionID string
 }
 
-// CompiledExecution is the in-memory execution artifact consumed by RunProgram
-// and host evidence adapters.
+// CompiledExecution 是供 RunProgram 和宿主证据适配器使用的内存执行产物。
 type CompiledExecution struct {
 	Program      node.Program
 	Metadata     map[string]StepMetadata
 	RuntimeNodes map[string]RuntimeNodeIdentity
 }
 
-// CompileExecution compiles one locked WorkflowExecution directly from its
-// TestTaskRun snapshot. It performs no filesystem or serialization work.
+// CompileExecution 直接从 TestTaskRun 快照编译一个已锁定的 WorkflowExecution。
+// 它不执行任何文件系统或序列化操作。
 func CompileExecution(plan workspace.TestTaskRunPlan, execution workspace.WorkflowExecutionPlan) (CompiledExecution, error) {
 	compiler := executionCompiler{
 		versions:     make(map[string]workspace.WorkflowDependencySnapshot, len(plan.Workflows)),

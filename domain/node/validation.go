@@ -14,10 +14,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/interpolation"
 )
 
-// ValidationAssertion is the execution-side representation of one
-// framework-neutral verification statement.  Workspace maps its persisted
-// value object here at the materialization boundary, keeping workspace assets
-// independent from the execution context.
+// ValidationAssertion 是一个与框架无关的验证语句的执行端表示。  工作区将其持久值对象映射到物化边界，使工作区资产独立于执行上下文。
 type ValidationAssertion struct {
 	Kind           string
 	Expected       string
@@ -26,10 +23,7 @@ type ValidationAssertion struct {
 	IgnoreCase     bool
 }
 
-// ValidationObservation is an append-only execution fact. It contains only
-// framework-neutral assertion data; infrastructure maps it to a concrete
-// StepExecution and retained event-timeline location. Final is deliberately explicit:
-// the last record is retained even when it is identical to the prior poll.
+// ValidationObservation 是一个仅附加执行事实。它仅包含框架中立的断言数据；基础设施将其映射到具体的 StepExecution 并保留事件时间线位置。 Final 是故意明确的：即使最后的记录与之前的轮询相同，它也会被保留。
 type ValidationObservation struct {
 	NodeID       string
 	GroupID      string
@@ -43,10 +37,7 @@ type ValidationObservation struct {
 	Final        bool
 }
 
-// ValidationStateReader is an optional capability of an Element.  Existing
-// action-only drivers remain source-compatible; verification-capable drivers
-// provide one standard DOM/ARIA projection without leaking framework classes
-// into the domain.
+// ValidationStateReader 是元素的可选功能。  现有的仅操作驱动程序保持源代码兼容；具有验证功能的驱动程序提供一种标准 DOM/ARIA 投影，而不会将框架类泄漏到域中。
 type ValidationStateReader interface {
 	ValidationState(context.Context) (ValidationState, error)
 }
@@ -66,9 +57,7 @@ const validationPollInterval = 200 * time.Millisecond
 
 type ValidationNode struct {
 	NodeID string
-	// GroupID and BranchID are empty for an independent validation. They are
-	// execution identities, not a persisted expression model, and let the
-	// evidence adapter attach member observations to their group StepExecution.
+	// 对于独立验证，GroupID 和 BranchID 为空。它们是执行身份，而不是持久的表达式模型，并让证据适配器将成员观察结果附加到其组 StepExecution。
 	GroupID   string
 	BranchID  string
 	Target    fingerprint.NodeSpec
@@ -149,9 +138,7 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	}
 }
 
-// evaluate performs exactly one read/check round.  ValidationGroupNode calls
-// this for every member before it derives a branch result, preserving the
-// "same-round AND" invariant.
+// 评估恰好执行一轮读取/检查。  ValidationGroupNode 在派生分支结果之前为每个成员调用此方法，保留“同一轮 AND”不变量。
 func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, string, error) {
 	assertion, err := v.resolvedAssertion(rt)
 	if err != nil {
@@ -165,8 +152,7 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 		if assertion.Kind == "not_exists" {
 			return true, "<absent>", nil
 		}
-		// Deletion is deliberately not "not visible"; callers must assert
-		// not_exists for that semantic.
+		// 删除故意不“不可见”；调用者必须为该语义断言 not_exists。
 		return false, "<absent>", nil
 	}
 	exists, err := el.Exists(ctx)
@@ -259,10 +245,7 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 	}
 }
 
-// resolvedAssertion expands only values permitted by the persisted assertion
-// contract. Attribute names are deliberately static: allowing interpolation in
-// a DOM attribute name makes validation shape data-dependent and is rejected
-// during workspace validation.
+// solvedAssertion 仅扩展持久断言合约允许的值。属性名称故意是静态的：允许在 DOM 属性名称中进行插值使得验证形状数据依赖，并且在工作区验证期间被拒绝。
 func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, error) {
 	resolved := v.Assertion
 	resolved.ExpectedValues = append([]string(nil), v.Assertion.ExpectedValues...)
@@ -282,10 +265,7 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 	return resolved, nil
 }
 
-// locate applies the same deterministic healing decision as action steps.
-// For a not_exists assertion, an applicable healed candidate is evidence that
-// the element still exists and must block a false positive; only a genuine
-// no_candidate outcome is treated as absence.
+// locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
 	target := rt.effectiveSpec(v.Target)
 	el, err := rt.Driver.Locate(ctx, target)
@@ -442,8 +422,7 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	stableSince := make([]time.Time, len(g.Branches))
 	last := make(map[string]validationObservationState)
 	for {
-		// This loop intentionally evaluates every member in every branch before
-		// selecting a branch.  No member result is latched across rounds.
+		// 该循环在选择分支之前有意评估每个分支中的每个成员。  会员结果不会跨轮锁定。
 		branchPassed := make([]bool, len(g.Branches))
 		for i, branch := range g.Branches {
 			branchPassed[i] = len(branch.Nodes) > 0

@@ -33,9 +33,7 @@ type WorkspaceFolder struct {
 	UpdatedAt   int64
 }
 
-// FolderForest owns the invariants that span all folders. The adapter reloads
-// the forest inside its transaction so these decisions are made against the
-// same snapshot that is persisted.
+// FolderForest 拥有跨越所有文件夹的不变量。适配器在其事务内重新加载林，因此这些决策是针对持久保存的同一快照做出的。
 type FolderForest struct {
 	byID   map[string]WorkspaceFolder
 	depths map[string]int
@@ -61,9 +59,7 @@ func (folder WorkspaceFolder) Validate() error {
 	return nil
 }
 
-// ValidateFolderTree validates all hierarchy invariants and returns each real
-// folder's one-based depth. The empty parent ID denotes the virtual root at
-// depth zero and is intentionally not persisted as a folder row.
+// ValidateFolderTree 验证所有层次结构不变量并返回每个真实文件夹的从一开始的深度。空父 ID 表示深度为零的虚拟根，并且故意不保留为文件夹行。
 func ValidateFolderTree(folders []WorkspaceFolder) (map[string]int, error) {
 	forest, err := NewFolderForest(folders)
 	if err != nil {

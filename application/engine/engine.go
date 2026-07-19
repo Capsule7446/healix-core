@@ -19,8 +19,8 @@ type Config struct {
 	Healer   heal.Healer
 	Recorder node.Recorder
 	Facts    node.ExecutionSink
-	// StepInterval is an execution-local pacing setting. It is applied between
-	// leaf Steps and does not replace explicit condition waits.
+	// StepInterval 是执行局部的节奏设置。它应用于叶子 Step 之间，
+	// 不会取代显式的条件等待。
 	StepInterval time.Duration
 	// Variables 是本次 run 的初始变量。组合根可从环境或密钥系统注入，
 	// domain 只接收内存值，不感知具体密钥来源。

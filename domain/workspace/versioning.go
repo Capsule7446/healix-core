@@ -9,8 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// ValidateLoadedHistory validates the detail/hydration shape. List queries are
-// intentionally allowed to omit Versions and therefore do not call it.
+// ValidateLoadedHistory 验证细节/水合作用形状。列表查询故意允许省略版本，因此不调用它。
 func (a NodeAggregate) ValidateLoadedHistory() error {
 	if a.Node.CurrentVersionID == "" {
 		if a.Current.ID != "" {
@@ -128,8 +127,7 @@ func validateVersionIdentity(owner string, versions []versionIdentity) error {
 	return nil
 }
 
-// PublishVersion creates a new immutable NodeVersion and returns a new
-// aggregate value. Existing history and the receiver are never mutated.
+// PublishVersion 创建一个新的不可变 NodeVersion 并返回一个新的聚合值。现有的历史和接收者永远不会改变。
 func (a NodeAggregate) PublishVersion(versionID, pageURL, origin string, selectors []fingerprint.Selector,
 	fp fingerprint.Fingerprint, source VersionSource, at int64) (NodeAggregate, error) {
 	if err := validateNodePublicationBase(a, versionID, at); err != nil {
@@ -149,8 +147,7 @@ func (a NodeAggregate) PublishVersion(versionID, pageURL, origin string, selecto
 	return next, nil
 }
 
-// PublishVersion creates a new immutable WorkflowVersion. The definition is
-// deep-copied so caller-owned editor slices cannot mutate published history.
+// PublishVersion 创建一个新的不可变 WorkflowVersion。该定义是深度复制的，因此调用者拥有的编辑器切片不能改变已发布的历史记录。
 func (a WorkflowAggregate) PublishVersion(versionID string, definition WorkflowDefinition, at int64) (WorkflowAggregate, error) {
 	if err := validateWorkflowPublicationBase(a, versionID, at); err != nil {
 		return WorkflowAggregate{}, err

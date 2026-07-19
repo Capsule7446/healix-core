@@ -1,6 +1,4 @@
-// Package metrics defines the read-only quality projection derived from
-// committed workspace healing observations. It owns no run lifecycle, healing
-// event, verdict, or write repository.
+// 包指标定义了从承诺的工作空间修复观察中得出的只读质量预测。它不拥有运行生命周期、修复事件、判决或写入存储库。
 package metrics
 
 import (
@@ -16,9 +14,7 @@ import (
 	"time"
 )
 
-// DecisionBand is the policy gate recorded with an immutable healing
-// observation. UNKNOWN is valid for no-candidate observations and historical
-// records whose policy band cannot be reconstructed safely.
+// DecisionBand 是用不可变的愈合​​观察记录的策略门。 UNKNOWN 对于无候选观测值和无法安全重建策略区间的历史记录有效。
 type DecisionBand string
 
 const (
@@ -36,8 +32,7 @@ func (band DecisionBand) Validate() error {
 	}
 }
 
-// PolicyWeights is the storage-neutral quality identity of the deterministic
-// healer weights. Field order is part of the V1 fingerprint contract.
+// PolicyWeights 是确定性治疗者权重的存储中立质量标识。现场订单是 V1 指纹合约的一部分。
 type PolicyWeights struct {
 	Tag       float64
 	ID        float64
@@ -51,8 +46,7 @@ type PolicyWeights struct {
 	Container float64
 }
 
-// PolicySnapshot contains every setting that can alter one deterministic
-// healing decision. Equal snapshots must produce equal fingerprints.
+// PolicySnapshot 包含可以改变确定性修复决策的每一项设置。相同的快照必须产生相同的指纹。
 type PolicySnapshot struct {
 	Version    int
 	ReviewCap  float64
@@ -73,9 +67,7 @@ func (fingerprint PolicyFingerprint) Validate() error {
 	return nil
 }
 
-// FingerprintPolicy produces a platform-stable identity from the version,
-// thresholds, and all ten weights. IEEE-754 bits are encoded in fixed field
-// order, avoiding locale and JSON formatting differences.
+// FingerprintPolicy 根据版本、阈值和所有十个权重生成平台稳定的身份。 IEEE-754 位以固定字段顺序进行编码，避免了区域设置和 JSON 格式差异。
 func FingerprintPolicy(policy PolicySnapshot) (PolicyFingerprint, error) {
 	if policy.Version <= 0 {
 		return "", errors.New("healer policy fingerprint requires a positive version")
@@ -91,7 +83,7 @@ func FingerprintPolicy(policy PolicySnapshot) (PolicyFingerprint, error) {
 	buffer := make([]byte, 8*(len(values)+1))
 	binary.BigEndian.PutUint64(buffer, uint64(policy.Version))
 	for index, value := range values {
-		if value == 0 { // canonicalize negative zero
+		if value == 0 { // 规范化负零
 			value = 0
 		}
 		binary.BigEndian.PutUint64(buffer[(index+1)*8:], math.Float64bits(value))
@@ -100,9 +92,7 @@ func FingerprintPolicy(policy PolicySnapshot) (PolicyFingerprint, error) {
 	return PolicyFingerprint(hex.EncodeToString(digest[:])), nil
 }
 
-// ObservationFact is the minimum immutable workspace fact needed by the
-// projection. CandidateHash is used only to distinguish selected candidates
-// from no-candidate and unclassifiable historical records.
+// ObservationFact 是投影所需的最小不可变工作空间事实。 CandidateHash 仅用于区分选定的候选者与无候选者和不可分类的历史记录。
 type ObservationFact struct {
 	ObservationID     string
 	ObservedAtMS      int64
@@ -113,8 +103,7 @@ type ObservationFact struct {
 	Succeeded         bool
 }
 
-// Query is an inclusive/exclusive UTC millisecond range. Zero policy means all
-// policies; a non-zero value filters to one exact frozen policy.
+// Query 查询是包含/不包含 UTC 毫秒范围。零政策意味着所有政策；非零值过滤到一个精确的冻结策略。
 type Query struct {
 	FromMS            int64
 	ThroughMS         int64
@@ -131,8 +120,7 @@ func (query Query) Validate() error {
 	return nil
 }
 
-// Bucket is grouped by UTC day, frozen policy, and decision band. Counts are
-// primary; rates are pure derived values and are never persisted as facts.
+// Bucket 存储桶按 UTC 日、冻结策略和决策范围分组。计数是主要的；利率是纯粹的派生值，永远不会作为事实存在。
 type Bucket struct {
 	Day               string
 	Policy            PolicySnapshot
@@ -170,7 +158,7 @@ func (bucket Bucket) NoCandidateRate() float64 {
 	return Rate(bucket.NoCandidate, bucket.ClassifiedAttempts())
 }
 
-// Rate is the sole zero-denominator policy for every quality ratio.
+// Rate 比率是每个质量比率的唯一零分母政策。
 func Rate(numerator, denominator int) float64 {
 	if numerator <= 0 || denominator <= 0 {
 		return 0
@@ -184,8 +172,7 @@ type Report struct {
 	Buckets   []Bucket
 }
 
-// Reader is the only metrics domain port. Implementations derive this report
-// from the authoritative workspace facts and expose no mutation capability.
+// Reader 是唯一的度量域端口。实现从权威的工作区事实中得出此报告，并且不公开任何突变功能。
 type Reader interface {
 	QueryHealQuality(context.Context, Query) (Report, error)
 }
@@ -196,8 +183,7 @@ type bucketKey struct {
 	band   DecisionBand
 }
 
-// Project validates and classifies facts once, then returns a deterministic
-// day/policy/band ordering suitable for adapters and application views.
+// Project 项目对事实进行一次验证和分类，然后返回适合适配器和应用程序视图的确定性日期/策略/频带排序。
 func Project(query Query, facts []ObservationFact) (Report, error) {
 	if err := query.Validate(); err != nil {
 		return Report{}, err

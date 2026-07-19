@@ -1,4 +1,4 @@
-// Package sampling models one interactive browser sampling session.
+// 包采样模拟一个交互式浏览器采样会话。
 package sampling
 
 import (
@@ -16,18 +16,13 @@ type Status string
 const (
 	StatusCreated   Status = "created"
 	StatusRecording Status = "recording"
-	// StatusPaused keeps the in-memory capture session alive.  Resuming must
-	// continue the same action/node identity space rather than creating a new
-	// temporary workflow.
+	// StatusPaused 使内存中的捕获会话保持活动状态。  恢复必须继续相同的操作/节点身份空间，而不是创建新的临时工作流。
 	StatusPaused Status = "paused"
 	StatusEnded  Status = "ended"
-	// StatusInterrupted means the controlled browser disappeared unexpectedly.
-	// The captured artifacts remain usable, but the session cannot resume.
+	// StatusInterrupted 表示受控浏览器意外消失。捕获的工件仍然可用，但会话无法恢复。
 	StatusInterrupted Status = "interrupted"
 
-	// StatusCompleted and StatusFailed are compatibility aliases for terminal
-	// lifecycle statuses. New callers should prefer StatusEnded and
-	// StatusInterrupted.
+	// StatusCompleted 和 StatusFailed 是终端生命周期状态的兼容性别名。新呼叫者应该更喜欢 StatusEnded 和 StatusInterrupted。
 	StatusCompleted Status = StatusEnded
 	StatusFailed    Status = StatusInterrupted
 )
@@ -40,16 +35,11 @@ const (
 	ActionInput    ActionKind = "input"
 	ActionSelect   ActionKind = "select"
 	ActionPress    ActionKind = "press"
-	// ActionValidate is emitted only by the one-shot validation picker.  It
-	// creates a node identity just like an ordinary capture but deliberately
-	// does not describe a page-side interaction.
+	// ActionValidate 仅由一次性验证选择器发出。  它像普通捕获一样创建节点标识，但故意不描述页面端交互。
 	ActionValidate ActionKind = "validate"
 )
 
-// ValidationSample is the framework-neutral semantic recommendation emitted
-// by the browser sampler.  It contains only values needed to build a
-// validation step; DOM/framework implementation details stay in the sampler
-// adapter.  Workspace turns this into its persistent validation value object.
+// ValidationSample 是浏览器采样器发出的框架中立的语义建议。  它仅包含构建验证步骤所需的值； DOM/框架实现细节保留在采样器适配器中。  工作区将其转换为其持久验证值对象。
 type ValidationSample struct {
 	Kind           string
 	Expected       string
@@ -261,9 +251,7 @@ func (s *Session) Complete() error {
 	return s.End()
 }
 
-// Pause stops accepting captures without closing the session.  A paused
-// session retains its identity map, so repeated sampling of an element after
-// Resume still reuses the original temporary node.
+// Pause 暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
 func (s *Session) Pause() error {
 	if s == nil {
 		return fmt.Errorf("sampling: nil session cannot pause")
@@ -286,9 +274,7 @@ func (s *Session) Resume() error {
 	return nil
 }
 
-// End is a normal terminal lifecycle transition.  It is intentionally
-// distinct from Pause: ended sessions may be edited/published but never
-// resumed.
+// End 是正常的终端生命周期转换。  它有意与暂停不同：结束的会话可以编辑/发布，但永远不会恢复。
 func (s *Session) End() error {
 	if s == nil {
 		return fmt.Errorf("sampling: nil session cannot complete")

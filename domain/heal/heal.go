@@ -1,6 +1,4 @@
-// Package heal defines deterministic selector relocation ports and their default
-// implementation. The package performs pure scoring without browser or LLM
-// dependencies, keeping relocation decisions in the domain layer.
+// 包heal定义了确定性选择器重定位端口及其默认实现。该软件包执行纯粹的评分，无需浏览器或 LLM 依赖性，将重定位决策保留在域层中。
 package heal
 
 import (
@@ -11,8 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Outcome classifies the result of a healing attempt for persistence and
-// downstream execution decisions.
+// Outcome 结果对持久性和下游执行决策的修复尝试的结果进行分类。
 type Outcome string
 
 const (
@@ -20,15 +17,14 @@ const (
 	// 直接应用并继续正常运行。
 	OutcomeApplied Outcome = "applied"
 	// OutcomeBelowCap 是中置信度的自愈（review_cap <= 分数 < applied_cap）：
-	// applied, but marked for human review.
+	// 已应用，但标记为需要人工审查。
 	OutcomeBelowCap Outcome = "below_cap"
 	// OutcomeNoCandidate 表示没有候选达到 review_cap；
-	// counted as an unsuccessful healing attempt.
+	// 计为一次失败的自愈尝试。
 	OutcomeNoCandidate Outcome = "no_candidate"
 )
 
-// Candidate is a DOM node considered as a selector replacement, with its
-// calculated similarity score in the inclusive range [0,1].
+// Candidate 是被视为选择器替换的 DOM 节点，其计算出的相似度得分在包含范围 [0,1] 内。
 type Candidate struct {
 	Selector    fingerprint.Selector
 	Fingerprint fingerprint.Fingerprint
@@ -119,8 +115,7 @@ type DOMSnapshot interface {
 	Candidates(ctx context.Context) ([]SnapshotCandidate, error)
 }
 
-// Healer relocates elements whose selectors no longer resolve using
-// deterministic fingerprint scoring without external model calls.
+// Healer 重新定位其选择器不再使用确定性指纹评分进行解析的元素，而无需外部模型调用。
 type Healer interface {
 	Heal(ctx context.Context, target fingerprint.NodeSpec, snapshot DOMSnapshot) (Decision, error)
 }

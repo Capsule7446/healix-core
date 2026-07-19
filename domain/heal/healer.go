@@ -9,7 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Thresholds defines the confidence boundaries used to classify healing decisions.
+// Thresholds 阈值定义用于对治疗决策进行分类的置信边界。
 type Thresholds struct {
 	AppliedCap float64 // 分数 >= AppliedCap：直接应用
 	ReviewCap  float64 // ReviewCap <= 分数 < AppliedCap：应用，但强制待审 + 录屏
@@ -35,23 +35,19 @@ func (t Thresholds) Validate() error {
 	return nil
 }
 
-// DefaultHealer is the deterministic implementation of Healer. It narrows
-// candidates by ancestor-path similarity, scores the remaining candidates, and
-// classifies the best result with the configured thresholds.
+// DefaultHealer 是 Healer 的确定性实现。它通过祖先路径相似性缩小候选范围，对剩余候选进行评分，并使用配置的阈值对最佳结果进行分类。
 type DefaultHealer struct {
 	Weights    Weights
 	Thresholds Thresholds
 }
 
-// NewDefaultHealer constructs a DefaultHealer with the package defaults.
+// NewDefaultHealer 使用包默认值构造一个 DefaultHealer。
 func NewDefaultHealer() *DefaultHealer {
 	policy := DefaultPolicyV1()
 	return &DefaultHealer{Weights: policy.Weights, Thresholds: policy.Thresholds}
 }
 
-// NewDefaultHealerWithPolicy constructs a healer from a complete, validated
-// policy snapshot. The value is copied, so subsequent caller changes cannot
-// alter an in-flight run.
+// NewDefaultHealerWithPolicy 从完整的、经过验证的策略快照构造一个治疗器。该值被复制，因此后续调用者更改无法更改正在进行的运行。
 func NewDefaultHealerWithPolicy(policy PolicyV1) (*DefaultHealer, error) {
 	if err := policy.Validate(); err != nil {
 		return nil, err
