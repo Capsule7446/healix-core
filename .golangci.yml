@@ -1,0 +1,19 @@
+# Optional local configuration. CI uses gofmt, go vet, race tests, coverage, and build
+# until a golangci-lint release supports the repository's Go version.
+version: '2'
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - unused
+    - govet
+    - gosec
+  exclusions:
+    generated: lax
+    rules:
+      - linters: [gosec]
+        text: 'G104'
