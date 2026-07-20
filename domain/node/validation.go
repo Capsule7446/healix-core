@@ -269,7 +269,7 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 // locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
 	target := rt.effectiveSpec(v.Target)
-	el, err := rt.Driver.Locate(ctx, target)
+	el, err := rt.locator().Locate(ctx, target)
 	if err == nil {
 		return el, false, nil
 	}
@@ -290,6 +290,23 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	if err := decision.Validate(); err != nil {
 		return nil, false, fmt.Errorf("invalid heal decision: %w", err)
 	}
+	if decision.Outcome == heal.OutcomeNoCandidate {
+		if rt.Facts != nil {
+			oldSelector := fingerprint.Selector{}
+			if len(target.Selectors) > 0 {
+				oldSelector = target.Selectors[0]
+			}
+			_ = rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision)
+		}
+		return nil, true, nil
+	}
+	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
+	if err != nil {
+		return nil, false, fmt.Errorf("assess heal decision: %w", err)
+	}
+	if assessment.Disposition != heal.DispositionAllow {
+		return nil, false, fmt.Errorf("validation healing refused: %s", assessment.Explanation)
+	}
 	if rt.Facts != nil {
 		oldSelector := fingerprint.Selector{}
 		if len(target.Selectors) > 0 {
@@ -304,7 +321,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	healed := target
 	healed.Selectors = append([]fingerprint.Selector{decision.Best.Selector}, healed.Selectors...)
-	el, err = rt.Driver.Locate(ctx, healed)
+	el, err = rt.locator().Locate(ctx, healed)
 	if err != nil {
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
