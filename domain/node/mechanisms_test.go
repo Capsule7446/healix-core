@@ -4,46 +4,37 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
+
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-func TestOperationRunnerUsesFiniteTransientRetries(t *testing.T) {
-	attempts := 0
-	runner := OperationRunner{Policy: RetryPolicy{Attempts: 3}}
-	got, err := runner.Run(func() error {
-		attempts++
-		if attempts < 3 {
-			return TransientError("locate", errors.New("temporary"))
-		}
-		return nil
-	})
-	if err != nil || got != 3 {
-		t.Fatalf("attempts=%d err=%v", got, err)
-	}
+type failingOperationObserver struct{}
+
+func (failingOperationObserver) RecordOperation(context.Context, OperationObservation) error {
+	return errors.New("observer unavailable")
 }
 
-func TestPollerContinuesAfterTransientError(t *testing.T) {
-	calls := 0
-	err := (Poller{Interval: time.Millisecond}).Run(context.Background(), time.Second, func(context.Context) (bool, error) {
-		calls++
-		if calls < 2 {
-			return false, TransientError("poll", errors.New("temporary"))
-		}
-		return true, nil
-	})
-	if err != nil || calls != 2 {
-		t.Fatalf("calls=%d err=%v", calls, err)
-	}
+func TestRuntimeBestEffortObservationDoesNotReturnError(t *testing.T) {
+	rt := &Runtime{OperationObserver: failingOperationObserver{}}
+	rt.observeOperationBestEffort(context.Background(), OperationObservation{NodeID: "node", Operation: "locate"})
 }
 
-func TestPollerDoesNotRetryPermanentError(t *testing.T) {
-	calls := 0
-	permanent := errors.New("invalid selector")
-	err := (Poller{Interval: time.Millisecond}).Run(context.Background(), time.Second, func(context.Context) (bool, error) {
-		calls++
-		return false, permanent
-	})
-	if !errors.Is(err, permanent) || calls != 1 {
-		t.Fatalf("calls=%d err=%v", calls, err)
+func TestRuntimeLocatorUsesSelectorOverlay(t *testing.T) {
+	driver := &matrixDriver{}
+	var got fingerprint.NodeSpec
+	driver.locate = func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+		got = spec
+		return &matrixElement{exists: true}, nil
+	}
+	rt := &Runtime{Driver: driver, SelectorOverlay: map[string][]fingerprint.Selector{
+		"target": {{Type: fingerprint.SelectorCSS, Value: "#healed"}},
+	}}
+	if _, err := rt.locator().Locate(context.Background(), fingerprint.NodeSpec{
+		ID: "target", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Selectors[0].Value != "#healed" {
+		t.Fatalf("selector=%v", got.Selectors)
 	}
 }
