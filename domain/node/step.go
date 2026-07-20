@@ -114,7 +114,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 
-	target := rt.effectiveSpec(s.Target)
+	target := s.Target
 	healed := false
 	var el Element
 	locateStarted := time.Now()

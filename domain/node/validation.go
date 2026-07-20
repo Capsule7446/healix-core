@@ -131,7 +131,11 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 		return false, nil
 	})
 	if pollErr != nil {
-		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, "timeout", true); err != nil {
+		reason := "timeout"
+		if errorKind(pollErr) != ErrorTimeout {
+			reason = "system_error"
+		}
+		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, reason, true); err != nil {
 			return err
 		}
 		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, lastActual, pollErr)
@@ -268,7 +272,7 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 
 // locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
-	target := rt.effectiveSpec(v.Target)
+	target := v.Target
 	el, err := rt.locator().Locate(ctx, target)
 	if err == nil {
 		return el, false, nil
@@ -305,15 +309,22 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		return nil, false, fmt.Errorf("assess heal decision: %w", err)
 	}
 	if assessment.Disposition != heal.DispositionAllow {
+		if assessment.Disposition == heal.DispositionBlock && decision.Outcome != heal.OutcomeNoCandidate {
+			decision.Outcome = heal.OutcomeSafetyRejected
+			decision.NeedsReview = false
+		}
+		if rt.Facts != nil {
+			oldSelector := firstSelector(target)
+			if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+				return nil, false, fmt.Errorf("record validation heal decision: %w", recordErr)
+			}
+		}
 		return nil, false, fmt.Errorf("validation healing refused: %s", assessment.Explanation)
 	}
 	if rt.Facts != nil {
-		oldSelector := fingerprint.Selector{}
-		if len(target.Selectors) > 0 {
-			oldSelector = target.Selectors[0]
-		}
-		if err := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision); err != nil {
-			return nil, false, fmt.Errorf("record heal decision: %w", err)
+		oldSelector := firstSelector(target)
+		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
 		}
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
