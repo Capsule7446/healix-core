@@ -172,7 +172,7 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 	if assertion.Kind == "not_exists" {
 		return false, "<present>", nil
 	}
-	visible, err := el.Visible(ctx)
+	visible, err := rt.reader().Visible(ctx, el)
 	if err != nil {
 		return false, "", err
 	}
@@ -184,14 +184,14 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 	}
 
 	if assertion.Kind == "text_equals" || assertion.Kind == "text_contains" || assertion.Kind == "text_matches" {
-		text, err := el.Text(ctx)
+		text, err := rt.reader().Text(ctx, el)
 		if err != nil {
 			return false, "", err
 		}
 		return compareText(assertion, text)
 	}
 	if assertion.Kind == "attribute_equals" || assertion.Kind == "attribute_contains" {
-		value, present, err := el.Attribute(ctx, assertion.Attribute)
+		value, present, err := rt.reader().Attribute(ctx, el, assertion.Attribute)
 		if err != nil {
 			return false, "", err
 		}
