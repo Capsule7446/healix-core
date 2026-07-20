@@ -26,6 +26,28 @@ func TestClassifyErrorPreservesStableKinds(t *testing.T) {
 	}
 }
 
+func TestClassifiedErrorIsNilSafe(t *testing.T) {
+	cases := []struct {
+		name string
+		err  *ClassifiedError
+		want string
+	}{
+		{name: "nil receiver", err: nil, want: "<nil>"},
+		{name: "nil cause", err: &ClassifiedError{Kind: ErrorTimeout}, want: "timeout: unspecified error"},
+		{name: "nil cause with operation", err: &ClassifiedError{Kind: ErrorTimeout, Operation: "wait"}, want: "wait (timeout): unspecified error"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.err.Error(); got != test.want {
+				t.Fatalf("Error() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	if got := (*ClassifiedError)(nil).Unwrap(); got != nil {
+		t.Fatalf("nil Unwrap() = %v, want nil", got)
+	}
+}
+
 func TestRetryOnlyRetriesExplicitTransientErrors(t *testing.T) {
 	attempts := 0
 	err := Retry(RetryPolicy{Attempts: 3}, func() error {

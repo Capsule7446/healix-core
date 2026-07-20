@@ -28,13 +28,25 @@ type ClassifiedError struct {
 }
 
 func (e *ClassifiedError) Error() string {
-	if e.Operation == "" {
-		return string(e.Kind) + ": " + e.Err.Error()
+	if e == nil {
+		return "<nil>"
 	}
-	return e.Operation + " (" + string(e.Kind) + "): " + e.Err.Error()
+	message := "unspecified error"
+	if e.Err != nil {
+		message = e.Err.Error()
+	}
+	if e.Operation == "" {
+		return string(e.Kind) + ": " + message
+	}
+	return e.Operation + " (" + string(e.Kind) + "): " + message
 }
 
-func (e *ClassifiedError) Unwrap() error { return e.Err }
+func (e *ClassifiedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
 
 func TransientError(operation string, err error) error {
 	if err == nil {
