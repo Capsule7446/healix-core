@@ -18,16 +18,12 @@ const (
 	WaitSleep WaitKind = "sleep"
 	// WaitElement 轮询等待某个元素可被定位，直到成功或超时。
 	WaitElement WaitKind = "element"
+	// WaitElementVisible 等待元素存在且可见。
+	WaitElementVisible WaitKind = "element_visible"
+	// WaitElementInvisible 等待元素不可见或已从 DOM 移除。
+	WaitElementInvisible WaitKind = "element_invisible"
 	// WaitNetworkIdle 等待页面网络空闲，直到满足或超时。
 	WaitNetworkIdle WaitKind = "network_idle"
-)
-
-type WaitElementState string
-
-const (
-	WaitElementPresent   WaitElementState = "present"
-	WaitElementVisible   WaitElementState = "visible"
-	WaitElementInvisible WaitElementState = "invisible"
 )
 
 // 时的默认上限。
@@ -44,7 +40,6 @@ type WaitNode struct {
 	Kind     WaitKind
 	Duration time.Duration        // WaitSleep：等待时长
 	Target   fingerprint.NodeSpec // WaitElement：要等的元素
-	State    WaitElementState     // WaitElement：present（默认）或 visible
 	Timeout  time.Duration        // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
 }
 
@@ -53,18 +48,19 @@ func (w *WaitNode) ID() string { return w.NodeID }
 func (w *WaitNode) Validate() error {
 	switch w.Kind {
 	case "", WaitSleep:
-		if w.Duration < 0 || w.Timeout != 0 || w.State != "" {
+		if w.Duration < 0 || w.Timeout != 0 {
 			return fmt.Errorf("invalid sleep wait configuration")
 		}
 	case WaitElement:
 		if w.Duration != 0 || w.Timeout < 0 {
 			return fmt.Errorf("invalid element wait configuration")
 		}
-		if w.State != "" && w.State != WaitElementPresent && w.State != WaitElementVisible && w.State != WaitElementInvisible {
-			return fmt.Errorf("unsupported element wait state %q", w.State)
+	case WaitElementVisible, WaitElementInvisible:
+		if w.Duration != 0 || w.Timeout < 0 {
+			return fmt.Errorf("invalid visibility wait configuration")
 		}
 	case WaitNetworkIdle:
-		if w.Duration != 0 || w.Timeout < 0 || w.State != "" {
+		if w.Duration != 0 || w.Timeout < 0 {
 			return fmt.Errorf("invalid network idle wait configuration")
 		}
 	default:
@@ -90,7 +86,11 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
 	case WaitSleep, "":
 		err = w.sleep(ctx)
 	case WaitElement:
-		err = w.waitElement(ctx, rt)
+		err = w.waitElement(ctx, rt, false, false)
+	case WaitElementVisible:
+		err = w.waitElement(ctx, rt, true, false)
+	case WaitElementInvisible:
+		err = w.waitElement(ctx, rt, false, true)
 	case WaitNetworkIdle:
 		err = w.waitNetworkIdle(ctx, rt)
 	default:
@@ -126,7 +126,7 @@ func (w *WaitNode) timeout() time.Duration {
 	return DefaultWaitTimeout
 }
 
-func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime) error {
+func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime, requireVisible, requireInvisible bool) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout())
 	defer cancel()
 
@@ -136,20 +136,20 @@ func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime) error {
 	for {
 		el, err := rt.Driver.Locate(ctx, rt.effectiveSpec(w.Target))
 		if err == nil {
-			if w.State == WaitElementVisible || w.State == WaitElementInvisible {
+			if requireVisible || requireInvisible {
 				visible, visibleErr := el.Visible(ctx)
 				if visibleErr != nil {
 					return fmt.Errorf("check element %q visibility: %w", w.Target.ID, ClassifyError("wait visible", visibleErr))
 				}
-				if (w.State == WaitElementVisible && visible) || (w.State == WaitElementInvisible && !visible) {
+				if (requireVisible && visible) || (requireInvisible && !visible) {
 					return nil
 				}
-				lastErr = fmt.Errorf("element %q visibility did not satisfy %s", w.Target.ID, w.State)
+				lastErr = fmt.Errorf("element %q visibility did not satisfy requested state", w.Target.ID)
 			} else {
 				return nil
 			}
 		} else if errors.Is(err, ErrElementNotFound) {
-			if w.State == WaitElementInvisible {
+			if requireInvisible {
 				return nil
 			}
 			lastErr = err

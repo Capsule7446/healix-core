@@ -574,7 +574,7 @@ func TestWaitNodeExecutionMatrix(t *testing.T) {
 		driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) {
 			return nil, ErrElementNotFound
 		}
-		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElement, State: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
+		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
 		if err != nil {
 			t.Fatalf("removed element should satisfy invisible wait: %v", err)
 		}
@@ -590,7 +590,7 @@ func TestWaitNodeExecutionMatrix(t *testing.T) {
 			}
 			return nil, ErrElementNotFound
 		}
-		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElement, State: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
+		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
 		if err != nil {
 			t.Fatalf("invisible wait should succeed after removal: %v", err)
 		}
