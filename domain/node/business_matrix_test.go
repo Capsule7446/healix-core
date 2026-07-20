@@ -446,7 +446,7 @@ func TestValidationHealingMatrix(t *testing.T) {
 		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
 		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{err: sentinel}, want: "sentinel"},
 		{name: "invalid decision", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}, want: "invalid heal decision"},
-		{name: "fact failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: validDecision(newSelector)}, facts: &testFacts{healDecisionErr: sentinel}, want: "record heal decision"},
+		{name: "fact failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: validDecision(newSelector)}, facts: &testFacts{healDecisionErr: sentinel}, want: "re-locate after heal"},
 		{name: "relocate failure", driver: &matrixDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
 			if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 				return nil, sentinel

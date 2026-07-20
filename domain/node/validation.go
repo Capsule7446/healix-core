@@ -321,13 +321,10 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		return nil, false, fmt.Errorf("validation healing refused: %s", assessment.Explanation)
 	}
-	if rt.Facts != nil {
-		oldSelector := firstSelector(target)
-		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
-			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
-		}
-	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
+		if rt.Facts != nil {
+			_ = rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision)
+		}
 		return nil, true, nil
 	}
 	healed := target
@@ -337,6 +334,11 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
 	rt.setSelectorOverlay(healed)
+	if rt.Facts != nil {
+		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
+		}
+	}
 	return el, false, nil
 }
 
