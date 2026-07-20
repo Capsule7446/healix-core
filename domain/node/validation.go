@@ -417,13 +417,10 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	if stability <= 0 {
 		stability = 500 * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(parent, maxWait)
-	defer cancel()
 	observations := newValidationObservationRecorder()
 	stableSince := make([]time.Time, len(g.Branches))
 	last := make(map[string]validationObservationState)
-	for {
-		// 该循环在选择分支之前有意评估每个分支中的每个成员。  会员结果不会跨轮锁定。
+	pollErr := rt.poller().Run(parent, maxWait, func(ctx context.Context) (bool, error) {
 		branchPassed := make([]bool, len(g.Branches))
 		for i, branch := range g.Branches {
 			branchPassed[i] = len(branch.Nodes) > 0
@@ -431,13 +428,13 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 				ok, actual, err := member.evaluate(ctx, rt)
 				if err != nil {
 					if recordErr := observations.record(ctx, rt, member, false, actual, "system_error", true); recordErr != nil {
-						return recordErr
+						return false, recordErr
 					}
-					return fmt.Errorf("branch %s: %w", branch.ID, err)
+					return false, fmt.Errorf("branch %s: %w", branch.ID, err)
 				}
 				last[member.NodeID] = validationObservationState{passed: ok, actual: actual, reason: validationReason(ok)}
 				if err := observations.record(ctx, rt, member, ok, actual, validationReason(ok), false); err != nil {
-					return err
+					return false, err
 				}
 				if !ok {
 					branchPassed[i] = false
@@ -462,27 +459,28 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 							reason = "passed"
 						}
 						if err := observations.record(ctx, rt, member, state.passed, state.actual, reason, true); err != nil {
-							return err
+							return false, err
 						}
 					}
 				}
-				return nil
+				return true, nil
 			}
 		}
-		select {
-		case <-time.After(validationPollInterval):
-		case <-ctx.Done():
-			for _, branch := range g.Branches {
-				for _, member := range branch.Nodes {
-					state := last[member.NodeID]
-					if err := observations.record(ctx, rt, member, state.passed, state.actual, "timeout", true); err != nil {
-						return err
-					}
+		return false, nil
+	})
+	if pollErr != nil {
+		ctx := context.WithoutCancel(parent)
+		for _, branch := range g.Branches {
+			for _, member := range branch.Nodes {
+				state := last[member.NodeID]
+				if err := observations.record(ctx, rt, member, state.passed, state.actual, "timeout", true); err != nil {
+					return err
 				}
 			}
-			return fmt.Errorf("no validation branch was continuously satisfied within %s: %w", maxWait, ctx.Err())
 		}
+		return fmt.Errorf("no validation branch was continuously satisfied within %s: %w", maxWait, pollErr)
 	}
+	return nil
 }
 
 type validationObservationState struct {
