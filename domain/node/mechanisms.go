@@ -57,6 +57,9 @@ func (p Poller) Run(ctx context.Context, timeout time.Duration, condition func(c
 		select {
 		case <-ticker.C:
 		case <-pollCtx.Done():
+			if ctx.Err() != nil {
+				return fmt.Errorf("poll canceled: %w", ClassifyError("poll", ctx.Err()))
+			}
 			if lastErr != nil {
 				return fmt.Errorf("poll timeout after %s: %w", timeout, &ClassifiedError{Kind: ErrorTimeout, Operation: "poll", Err: errors.Join(lastErr, pollCtx.Err())})
 			}

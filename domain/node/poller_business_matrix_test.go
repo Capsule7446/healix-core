@@ -36,7 +36,7 @@ func TestPollerBusinessMatrix(t *testing.T) {
 		}, wantErr: true, wantKind: ErrorTimeout},
 		{name: "parent cancellation", condition: func(c *int) func(context.Context) (bool, error) {
 			return func(context.Context) (bool, error) { *c++; return false, nil }
-		}, parent: func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }, wantErr: true, wantKind: ErrorTimeout},
+		}, parent: func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }, wantErr: true, wantKind: ErrorContextClosed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

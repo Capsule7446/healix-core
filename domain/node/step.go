@@ -189,15 +189,6 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	if err != nil {
 		return nil, fmt.Errorf("assess heal decision: %w", err)
 	}
-	if rt.Facts != nil {
-		oldSelector := fingerprint.Selector{}
-		if len(target.Selectors) > 0 {
-			oldSelector = target.Selectors[0]
-		}
-		if err := rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, oldSelector, decision); err != nil {
-			return nil, fmt.Errorf("record heal decision: %w", err)
-		}
-	}
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome == heal.OutcomeNoCandidate {
 			return nil, fmt.Errorf("no heal candidate reached review_cap: %s", assessment.Explanation)
@@ -206,7 +197,19 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 			decision.Outcome = heal.OutcomeSafetyRejected
 			decision.NeedsReview = false
 		}
+		if rt.Facts != nil {
+			oldSelector := firstSelector(target)
+			if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+				return nil, fmt.Errorf("record heal decision: %w", recordErr)
+			}
+		}
 		return nil, fmt.Errorf("healing refused: %s", assessment.Explanation)
+	}
+	if rt.Facts != nil {
+		oldSelector := firstSelector(target)
+		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			return nil, fmt.Errorf("record heal decision: %w", recordErr)
+		}
 	}
 
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {

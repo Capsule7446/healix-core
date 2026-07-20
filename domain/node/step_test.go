@@ -74,6 +74,7 @@ type testFacts struct {
 	healDecisionErr        error
 	events                 []Event
 	healSpecIDs            []string
+	healDecisions          []heal.Decision
 	validationObservations []ValidationObservation
 	rejectCanceled         bool
 }
@@ -88,8 +89,9 @@ func (m *testFacts) RecordEvent(ctx context.Context, evt Event) error {
 	m.events = append(m.events, evt)
 	return nil
 }
-func (m *testFacts) RecordHealDecision(_ context.Context, _, _, specID string, _ fingerprint.Selector, _ heal.Decision) error {
+func (m *testFacts) RecordHealDecision(_ context.Context, _, _, specID string, _ fingerprint.Selector, decision heal.Decision) error {
 	m.healSpecIDs = append(m.healSpecIDs, specID)
+	m.healDecisions = append(m.healDecisions, decision)
 	return m.healDecisionErr
 }
 func (m *testFacts) RecordValidationObservation(_ context.Context, _ string, observation ValidationObservation) error {
