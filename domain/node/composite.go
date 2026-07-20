@@ -127,41 +127,26 @@ func (w *WaitNode) timeout() time.Duration {
 }
 
 func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime, requireVisible, requireInvisible bool) error {
-	ctx, cancel := context.WithTimeout(ctx, w.timeout())
-	defer cancel()
-
-	var lastErr error
-	ticker := time.NewTicker(waitPollInterval)
-	defer ticker.Stop()
-	for {
-		el, err := rt.Driver.Locate(ctx, rt.effectiveSpec(w.Target))
-		if err == nil {
-			if requireVisible || requireInvisible {
-				visible, visibleErr := el.Visible(ctx)
-				if visibleErr != nil {
-					return fmt.Errorf("check element %q visibility: %w", w.Target.ID, ClassifyError("wait visible", visibleErr))
-				}
-				if (requireVisible && visible) || (requireInvisible && !visible) {
-					return nil
-				}
-				lastErr = fmt.Errorf("element %q visibility did not satisfy requested state", w.Target.ID)
-			} else {
-				return nil
+	return rt.poller().Run(ctx, w.timeout(), func(pollCtx context.Context) (bool, error) {
+		el, err := rt.locator().Locate(pollCtx, w.Target)
+		if err != nil {
+			if errors.Is(err, ErrElementNotFound) && requireInvisible {
+				return true, nil
 			}
-		} else if errors.Is(err, ErrElementNotFound) {
-			if requireInvisible {
-				return nil
-			}
-			lastErr = err
-		} else {
-			return fmt.Errorf("locate element %q: %w", w.Target.ID, ClassifyError("wait locate", err))
+			return false, err
 		}
-		select {
-		case <-ticker.C:
-		case <-ctx.Done():
-			return fmt.Errorf("element %q did not appear within %s: %w", w.Target.ID, w.timeout(), &ClassifiedError{Kind: ErrorTimeout, Operation: "wait element", Err: errors.Join(lastErr, ctx.Err())})
+		if !requireVisible && !requireInvisible {
+			return true, nil
 		}
-	}
+		visible, visibleErr := rt.reader().Visible(pollCtx, el)
+		if visibleErr != nil {
+			return false, visibleErr
+		}
+		if (requireVisible && visible) || (requireInvisible && !visible) {
+			return true, nil
+		}
+		return false, nil
+	})
 }
 
 func (w *WaitNode) waitNetworkIdle(ctx context.Context, rt *Runtime) error {

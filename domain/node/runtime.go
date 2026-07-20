@@ -204,6 +204,10 @@ func (rt *Runtime) observeOperation(ctx context.Context, observation OperationOb
 	return rt.OperationObserver.RecordOperation(ctx, observation)
 }
 
+func (rt *Runtime) observeOperationBestEffort(ctx context.Context, observation OperationObservation) {
+	_ = rt.observeOperation(ctx, observation)
+}
+
 func (rt *Runtime) waitBeforeStep(ctx context.Context) error {
 	return rt.pacer.before(ctx, rt.StepInterval)
 }

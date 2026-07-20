@@ -12,4 +12,5 @@ coverage.out
 .env.*
 !.env.example
 .vscode/
+.claude/
 .idea/

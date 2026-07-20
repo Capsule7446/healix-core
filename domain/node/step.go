@@ -91,7 +91,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 
 	if action.Kind == ActionNavigate {
 		started := time.Now()
-		attempts, err := rt.runOperationWithAttempts(func() error { return rt.Driver.Navigate(ctx, action.Value) })
+		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Navigate(ctx, action.Value) })
 		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: navigate failed: %w", s.NodeID, ClassifyError("navigate", err)), observationErr))
@@ -103,7 +103,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	}
 	if action.Kind == ActionPress {
 		started := time.Now()
-		attempts, err := rt.runOperationWithAttempts(func() error { return rt.Driver.Press(ctx, action.Value) })
+		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Press(ctx, action.Value) })
 		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: press failed: %w", s.NodeID, ClassifyError("press", err)), observationErr))
@@ -118,15 +118,12 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	healed := false
 	var el Element
 	locateStarted := time.Now()
-	locateAttempts, err := rt.runOperationWithAttempts(func() error {
+	locateAttempts, err := rt.operationRunner().Run(func() error {
 		var locateErr error
-		el, locateErr = rt.Driver.Locate(ctx, target)
+		el, locateErr = rt.locator().Locate(ctx, target)
 		return locateErr
 	})
-	locateObservationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
-	if locateObservationErr != nil {
-		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record locate observation: %w", s.NodeID, locateObservationErr))
-	}
+	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 	if err != nil {
 		if !errors.Is(err, ErrElementNotFound) {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed: %w", s.NodeID, err))

@@ -103,45 +103,40 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	if stability <= 0 {
 		stability = 500 * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(parent, maxWait)
-	defer cancel()
-	observations := newValidationObservationRecorder()
 	var stableSince time.Time
 	var lastActual string
-	for {
-		ok, actual, err := v.evaluate(ctx, rt)
-		if err != nil {
-			if recordErr := observations.record(ctx, rt, v, false, actual, "system_error", true); recordErr != nil {
-				return recordErr
-			}
-			return fmt.Errorf("validation %s: %w", v.NodeID, err)
-		}
+	observations := newValidationObservationRecorder()
+	pollErr := rt.poller().Run(parent, maxWait, func(pollCtx context.Context) (bool, error) {
+		ok, actual, err := v.evaluate(pollCtx, rt)
 		lastActual = actual
-		if err := observations.record(ctx, rt, v, ok, actual, validationReason(ok), false); err != nil {
-			return err
+		if err != nil {
+			if recordErr := observations.record(pollCtx, rt, v, false, actual, "system_error", true); recordErr != nil {
+				return false, recordErr
+			}
+			return false, err
+		}
+		if err := observations.record(pollCtx, rt, v, ok, actual, validationReason(ok), false); err != nil {
+			return false, err
 		}
 		if ok {
 			if stableSince.IsZero() {
 				stableSince = time.Now()
 			}
 			if time.Since(stableSince) >= stability {
-				if err := observations.record(ctx, rt, v, true, actual, "passed", true); err != nil {
-					return err
-				}
-				return nil
+				return true, observations.record(pollCtx, rt, v, true, actual, "passed", true)
 			}
 		} else {
 			stableSince = time.Time{}
 		}
-		select {
-		case <-time.After(validationPollInterval):
-		case <-ctx.Done():
-			if err := observations.record(ctx, rt, v, false, lastActual, "timeout", true); err != nil {
-				return err
-			}
-			return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, lastActual, ctx.Err())
+		return false, nil
+	})
+	if pollErr != nil {
+		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, "timeout", true); err != nil {
+			return err
 		}
+		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, lastActual, pollErr)
 	}
+	return nil
 }
 
 // 评估恰好执行一轮读取/检查。  ValidationGroupNode 在派生分支结果之前为每个成员调用此方法，保留“同一轮 AND”不变量。
