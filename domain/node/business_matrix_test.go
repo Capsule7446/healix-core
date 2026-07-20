@@ -569,6 +569,35 @@ func TestWaitNodeExecutionMatrix(t *testing.T) {
 			t.Fatalf("locate calls = %d", driver.locateCalls)
 		}
 	})
+	t.Run("invisible succeeds when element is removed", func(t *testing.T) {
+		driver := &matrixDriver{}
+		driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) {
+			return nil, ErrElementNotFound
+		}
+		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
+		if err != nil {
+			t.Fatalf("removed element should satisfy invisible wait: %v", err)
+		}
+		if driver.locateCalls != 1 {
+			t.Fatalf("locate calls = %d, want 1", driver.locateCalls)
+		}
+	})
+	t.Run("invisible retries while element remains visible", func(t *testing.T) {
+		driver := &matrixDriver{}
+		driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) {
+			if driver.locateCalls < 2 {
+				return &matrixElement{visible: true}, nil
+			}
+			return nil, ErrElementNotFound
+		}
+		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
+		if err != nil {
+			t.Fatalf("invisible wait should succeed after removal: %v", err)
+		}
+		if driver.locateCalls != 2 {
+			t.Fatalf("locate calls = %d, want 2", driver.locateCalls)
+		}
+	})
 	t.Run("network idle success and error", func(t *testing.T) {
 		for _, test := range []struct {
 			name    string
@@ -591,6 +620,7 @@ func TestWaitNodeExecutionMatrix(t *testing.T) {
 			})
 		}
 	})
+
 	t.Run("sleep cancellation emits canceled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()

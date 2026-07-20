@@ -79,8 +79,14 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, err)
 	}
-	if err := v.waitStable(ctx, rt); err != nil {
-		return validationFail(ctx, rt, execution, v.NodeID, err)
+	started := time.Now()
+	validationErr := v.waitStable(ctx, rt)
+	observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, ErrorKind: errorKind(validationErr)})
+	if validationErr != nil {
+		return validationFail(ctx, rt, execution, v.NodeID, errors.Join(validationErr, observationErr))
+	}
+	if observationErr != nil {
+		return validationFail(ctx, rt, execution, v.NodeID, observationErr)
 	}
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseSucceeded); err != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, err)

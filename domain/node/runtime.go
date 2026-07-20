@@ -103,6 +103,25 @@ type Event struct {
 	Payload map[string]any
 }
 
+// OperationObservation is an optional, framework-neutral execution fact.
+type OperationObservation struct {
+	RunID      string
+	NodeID     string
+	Operation  string
+	Selector   fingerprint.Selector
+	Healed     bool
+	Attempt    int
+	DurationMS int64
+	Succeeded  bool
+	ErrorKind  ErrorKind
+}
+
+// OperationObserver can be implemented alongside ExecutionSink without changing
+// existing adapters. Implementations must be safe for the single Runtime caller.
+type OperationObserver interface {
+	RecordOperation(context.Context, OperationObservation) error
+}
+
 // Element 是一个已定位、可查询、可交互的 DOM 节点，是对任意浏览器
 // 自动化 Driver 的领域层抽象。
 type Element interface {
@@ -152,8 +171,12 @@ type ExecutionSink interface {
 }
 
 // Runtime 是贯穿整棵 Node 树的、每次运行专属的执行上下文。
+// Runtime、Driver、Page 和 Element 端口在当前版本均要求由单个顺序执行器访问；
+// 并发调度、资源池和跨页面生命周期属于延期能力。
 type Runtime struct {
-	RunID string
+	RunID   string
+	PageURL string
+	Origin  string
 	// StepInterval 控制可执行叶步骤之间的最小暂停时间。第一个叶子步骤立即开始；容器节点和验证组成员不消耗额外的时间间隔。
 	StepInterval time.Duration
 	// Specs 按 ID 索引每个 StepNode 的 NodeSpec，使断言可以引用
@@ -162,17 +185,35 @@ type Runtime struct {
 	// SelectorOverlay 是本次 run 内按 NodeSpec ID 保存的 healed selector 列表。
 	// 编译出的 Specs/StepNode 保持不变，同一 spec 的后续 step、repeat 和断言
 	// 都通过 effectiveSpec 读取该 overlay。
-	SelectorOverlay map[string][]fingerprint.Selector
-	Driver          Driver
-	Healer          heal.Healer   // nil = 关闭自愈
-	Recorder        Recorder      // nil = 关闭录屏
-	Facts           ExecutionSink // nil = 不输出执行事实
-	Scratchpad      map[string]any
-	pacer           stepPacer
+	SelectorOverlay   map[string][]fingerprint.Selector
+	Driver            Driver
+	Healer            heal.Healer   // nil = 关闭自愈
+	Recorder          Recorder      // nil = 关闭录屏
+	Facts             ExecutionSink // nil = 不输出执行事实
+	OperationObserver OperationObserver
+	RetryPolicy       RetryPolicy
+	HealingPolicy     heal.SafetyPolicy
+	Scratchpad        map[string]any
+	pacer             stepPacer
+}
+
+func (rt *Runtime) observeOperation(ctx context.Context, observation OperationObservation) error {
+	if rt.OperationObserver == nil {
+		return nil
+	}
+	return rt.OperationObserver.RecordOperation(ctx, observation)
 }
 
 func (rt *Runtime) waitBeforeStep(ctx context.Context) error {
 	return rt.pacer.before(ctx, rt.StepInterval)
+}
+
+func (rt *Runtime) runOperation(operation func() error) error {
+	return Retry(rt.RetryPolicy, operation)
+}
+
+func (rt *Runtime) runOperationWithAttempts(operation func() error) (int, error) {
+	return RetryWithAttempts(rt.RetryPolicy, operation)
 }
 
 func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {

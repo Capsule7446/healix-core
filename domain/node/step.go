@@ -90,20 +90,43 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	}
 
 	if action.Kind == ActionNavigate {
-		if err := rt.Driver.Navigate(ctx, action.Value); err != nil {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: navigate failed: %w", s.NodeID, err))
+		started := time.Now()
+		attempts, err := rt.runOperationWithAttempts(func() error { return rt.Driver.Navigate(ctx, action.Value) })
+		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+		if err != nil {
+			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: navigate failed: %w", s.NodeID, ClassifyError("navigate", err)), observationErr))
+		}
+		if observationErr != nil {
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record navigate observation: %w", s.NodeID, observationErr))
 		}
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 	if action.Kind == ActionPress {
-		if err := rt.Driver.Press(ctx, action.Value); err != nil {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: press failed: %w", s.NodeID, err))
+		started := time.Now()
+		attempts, err := rt.runOperationWithAttempts(func() error { return rt.Driver.Press(ctx, action.Value) })
+		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+		if err != nil {
+			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: press failed: %w", s.NodeID, ClassifyError("press", err)), observationErr))
+		}
+		if observationErr != nil {
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record press observation: %w", s.NodeID, observationErr))
 		}
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 
 	target := rt.effectiveSpec(s.Target)
-	el, err := rt.Driver.Locate(ctx, target)
+	healed := false
+	var el Element
+	locateStarted := time.Now()
+	locateAttempts, err := rt.runOperationWithAttempts(func() error {
+		var locateErr error
+		el, locateErr = rt.Driver.Locate(ctx, target)
+		return locateErr
+	})
+	locateObservationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+	if locateObservationErr != nil {
+		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record locate observation: %w", s.NodeID, locateObservationErr))
+	}
 	if err != nil {
 		if !errors.Is(err, ErrElementNotFound) {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed: %w", s.NodeID, err))
@@ -124,13 +147,25 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: heal failed: %w", s.NodeID, err))
 		}
+		target = rt.effectiveSpec(target)
+		healed = true
 	}
 
 	if err := s.transition(ctx, rt, execution, PhaseTransitioning); err != nil {
 		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: enter transitioning phase: %w", s.NodeID, err))
 	}
-	if err := applyAction(ctx, rt, el, action); err != nil {
-		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: action failed: %w", s.NodeID, err))
+	started := time.Now()
+	attempts, actionErr := rt.runOperationWithAttempts(func() error { return applyAction(ctx, rt, el, action) })
+	selector := fingerprint.Selector{}
+	if len(target.Selectors) > 0 {
+		selector = target.Selectors[0]
+	}
+	observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Selector: selector, Healed: healed, Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: actionErr == nil, ErrorKind: errorKind(actionErr)})
+	if actionErr != nil {
+		return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: action failed: %w", s.NodeID, ClassifyError(string(action.Kind), actionErr)), observationErr))
+	}
+	if observationErr != nil {
+		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record action observation: %w", s.NodeID, observationErr))
 	}
 
 	return s.finish(ctx, parentCtx, rt, execution)
@@ -152,6 +187,16 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	}
 	if err := decision.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid heal decision: %w", err)
+	}
+	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
+	if err != nil {
+		return nil, fmt.Errorf("assess heal decision: %w", err)
+	}
+	if assessment.Disposition != heal.DispositionAllow {
+		if assessment.Disposition == heal.DispositionBlock && decision.Outcome == heal.OutcomeNoCandidate {
+			return nil, fmt.Errorf("no heal candidate reached review_cap: %s", assessment.Explanation)
+		}
+		return nil, fmt.Errorf("healing refused: %s", assessment.Explanation)
 	}
 
 	if rt.Facts != nil {
@@ -179,6 +224,13 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	rt.setSelectorOverlay(healedSpec)
 
 	return el, nil
+}
+
+func firstSelector(spec fingerprint.NodeSpec) fingerprint.Selector {
+	if len(spec.Selectors) == 0 {
+		return fingerprint.Selector{}
+	}
+	return spec.Selectors[0]
 }
 
 func applyAction(ctx context.Context, rt *Runtime, el Element, a Action) error {
