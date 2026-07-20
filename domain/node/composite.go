@@ -22,7 +22,14 @@ const (
 	WaitNetworkIdle WaitKind = "network_idle"
 )
 
-// DefaultWaitTimeout 是条件等待（element/network_idle）未显式配置 timeout
+type WaitElementState string
+
+const (
+	WaitElementPresent   WaitElementState = "present"
+	WaitElementVisible   WaitElementState = "visible"
+	WaitElementInvisible WaitElementState = "invisible"
+)
+
 // 时的默认上限。
 const DefaultWaitTimeout = 10 * time.Second
 
@@ -37,12 +44,39 @@ type WaitNode struct {
 	Kind     WaitKind
 	Duration time.Duration        // WaitSleep：等待时长
 	Target   fingerprint.NodeSpec // WaitElement：要等的元素
+	State    WaitElementState     // WaitElement：present（默认）或 visible
 	Timeout  time.Duration        // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
 }
 
 func (w *WaitNode) ID() string { return w.NodeID }
 
+func (w *WaitNode) Validate() error {
+	switch w.Kind {
+	case "", WaitSleep:
+		if w.Duration < 0 || w.Timeout != 0 || w.State != "" {
+			return fmt.Errorf("invalid sleep wait configuration")
+		}
+	case WaitElement:
+		if w.Duration != 0 || w.Timeout < 0 {
+			return fmt.Errorf("invalid element wait configuration")
+		}
+		if w.State != "" && w.State != WaitElementPresent && w.State != WaitElementVisible && w.State != WaitElementInvisible {
+			return fmt.Errorf("unsupported element wait state %q", w.State)
+		}
+	case WaitNetworkIdle:
+		if w.Duration != 0 || w.Timeout < 0 || w.State != "" {
+			return fmt.Errorf("invalid network idle wait configuration")
+		}
+	default:
+		return fmt.Errorf("unknown wait kind %q", w.Kind)
+	}
+	return nil
+}
+
 func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
+	if err := w.Validate(); err != nil {
+		return fmt.Errorf("wait %s: validate: %w", w.NodeID, err)
+	}
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("wait %s: wait step interval: %w", w.NodeID, err)
 	}
@@ -50,6 +84,7 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
 		return fmt.Errorf("wait %s: enter running phase: %w", w.NodeID, err)
 	}
 
+	started := time.Now()
 	var err error
 	switch w.Kind {
 	case WaitSleep, "":
@@ -62,9 +97,10 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
 		err = fmt.Errorf("unknown wait kind %q", w.Kind)
 	}
 
+	observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 	if err != nil {
 		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
-			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), emitErr)
+			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), observationErr, emitErr)
 		}
 		return fmt.Errorf("wait %s: %w", w.NodeID, err)
 	}
@@ -95,18 +131,35 @@ func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime) error {
 	defer cancel()
 
 	var lastErr error
+	ticker := time.NewTicker(waitPollInterval)
+	defer ticker.Stop()
 	for {
-		if _, err := rt.Driver.Locate(ctx, rt.effectiveSpec(w.Target)); err == nil {
-			return nil
-		} else if !errors.Is(err, ErrElementNotFound) {
-			return fmt.Errorf("locate element %q: %w", w.Target.ID, err)
-		} else if !errors.Is(err, context.DeadlineExceeded) {
+		el, err := rt.Driver.Locate(ctx, rt.effectiveSpec(w.Target))
+		if err == nil {
+			if w.State == WaitElementVisible || w.State == WaitElementInvisible {
+				visible, visibleErr := el.Visible(ctx)
+				if visibleErr != nil {
+					return fmt.Errorf("check element %q visibility: %w", w.Target.ID, ClassifyError("wait visible", visibleErr))
+				}
+				if (w.State == WaitElementVisible && visible) || (w.State == WaitElementInvisible && !visible) {
+					return nil
+				}
+				lastErr = fmt.Errorf("element %q visibility did not satisfy %s", w.Target.ID, w.State)
+			} else {
+				return nil
+			}
+		} else if errors.Is(err, ErrElementNotFound) {
+			if w.State == WaitElementInvisible {
+				return nil
+			}
 			lastErr = err
+		} else {
+			return fmt.Errorf("locate element %q: %w", w.Target.ID, ClassifyError("wait locate", err))
 		}
 		select {
-		case <-time.After(waitPollInterval):
+		case <-ticker.C:
 		case <-ctx.Done():
-			return fmt.Errorf("element %q did not appear within %s: %w", w.Target.ID, w.timeout(), lastErr)
+			return fmt.Errorf("element %q did not appear within %s: %w", w.Target.ID, w.timeout(), &ClassifiedError{Kind: ErrorTimeout, Operation: "wait element", Err: errors.Join(lastErr, ctx.Err())})
 		}
 	}
 }
