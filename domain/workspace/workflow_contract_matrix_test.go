@@ -27,6 +27,8 @@ func TestWorkflowAggregateValidateStepKindBusinessMatrix(t *testing.T) {
 		{name: "empty wait kind means fixed sleep", step: WorkflowStep{ID: "sleep", DisplayName: "等待", Kind: StepWait, WaitMS: 1}},
 		{name: "element wait allows adapter default timeout", step: WorkflowStep{ID: "element", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", NodeID: "node", NodeVersionID: "node-v1"}},
 		{name: "network idle allows adapter default timeout", step: WorkflowStep{ID: "network", DisplayName: "等待网络", Kind: StepWait, WaitKind: "network_idle"}},
+		{name: "visible element wait", step: WorkflowStep{ID: "visible", DisplayName: "等待可见元素", Kind: StepWait, WaitKind: "element_visible", NodeID: "node", NodeVersionID: "node-v1"}},
+		{name: "invisible element wait", step: WorkflowStep{ID: "invisible", DisplayName: "等待不可见元素", Kind: StepWait, WaitKind: "element_invisible", NodeID: "node", NodeVersionID: "node-v1"}},
 		{name: "repeat", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 2, Children: []WorkflowStep{{ID: "nested-wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}},
 		{name: "fixed workflow reference", step: WorkflowStep{ID: "fixed", DisplayName: "固定子流程", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}},
 		{name: "latest workflow reference", step: WorkflowStep{ID: "latest", DisplayName: "最新子流程", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", LatestPublished: true}}},

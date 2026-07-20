@@ -241,6 +241,17 @@ func (c *executionCompiler) compileWait(runtimeID string, step workspace.Workflo
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitElement, Target: target,
 			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+	case "element_visible", "element_invisible":
+		target, err := c.spec(step.NodeID, step.NodeVersionID)
+		if err != nil {
+			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
+		}
+		kind := node.WaitElementVisible
+		if step.WaitKind == "element_invisible" {
+			kind = node.WaitElementInvisible
+		}
+		return &node.WaitNode{NodeID: runtimeID, Kind: kind, Target: target,
+			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
 	case "network_idle":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitNetworkIdle,
 			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil

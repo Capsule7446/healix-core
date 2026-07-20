@@ -13,6 +13,10 @@ import (
 
 type Properties map[string]string
 
+func isElementWaitKind(kind string) bool {
+	return kind == "element" || kind == "element_visible" || kind == "element_invisible"
+}
+
 func (p Properties) Clone() Properties {
 	out := make(Properties, len(p))
 	for key, value := range p {
@@ -378,7 +382,7 @@ func (a WorkflowAggregate) Validate() error {
 				}
 				if step.Action != "" || step.Value != "" || len(step.Values) != 0 || step.RepeatCount != 0 ||
 					step.Reference != nil || len(step.Children) != 0 ||
-					(step.WaitKind != "element" && (step.NodeID != "" || step.NodeVersionID != "")) {
+					(!isElementWaitKind(step.WaitKind) && (step.NodeID != "" || step.NodeVersionID != "")) {
 					problems = append(problems, fmt.Sprintf("step %q WAIT contains unsupported step configuration", step.DisplayName))
 				}
 				switch step.WaitKind {
@@ -386,7 +390,7 @@ func (a WorkflowAggregate) Validate() error {
 					if step.WaitMS <= 0 {
 						problems = append(problems, fmt.Sprintf("step %q fixed wait must be > 0", step.DisplayName))
 					}
-				case "element":
+				case "element", "element_visible", "element_invisible":
 					if strings.TrimSpace(step.NodeID) == "" {
 						problems = append(problems, fmt.Sprintf("step %q element wait requires a node", step.DisplayName))
 					}
