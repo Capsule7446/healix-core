@@ -1,4 +1,4 @@
-package workspace
+package evidence
 
 import (
 	"math"
@@ -15,7 +15,7 @@ func TestStepTransitionCommitValidatesAtomicFactIdentity(t *testing.T) {
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true,
 	}}, HealObservations: []HealObservationCommit{{Observation: HealObservation{
 		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", NodeID: "node",
-		BaseNodeVersionID: "node-v1", DecisionBand: HealDecisionBandUnknown, ObservedAt: 10,
+		BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 10,
 	}, PromotedVersionID: "node-v2"}},
 		OriginalSelectorResets: []HealCandidateReset{{NodeID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10}}}
 	if err := valid.Validate(); err != nil {
