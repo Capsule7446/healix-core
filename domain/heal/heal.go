@@ -19,9 +19,10 @@ const (
 	// OutcomeBelowCap 是中置信度的自愈（review_cap <= 分数 < applied_cap）：
 	// 已应用，但标记为需要人工审查。
 	OutcomeBelowCap Outcome = "below_cap"
-	// OutcomeNoCandidate 表示没有候选达到 review_cap；
-	// 计为一次失败的自愈尝试。
+	// OutcomeNoCandidate 表示没有候选达到 review_cap。
 	OutcomeNoCandidate Outcome = "no_candidate"
+	// OutcomeSafetyRejected 表示候选存在，但违反安全边界，禁止应用和重试绕过。
+	OutcomeSafetyRejected Outcome = "safety_rejected"
 )
 
 // Candidate 是被视为选择器替换的 DOM 节点，其计算出的相似度得分在包含范围 [0,1] 内。
@@ -56,6 +57,13 @@ func (d Decision) Validate() error {
 		if !d.NeedsReview {
 			return fmt.Errorf("heal: below_cap decision must require review")
 		}
+	case OutcomeSafetyRejected:
+		if d.Best == nil {
+			return fmt.Errorf("heal: safety_rejected decision requires a best candidate")
+		}
+		if d.NeedsReview {
+			return fmt.Errorf("heal: safety_rejected decision cannot require review")
+		}
 	case OutcomeNoCandidate:
 		if d.Best != nil {
 			return fmt.Errorf("heal: no_candidate decision cannot have a best candidate")
@@ -66,7 +74,6 @@ func (d Decision) Validate() error {
 	default:
 		return fmt.Errorf("heal: unknown decision outcome %q", d.Outcome)
 	}
-
 	if d.Best != nil {
 		if err := d.Best.validate("best candidate"); err != nil {
 			return err
@@ -94,6 +101,11 @@ func (d Decision) Validate() error {
 func (c Candidate) validate(label string) error {
 	if err := c.Selector.Validate(); err != nil {
 		return fmt.Errorf("heal: %s has invalid selector: %w", label, err)
+	}
+	if c.Fingerprint.Attributes != nil || len(c.Fingerprint.Framework) > 0 {
+		if err := c.Fingerprint.Validate(); err != nil {
+			return fmt.Errorf("heal: %s has invalid fingerprint: %w", label, err)
+		}
 	}
 	if math.IsNaN(c.Score) || math.IsInf(c.Score, 0) || c.Score < 0 || c.Score > 1 {
 		return fmt.Errorf("heal: %s score must be finite and within [0,1], got %v", label, c.Score)

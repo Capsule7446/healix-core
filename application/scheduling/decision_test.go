@@ -1,0 +1,113 @@
+package scheduling
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/execution"
+)
+
+func TestDecideAdvanceSerialABC(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      execution.FailurePolicy
+		states      []EntryState
+		next        string
+		transitions []string
+		cause       SkipCause
+		final       execution.RunStatus
+	}{
+		{"initial selects A", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionPending, execution.ExecutionPending), "a", nil, "", ""},
+		{"running frontier waits", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionRunning, execution.ExecutionPending, execution.ExecutionPending), "", nil, "", ""},
+		{"A success selects B", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionPending, execution.ExecutionPending), "b", nil, "", ""},
+		{"ABC success finalizes", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionSucceeded, execution.ExecutionSucceeded), "", nil, "", execution.Succeeded},
+		{"A failure skips BC", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionPending, execution.ExecutionPending), "", []string{"b", "c"}, SkipCausePriorFailure, execution.Failed},
+		{"B failure skips C", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionFailed, execution.ExecutionPending), "", []string{"c"}, SkipCausePriorFailure, execution.Failed},
+		{"A cancellation skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionCanceled, execution.ExecutionPending, execution.ExecutionPending), "", []string{"b", "c"}, SkipCausePriorCancellation, execution.Canceled},
+		{"B cancellation skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionCanceled, execution.ExecutionPending), "", []string{"c"}, SkipCausePriorCancellation, execution.Canceled},
+		{"A abort skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionAborted, execution.ExecutionPending, execution.ExecutionPending), "", []string{"b", "c"}, SkipCausePriorAbort, execution.Aborted},
+		{"B abort skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionAborted, execution.ExecutionPending), "", []string{"c"}, SkipCausePriorAbort, execution.Aborted},
+		{"failure continues", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionFailed, execution.ExecutionPending), "c", nil, "", ""},
+		{"continued failure aggregates", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionFailed, execution.ExecutionSucceeded), "", nil, "", execution.Failed},
+		{"persisted failure skips", execution.FailurePolicyStopOnFailure, causedStates(execution.ExecutionFailed, SkipCausePriorFailure), "", nil, SkipCausePriorFailure, execution.Failed},
+		{"persisted cancellation skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.ExecutionCanceled, SkipCausePriorCancellation), "", nil, SkipCausePriorCancellation, execution.Canceled},
+		{"persisted abort skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.ExecutionAborted, SkipCausePriorAbort), "", nil, SkipCausePriorAbort, execution.Aborted},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			decision, err := DecideAdvance(sealedPlan(t, test.policy), test.states)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.NextExecutionID != test.next || len(decision.Transitions) != len(test.transitions) {
+				t.Fatalf("decision = %#v", decision)
+			}
+			for i, id := range test.transitions {
+				got := decision.Transitions[i]
+				if got.ExecutionID != id || got.From != execution.ExecutionPending || got.To != execution.ExecutionSkipped || got.Cause != test.cause {
+					t.Fatalf("transition = %#v", got)
+				}
+			}
+			if (decision.FinalStatus == nil) != (test.final == "") || decision.FinalStatus != nil && *decision.FinalStatus != test.final {
+				t.Fatalf("final = %#v", decision.FinalStatus)
+			}
+		})
+	}
+}
+
+func TestDecideAdvanceRejectsMalformedStateVectors(t *testing.T) {
+	tests := []struct {
+		name   string
+		policy execution.FailurePolicy
+		states []EntryState
+	}{
+		{"missing", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionPending)},
+		{"duplicate identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionPending}, {ExecutionID: "a", Status: execution.ExecutionPending}, {ExecutionID: "c", Status: execution.ExecutionPending}}},
+		{"unknown identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionPending}, {ExecutionID: "b", Status: execution.ExecutionPending}, {ExecutionID: "x", Status: execution.ExecutionPending}}},
+		{"unknown status", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, "UNKNOWN", execution.ExecutionPending)},
+		{"pending before running", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionRunning, execution.ExecutionPending)},
+		{"terminal after pending", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionSucceeded, execution.ExecutionPending)},
+		{"terminal after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionSucceeded, execution.ExecutionPending)},
+		{"failed after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionFailed, execution.ExecutionPending)},
+		{"canceled after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionCanceled, execution.ExecutionPending)},
+		{"aborted after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionAborted, execution.ExecutionPending)},
+		{"skipped before cause", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionSkipped, SkipCause: SkipCausePriorFailure}, {ExecutionID: "b", Status: execution.ExecutionPending}, {ExecutionID: "c", Status: execution.ExecutionPending}}},
+		{"all skipped", execution.FailurePolicyStopOnFailure, []EntryState{{"a", execution.ExecutionSkipped, SkipCausePriorFailure}, {"b", execution.ExecutionSkipped, SkipCausePriorFailure}, {"c", execution.ExecutionSkipped, SkipCausePriorFailure}}},
+		{"cause mismatch", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionFailed}, {"b", execution.ExecutionSkipped, SkipCausePriorAbort}, {"c", execution.ExecutionSkipped, SkipCausePriorFailure}}},
+		{"missing skip cause", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionSkipped, execution.ExecutionSkipped)},
+		{"cause on non-skipped", execution.FailurePolicyStopOnFailure, []EntryState{{"a", execution.ExecutionFailed, SkipCausePriorFailure}, {ExecutionID: "b", Status: execution.ExecutionPending}, {ExecutionID: "c", Status: execution.ExecutionPending}}},
+		{"continue arbitrary skipped", execution.FailurePolicyContinueOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionSucceeded}, {"b", execution.ExecutionSkipped, SkipCausePriorFailure}, {"c", execution.ExecutionSkipped, SkipCausePriorFailure}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := DecideAdvance(sealedPlan(t, test.policy), test.states)
+			if !errors.Is(err, ErrInvalidEntryStates) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func entryStates(values ...execution.ExecutionStatus) []EntryState {
+	ids := []string{"a", "b", "c"}
+	result := make([]EntryState, len(values))
+	for i, status := range values {
+		result[i] = EntryState{ExecutionID: ids[i], Status: status}
+	}
+	return result
+}
+func causedStates(first execution.ExecutionStatus, cause SkipCause) []EntryState {
+	return []EntryState{{ExecutionID: "a", Status: first}, {ExecutionID: "b", Status: execution.ExecutionSkipped, SkipCause: cause}, {ExecutionID: "c", Status: execution.ExecutionSkipped, SkipCause: cause}}
+}
+func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.Plan {
+	t.Helper()
+	plan, err := execution.Seal(planDraft(policy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+func planDraft(policy execution.FailurePolicy) execution.Draft {
+	workflow := execution.WorkflowSnapshot{ID: "workflow", VersionID: "workflow-v1", WorkflowID: "workflow", DisplayName: "Workflow", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "Wait", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}
+	return execution.Draft{RunID: "run", FailurePolicy: policy, Entries: []execution.WorkflowEntry{{ExecutionID: "a", TestTaskItemID: "item-a", SequenceNumber: 1, WorkflowID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "b", TestTaskItemID: "item-b", SequenceNumber: 2, WorkflowID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "c", TestTaskItemID: "item-c", SequenceNumber: 3, WorkflowID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
+}

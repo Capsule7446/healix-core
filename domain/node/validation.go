@@ -76,6 +76,7 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseRunning); err != nil {
 		return err
 	}
+	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, err)
 	}
@@ -103,45 +104,48 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	if stability <= 0 {
 		stability = 500 * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(parent, maxWait)
-	defer cancel()
-	observations := newValidationObservationRecorder()
 	var stableSince time.Time
 	var lastActual string
-	for {
-		ok, actual, err := v.evaluate(ctx, rt)
-		if err != nil {
-			if recordErr := observations.record(ctx, rt, v, false, actual, "system_error", true); recordErr != nil {
-				return recordErr
-			}
-			return fmt.Errorf("validation %s: %w", v.NodeID, err)
-		}
+	observations := newValidationObservationRecorder()
+	pollErr := rt.poller().Run(parent, maxWait, func(pollCtx context.Context) (bool, error) {
+		ok, actual, err := v.evaluate(pollCtx, rt)
 		lastActual = actual
-		if err := observations.record(ctx, rt, v, ok, actual, validationReason(ok), false); err != nil {
-			return err
+		if err != nil {
+			if recordErr := observations.record(pollCtx, rt, v, false, actual, "system_error", true); recordErr != nil {
+				return false, recordErr
+			}
+			return false, err
+		}
+		if err := observations.record(pollCtx, rt, v, ok, actual, validationReason(ok), false); err != nil {
+			return false, err
 		}
 		if ok {
 			if stableSince.IsZero() {
 				stableSince = time.Now()
 			}
 			if time.Since(stableSince) >= stability {
-				if err := observations.record(ctx, rt, v, true, actual, "passed", true); err != nil {
-					return err
-				}
-				return nil
+				return true, observations.record(pollCtx, rt, v, true, actual, "passed", true)
 			}
 		} else {
 			stableSince = time.Time{}
 		}
-		select {
-		case <-time.After(validationPollInterval):
-		case <-ctx.Done():
-			if err := observations.record(ctx, rt, v, false, lastActual, "timeout", true); err != nil {
-				return err
-			}
-			return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, lastActual, ctx.Err())
+		return false, nil
+	})
+	if pollErr != nil {
+		reason := "timeout"
+		if errorKind(pollErr) != ErrorTimeout {
+			reason = "system_error"
 		}
+		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, reason, true); err != nil {
+			return err
+		}
+		actual := lastActual
+		if validationEvidenceIsSensitive(v.Target, v.Assertion) {
+			actual = "••••••••"
+		}
+		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, actual, pollErr)
 	}
+	return nil
 }
 
 // 评估恰好执行一轮读取/检查。  ValidationGroupNode 在派生分支结果之前为每个成员调用此方法，保留“同一轮 AND”不变量。
@@ -177,7 +181,7 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 	if assertion.Kind == "not_exists" {
 		return false, "<present>", nil
 	}
-	visible, err := el.Visible(ctx)
+	visible, err := rt.reader().Visible(ctx, el)
 	if err != nil {
 		return false, "", err
 	}
@@ -189,14 +193,14 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 	}
 
 	if assertion.Kind == "text_equals" || assertion.Kind == "text_contains" || assertion.Kind == "text_matches" {
-		text, err := el.Text(ctx)
+		text, err := rt.reader().Text(ctx, el)
 		if err != nil {
 			return false, "", err
 		}
 		return compareText(assertion, text)
 	}
 	if assertion.Kind == "attribute_equals" || assertion.Kind == "attribute_contains" {
-		value, present, err := el.Attribute(ctx, assertion.Attribute)
+		value, present, err := rt.reader().Attribute(ctx, el, assertion.Attribute)
 		if err != nil {
 			return false, "", err
 		}
@@ -273,38 +277,62 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 
 // locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
-	target := rt.effectiveSpec(v.Target)
-	el, err := rt.Driver.Locate(ctx, target)
+	target := v.Target
+	el, err := rt.locator().Locate(ctx, target)
 	if err == nil {
 		return el, false, nil
 	}
 	if !errors.Is(err, ErrElementNotFound) {
 		return nil, false, err
 	}
-	if rt.Healer == nil {
+	if rt.Healing == nil && rt.Healer == nil {
 		return nil, true, nil
 	}
 	snapshot, err := rt.Driver.Snapshot(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("snapshot for healing: %w", err)
 	}
-	decision, err := rt.Healer.Heal(ctx, target, snapshot)
+	decision, err := rt.healingPort().Recover(ctx, target, snapshot)
 	if err != nil {
 		return nil, false, err
 	}
 	if err := decision.Validate(); err != nil {
 		return nil, false, fmt.Errorf("invalid heal decision: %w", err)
 	}
-	if rt.Facts != nil {
-		oldSelector := fingerprint.Selector{}
-		if len(target.Selectors) > 0 {
-			oldSelector = target.Selectors[0]
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+		return nil, false, fmt.Errorf("record heal samples: %w", err)
+	}
+	if decision.Outcome == heal.OutcomeNoCandidate {
+		if rt.Facts != nil {
+			if err := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
+				return nil, false, fmt.Errorf("record heal decision: %w", err)
+			}
 		}
-		if err := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision); err != nil {
-			return nil, false, fmt.Errorf("record heal decision: %w", err)
+		return nil, true, nil
+	}
+	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
+	if err != nil {
+		return nil, false, fmt.Errorf("assess heal decision: %w", err)
+	}
+	if assessment.Disposition != heal.DispositionAllow {
+		if assessment.Disposition == heal.DispositionBlock && decision.Outcome != heal.OutcomeNoCandidate {
+			decision.Outcome = heal.OutcomeSafetyRejected
+			decision.NeedsReview = false
 		}
+		if rt.Facts != nil {
+			oldSelector := firstSelector(target)
+			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+				return nil, false, fmt.Errorf("record validation heal decision: %w", recordErr)
+			}
+		}
+		return nil, false, fmt.Errorf("validation healing refused: %s", assessment.Explanation)
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
+		if rt.Facts != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+				return nil, false, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+			}
+		}
 		return nil, true, nil
 	}
 	healed := target
@@ -312,6 +340,11 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	el, err = rt.Driver.Locate(ctx, healed)
 	if err != nil {
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
+	}
+	if rt.Facts != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
+		}
 	}
 	rt.setSelectorOverlay(healed)
 	return el, false, nil
@@ -402,6 +435,7 @@ func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := transitionValidation(ctx, rt, execution, g.NodeID, PhaseRunning); err != nil {
 		return err
 	}
+	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
 	if err := transitionValidation(ctx, rt, execution, g.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, g.NodeID, err)
 	}
@@ -422,13 +456,10 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	if stability <= 0 {
 		stability = 500 * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(parent, maxWait)
-	defer cancel()
 	observations := newValidationObservationRecorder()
 	stableSince := make([]time.Time, len(g.Branches))
 	last := make(map[string]validationObservationState)
-	for {
-		// 该循环在选择分支之前有意评估每个分支中的每个成员。  会员结果不会跨轮锁定。
+	pollErr := rt.poller().Run(parent, maxWait, func(ctx context.Context) (bool, error) {
 		branchPassed := make([]bool, len(g.Branches))
 		for i, branch := range g.Branches {
 			branchPassed[i] = len(branch.Nodes) > 0
@@ -436,13 +467,13 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 				ok, actual, err := member.evaluate(ctx, rt)
 				if err != nil {
 					if recordErr := observations.record(ctx, rt, member, false, actual, "system_error", true); recordErr != nil {
-						return recordErr
+						return false, recordErr
 					}
-					return fmt.Errorf("branch %s: %w", branch.ID, err)
+					return false, fmt.Errorf("branch %s: %w", branch.ID, err)
 				}
 				last[member.NodeID] = validationObservationState{passed: ok, actual: actual, reason: validationReason(ok)}
 				if err := observations.record(ctx, rt, member, ok, actual, validationReason(ok), false); err != nil {
-					return err
+					return false, err
 				}
 				if !ok {
 					branchPassed[i] = false
@@ -467,27 +498,32 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 							reason = "passed"
 						}
 						if err := observations.record(ctx, rt, member, state.passed, state.actual, reason, true); err != nil {
-							return err
+							return false, err
 						}
 					}
 				}
-				return nil
+				return true, nil
 			}
 		}
-		select {
-		case <-time.After(validationPollInterval):
-		case <-ctx.Done():
-			for _, branch := range g.Branches {
-				for _, member := range branch.Nodes {
-					state := last[member.NodeID]
-					if err := observations.record(ctx, rt, member, state.passed, state.actual, "timeout", true); err != nil {
-						return err
-					}
+		return false, nil
+	})
+	if pollErr != nil {
+		ctx := context.WithoutCancel(parent)
+		reason := "timeout"
+		if errorKind(pollErr) != ErrorTimeout {
+			reason = "system_error"
+		}
+		for _, branch := range g.Branches {
+			for _, member := range branch.Nodes {
+				state := last[member.NodeID]
+				if err := observations.record(ctx, rt, member, state.passed, state.actual, reason, true); err != nil {
+					return err
 				}
 			}
-			return fmt.Errorf("no validation branch was continuously satisfied within %s: %w", maxWait, ctx.Err())
 		}
+		return fmt.Errorf("no validation branch was continuously satisfied within %s: %w", maxWait, pollErr)
 	}
+	return nil
 }
 
 type validationObservationState struct {
@@ -530,7 +566,7 @@ func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime,
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.RecordValidationObservation(cleanupCtx, rt.RunID, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
 		Assertion: assertion, Actual: actual, Passed: passed, Reason: reason,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: final,
@@ -564,6 +600,13 @@ func transitionValidation(ctx context.Context, rt *Runtime, execution *StepExecu
 	}
 	if err := rt.emit(ctx, nodeID, next); err != nil {
 		return err
+	}
+	if next == PhaseRunning {
+		occurrence, err := rt.activeOccurrence(nodeID)
+		if err != nil {
+			return err
+		}
+		execution.occurrence = occurrence
 	}
 	return execution.Transition(next)
 }

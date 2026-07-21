@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/node"
-	workspace "github.com/Capsule7446/healix-core/domain/workspace"
 )
 
 // StepMetadata 将执行树 ID 映射回拥有证据、截图和面向用户进度信息的
@@ -28,117 +28,113 @@ type RuntimeNodeIdentity struct {
 	NodeVersionID string
 }
 
-// CompiledExecution 是供 RunProgram 和宿主证据适配器使用的内存执行产物。
-type CompiledExecution struct {
-	Program      node.Program
-	Metadata     map[string]StepMetadata
-	RuntimeNodes map[string]RuntimeNodeIdentity
+type CompiledEntry struct {
+	ExecutionID       string
+	TestTaskItemID    string
+	SequenceNumber    int
+	WorkflowID        string
+	WorkflowVersionID string
+	Program           node.Program
+	Metadata          map[string]StepMetadata
+	RuntimeNodes      map[string]RuntimeNodeIdentity
 }
 
-// CompileExecution 直接从 TestTaskRun 快照编译一个已锁定的 WorkflowExecution。
-// 它不执行任何文件系统或序列化操作。
-func CompileExecution(plan workspace.TestTaskRunPlan, execution workspace.WorkflowExecutionPlan) (CompiledExecution, error) {
-	compiler := executionCompiler{
-		versions:     make(map[string]workspace.WorkflowDependencySnapshot, len(plan.Workflows)),
-		resolutions:  make(map[string]workspace.WorkflowReferenceResolution, len(plan.References)),
-		nodes:        make(map[string]workspace.NodeDependencySnapshot, len(plan.Nodes)),
-		programSpecs: make(map[string]fingerprint.NodeSpec),
-		metadata:     make(map[string]StepMetadata),
-		runtimeNodes: make(map[string]RuntimeNodeIdentity),
-		workflows:    make(map[string]*node.WorkflowNode),
-		state:        make(map[string]compileState),
-	}
-	for _, dependency := range plan.Workflows {
-		if dependency.Version.ID == "" {
-			return CompiledExecution{}, fmt.Errorf("run snapshot contains a workflow with an empty version id")
-		}
-		if _, exists := compiler.versions[dependency.Version.ID]; exists {
-			return CompiledExecution{}, fmt.Errorf("run snapshot contains duplicate workflow version %s", dependency.Version.ID)
-		}
-		compiler.versions[dependency.Version.ID] = dependency
-	}
-	for _, resolution := range plan.References {
-		key := referenceKey(resolution.ParentWorkflowVersionID, resolution.StepID)
-		if _, exists := compiler.resolutions[key]; exists {
-			return CompiledExecution{}, fmt.Errorf("run snapshot contains duplicate workflow resolution %s", key)
-		}
-		compiler.resolutions[key] = resolution
-	}
-	for _, dependency := range plan.Nodes {
-		if dependency.Node.ID == "" || dependency.Version.ID == "" || dependency.Version.NodeID != dependency.Node.ID {
-			return CompiledExecution{}, fmt.Errorf("node version %s does not belong to node %s", dependency.Version.ID, dependency.Node.ID)
-		}
-		identity := workspace.NodeDependencyIdentity(dependency.Node.ID, dependency.Version.ID)
-		if _, exists := compiler.nodes[identity]; exists {
-			return CompiledExecution{}, fmt.Errorf("run snapshot contains duplicate node dependency %s", dependency.Version.ID)
-		}
-		compiler.nodes[identity] = dependency
-	}
-
-	root, err := compiler.compileWorkflow(execution.WorkflowVersionID)
-	if err != nil {
-		return CompiledExecution{}, fmt.Errorf("compile execution %s: %w", execution.ID, err)
-	}
-	return CompiledExecution{
-		Program:  node.Program{Root: root, Specs: compiler.programSpecs},
-		Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
-	}, nil
+type CompiledRun struct {
+	Entries []CompiledEntry
+	byID    map[string]int
 }
 
-type compileState uint8
+// Entry returns the compiled entry identified by executionID without exposing
+// the run's private lookup index.
+func (r CompiledRun) Entry(executionID string) (CompiledEntry, bool) {
+	index, ok := r.byID[executionID]
+	if !ok || index < 0 || index >= len(r.Entries) {
+		return CompiledEntry{}, false
+	}
+	return r.Entries[index], true
+}
 
-const (
-	compileVisiting compileState = iota + 1
-	compileDone
-)
+// CompilePlan compiles an immutable, transport-neutral execution plan directly.
+func CompilePlan(plan execution.Plan) (CompiledRun, error) {
+	if err := plan.Validate(); err != nil {
+		return CompiledRun{}, fmt.Errorf("compile execution plan: %w", err)
+	}
+	draft := plan.Snapshot()
+	versions := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
+	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
+	nodes := make(map[execution.NodeDependencyKey]execution.NodeSnapshot, len(draft.Nodes))
+	for _, workflow := range draft.Workflows {
+		versions[workflow.VersionID] = workflow
+	}
+	for _, resolution := range draft.References {
+		resolutions[referenceKey(resolution.ParentVersionID, resolution.StepID)] = resolution
+	}
+	for _, snapshot := range draft.Nodes {
+		nodes[nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)] = snapshot
+	}
+	compiledNodes := 0
+	result := CompiledRun{Entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
+	for _, entry := range draft.Entries {
+		compiler := executionCompiler{
+			versions: versions, resolutions: resolutions, nodes: nodes,
+			programSpecs: make(map[string]fingerprint.NodeSpec),
+			metadata:     make(map[string]StepMetadata), runtimeNodes: make(map[string]RuntimeNodeIdentity),
+			compiledNodes: &compiledNodes,
+		}
+		rootPath := encodeRuntimeComponent(entry.ExecutionID)
+		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, 1)
+		if err != nil {
+			return CompiledRun{}, fmt.Errorf("compile execution %s: %w", entry.ExecutionID, err)
+		}
+		compiledEntry := CompiledEntry{
+			ExecutionID: entry.ExecutionID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
+			WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID,
+			Program:  node.Program{Root: root, Specs: compiler.programSpecs},
+			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
+		}
+		result.byID[entry.ExecutionID] = len(result.Entries)
+		result.Entries = append(result.Entries, compiledEntry)
+	}
+	return result, nil
+}
 
 type executionCompiler struct {
-	versions     map[string]workspace.WorkflowDependencySnapshot
-	resolutions  map[string]workspace.WorkflowReferenceResolution
-	nodes        map[string]workspace.NodeDependencySnapshot
-	programSpecs map[string]fingerprint.NodeSpec
-	metadata     map[string]StepMetadata
-	runtimeNodes map[string]RuntimeNodeIdentity
-	workflows    map[string]*node.WorkflowNode
-	state        map[string]compileState
+	versions      map[string]execution.WorkflowSnapshot
+	resolutions   map[execution.WorkflowReferenceKey]execution.ReferenceResolution
+	nodes         map[execution.NodeDependencyKey]execution.NodeSnapshot
+	programSpecs  map[string]fingerprint.NodeSpec
+	metadata      map[string]StepMetadata
+	runtimeNodes  map[string]RuntimeNodeIdentity
+	compiledNodes *int
 }
 
-func (c *executionCompiler) compileWorkflow(versionID string) (*node.WorkflowNode, error) {
-	if c.state[versionID] == compileVisiting {
-		return nil, fmt.Errorf("workflow reference cycle includes version %s", versionID)
-	}
-	if c.state[versionID] == compileDone {
-		return c.workflows[versionID], nil
+func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, depth int) (*node.WorkflowNode, error) {
+	if depth > execution.MaxWorkflowReferenceDepth {
+		return nil, fmt.Errorf("compile depth exceeds maximum %d", execution.MaxWorkflowReferenceDepth)
 	}
 	dependency, ok := c.versions[versionID]
 	if !ok {
 		return nil, fmt.Errorf("workflow version %s is missing from the run snapshot", versionID)
 	}
-	if dependency.Version.WorkflowID != dependency.Workflow.ID {
-		return nil, fmt.Errorf("workflow version %s does not belong to workflow %s", versionID, dependency.Workflow.ID)
-	}
-	if err := dependency.Version.ValidateFor(dependency.Workflow); err != nil {
-		return nil, fmt.Errorf("workflow version %s failed execution preflight: %w", versionID, err)
-	}
-	c.state[versionID] = compileVisiting
-	c.metadata[versionID] = StepMetadata{WorkflowStepID: versionID, DisplayName: dependency.Workflow.DisplayName,
-		Kind: "WORKFLOW", HierarchyPath: dependency.Workflow.DisplayName}
-	children, err := c.compileSteps(versionID, dependency.Version.Definition.Steps, dependency.Workflow.DisplayName)
+	workflowRuntimeID := "workflow|" + invocationPath
+	c.metadata[workflowRuntimeID] = StepMetadata{WorkflowStepID: versionID, DisplayName: dependency.DisplayName,
+		Kind: "WORKFLOW", HierarchyPath: dependency.DisplayName}
+	children, err := c.compileSteps(versionID, invocationPath, dependency.Steps, dependency.DisplayName, depth)
 	if err != nil {
-		delete(c.state, versionID)
 		return nil, err
 	}
-	workflow := &node.WorkflowNode{NodeID: versionID, Children: children}
-	c.workflows[versionID] = workflow
-	c.state[versionID] = compileDone
-	return workflow, nil
+	return &node.WorkflowNode{NodeID: workflowRuntimeID, Children: children}, nil
 }
 
-func (c *executionCompiler) compileSteps(parentVersionID string, steps []workspace.WorkflowStep, hierarchy string) ([]node.Node, error) {
+func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string, steps []execution.Step, hierarchy string, depth int) ([]node.Node, error) {
 	result := make([]node.Node, 0, len(steps))
 	for _, step := range steps {
+		*c.compiledNodes++
+		if *c.compiledNodes > execution.MaxExpandedExecutions {
+			return nil, fmt.Errorf("compiled nodes exceed maximum %d", execution.MaxExpandedExecutions)
+		}
 		path := hierarchy + " / " + step.DisplayName
-		runtimeID := runtimeWorkflowStepID(parentVersionID, step.ID)
+		runtimeID := runtimeInvocationStepID(invocationPath, step.ID)
 		c.metadata[runtimeID] = StepMetadata{WorkflowStepID: step.ID, DisplayName: step.DisplayName,
 			Kind: string(step.Kind), HierarchyPath: path, NodeID: step.NodeID,
 			NodeVersionID: step.NodeVersionID, CaptureScreenshot: step.CaptureScreenshot}
@@ -146,7 +142,7 @@ func (c *executionCompiler) compileSteps(parentVersionID string, steps []workspa
 		var compiled node.Node
 		var err error
 		switch step.Kind {
-		case workspace.StepAction:
+		case execution.ActionStep:
 			var target fingerprint.NodeSpec
 			if step.NodeID != "" {
 				target, err = c.spec(step.NodeID, step.NodeVersionID)
@@ -157,18 +153,18 @@ func (c *executionCompiler) compileSteps(parentVersionID string, steps []workspa
 			compiled = &node.StepNode{NodeID: runtimeID, Target: target,
 				Action: node.Action{Kind: node.ActionKind(step.Action), Value: step.Value,
 					Values: append([]string(nil), step.Values...)}, Optional: step.Optional}
-		case workspace.StepValidation:
+		case execution.ValidationStep:
 			compiled, err = c.compileValidation(runtimeID, step, "", "", nil)
-		case workspace.StepValidationGroup:
-			compiled, err = c.compileValidationGroup(parentVersionID, runtimeID, path, step)
-		case workspace.StepWait:
+		case execution.ValidationGroupStep:
+			compiled, err = c.compileValidationGroup(invocationPath, runtimeID, path, step)
+		case execution.WaitStep:
 			compiled, err = c.compileWait(runtimeID, step)
-		case workspace.StepRepeat:
+		case execution.RepeatStep:
 			var children []node.Node
-			children, err = c.compileSteps(parentVersionID, step.Children, path)
+			children, err = c.compileSteps(parentVersionID, invocationPath, step.Children, path, depth)
 			compiled = &node.RepeatNode{NodeID: runtimeID, Times: step.RepeatCount, Children: children}
-		case workspace.StepWorkflowRef:
-			compiled, err = c.compileWorkflowCall(parentVersionID, runtimeID, step)
+		case execution.WorkflowReference:
+			compiled, err = c.compileWorkflowCall(parentVersionID, invocationPath, runtimeID, step, depth)
 		default:
 			err = fmt.Errorf("step %s has unsupported kind %q", step.ID, step.Kind)
 		}
@@ -180,8 +176,8 @@ func (c *executionCompiler) compileSteps(parentVersionID string, steps []workspa
 	return result, nil
 }
 
-func (c *executionCompiler) compileValidation(runtimeID string, step workspace.WorkflowStep,
-	groupID, branchID string, inherited *workspace.ValidationWait) (*node.ValidationNode, error) {
+func (c *executionCompiler) compileValidation(runtimeID string, step execution.Step,
+	groupID, branchID string, inherited *execution.Validation) (*node.ValidationNode, error) {
 	if step.Validation == nil {
 		return nil, fmt.Errorf("validation step %s has no configuration", step.ID)
 	}
@@ -189,11 +185,11 @@ func (c *executionCompiler) compileValidation(runtimeID string, step workspace.W
 	if err != nil {
 		return nil, fmt.Errorf("validation step %s: %w", step.ID, err)
 	}
-	wait := step.Validation.Wait
+	wait := *step.Validation
 	if inherited != nil {
 		wait = *inherited
 	}
-	assertion := step.Validation.Assertion
+	assertion := step.Validation
 	return &node.ValidationNode{NodeID: runtimeID, GroupID: groupID, BranchID: branchID, Target: target,
 		Assertion: node.ValidationAssertion{Kind: string(assertion.Kind), Expected: assertion.Expected,
 			ExpectedValues: append([]string(nil), assertion.ExpectedValues...), Attribute: assertion.Attribute,
@@ -201,8 +197,8 @@ func (c *executionCompiler) compileValidation(runtimeID string, step workspace.W
 		Stability: time.Duration(wait.StabilityMS) * time.Millisecond}, nil
 }
 
-func (c *executionCompiler) compileValidationGroup(parentVersionID, runtimeID, path string,
-	step workspace.WorkflowStep) (*node.ValidationGroupNode, error) {
+func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, path string,
+	step execution.Step) (*node.ValidationGroupNode, error) {
 	if step.ValidationGroup == nil {
 		return nil, fmt.Errorf("validation group %s has no configuration", step.ID)
 	}
@@ -211,12 +207,12 @@ func (c *executionCompiler) compileValidationGroup(parentVersionID, runtimeID, p
 	for _, branch := range group.Branches {
 		members := make([]*node.ValidationNode, 0, len(branch.Steps))
 		for _, member := range branch.Steps {
-			memberRuntimeID := runtimeWorkflowStepID(parentVersionID, member.ID)
+			memberRuntimeID := runtimeInvocationStepID(invocationPath, member.ID)
 			c.metadata[memberRuntimeID] = StepMetadata{WorkflowStepID: member.ID,
 				DisplayName: member.DisplayName, Kind: string(member.Kind),
 				HierarchyPath: path + " / " + branch.Name + " / " + member.DisplayName,
 				NodeID:        member.NodeID, NodeVersionID: member.NodeVersionID}
-			validation, err := c.compileValidation(memberRuntimeID, member, runtimeID, branch.ID, &group.Wait)
+			validation, err := c.compileValidation(memberRuntimeID, member, runtimeID, branch.ID, &execution.Validation{MaxWaitMS: group.MaxWaitMS, StabilityMS: group.StabilityMS})
 			if err != nil {
 				return nil, err
 			}
@@ -225,11 +221,11 @@ func (c *executionCompiler) compileValidationGroup(parentVersionID, runtimeID, p
 		branches = append(branches, node.ValidationBranch{ID: branch.ID, Nodes: members})
 	}
 	return &node.ValidationGroupNode{NodeID: runtimeID, Branches: branches,
-		MaxWait:   time.Duration(group.Wait.MaxWaitMS) * time.Millisecond,
-		Stability: time.Duration(group.Wait.StabilityMS) * time.Millisecond}, nil
+		MaxWait:   time.Duration(group.MaxWaitMS) * time.Millisecond,
+		Stability: time.Duration(group.StabilityMS) * time.Millisecond}, nil
 }
 
-func (c *executionCompiler) compileWait(runtimeID string, step workspace.WorkflowStep) (node.Node, error) {
+func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (node.Node, error) {
 	switch step.WaitKind {
 	case "", "sleep":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitSleep,
@@ -241,6 +237,17 @@ func (c *executionCompiler) compileWait(runtimeID string, step workspace.Workflo
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitElement, Target: target,
 			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+	case "element_visible", "element_invisible":
+		target, err := c.spec(step.NodeID, step.NodeVersionID)
+		if err != nil {
+			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
+		}
+		kind := node.WaitElementVisible
+		if step.WaitKind == "element_invisible" {
+			kind = node.WaitElementInvisible
+		}
+		return &node.WaitNode{NodeID: runtimeID, Kind: kind, Target: target,
+			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
 	case "network_idle":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitNetworkIdle,
 			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
@@ -249,7 +256,7 @@ func (c *executionCompiler) compileWait(runtimeID string, step workspace.Workflo
 	}
 }
 
-func (c *executionCompiler) compileWorkflowCall(parentVersionID, runtimeID string, step workspace.WorkflowStep) (node.Node, error) {
+func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath, runtimeID string, step execution.Step, depth int) (node.Node, error) {
 	if step.Reference == nil {
 		return nil, fmt.Errorf("workflow reference step %s has no reference", step.ID)
 	}
@@ -261,15 +268,20 @@ func (c *executionCompiler) compileWorkflowCall(parentVersionID, runtimeID strin
 	if !ok {
 		return nil, fmt.Errorf("workflow reference step %s resolved version %s is missing", step.ID, resolution.WorkflowVersionID)
 	}
-	if childDependency.Workflow.ID != step.Reference.WorkflowID || resolution.WorkflowID != step.Reference.WorkflowID {
+	childWorkflowID := childDependency.WorkflowID
+	if childDependency.ID != "" {
+		childWorkflowID = childDependency.ID
+	}
+	if childWorkflowID != step.Reference.WorkflowID || resolution.WorkflowID != step.Reference.WorkflowID {
 		return nil, fmt.Errorf("workflow reference step %s resolution does not match workflow %s", step.ID, step.Reference.WorkflowID)
 	}
-	target, err := c.compileWorkflow(resolution.WorkflowVersionID)
+	childPath := invocationPath + encodeRuntimeComponent(step.ID) + encodeRuntimeComponent(resolution.WorkflowVersionID)
+	target, err := c.compileWorkflow(resolution.WorkflowVersionID, childPath, depth+1)
 	if err != nil {
 		return nil, err
 	}
 	bindings := cloneStrings(step.Reference.ParameterBindings)
-	for _, parameter := range childDependency.Version.Definition.Parameters {
+	for _, parameter := range childDependency.Parameters {
 		if _, exists := bindings[parameter.Name]; !exists {
 			bindings[parameter.Name] = parameter.DefaultValue
 		}
@@ -278,7 +290,7 @@ func (c *executionCompiler) compileWorkflowCall(parentVersionID, runtimeID strin
 }
 
 func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec, error) {
-	identity := workspace.NodeDependencyIdentity(nodeID, versionID)
+	identity := nodeDependencyIdentity(nodeID, versionID)
 	dependency, ok := c.nodes[identity]
 	if !ok {
 		return fingerprint.NodeSpec{}, fmt.Errorf("node %s version %s is missing from the run snapshot", nodeID, versionID)
@@ -290,14 +302,14 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec
 		}
 		return existing, nil
 	}
-	version := dependency.Version
+	version := dependency
 	fp := version.Fingerprint
-	spec := fingerprint.NodeSpec{UUID: dependency.Node.ID, ID: version.ID,
+	spec := fingerprint.NodeSpec{UUID: dependency.NodeID, ID: version.VersionID,
 		PageURL: version.PageURL, Origin: version.Origin, Role: fp.ARIA.Role,
 		Selectors: append([]fingerprint.Selector(nil), version.Selectors...),
 		Fingerprint: fingerprint.Fingerprint{Tag: fp.Tag, Attributes: cloneStrings(fp.Attributes), Text: fp.Text,
 			ARIA: fp.ARIA, Path: append([]string(nil), fp.Path...), SiblingIndex: fp.SiblingIndex,
-			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID}}
+			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID, Framework: fp.Framework.Clone()}}
 	if err := spec.Validate(); err != nil {
 		return fingerprint.NodeSpec{}, fmt.Errorf("node %s version %s: %w", nodeID, versionID, err)
 	}
@@ -306,11 +318,27 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec
 	return spec, nil
 }
 
-func runtimeWorkflowStepID(workflowVersionID, workflowStepID string) string {
-	return workflowVersionID + "::" + workflowStepID
+func impossibleCompilerState(format string, args ...any) error {
+	return fmt.Errorf("compiler reached impossible state: "+format, args...)
 }
 
-func referenceKey(parentVersionID, stepID string) string { return parentVersionID + ":" + stepID }
+func nodeDependencyIdentity(nodeID, versionID string) execution.NodeDependencyKey {
+	return execution.NodeDependencyKey{NodeID: nodeID, VersionID: versionID}
+}
+
+func runtimeWorkflowStepID(workflowVersionID, workflowStepID string) string {
+	return runtimeInvocationStepID(encodeRuntimeComponent(workflowVersionID), workflowStepID)
+}
+
+func runtimeInvocationStepID(invocationPath, workflowStepID string) string {
+	return "step|" + invocationPath + encodeRuntimeComponent(workflowStepID)
+}
+
+func encodeRuntimeComponent(value string) string { return fmt.Sprintf("%d:%s", len(value), value) }
+
+func referenceKey(parentVersionID, stepID string) execution.WorkflowReferenceKey {
+	return execution.WorkflowReferenceKey{ParentVersionID: parentVersionID, StepID: stepID}
+}
 
 func cloneStrings(input map[string]string) map[string]string {
 	result := make(map[string]string, len(input))

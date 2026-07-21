@@ -1,0 +1,273 @@
+package automation
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+const (
+	validationMinWaitMS      = 1_000
+	validationMaxWaitMS      = 60_000
+	validationMinStabilityMS = 200
+	validationMaxStabilityMS = 5_000
+	validationMaxBranches    = 5
+	validationMaxBranchSteps = 10
+	validationMaxGroupSteps  = 20
+)
+
+// ValidationAssertionKind 是一种独立于框架的语句，针对一个精确版本化的 Node 进行评估。框架适配器将 DOM/ARIA 详细信息转换为这些含义；没有特定于框架的选择器或类属于这里。
+type ValidationAssertionKind string
+
+const (
+	ValidationExists                ValidationAssertionKind = "exists"
+	ValidationNotExists             ValidationAssertionKind = "not_exists"
+	ValidationVisible               ValidationAssertionKind = "visible"
+	ValidationNotVisible            ValidationAssertionKind = "not_visible"
+	ValidationTextEquals            ValidationAssertionKind = "text_equals"
+	ValidationTextContains          ValidationAssertionKind = "text_contains"
+	ValidationTextMatches           ValidationAssertionKind = "text_matches"
+	ValidationValueEquals           ValidationAssertionKind = "value_equals"
+	ValidationValueContains         ValidationAssertionKind = "value_contains"
+	ValidationValueMatches          ValidationAssertionKind = "value_matches"
+	ValidationValueNotEmpty         ValidationAssertionKind = "value_not_empty"
+	ValidationEnabled               ValidationAssertionKind = "enabled"
+	ValidationDisabled              ValidationAssertionKind = "disabled"
+	ValidationChecked               ValidationAssertionKind = "checked"
+	ValidationUnchecked             ValidationAssertionKind = "unchecked"
+	ValidationMixed                 ValidationAssertionKind = "mixed"
+	ValidationSelected              ValidationAssertionKind = "selected"
+	ValidationUnselected            ValidationAssertionKind = "unselected"
+	ValidationPressed               ValidationAssertionKind = "pressed"
+	ValidationUnpressed             ValidationAssertionKind = "unpressed"
+	ValidationSelectedTextEquals    ValidationAssertionKind = "selected_text_equals"
+	ValidationSelectedTextContains  ValidationAssertionKind = "selected_text_contains"
+	ValidationSelectedValueEquals   ValidationAssertionKind = "selected_value_equals"
+	ValidationSelectedValueContains ValidationAssertionKind = "selected_value_contains"
+	ValidationSelectedSetEquals     ValidationAssertionKind = "selected_set_equals"
+	ValidationSelectedSetContains   ValidationAssertionKind = "selected_set_contains"
+	ValidationAttributeEquals       ValidationAssertionKind = "attribute_equals"
+	ValidationAttributeContains     ValidationAssertionKind = "attribute_contains"
+)
+
+// ValidationAssertion 故意是单一的。验证步骤仅代表一个语句；调用者使用 ValidationGroup 表达合取/析取，而不是在节点中嵌入断言树。
+type ValidationAssertion struct {
+	Kind     ValidationAssertionKind
+	Expected string
+	// ExpectedValues 仅由 selected_set_* 使用，表示无序集合。空切片是有意义的：它断言没有选择任何项目。
+	ExpectedValues []string
+	Attribute      string
+	IgnoreCase     bool
+}
+
+// Normalized 规范化删除对所选断言类型没有意义的字段。当用户切换类型或浏览器采样器提供语义建议时，适配器会使用它，而验证对原始域输入仍然严格。
+func (a ValidationAssertion) Normalized() ValidationAssertion {
+	a.Kind = ValidationAssertionKind(strings.TrimSpace(string(a.Kind)))
+	switch a.Kind {
+	case ValidationExists, ValidationNotExists, ValidationVisible, ValidationNotVisible,
+		ValidationValueNotEmpty, ValidationEnabled, ValidationDisabled, ValidationChecked,
+		ValidationUnchecked, ValidationMixed, ValidationSelected, ValidationUnselected,
+		ValidationPressed, ValidationUnpressed:
+		return ValidationAssertion{Kind: a.Kind}
+	case ValidationTextMatches, ValidationValueMatches:
+		a.ExpectedValues = nil
+		a.Attribute = ""
+		a.IgnoreCase = false
+	case ValidationSelectedSetEquals, ValidationSelectedSetContains:
+		a.Expected = ""
+		a.Attribute = ""
+		a.IgnoreCase = false
+	case ValidationAttributeEquals, ValidationAttributeContains:
+		a.ExpectedValues = nil
+	case ValidationTextEquals, ValidationTextContains, ValidationValueEquals, ValidationValueContains,
+		ValidationSelectedTextEquals, ValidationSelectedTextContains, ValidationSelectedValueEquals,
+		ValidationSelectedValueContains:
+		a.ExpectedValues = nil
+		a.Attribute = ""
+	}
+	return a
+}
+
+func (a ValidationAssertion) Validate() error {
+	switch a.Kind {
+	case ValidationExists, ValidationNotExists, ValidationVisible, ValidationNotVisible,
+		ValidationValueNotEmpty, ValidationEnabled, ValidationDisabled, ValidationChecked,
+		ValidationUnchecked, ValidationMixed, ValidationSelected, ValidationUnselected,
+		ValidationPressed, ValidationUnpressed:
+		if a.Expected != "" || len(a.ExpectedValues) != 0 || a.Attribute != "" || a.IgnoreCase {
+			return fmt.Errorf("validation %q does not accept comparison options", a.Kind)
+		}
+		return nil
+	case ValidationTextEquals, ValidationTextContains, ValidationValueEquals, ValidationValueContains,
+		ValidationSelectedTextEquals, ValidationSelectedTextContains, ValidationSelectedValueEquals,
+		ValidationSelectedValueContains:
+		if len(a.ExpectedValues) != 0 || a.Attribute != "" {
+			return fmt.Errorf("validation %q accepts one scalar expected value", a.Kind)
+		}
+		return nil
+	case ValidationTextMatches, ValidationValueMatches:
+		if len(a.ExpectedValues) != 0 || a.Attribute != "" || a.IgnoreCase {
+			return fmt.Errorf("validation %q accepts only a regular expression", a.Kind)
+		}
+		// 运行时表达式仅在其变量展开后才进行编译。此处编译 ${env.pattern} 将拒绝有效的持久模板。
+		if !strings.Contains(a.Expected, "${") {
+			if _, err := regexp.Compile(a.Expected); err != nil {
+				return fmt.Errorf("validation %q has invalid regular expression: %w", a.Kind, err)
+			}
+		}
+		return nil
+	case ValidationSelectedSetEquals, ValidationSelectedSetContains:
+		if a.Expected != "" || a.Attribute != "" || a.IgnoreCase {
+			return fmt.Errorf("validation %q accepts only expected values", a.Kind)
+		}
+		return nil
+	case ValidationAttributeEquals, ValidationAttributeContains:
+		if strings.TrimSpace(a.Attribute) == "" {
+			return errors.New("attribute validation requires an attribute name")
+		}
+		if len(a.ExpectedValues) != 0 {
+			return fmt.Errorf("validation %q accepts one scalar expected value", a.Kind)
+		}
+		if strings.Contains(a.Attribute, "${") {
+			return errors.New("attribute validation does not accept variable expressions")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported validation kind %q", a.Kind)
+	}
+}
+
+// ValidationWait 为独立验证节点或整个验证组定义有界等待和连续稳定性窗口。
+type ValidationWait struct {
+	MaxWaitMS   int
+	StabilityMS int
+}
+
+func (w ValidationWait) Validate() error {
+	if w.MaxWaitMS < validationMinWaitMS || w.MaxWaitMS > validationMaxWaitMS {
+		return fmt.Errorf("validation maximum wait must be %d-%dms", validationMinWaitMS, validationMaxWaitMS)
+	}
+	if w.StabilityMS < validationMinStabilityMS || w.StabilityMS > validationMaxStabilityMS {
+		return fmt.Errorf("validation stability window must be %d-%dms", validationMinStabilityMS, validationMaxStabilityMS)
+	}
+	if w.StabilityMS >= w.MaxWaitMS {
+		return errors.New("validation stability window must be shorter than maximum wait")
+	}
+	return nil
+}
+
+func (w ValidationWait) isZero() bool { return w.MaxWaitMS == 0 && w.StabilityMS == 0 }
+
+// ValidationConfig 属于 StepValidation。等待仅对独立验证有意义；组成员继承ValidationGroup.Wait。
+type ValidationConfig struct {
+	Assertion ValidationAssertion
+	Wait      ValidationWait
+	// Actual/SuggestedKinds 是采样时间编辑器提示，而不是可执行的事实。它们使捕获的语义建议可检查，同时保持持久断言本身独立于 UI 框架。
+	Actual         string
+	SupportedKinds []ValidationAssertionKind
+}
+
+// ValidationBranch 是固定 (AND...) OR (AND...) 组语法中的一个 AND 分支。步骤保留为 WorkflowStep 值，以便 DTO 映射器和实现器可以使用一种递归模式，而聚合验证则阻止任何其他类型进入分支。
+type ValidationBranch struct {
+	ID    string
+	Name  string
+	Steps []WorkflowStep
+}
+
+// ValidationGroup 是 AND 分支的一级析取。它的Wait被每个成员节点继承；嵌套组和操作节点无效。
+type ValidationGroup struct {
+	Wait     ValidationWait
+	Branches []ValidationBranch
+}
+
+func validateStandaloneValidationStep(step WorkflowStep) []string {
+	var problems []string
+	if step.Validation == nil {
+		return []string{fmt.Sprintf("validation step %q requires validation configuration", step.DisplayName)}
+	}
+	if step.ValidationGroup != nil || step.Action != "" || step.Reference != nil ||
+		step.Value != "" || len(step.Values) != 0 || step.WaitKind != "" || step.WaitMS != 0 ||
+		step.RepeatCount != 0 || len(step.Children) != 0 || step.Optional {
+		problems = append(problems, fmt.Sprintf("validation step %q contains unsupported action or child configuration", step.DisplayName))
+	}
+	if strings.TrimSpace(step.NodeID) == "" || strings.TrimSpace(step.NodeVersionID) == "" {
+		problems = append(problems, fmt.Sprintf("validation step %q requires an exact node reference", step.DisplayName))
+	}
+	if err := step.Validation.Assertion.Validate(); err != nil {
+		problems = append(problems, fmt.Sprintf("validation step %q assertion: %v", step.DisplayName, err))
+	}
+	if err := step.Validation.Wait.Validate(); err != nil {
+		problems = append(problems, fmt.Sprintf("validation step %q wait: %v", step.DisplayName, err))
+	}
+	return problems
+}
+
+func validateValidationGroupStep(step WorkflowStep, seen map[string]struct{}) []string {
+	var problems []string
+	if step.ValidationGroup == nil {
+		return []string{fmt.Sprintf("validation group %q requires group configuration", step.DisplayName)}
+	}
+	if step.Validation != nil || step.Action != "" || step.Reference != nil ||
+		step.NodeID != "" || step.NodeVersionID != "" || step.Value != "" || len(step.Values) != 0 ||
+		step.WaitKind != "" || step.WaitMS != 0 || step.RepeatCount != 0 || len(step.Children) != 0 || step.Optional {
+		problems = append(problems, fmt.Sprintf("validation group %q contains unsupported step configuration", step.DisplayName))
+	}
+	group := step.ValidationGroup
+	if err := group.Wait.Validate(); err != nil {
+		problems = append(problems, fmt.Sprintf("validation group %q wait: %v", step.DisplayName, err))
+	}
+	if len(group.Branches) == 0 || len(group.Branches) > validationMaxBranches {
+		problems = append(problems, fmt.Sprintf("validation group %q requires 1-%d branches", step.DisplayName, validationMaxBranches))
+	}
+	branchIDs := make(map[string]struct{}, len(group.Branches))
+	total := 0
+	for _, branch := range group.Branches {
+		if strings.TrimSpace(branch.ID) == "" || strings.TrimSpace(branch.Name) == "" {
+			problems = append(problems, fmt.Sprintf("validation group %q branch id and name are required", step.DisplayName))
+		}
+		if _, exists := branchIDs[branch.ID]; exists && branch.ID != "" {
+			problems = append(problems, fmt.Sprintf("validation group %q has duplicate branch id %q", step.DisplayName, branch.ID))
+		}
+		branchIDs[branch.ID] = struct{}{}
+		if len(branch.Steps) == 0 || len(branch.Steps) > validationMaxBranchSteps {
+			problems = append(problems, fmt.Sprintf("validation group %q branch %q requires 1-%d validation steps", step.DisplayName, branch.Name, validationMaxBranchSteps))
+		}
+		total += len(branch.Steps)
+		for _, member := range branch.Steps {
+			if strings.TrimSpace(member.ID) == "" || strings.TrimSpace(member.DisplayName) == "" {
+				problems = append(problems, fmt.Sprintf("validation group %q member step id and display name are required", step.DisplayName))
+			}
+			if _, exists := seen[member.ID]; exists && member.ID != "" {
+				problems = append(problems, fmt.Sprintf("duplicate step id %q", member.ID))
+			}
+			seen[member.ID] = struct{}{}
+			if member.Kind != StepValidation {
+				problems = append(problems, fmt.Sprintf("validation group %q branch %q only accepts VALIDATION steps", step.DisplayName, branch.Name))
+				continue
+			}
+			if member.Validation == nil {
+				problems = append(problems, fmt.Sprintf("validation group %q member %q requires validation configuration", step.DisplayName, member.DisplayName))
+				continue
+			}
+			if member.ValidationGroup != nil || member.Action != "" || member.Reference != nil ||
+				member.Value != "" || len(member.Values) != 0 || member.WaitKind != "" || member.WaitMS != 0 ||
+				member.RepeatCount != 0 || len(member.Children) != 0 || member.Optional {
+				problems = append(problems, fmt.Sprintf("validation group %q member %q contains unsupported action or child configuration", step.DisplayName, member.DisplayName))
+			}
+			if strings.TrimSpace(member.NodeID) == "" || strings.TrimSpace(member.NodeVersionID) == "" {
+				problems = append(problems, fmt.Sprintf("validation group %q member %q requires an exact node reference", step.DisplayName, member.DisplayName))
+			}
+			if err := member.Validation.Assertion.Validate(); err != nil {
+				problems = append(problems, fmt.Sprintf("validation group %q member %q assertion: %v", step.DisplayName, member.DisplayName, err))
+			}
+			if !member.Validation.Wait.isZero() {
+				problems = append(problems, fmt.Sprintf("validation group %q member %q must inherit the group wait", step.DisplayName, member.DisplayName))
+			}
+		}
+	}
+	if total > validationMaxGroupSteps {
+		problems = append(problems, fmt.Sprintf("validation group %q has %d validation steps; maximum is %d", step.DisplayName, total, validationMaxGroupSteps))
+	}
+	return problems
+}

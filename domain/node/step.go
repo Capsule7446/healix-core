@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
@@ -55,6 +57,23 @@ type StepNode struct {
 
 func (s *StepNode) ID() string { return s.NodeID }
 
+func validateNavigationURL(value string) error {
+	if strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return errors.New("control characters are not allowed")
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return errors.New("absolute URL is required")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("unsupported scheme %q", parsed.Scheme)
+	}
+	if parsed.User != nil {
+		return errors.New("userinfo is not allowed")
+	}
+	return nil
+}
+
 func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("node %s: wait step interval: %w", s.NodeID, err)
@@ -70,6 +89,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := s.transition(ctx, rt, execution, PhaseRunning); err != nil {
 		return fmt.Errorf("node %s: enter running phase: %w", s.NodeID, err)
 	}
+	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
 
 	action := s.Action
 	action.Values = append([]string(nil), s.Action.Values...)
@@ -90,8 +110,11 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	}
 
 	if action.Kind == ActionNavigate {
+		if err := validateNavigationURL(action.Value); err != nil {
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: invalid navigation URL: %w", s.NodeID, err))
+		}
 		started := time.Now()
-		attempts, err := rt.runOperationWithAttempts(func() error { return rt.Driver.Navigate(ctx, action.Value) })
+		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Navigate(ctx, action.Value) })
 		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: navigate failed: %w", s.NodeID, ClassifyError("navigate", err)), observationErr))
@@ -103,7 +126,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 	}
 	if action.Kind == ActionPress {
 		started := time.Now()
-		attempts, err := rt.runOperationWithAttempts(func() error { return rt.Driver.Press(ctx, action.Value) })
+		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Press(ctx, action.Value) })
 		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: press failed: %w", s.NodeID, ClassifyError("press", err)), observationErr))
@@ -114,19 +137,16 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 
-	target := rt.effectiveSpec(s.Target)
+	target := s.Target
 	healed := false
 	var el Element
 	locateStarted := time.Now()
-	locateAttempts, err := rt.runOperationWithAttempts(func() error {
+	locateAttempts, err := rt.operationRunner().Run(func() error {
 		var locateErr error
-		el, locateErr = rt.Driver.Locate(ctx, target)
+		el, locateErr = rt.locator().Locate(ctx, target)
 		return locateErr
 	})
-	locateObservationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
-	if locateObservationErr != nil {
-		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record locate observation: %w", s.NodeID, locateObservationErr))
-	}
+	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 	if err != nil {
 		if !errors.Is(err, ErrElementNotFound) {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed: %w", s.NodeID, err))
@@ -137,7 +157,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 			}
 			return nil
 		}
-		if rt.Healer == nil {
+		if rt.Healing == nil && rt.Healer == nil {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed and healing disabled: %w", s.NodeID, err))
 		}
 		if err := s.transition(ctx, rt, execution, PhaseHealing); err != nil {
@@ -181,12 +201,15 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 		return nil, fmt.Errorf("snapshot for healing: %w", err)
 	}
 
-	decision, err := rt.Healer.Heal(ctx, target, snap)
+	decision, err := rt.healingPort().Recover(ctx, target, snap)
 	if err != nil {
 		return nil, err
 	}
 	if err := decision.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid heal decision: %w", err)
+	}
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: s.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+		return nil, fmt.Errorf("record heal samples: %w", err)
 	}
 	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
 	if err != nil {
@@ -194,22 +217,29 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	}
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome == heal.OutcomeNoCandidate {
+			if rt.Facts != nil {
+				if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+					return nil, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+				}
+			}
 			return nil, fmt.Errorf("no heal candidate reached review_cap: %s", assessment.Explanation)
+		}
+		if assessment.Disposition == heal.DispositionBlock {
+			decision.Outcome = heal.OutcomeSafetyRejected
+			decision.NeedsReview = false
+		}
+		if rt.Facts != nil {
+			oldSelector := firstSelector(target)
+			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+				return nil, fmt.Errorf("record heal decision: %w", recordErr)
+			}
 		}
 		return nil, fmt.Errorf("healing refused: %s", assessment.Explanation)
 	}
-
-	if rt.Facts != nil {
-		oldSelector := fingerprint.Selector{}
-		if len(target.Selectors) > 0 {
-			oldSelector = target.Selectors[0]
-		}
-		if err := rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, oldSelector, decision); err != nil {
-			return nil, fmt.Errorf("record heal decision: %w", err)
-		}
-	}
-
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
+		if rt.Facts != nil {
+			_ = rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision)
+		}
 		return nil, fmt.Errorf("no heal candidate reached review_cap")
 	}
 
@@ -221,6 +251,11 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 		return nil, fmt.Errorf("re-locate after heal: %w", err)
 	}
 
+	if rt.Facts != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			return nil, fmt.Errorf("record heal decision: %w", recordErr)
+		}
+	}
 	rt.setSelectorOverlay(healedSpec)
 
 	return el, nil
@@ -286,6 +321,13 @@ func (s *StepNode) transition(ctx context.Context, rt *Runtime, execution *StepE
 	}
 	if err := rt.emit(ctx, s.NodeID, next); err != nil {
 		return err
+	}
+	if next == PhaseRunning {
+		occurrence, err := rt.activeOccurrence(s.NodeID)
+		if err != nil {
+			return err
+		}
+		execution.occurrence = occurrence
 	}
 	return execution.Transition(next)
 }

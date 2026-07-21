@@ -1,0 +1,148 @@
+package sampling
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
+)
+
+type SamplingBrowserStatus string
+
+const (
+	SamplingBrowserClosed SamplingBrowserStatus = "CLOSED"
+	SamplingBrowserOpen   SamplingBrowserStatus = "OPEN"
+)
+
+type SamplingCaptureStatus string
+
+const (
+	SamplingCaptureIdle        SamplingCaptureStatus = "IDLE"
+	SamplingCaptureRecording   SamplingCaptureStatus = "RECORDING"
+	SamplingCapturePaused      SamplingCaptureStatus = "PAUSED"
+	SamplingCaptureEnded       SamplingCaptureStatus = "ENDED"
+	SamplingCaptureInterrupted SamplingCaptureStatus = "INTERRUPTED"
+)
+
+// SamplingLifecycle 属于每个临时工作流程。  CaptureStatus 是控件的工作区投影，而此值在另一个浏览器会话启动后可以区分已结束/中断的草稿。
+type SamplingLifecycle string
+
+const (
+	SamplingLifecycleRecording   SamplingLifecycle = "RECORDING"
+	SamplingLifecyclePaused      SamplingLifecycle = "PAUSED"
+	SamplingLifecycleEnded       SamplingLifecycle = "ENDED"
+	SamplingLifecycleInterrupted SamplingLifecycle = "INTERRUPTED"
+)
+
+type SamplingWorkflowStatus string
+
+const (
+	SamplingWorkflowUnsaved SamplingWorkflowStatus = "UNSAVED"
+	SamplingWorkflowSaving  SamplingWorkflowStatus = "SAVING"
+	SamplingWorkflowSaved   SamplingWorkflowStatus = "SAVED"
+	SamplingWorkflowFailed  SamplingWorkflowStatus = "FAILED"
+)
+
+type SamplingResolutionMode string
+
+const (
+	SamplingResolutionUndecided   SamplingResolutionMode = "UNDECIDED"
+	SamplingResolutionCreate      SamplingResolutionMode = "CREATE"
+	SamplingResolutionMerge       SamplingResolutionMode = "MERGE"
+	SamplingResolutionReuse       SamplingResolutionMode = "REUSE"
+	SamplingResolutionForceCreate SamplingResolutionMode = "FORCE_CREATE"
+)
+
+type SamplingCandidate struct {
+	NodeID          string
+	DisplayName     string
+	VersionID       string
+	VersionNumber   int
+	Similarity      float64
+	SelectorOverlap int
+	Exact           bool
+}
+
+type TemporarySamplingNode struct {
+	ID             string
+	DisplayName    string
+	Properties     automation.Properties
+	PageURL        string
+	Origin         string
+	Selectors      []fingerprint.Selector
+	Fingerprint    fingerprint.Fingerprint
+	StepIDs        []string
+	ResolutionMode SamplingResolutionMode
+	ExistingNodeID string
+	Candidates     []SamplingCandidate
+}
+
+type TemporarySamplingWorkflow struct {
+	ID            string
+	SessionID     string
+	DisplayName   string
+	Properties    automation.Properties
+	StartedAt     int64
+	PausedAt      int64
+	EndedAt       int64
+	InterruptedAt int64
+	Lifecycle     SamplingLifecycle
+	// 验证插入是一个可选的暂停编辑器选择。  它只影响下一次验证捕获；普通操作始终保留根步骤，并且应用程序层清除无效/已删除的分支。
+	ValidationInsertGroupID     string
+	ValidationInsertBranchID    string
+	ValidationCapturedActionIDs []string
+	Status                      SamplingWorkflowStatus
+	ErrorMessage                string
+	Steps                       []automation.WorkflowStep
+	Parameters                  []automation.ParameterDefinition
+	Nodes                       []TemporarySamplingNode
+	SavedWorkflowID             string
+	SavedVersionID              string
+	SavedVersionNumber          int
+}
+
+// RebuildTemporaryNodeReferences 从可编辑工作流树中派生临时 Node -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
+func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
+	if workflow == nil {
+		return errors.New("temporary sampling workflow is required")
+	}
+	nodes := make(map[string]*TemporarySamplingNode, len(workflow.Nodes))
+	for index := range workflow.Nodes {
+		workflow.Nodes[index].StepIDs = nil
+		nodes[workflow.Nodes[index].ID] = &workflow.Nodes[index]
+	}
+	var walk func([]automation.WorkflowStep) error
+	walk = func(steps []automation.WorkflowStep) error {
+		for _, step := range steps {
+			if step.NodeID != "" {
+				node, ok := nodes[step.NodeID]
+				if !ok {
+					return fmt.Errorf("sampling step %s references unknown temporary node %s", step.ID, step.NodeID)
+				}
+				node.StepIDs = append(node.StepIDs, step.ID)
+			}
+			if err := walk(step.Children); err != nil {
+				return err
+			}
+			if step.ValidationGroup != nil {
+				for _, branch := range step.ValidationGroup.Branches {
+					if err := walk(branch.Steps); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	}
+	return walk(workflow.Steps)
+}
+
+type SamplingWorkspace struct {
+	BrowserStatus     SamplingBrowserStatus
+	CaptureStatus     SamplingCaptureStatus
+	ValidationArmed   bool
+	BrowserSessionID  string
+	CurrentWorkflowID string
+	Workflows         []TemporarySamplingWorkflow
+}

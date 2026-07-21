@@ -18,6 +18,29 @@ func (n *bindingCaptureNode) Run(_ context.Context, rt *Runtime) error {
 	return nil
 }
 
+func TestRepeatNestedWorkflowEventsHaveDistinctOccurrences(t *testing.T) {
+	facts := &testFacts{}
+	runtime := &Runtime{Facts: facts, Scratchpad: map[string]any{}}
+	call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "child", Children: []Node{&WorkflowNode{NodeID: "leaf"}}}}
+	repeat := &RepeatNode{NodeID: "repeat", Times: 2, Children: []Node{call}}
+
+	if err := repeat.Run(context.Background(), runtime); err != nil {
+		t.Fatal(err)
+	}
+	occurrences := map[string][]int{}
+	for _, event := range facts.events {
+		if event.Phase == PhaseRunning {
+			occurrences[event.NodeID] = append(occurrences[event.NodeID], event.Occurrence)
+		}
+	}
+	for _, nodeID := range []string{"call", "child", "leaf"} {
+		got := occurrences[nodeID]
+		if len(got) != 2 || got[0] != 1 || got[1] != 2 {
+			t.Fatalf("%s running occurrences = %v, want [1 2]", nodeID, got)
+		}
+	}
+}
+
 func TestWorkflowCallAppliesAndRestoresParameterScope(t *testing.T) {
 	capture := &bindingCaptureNode{name: "child_region"}
 	call := &WorkflowCallNode{

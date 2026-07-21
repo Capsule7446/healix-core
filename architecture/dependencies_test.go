@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 const coreModule = "github.com/Capsule7446/healix-core/"
@@ -113,62 +114,141 @@ func TestBoundedContextIsolation(t *testing.T) {
 	}
 }
 
-func TestWorkspaceExcludesHostConfiguration(t *testing.T) {
+func TestWorkspacePackageIsRemoved(t *testing.T) {
 	root := repositoryRoot(t)
-	forbidden := []string{"type LocalSettings", "type StorageLayout", "type SettingsStore",
-		"DataDirectory", "LogDirectory", "BrowserPath", "LanguageSimplifiedChinese", "Close() error",
-		"OutputRoot", "ScreenshotFormatJPEG", "ScreenshotJPEGQuality"}
-	err := filepath.WalkDir(filepath.Join(root, "domain", "workspace"), func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			return nil
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		for _, symbol := range forbidden {
-			if strings.Contains(string(raw), symbol) {
-				rel, _ := filepath.Rel(root, path)
-				t.Errorf("%s owns host concern %q", filepath.ToSlash(rel), symbol)
+	workspacePath := filepath.Join(root, "domain", "workspace")
+	if _, err := os.Stat(workspacePath); !os.IsNotExist(err) {
+		t.Fatalf("removed workspace domain directory must not exist: %v", err)
+	}
+}
+
+func TestCoreOwnsNoBusinessMetricsProjection(t *testing.T) {
+	root := repositoryRoot(t)
+	matches, err := filepath.Glob(filepath.Join(root, "domain", "metrics", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("domain/metrics must be owned by a consuming project's read side: %v", matches)
+	}
+}
+
+func TestDomainOwnsBehaviorNotReadModelsOrStoragePorts(t *testing.T) {
+	root := repositoryRoot(t)
+	err := walkProductionGo(filepath.Join(root, "domain"), func(path string, parsed *ast.File, fset *token.FileSet) {
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			declaration, ok := node.(*ast.TypeSpec)
+			if !ok {
+				return true
 			}
-		}
-		return nil
+			contract, ok := declaration.Type.(*ast.InterfaceType)
+			if !ok {
+				return true
+			}
+			if reason, forbidden := forbiddenDomainInterfaceReason(declaration.Name.Name, contract); forbidden {
+				rel, _ := filepath.Rel(root, path)
+				t.Errorf("%s:%d: domain interface %s is forbidden: %s", filepath.ToSlash(rel),
+					fset.Position(declaration.Pos()).Line, declaration.Name.Name, reason)
+			}
+			return false
+		})
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestMetricsIsReadOnlyAndEngineDoesNotOwnProjection(t *testing.T) {
-	root := repositoryRoot(t)
-	metricsSource, err := os.ReadFile(filepath.Join(root, "domain", "metrics", "metrics.go"))
-	if err != nil {
-		t.Fatal(err)
+func TestForbiddenDomainInterfaceReason(t *testing.T) {
+	tests := []struct {
+		name      string
+		contract  string
+		forbidden bool
+	}{
+		{name: "FolderReader", contract: "interface { ListFolders(); GetFolder() }", forbidden: true},
+		{name: "RunQuery", contract: "interface { Execute() }", forbidden: true},
+		{name: "MetricsProjection", contract: "interface { Observe() }", forbidden: true},
+		{name: "WorkspaceStore", contract: "interface { Commit() }", forbidden: true},
+		{name: "NodeRepository", contract: "interface { Resolve() }", forbidden: true},
+		{name: "Gateway", contract: "interface { FindNode() }", forbidden: true},
+		{name: "Gateway", contract: "interface { SaveNode() }", forbidden: true},
+		{name: "Gateway", contract: "interface { NodeRepository }", forbidden: true},
+		{name: "Reader", contract: "interface { Exists(); Visible(); Text(); Attribute() }"},
+		{name: "ValidationStateReader", contract: "interface { ValidationState() }"},
+		{name: "SecretResolver", contract: "interface { Resolve() }"},
+		{name: "FrameworkDetector", contract: "interface { Detect() }"},
+		{name: "Locator", contract: "interface { Locate() }"},
+		{name: "Healer", contract: "interface { Heal() }"},
 	}
-	for _, forbidden := range []string{"type Repository interface", "type RunRepository interface",
-		"Save(", "Create(", "Update(", "Delete(", "Record(", "Commit("} {
-		if strings.Contains(string(metricsSource), forbidden) {
-			t.Errorf("metrics contains write contract %q", forbidden)
+	for _, test := range tests {
+		t.Run(test.name+test.contract, func(t *testing.T) {
+			parsed, err := parser.ParseExpr(test.contract)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, forbidden := forbiddenDomainInterfaceReason(test.name, parsed.(*ast.InterfaceType))
+			if forbidden != test.forbidden {
+				t.Fatalf("forbidden = %v, want %v", forbidden, test.forbidden)
+			}
+		})
+	}
+}
+
+func forbiddenDomainInterfaceReason(name string, contract *ast.InterfaceType) (string, bool) {
+	forbiddenRoles := map[string]struct{}{
+		"Repository": {}, "Store": {}, "Storage": {}, "Projection": {}, "Query": {}, "Queries": {},
+	}
+	for _, word := range camelCaseWords(name) {
+		if _, forbidden := forbiddenRoles[word]; forbidden {
+			return "role name belongs to application queries or infrastructure storage", true
 		}
 	}
-	if !strings.Contains(string(metricsSource), "type Reader interface") ||
-		!strings.Contains(string(metricsSource), "QueryHealQuality") {
-		t.Fatal("metrics.Reader.QueryHealQuality contract is missing")
-	}
-	err = walkAllGo(filepath.Join(root, "application", "engine"), func(path string, parsed *ast.File, _ *token.FileSet) {
-		for _, spec := range parsed.Imports {
-			if imported := unquote(t, spec); imported == coreModule+"domain/metrics" ||
-				strings.HasPrefix(imported, coreModule+"domain/metrics/") {
-				t.Errorf("%s: engine must not own metrics projection", path)
+	for _, field := range contract.Methods.List {
+		if len(field.Names) == 0 {
+			if identifier, ok := field.Type.(*ast.Ident); ok {
+				for _, word := range camelCaseWords(identifier.Name) {
+					if _, forbidden := forbiddenRoles[word]; forbidden {
+						return "embedded interface hides an application or storage role", true
+					}
+				}
+			}
+			continue
+		}
+		for _, method := range field.Names {
+			if persistenceOrQueryMethod(method.Name) {
+				return "method is shaped like aggregate retrieval or persistence", true
 			}
 		}
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
+	return "", false
+}
+
+func camelCaseWords(name string) []string {
+	if name == "" {
+		return nil
+	}
+	runes := []rune(name)
+	start := 0
+	words := make([]string, 0, 4)
+	for index := 1; index < len(runes); index++ {
+		boundary := unicode.IsUpper(runes[index]) && (!unicode.IsUpper(runes[index-1]) ||
+			(index+1 < len(runes) && unicode.IsLower(runes[index+1])))
+		if boundary {
+			words = append(words, string(runes[start:index]))
+			start = index
+		}
+	}
+	return append(words, string(runes[start:]))
+}
+
+func persistenceOrQueryMethod(name string) bool {
+	verbs := []string{"Get", "List", "Find", "Search", "Query", "Load", "Lookup", "Save", "Create",
+		"Update", "Delete", "Upsert", "Insert", "Remove", "Archive", "Restore"}
+	for _, verb := range verbs {
+		if strings.HasPrefix(name, verb) && (len(name) == len(verb) || unicode.IsUpper(rune(name[len(verb)]))) {
+			return true
+		}
+	}
+	return false
 }
 
 func walkProductionGo(root string, visit func(string, *ast.File, *token.FileSet)) error {
@@ -200,12 +280,10 @@ func walkGo(root string, includeTests bool, visit func(string, *ast.File, *token
 
 func domainContext(packageName string) (string, bool) {
 	switch packageName {
-	case "heal", "node":
+	case "heal", "node", "execution", "evidence":
 		return "execution", true
-	case "sampling", "workspace":
-		return "workspace", true
-	case "metrics":
-		return "projection", true
+	case "sampling", "automation":
+		return "automation", true
 	case "fingerprint", "interpolation":
 		return "shared", true
 	default:

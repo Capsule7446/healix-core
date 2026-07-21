@@ -81,10 +81,24 @@ type Fingerprint struct {
 	LabelText string
 	// FormID 是最近的祖先 <form> 的 id（没有 id 则退化为 name），
 	// 不在任何表单内则为空。用于区分同一页面里长得相似的多个表单。
-	FormID string
+	FormID    string
+	Framework FrameworkStack
 }
 
-// NodeSpec 是为某个 step 撰写/采样得到的一个可定位元素：
+// Validate enforces the shared identity invariants used by matching and healing.
+func (f Fingerprint) Validate() error {
+	if strings.TrimSpace(f.Tag) == "" {
+		return errors.New("fingerprint.tag is required")
+	}
+	if f.Attributes == nil {
+		return errors.New("fingerprint.attributes is required")
+	}
+	if f.SiblingIndex < 0 {
+		return errors.New("fingerprint.sibling_index must be >= 0")
+	}
+	return f.Framework.Validate()
+}
+
 // 优先尝试选择器，只有全部选择器失败后才会用到指纹。
 type NodeSpec struct {
 	UUID        string
@@ -113,14 +127,8 @@ func (s NodeSpec) Validate() error {
 			problems = append(problems, fmt.Sprintf("selectors[%d]: %v", i, err))
 		}
 	}
-	if strings.TrimSpace(s.Fingerprint.Tag) == "" {
-		problems = append(problems, "fingerprint.tag is required")
-	}
-	if s.Fingerprint.Attributes == nil {
-		problems = append(problems, "fingerprint.attributes is required")
-	}
-	if s.Fingerprint.SiblingIndex < 0 {
-		problems = append(problems, "fingerprint.sibling_index must be >= 0")
+	if err := s.Fingerprint.Validate(); err != nil {
+		problems = append(problems, err.Error())
 	}
 	if len(problems) != 0 {
 		return errors.New(strings.Join(problems, "; "))
