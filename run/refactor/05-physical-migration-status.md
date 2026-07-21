@@ -11,6 +11,7 @@
 - `HealObservation`、`ValidationObservation`、`StepPhaseEvent` 和终态提交契约已在 `domain/evidence` 建立。
 - 应用执行端口已切换为依赖 `domain/evidence`。
 - Workspace 已删除 EvidenceWriter、ExecutionFactCommitter 和 ExecutionProgressWriter。
+- 已验证 Node 的验证观测是执行层专用结构，不能直接用 Workspace 持久化观测替换；后续需要显式 evidence mapper，而不是类型别名。
 
 ## 尚未完成
 
