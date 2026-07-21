@@ -65,32 +65,17 @@ type TestTaskWriter interface {
 	SetTestTaskDeleted(ctx context.Context, id string, deleted bool, at int64) error
 }
 
-type TestRunWriter interface {
-	CreateTestTaskRun(ctx context.Context, plan TestTaskRunPlan) error
-	CancelTestTaskRun(ctx context.Context, runID string, at int64) error
-	ReorderTestTaskRunQueue(ctx context.Context, runIDs []string) error
-	DeleteTestTaskRun(ctx context.Context, runID string) error
-	RecoverInterruptedRuns(ctx context.Context, at int64) error
-	ClaimNextTestTaskRun(ctx context.Context, at int64) (TestTaskRunPlan, bool, error)
-	StartWorkflowExecution(ctx context.Context, executionID string, at int64) error
-	FinishWorkflowExecution(ctx context.Context, executionID string, status ExecutionStatus, at int64) error
-	FailTestTaskRun(ctx context.Context, runID, executionID string, at int64) error
-	FinalizeTestTaskRun(ctx context.Context, runID string, status TestTaskRunStatus, at int64) error
-}
-
 type MaintenanceWriter interface {
 	CleanupStaleHealCandidates(ctx context.Context) error
 	SetParameterSnapshotDeleted(ctx context.Context, snapshotID string, deleted bool, at int64) error
 }
 
-// WorkspaceWriter 是主机外观组合。持久性守卫仍然是一个安全网；转换策略保留在域行为中。
 type WorkspaceWriter interface {
 	FolderWriter
 	EnvironmentWriter
 	NodeWriter
 	WorkflowWriter
 	TestTaskWriter
-	TestRunWriter
 	MaintenanceWriter
 }
 
