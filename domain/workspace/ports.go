@@ -78,12 +78,6 @@ type TestRunWriter interface {
 	FinalizeTestTaskRun(ctx context.Context, runID string, status TestTaskRunStatus, at int64) error
 }
 
-type EvidenceWriter interface {
-	SaveRecording(ctx context.Context, recording Recording) error
-	DeleteRecording(ctx context.Context, executionID string) error
-	SaveNetworkEvidence(ctx context.Context, evidence NetworkEvidence) error
-}
-
 type MaintenanceWriter interface {
 	CleanupStaleHealCandidates(ctx context.Context) error
 	SetParameterSnapshotDeleted(ctx context.Context, snapshotID string, deleted bool, at int64) error
@@ -97,25 +91,12 @@ type WorkspaceWriter interface {
 	WorkflowWriter
 	TestTaskWriter
 	TestRunWriter
-	EvidenceWriter
 	MaintenanceWriter
 }
 
-// Store 是实现双方的适配器的组合根契约。读侧查询通过 application/readmodel 提供；Store 只保留写侧与执行事实端口。
+// Store 是实现双方的适配器的组合根契约。读侧查询通过 application/readmodel 提供；执行事实通过 application/execution 提供。
 type Store interface {
 	WorkspaceWriter
-}
-
-// ExecutionFactCommitter 拥有应用程序执行协调器使用的原子步骤/验证/修复事实边界。
-type ExecutionFactCommitter interface {
-	CommitStepTransition(context.Context, StepTransitionCommit) (StepTransitionCommitResult, error)
-}
-
-// ExecutionProgressWriter 拥有非终端执行事实和狭窄的提交后错误附加操作。终端转换及其最终事实必须通过 ExecutionFactCommitter。
-type ExecutionProgressWriter interface {
-	RecordStepProgress(context.Context, StepPhaseEvent) error
-	RecordValidationProgress(context.Context, ValidationObservation) error
-	AttachTerminalStepError(context.Context, StepPhaseEvent) error
 }
 
 // HealCandidateGovernance 公开了强大的 Candidate/NodeVersion 批准协议，而不授予不相关的工作空间突变。
