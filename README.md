@@ -6,7 +6,7 @@
 
 | 包 | 职责 |
 |---|---|
-| `domain/fingerprint` | NodeSpec、Selector、Fingerprint 共享值对象 |
+| `domain/fingerprint` | NodeSpec、Selector、Fingerprint、框架元数据和标准采样投影共享值对象 |
 | `domain/interpolation` | `${name}` 变量表达式 |
 | `domain/heal` | 确定性自愈决策、LCS 与 scorer |
 | `domain/node` | Program、Step 状态机、Runtime 与执行端口 |
@@ -28,6 +28,7 @@ host application / infrastructure adapters
 - Core 生产代码只依赖 Go 标准库和本模块包。
 - Core 不包含 Wails、Svelte、SQLite、Rod、rrweb、文件路径或桌面设置。官方 go-rod 实现由独立模块 `github.com/Capsule7446/healix-rod` 提供，Core 不反向依赖它。
 - 基础设施由宿主实现 Core 定义的 Driver、Recorder、Repository 与事实端口。
+- UI 框架检测在宿主浏览器适配器完成；Core 只接收 `PageObservation`、`FrameworkStack` 和标准化 `NodeSpec`，不携带原始 DOM 或框架 SDK 对象。
 
 ## 验证
 

@@ -185,6 +185,9 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	if err := decision.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid heal decision: %w", err)
 	}
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: s.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+		return nil, fmt.Errorf("record heal samples: %w", err)
+	}
 	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("assess heal decision: %w", err)
@@ -192,7 +195,9 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome == heal.OutcomeNoCandidate {
 			if rt.Facts != nil {
-				_ = rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, firstSelector(target), decision)
+				if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+					return nil, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+				}
 			}
 			return nil, fmt.Errorf("no heal candidate reached review_cap: %s", assessment.Explanation)
 		}
@@ -223,12 +228,12 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 		return nil, fmt.Errorf("re-locate after heal: %w", err)
 	}
 
-	rt.setSelectorOverlay(healedSpec)
 	if rt.Facts != nil {
 		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, fmt.Errorf("record heal decision: %w", recordErr)
 		}
 	}
+	rt.setSelectorOverlay(healedSpec)
 
 	return el, nil
 }

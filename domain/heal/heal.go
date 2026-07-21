@@ -102,6 +102,11 @@ func (c Candidate) validate(label string) error {
 	if err := c.Selector.Validate(); err != nil {
 		return fmt.Errorf("heal: %s has invalid selector: %w", label, err)
 	}
+	if c.Fingerprint.Attributes != nil || len(c.Fingerprint.Framework) > 0 {
+		if err := c.Fingerprint.Validate(); err != nil {
+			return fmt.Errorf("heal: %s has invalid fingerprint: %w", label, err)
+		}
+	}
 	if math.IsNaN(c.Score) || math.IsInf(c.Score, 0) || c.Score < 0 || c.Score > 1 {
 		return fmt.Errorf("heal: %s score must be finite and within [0,1], got %v", label, c.Score)
 	}

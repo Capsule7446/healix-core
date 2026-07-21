@@ -95,9 +95,32 @@ func (observation ValidationObservation) Validate() error {
 	}
 }
 
-// HealObservationDetail 丰富了重播和审查的不可变事实，而不使表示字段成为写入端观察的一部分。
+type HealCandidateEvidence struct {
+	ObservationID   string
+	CandidateHash   string
+	FingerprintHash string
+	Score           float64
+	Rank            int
+	Eligible        bool
+	Selected        bool
+	Status          string
+	ObservedAt      int64
+}
+
+func (e HealCandidateEvidence) Validate() error {
+	if strings.TrimSpace(e.ObservationID) == "" || strings.TrimSpace(e.CandidateHash) == "" || strings.TrimSpace(e.FingerprintHash) == "" || e.Rank <= 0 || e.ObservedAt <= 0 {
+		return errors.New("heal candidate evidence is missing identity, rank, or time")
+	}
+	if err := ValidateHealConfidence(e.Score); err != nil {
+		return err
+	}
+	return nil
+}
+
+// HealObservationDetail enriches immutable healing facts for replay and review.
 type HealObservationDetail struct {
 	Observation       HealObservation
+	Candidates        []HealCandidateEvidence
 	OldSelectors      []fingerprint.Selector
 	CountedInStreak   bool
 	StreakCount       int

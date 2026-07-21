@@ -138,7 +138,11 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, reason, true); err != nil {
 			return err
 		}
-		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, lastActual, pollErr)
+		actual := lastActual
+		if validationEvidenceIsSensitive(v.Target, v.Assertion) {
+			actual = "••••••••"
+		}
+		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, actual, pollErr)
 	}
 	return nil
 }
@@ -294,13 +298,14 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	if err := decision.Validate(); err != nil {
 		return nil, false, fmt.Errorf("invalid heal decision: %w", err)
 	}
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+		return nil, false, fmt.Errorf("record heal samples: %w", err)
+	}
 	if decision.Outcome == heal.OutcomeNoCandidate {
 		if rt.Facts != nil {
-			oldSelector := fingerprint.Selector{}
-			if len(target.Selectors) > 0 {
-				oldSelector = target.Selectors[0]
+			if err := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
+				return nil, false, fmt.Errorf("record heal decision: %w", err)
 			}
-			_ = rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision)
 		}
 		return nil, true, nil
 	}
@@ -323,22 +328,24 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			_ = rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision)
+			if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+				return nil, false, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+			}
 		}
 		return nil, true, nil
 	}
 	healed := target
 	healed.Selectors = append([]fingerprint.Selector{decision.Best.Selector}, healed.Selectors...)
-	el, err = rt.locator().Locate(ctx, healed)
+	el, err = rt.Driver.Locate(ctx, healed)
 	if err != nil {
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
-	rt.setSelectorOverlay(healed)
 	if rt.Facts != nil {
 		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
 		}
 	}
+	rt.setSelectorOverlay(healed)
 	return el, false, nil
 }
 
@@ -500,10 +507,14 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	})
 	if pollErr != nil {
 		ctx := context.WithoutCancel(parent)
+		reason := "timeout"
+		if errorKind(pollErr) != ErrorTimeout {
+			reason = "system_error"
+		}
 		for _, branch := range g.Branches {
 			for _, member := range branch.Nodes {
 				state := last[member.NodeID]
-				if err := observations.record(ctx, rt, member, state.passed, state.actual, "timeout", true); err != nil {
+				if err := observations.record(ctx, rt, member, state.passed, state.actual, reason, true); err != nil {
 					return err
 				}
 			}

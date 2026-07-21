@@ -25,6 +25,7 @@ type Weights struct {
 	Neighbor  float64
 	LabelText float64
 	Container float64
+	Framework float64
 }
 
 // DefaultWeights 返回一组新的启发式权重，用于确定性打分。
@@ -41,7 +42,7 @@ func DefaultWeights() Weights {
 		Neighbor:  0.10,
 		LabelText: 0.15,
 		Container: 0.10,
-	}
+		Framework: 0}
 }
 
 // Validate 要求权重是非负有限数，且至少启用一个打分维度。
@@ -53,7 +54,7 @@ func (w Weights) Validate() error {
 		{"tag", w.Tag}, {"id", w.ID}, {"role_name", w.RoleName},
 		{"class", w.Class}, {"attrs", w.Attrs}, {"text", w.Text},
 		{"index", w.Index}, {"neighbor", w.Neighbor}, {"label_text", w.LabelText},
-		{"container", w.Container},
+		{"container", w.Container}, {"framework", w.Framework},
 	}
 	total := 0.0
 	for _, weight := range weights {
@@ -125,6 +126,9 @@ func prepareTargetScorer(weights Weights, target fingerprint.Fingerprint) prepar
 	if target.FormID != "" {
 		prepared.totalWeight += weights.Container
 	}
+	if len(target.Framework) > 0 {
+		prepared.totalWeight += weights.Framework
+	}
 	return prepared
 }
 
@@ -160,6 +164,9 @@ func (s preparedTargetScorer) score(candidate fingerprint.Fingerprint) float64 {
 	}
 	if s.target.FormID != "" {
 		sum += s.weights.Container * simEqualNonEmpty(s.target.FormID, candidate.FormID)
+	}
+	if len(s.target.Framework) > 0 {
+		sum += s.weights.Framework * frameworkSimilarity(s.target.Framework, candidate.Framework)
 	}
 	return sum / s.totalWeight
 }

@@ -13,6 +13,8 @@ import (
 
 const terminalEventTimeout = 5 * time.Second
 
+const operationObservationTimeout = 5 * time.Second
+
 // ErrElementNotFound 是 Driver 合约的显式业务信号，表明 NodeSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
 var ErrElementNotFound = errors.New("node: element not found")
 
@@ -159,6 +161,20 @@ type Recorder interface {
 	Stop(ctx context.Context, retain bool) error
 }
 
+// HealSampleObserver receives the complete deterministic candidate sample for replay.
+type HealSampleObserver interface {
+	RecordHealSamples(context.Context, HealSampleRecord) error
+}
+
+type HealSampleRecord struct {
+	RunID       string
+	NodeID      string
+	SpecID      string
+	OldSelector fingerprint.Selector
+	Outcome     heal.Outcome
+	Samples     []heal.CandidateSample
+}
+
 // ExecutionSink 是执行期间产生的阶段、验证与自愈事实端口。
 //
 // 注意两个 ID 空间：nodeID 是执行树中 StepNode 的 ID；specID 属于
@@ -191,8 +207,10 @@ type Runtime struct {
 	Recorder          Recorder      // nil = 关闭录屏
 	Facts             ExecutionSink // nil = 不输出执行事实
 	OperationObserver OperationObserver
+	HealSamples       HealSampleObserver
 	RetryPolicy       RetryPolicy
 	HealingPolicy     heal.SafetyPolicy
+	HealingReviewCap  float64
 	Scratchpad        map[string]any
 	pacer             stepPacer
 }
@@ -205,7 +223,23 @@ func (rt *Runtime) observeOperation(ctx context.Context, observation OperationOb
 }
 
 func (rt *Runtime) observeOperationBestEffort(ctx context.Context, observation OperationObservation) {
-	_ = rt.observeOperation(ctx, observation)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), operationObservationTimeout)
+	defer cancel()
+	_ = rt.observeOperation(cleanupCtx, observation)
+}
+
+func (rt *Runtime) healingReviewCap() float64 {
+	if rt.HealingReviewCap > 0 {
+		return rt.HealingReviewCap
+	}
+	return 0.60
+}
+
+func (rt *Runtime) recordHealSamples(ctx context.Context, record HealSampleRecord) error {
+	if rt == nil || rt.HealSamples == nil {
+		return nil
+	}
+	return rt.HealSamples.RecordHealSamples(ctx, record)
 }
 
 func (rt *Runtime) waitBeforeStep(ctx context.Context) error {

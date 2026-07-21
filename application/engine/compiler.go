@@ -308,7 +308,7 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec
 		Selectors: append([]fingerprint.Selector(nil), version.Selectors...),
 		Fingerprint: fingerprint.Fingerprint{Tag: fp.Tag, Attributes: cloneStrings(fp.Attributes), Text: fp.Text,
 			ARIA: fp.ARIA, Path: append([]string(nil), fp.Path...), SiblingIndex: fp.SiblingIndex,
-			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID}}
+			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID, Framework: fp.Framework.Clone()}}
 	if err := spec.Validate(); err != nil {
 		return fingerprint.NodeSpec{}, fmt.Errorf("node %s version %s: %w", nodeID, versionID, err)
 	}

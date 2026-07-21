@@ -216,3 +216,11 @@ go test ./domain/heal -run '^$' -bench . -benchmem
 ```
 
 完成标准：所有测试通过、覆盖率保持主要包 80% 以上、无 race/vet/build 错误、单页面和单并发边界未被扩张，并且安全拒绝无法进入 selector overlay。
+
+## 9. 采样标准化与框架识别
+
+浏览器适配器负责通过脚本链接、全局标记、根节点标记和 hydration 标记识别页面框架及版本。Core 只接收安全的 `fingerprint.PageObservation`，由 `fingerprint.DetectFrameworks` 产生确定性 `FrameworkStack`。
+
+原始页面数据必须先经过适配器清洗和脱敏，再转换为标准 `NodeSpec`/`Fingerprint`。领域对象不保存原始 DOM、浏览器句柄、框架内部对象或 SDK 类型。框架兼容性是可选的 healer scorer 维度；默认权重为零，确保旧工作流评分兼容。
+
+框架元数据属于 Fingerprint/NodeVersion 的版本化领域信息，回溯记录只保留安全摘要、版本、置信度、证据类别和稳定 hash。宿主负责数据库 schema、事务和长期保留策略。
