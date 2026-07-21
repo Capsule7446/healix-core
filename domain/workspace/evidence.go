@@ -258,12 +258,3 @@ type TestTaskRunPlan struct {
 	Parameters  []WorkflowParameterScope
 	Executions  []WorkflowExecutionPlan
 }
-
-type Dashboard struct {
-	StatusCounts map[TestTaskRunStatus]int
-	Total30Days  int
-	Running      *TestTaskRun
-	Queue        []TestTaskRun
-	Runs         []TestTaskRun
-	TestTasks    []TestTaskQueryResult
-}

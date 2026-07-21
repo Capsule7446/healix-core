@@ -37,12 +37,6 @@ type TestTaskAggregate struct {
 	Versions []TestTaskVersion
 }
 
-type TestTaskQueryResult struct {
-	TestTaskAggregate
-	LastRunStatus TestTaskRunStatus
-	LastRunAt     int64
-}
-
 // TestTaskVersionPlan 带有候选出版物以及用于其无环境验证的精确图表。适配器在发布版本的同一事务内重新检查该图。
 type TestTaskVersionPlan struct {
 	Task                  TestTask

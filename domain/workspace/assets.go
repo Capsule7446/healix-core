@@ -82,11 +82,6 @@ type NodeAggregate struct {
 	Versions []NodeVersion
 }
 
-type NodeQueryResult struct {
-	NodeAggregate
-	RefCount int
-}
-
 func (a NodeAggregate) Validate() error {
 	var problems []string
 	if strings.TrimSpace(a.Node.ID) == "" {
@@ -300,12 +295,6 @@ type WorkflowAggregate struct {
 	Workflow Workflow
 	Current  WorkflowVersion
 	Versions []WorkflowVersion
-}
-
-type WorkflowQueryResult struct {
-	WorkflowAggregate
-	LastRunStatus string
-	LastRunAt     int64
 }
 
 // ValidateFor 验证从运行快照中选择的确切不可变版本。它故意不声明所选的历史版本仍然是稳定资产的当前版本。

@@ -25,57 +25,17 @@ type EnvironmentReader interface {
 	GetEnvironment(ctx context.Context, id string) (Environment, error)
 }
 
-type NodeReader interface {
-	ListNodes(ctx context.Context, includeDeleted bool) ([]NodeQueryResult, error)
-	GetNode(ctx context.Context, id string) (NodeQueryResult, error)
-}
-
-type WorkflowReader interface {
-	ListWorkflows(ctx context.Context, includeDeleted bool) ([]WorkflowQueryResult, error)
-	GetWorkflow(ctx context.Context, id string) (WorkflowQueryResult, error)
-}
-
 type TestTaskReader interface {
-	ListTestTasks(ctx context.Context, includeDeleted bool) ([]TestTaskQueryResult, error)
-	GetTestTask(ctx context.Context, id string) (TestTaskQueryResult, error)
 	GetTestTaskVersion(ctx context.Context, versionID string) (TestTaskVersion, error)
 	ListTestTaskRuns(ctx context.Context, testTaskID string) ([]TestTaskRun, error)
 	ListAllTestTaskRuns(ctx context.Context) ([]TestTaskRun, error)
-	GetTestTaskRunDetail(ctx context.Context, runID string) (TestTaskRunDetail, error)
 	TestTaskRunResourceURIs(ctx context.Context, runID string) ([]string, error)
-}
-
-type ExecutionEvidenceReader interface {
-	GetExecutionDetail(ctx context.Context, executionID string) (ExecutionDetail, error)
-	GetNetworkEvidence(ctx context.Context, requestID string) (NetworkEvidence, error)
 }
 
 type MaintenanceReader interface {
 	ExpiredTestTaskRunIDs(ctx context.Context, cutoff int64) ([]string, error)
 	StorageStats(ctx context.Context) (StorageStats, error)
 	ListParameterSnapshots(ctx context.Context, includeDeleted bool) ([]ExecutionParameterSnapshot, error)
-}
-
-type HealCandidateReader interface {
-	ListHealCandidates(ctx context.Context, includeStale bool) ([]HealCandidateRecord, error)
-	ListHealObservations(ctx context.Context, nodeID, baseVersionID, candidateHash string) ([]HealObservationDetail, error)
-}
-
-type DashboardReader interface {
-	Dashboard(ctx context.Context) (Dashboard, error)
-}
-
-// WorkspaceReader 是主机外观组合。各个用例可能取决于上面的聚合/特定于查询的端口。
-type WorkspaceReader interface {
-	FolderReader
-	EnvironmentReader
-	NodeReader
-	WorkflowReader
-	TestTaskReader
-	ExecutionEvidenceReader
-	MaintenanceReader
-	HealCandidateReader
-	DashboardReader
 }
 
 type FolderWriter interface {
@@ -141,9 +101,8 @@ type WorkspaceWriter interface {
 	MaintenanceWriter
 }
 
-// Store 是实现双方的适配器的组合根契约。消费者应尽可能依赖 WorkspaceReader、WorkspaceWriter 或更窄的用例本地接口，而不是 Store。
+// Store 是实现双方的适配器的组合根契约。读侧查询通过 application/readmodel 提供；Store 只保留写侧与执行事实端口。
 type Store interface {
-	WorkspaceReader
 	WorkspaceWriter
 }
 
