@@ -132,8 +132,6 @@ type Environment struct {
 	ID          string
 	DisplayName string
 	BaseURL     string
-	Username    string
-	Password    string
 	Variables   Properties
 	Properties  Properties
 	CreatedAt   int64

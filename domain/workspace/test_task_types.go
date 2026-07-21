@@ -106,8 +106,6 @@ type EnvironmentSnapshot struct {
 	ID          string
 	DisplayName string
 	BaseURL     string
-	Username    string
-	Password    string
 	Variables   Properties
 	Properties  Properties
 	UpdatedAt   int64
