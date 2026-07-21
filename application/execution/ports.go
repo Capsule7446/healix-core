@@ -3,19 +3,20 @@ package execution
 import (
 	"context"
 
+	"github.com/Capsule7446/healix-core/domain/evidence"
 	"github.com/Capsule7446/healix-core/domain/workspace"
 )
 
 // FactCommitter persists an atomic terminal step transition and its final facts.
 type FactCommitter interface {
-	CommitStepTransition(context.Context, workspace.StepTransitionCommit) (workspace.StepTransitionCommitResult, error)
+	CommitStepTransition(context.Context, evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error)
 }
 
 // ProgressWriter persists non-terminal execution observations.
 type ProgressWriter interface {
-	RecordStepProgress(context.Context, workspace.StepPhaseEvent) error
-	RecordValidationProgress(context.Context, workspace.ValidationObservation) error
-	AttachTerminalStepError(context.Context, workspace.StepPhaseEvent) error
+	RecordStepProgress(context.Context, evidence.StepPhaseEvent) error
+	RecordValidationProgress(context.Context, evidence.ValidationObservation) error
+	AttachTerminalStepError(context.Context, evidence.StepPhaseEvent) error
 }
 
 // RunCoordinator owns application-level run lifecycle transitions.

@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Capsule7446/healix-core/domain/workspace"
+	"github.com/Capsule7446/healix-core/domain/evidence"
 )
 
 type fakeCommitter struct{}
 
-func (fakeCommitter) CommitStepTransition(context.Context, workspace.StepTransitionCommit) (workspace.StepTransitionCommitResult, error) {
-	return workspace.StepTransitionCommitResult{}, nil
+func (fakeCommitter) CommitStepTransition(context.Context, evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
+	return evidence.StepTransitionCommitResult{}, nil
 }
 
 func TestFactCommitterKeepsAtomicDomainCommitContract(t *testing.T) {
@@ -19,13 +19,13 @@ func TestFactCommitterKeepsAtomicDomainCommitContract(t *testing.T) {
 
 type fakeProgressWriter struct{}
 
-func (fakeProgressWriter) RecordStepProgress(context.Context, workspace.StepPhaseEvent) error {
+func (fakeProgressWriter) RecordStepProgress(context.Context, evidence.StepPhaseEvent) error {
 	return nil
 }
-func (fakeProgressWriter) RecordValidationProgress(context.Context, workspace.ValidationObservation) error {
+func (fakeProgressWriter) RecordValidationProgress(context.Context, evidence.ValidationObservation) error {
 	return nil
 }
-func (fakeProgressWriter) AttachTerminalStepError(context.Context, workspace.StepPhaseEvent) error {
+func (fakeProgressWriter) AttachTerminalStepError(context.Context, evidence.StepPhaseEvent) error {
 	return nil
 }
 
