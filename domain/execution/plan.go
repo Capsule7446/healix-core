@@ -1,6 +1,20 @@
 package execution
 
-import "github.com/Capsule7446/healix-core/domain/fingerprint"
+import (
+	"errors"
+	"sort"
+
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
+)
+
+// ErrUnsealedPlan identifies a Plan value that was not created by Seal.
+var ErrUnsealedPlan = errors.New("execution plan is unsealed")
+
+type planSeal struct {
+	marker byte
+}
+
+var sealedPlanToken = &planSeal{marker: 1}
 
 type StepKind string
 
@@ -61,12 +75,18 @@ type ValidationBranch struct {
 	Steps []Step
 }
 
+type Parameter struct {
+	Name         string
+	DefaultValue string
+}
+
 type WorkflowSnapshot struct {
 	ID            string
 	VersionID     string
 	WorkflowID    string
 	DisplayName   string
 	VersionNumber int
+	Parameters    []Parameter
 	Steps         []Step
 }
 
@@ -80,6 +100,16 @@ type NodeSnapshot struct {
 	Fingerprint fingerprint.Fingerprint
 }
 
+type NodeDependencyKey struct {
+	NodeID    string
+	VersionID string
+}
+
+type WorkflowReferenceKey struct {
+	ParentVersionID string
+	StepID          string
+}
+
 type ReferenceResolution struct {
 	ParentVersionID   string
 	StepID            string
@@ -87,10 +117,151 @@ type ReferenceResolution struct {
 	WorkflowVersionID string
 }
 
-type Plan struct {
+type FailurePolicy string
+
+const (
+	FailurePolicyStopOnFailure     FailurePolicy = "STOP_ON_FAILURE"
+	FailurePolicyContinueOnFailure FailurePolicy = "CONTINUE_ON_FAILURE"
+)
+
+func (p FailurePolicy) IsValid() bool {
+	return p == FailurePolicyStopOnFailure || p == FailurePolicyContinueOnFailure
+}
+
+type WorkflowEntry struct {
+	ExecutionID       string
+	TestTaskItemID    string
+	SequenceNumber    int
+	WorkflowID        string
+	WorkflowVersionID string
+}
+
+type Draft struct {
 	RunID         string
-	RootVersionID string
+	FailurePolicy FailurePolicy
+	Entries       []WorkflowEntry
 	Workflows     []WorkflowSnapshot
 	Nodes         []NodeSnapshot
 	References    []ReferenceResolution
+}
+
+type Plan struct {
+	draft Draft
+	seal  *planSeal
+}
+
+func Seal(draft Draft) (Plan, error) {
+	if err := draft.Validate(); err != nil {
+		return Plan{}, err
+	}
+	canonical := cloneDraft(draft)
+	sort.Slice(canonical.Entries, func(i, j int) bool {
+		return canonical.Entries[i].SequenceNumber < canonical.Entries[j].SequenceNumber
+	})
+	return Plan{draft: canonical, seal: sealedPlanToken}, nil
+}
+
+// IsSealed reports whether the plan was successfully created by Seal.
+func (p Plan) IsSealed() bool { return p.seal == sealedPlanToken }
+
+// Validate checks that the plan carries the Seal invariant.
+func (p Plan) Validate() error {
+	if !p.IsSealed() {
+		return ErrUnsealedPlan
+	}
+	return nil
+}
+
+func (p Plan) Snapshot() Draft { return cloneDraft(p.draft) }
+
+func (p Plan) RunID() string { return p.draft.RunID }
+
+func (p Plan) FailurePolicy() FailurePolicy { return p.draft.FailurePolicy }
+
+func (p Plan) Entries() []WorkflowEntry {
+	return append([]WorkflowEntry(nil), p.draft.Entries...)
+}
+
+func (p Plan) Workflows() []WorkflowSnapshot { return cloneWorkflows(p.draft.Workflows) }
+
+func (p Plan) Nodes() []NodeSnapshot { return cloneNodes(p.draft.Nodes) }
+
+func (p Plan) References() []ReferenceResolution {
+	return append([]ReferenceResolution(nil), p.draft.References...)
+}
+
+func cloneDraft(draft Draft) Draft {
+	return Draft{
+		RunID: draft.RunID, FailurePolicy: draft.FailurePolicy,
+		Entries:   append([]WorkflowEntry(nil), draft.Entries...),
+		Workflows: cloneWorkflows(draft.Workflows), Nodes: cloneNodes(draft.Nodes),
+		References: append([]ReferenceResolution(nil), draft.References...),
+	}
+}
+
+func cloneWorkflows(workflows []WorkflowSnapshot) []WorkflowSnapshot {
+	result := make([]WorkflowSnapshot, len(workflows))
+	for i, workflow := range workflows {
+		result[i] = workflow
+		result[i].Parameters = append([]Parameter(nil), workflow.Parameters...)
+		result[i].Steps = cloneSteps(workflow.Steps)
+	}
+	return result
+}
+
+func cloneSteps(steps []Step) []Step {
+	result := make([]Step, len(steps))
+	for i, step := range steps {
+		result[i] = step
+		result[i].Values = append([]string(nil), step.Values...)
+		result[i].Children = cloneSteps(step.Children)
+		if step.Reference != nil {
+			copy := *step.Reference
+			copy.ParameterBindings = cloneMap(step.Reference.ParameterBindings)
+			result[i].Reference = &copy
+		}
+		if step.Validation != nil {
+			copy := *step.Validation
+			copy.ExpectedValues = append([]string(nil), step.Validation.ExpectedValues...)
+			result[i].Validation = &copy
+		}
+		if step.ValidationGroup != nil {
+			copy := *step.ValidationGroup
+			copy.Branches = make([]ValidationBranch, len(step.ValidationGroup.Branches))
+			for j, branch := range step.ValidationGroup.Branches {
+				copy.Branches[j] = branch
+				copy.Branches[j].Steps = cloneSteps(branch.Steps)
+			}
+			result[i].ValidationGroup = &copy
+		}
+	}
+	return result
+}
+
+func cloneNodes(nodes []NodeSnapshot) []NodeSnapshot {
+	result := make([]NodeSnapshot, len(nodes))
+	for i, snapshot := range nodes {
+		result[i] = snapshot
+		result[i].Selectors = append([]fingerprint.Selector(nil), snapshot.Selectors...)
+		result[i].Fingerprint = cloneFingerprint(snapshot.Fingerprint)
+	}
+	return result
+}
+
+func cloneFingerprint(value fingerprint.Fingerprint) fingerprint.Fingerprint {
+	value.Attributes = cloneMap(value.Attributes)
+	value.Path = append([]string(nil), value.Path...)
+	value.Framework = value.Framework.Clone()
+	return value
+}
+
+func cloneMap(source map[string]string) map[string]string {
+	if source == nil {
+		return nil
+	}
+	result := make(map[string]string, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
+	return result
 }

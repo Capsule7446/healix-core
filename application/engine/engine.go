@@ -11,8 +11,9 @@ import (
 
 // Config 打包了一次 Program 执行所需的领域端口与运行变量。
 type Config struct {
-	RunID  string
-	Driver node.Driver
+	RunID      string
+	ClaimToken string
+	Driver     node.Driver
 	// Healer 由组合根注入；nil 表示关闭自愈。
 	Healer   heal.Healer
 	Recorder node.Recorder

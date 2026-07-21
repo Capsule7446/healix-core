@@ -77,8 +77,8 @@ func TestOperationObservationBusinessMatrix(t *testing.T) {
 		wantOperation string
 		wantSuccess   bool
 	}{
-		{name: "navigate success", action: Action{Kind: ActionNavigate, Value: "/home"}, wantOperation: "navigate", wantSuccess: true},
-		{name: "navigate failure", action: Action{Kind: ActionNavigate, Value: "/home"}, configure: func(d *matrixDriver) { d.navigateErr = errors.New("navigation failed") }, wantOperation: "navigate", wantSuccess: false},
+		{name: "navigate success", action: Action{Kind: ActionNavigate, Value: "https://example.test/home"}, wantOperation: "navigate", wantSuccess: true},
+		{name: "navigate failure", action: Action{Kind: ActionNavigate, Value: "https://example.test/home"}, configure: func(d *matrixDriver) { d.navigateErr = errors.New("navigation failed") }, wantOperation: "navigate", wantSuccess: false},
 		{name: "press success", action: Action{Kind: ActionPress, Value: "Enter"}, wantOperation: "press", wantSuccess: true},
 	}
 	for _, tc := range cases {

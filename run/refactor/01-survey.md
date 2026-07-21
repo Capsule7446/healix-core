@@ -11,7 +11,7 @@
 - **Execution** (`domain/node`): Program, Node, StepExecution, Runtime, Driver, Element, phase transitions, retry, validation, and observations.
 - **Fingerprint** (`domain/fingerprint`): NodeSpec, selectors, framework/detection metadata, normalization and matching.
 - **Healing** (`domain/heal`): policy, candidate evidence/sample, framework scoring, ranking, safety and review decisions.
-- **Workspace** (`domain/workspace`): workflow/test task models, rules, assets, evidence, versioning, sampling, environment and persistence-facing ports.
+- **Workspace** (`domain/automation`): workflow/test task models, rules, assets, evidence, versioning, sampling, environment and persistence-facing ports.
 - **Application orchestration** (`application/engine`): compilation and run lifecycle.
 
 ## Dependency graph
@@ -20,7 +20,7 @@
 - `node` imports `fingerprint` and `heal`, and owns browser and execution-sink interfaces.
 - `heal` uses fingerprint concepts for selector evidence and scoring.
 - `workspace` supplies models and evidence but is not yet a clean execution adapter boundary.
-- Tests are broad and matrix-heavy across engine, node, heal, fingerprint, and workspace.
+- Tests are broad and matrix-heavy across engine, node, heal, fingerprint, and automation.
 
 ## Invariants and side effects
 
@@ -37,14 +37,14 @@
 - Runtime phase/event ordering, cancellation, retry, pacing, selector overlay and repeated execution.
 - Healing candidate ordering, safety thresholds, framework scoring, and audit/sample timing.
 - Fingerprint detection and framework classification for supported/unknown pages.
-- Workspace evidence mapping and candidate evidence persistence.
+- Evidence mapping and candidate evidence persistence.
 
 ## Bad smells
 
 - `node.Runtime` is a large orchestration aggregate with many ports and cross-context imports.
 - `node` owns healing and fingerprint-facing contracts, causing domain coupling and broad interfaces.
 - `application/engine.RunProgram` both composes dependencies and owns lifecycle policy.
-- Workspace evidence concepts are shared through execution sinks rather than a narrow adapter.
+- Evidence concepts are shared through execution sinks rather than a narrow adapter.
 - New uncommitted files indicate in-progress extraction but no explicit strangler boundary yet.
 
 ## Candidate seams
@@ -52,7 +52,7 @@
 1. Runtime lifecycle/execution coordinator around `RunProgram` and `Runtime` construction.
 2. Healing policy/decision seam around `domain/heal` contracts and step healing.
 3. Fingerprint detection/framework seam around the newly added types.
-4. Evidence projection seam from node/heal facts into workspace evidence.
+4. Evidence projection seam from node/heal facts into evidence.
 
 ## G0 assessment
 

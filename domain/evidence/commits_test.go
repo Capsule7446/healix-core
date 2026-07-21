@@ -6,7 +6,7 @@ import (
 )
 
 func TestStepTransitionCommitValidatesAtomicFactIdentity(t *testing.T) {
-	valid := StepTransitionCommit{CommitID: "commit", Event: StepPhaseEvent{
+	valid := StepTransitionCommit{CommitID: "commit", ExpectedRevision: 1, Event: StepPhaseEvent{
 		ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "提交",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 10,
 	}, FinalValidations: []ValidationObservation{{
@@ -26,6 +26,7 @@ func TestStepTransitionCommitValidatesAtomicFactIdentity(t *testing.T) {
 		mutate func(*StepTransitionCommit)
 	}{
 		{"missing commit id", func(command *StepTransitionCommit) { command.CommitID = "" }},
+		{"zero expected revision", func(command *StepTransitionCommit) { command.ExpectedRevision = 0 }},
 		{"non terminal", func(command *StepTransitionCommit) { command.Event.Phase = "RUNNING" }},
 		{"missing event identity", func(command *StepTransitionCommit) { command.Event.ExecutionID = "" }},
 		{"missing event display name", func(command *StepTransitionCommit) { command.Event.DisplayName = "" }},

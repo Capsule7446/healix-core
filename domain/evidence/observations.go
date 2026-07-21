@@ -64,6 +64,38 @@ func (o HealObservation) Validate() error {
 	return ValidateDecisionBand(o.CandidateHash, o.DecisionBand)
 }
 
+type ValidationProgressObservation struct {
+	ID               string
+	RunID            string
+	ExecutionID      string
+	StepExecutionID  string
+	ValidationStepID string
+	NodeID           string
+	NodeVersionID    string
+	AssertionKind    string
+	Expected         string
+	Actual           string
+	Passed           bool
+	Reason           string
+	Selector         fingerprint.Selector
+	Healed           bool
+	HealConfidence   float64
+	HealReviewStatus string
+	ObservedAt       int64
+}
+
+func (o ValidationProgressObservation) Validate() error {
+	return ValidationObservation{
+		ID: o.ID, RunID: o.RunID, ExecutionID: o.ExecutionID,
+		StepExecutionID: o.StepExecutionID, ValidationStepID: o.ValidationStepID,
+		NodeID: o.NodeID, NodeVersionID: o.NodeVersionID,
+		AssertionKind: o.AssertionKind, Expected: o.Expected, Actual: o.Actual,
+		Passed: o.Passed, Reason: o.Reason, Selector: o.Selector,
+		Healed: o.Healed, HealConfidence: o.HealConfidence,
+		HealReviewStatus: o.HealReviewStatus, ObservedAt: o.ObservedAt,
+	}.Validate()
+}
+
 type ValidationObservation struct {
 	ID               string
 	RunID            string

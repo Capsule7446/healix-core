@@ -42,8 +42,9 @@ const (
 // Repeat 再次运行同一个 StepNode 时会创建新的执行实例，因此终态不会泄漏到
 // 下一轮迭代。
 type StepExecution struct {
-	nodeID string
-	phase  Phase
+	nodeID     string
+	phase      Phase
+	occurrence int
 }
 
 func NewStepExecution(nodeID string) *StepExecution {
@@ -97,12 +98,13 @@ func (e *StepExecution) Transition(next Phase) error {
 	return nil
 }
 
-// Event 是一次阶段转换，由 ExecutionSink.RecordEvent 持久化。
+// Event describes one runtime phase transition.
 type Event struct {
-	RunID   string
-	NodeID  string
-	Phase   Phase
-	Payload map[string]any
+	RunID      string
+	NodeID     string
+	Occurrence int
+	Phase      Phase
+	Payload    map[string]any
 }
 
 // OperationObservation is an optional, framework-neutral execution fact.
@@ -175,24 +177,32 @@ type HealSampleRecord struct {
 	Samples     []heal.CandidateSample
 }
 
-// ExecutionSink 是执行期间产生的阶段、验证与自愈事实端口。
-//
-// 注意两个 ID 空间：nodeID 是执行树中 StepNode 的 ID；specID 属于
-// fingerprint.NodeSpec（workspace 上下文中即稳定 Node 的 ID）。两者同为
-// string，实现方不得互换。
+type WorkerFence struct {
+	RunID      string
+	ClaimToken string
+}
+
+type TerminalCommit struct {
+	Event Event
+}
+
+// ExecutionSink stages terminal-associated facts and publishes them only when
+// CommitTerminal atomically commits the terminal event under the same fence.
 type ExecutionSink interface {
-	RecordEvent(ctx context.Context, evt Event) error
-	RecordHealDecision(ctx context.Context, runID, nodeID, specID string, oldSelector fingerprint.Selector, decision heal.Decision) error
-	RecordValidationObservation(ctx context.Context, runID string, observation ValidationObservation) error
+	RecordProgress(context.Context, WorkerFence, Event) error
+	StageHealDecision(context.Context, WorkerFence, string, string, fingerprint.Selector, heal.Decision) error
+	StageValidationObservation(context.Context, WorkerFence, ValidationObservation) error
+	CommitTerminal(context.Context, WorkerFence, TerminalCommit) error
 }
 
 // Runtime 是贯穿整棵 Node 树的、每次运行专属的执行上下文。
 // Runtime、Driver、Page 和 Element 端口在当前版本均要求由单个顺序执行器访问；
 // 并发调度、资源池和跨页面生命周期属于延期能力。
 type Runtime struct {
-	RunID   string
-	PageURL string
-	Origin  string
+	RunID      string
+	ClaimToken string
+	PageURL    string
+	Origin     string
 	// StepInterval 控制可执行叶步骤之间的最小暂停时间。第一个叶子步骤立即开始；容器节点和验证组成员不消耗额外的时间间隔。
 	StepInterval time.Duration
 	// Specs 按 ID 索引每个 StepNode 的 NodeSpec，使断言可以引用
@@ -214,6 +224,8 @@ type Runtime struct {
 	HealingReviewCap  float64
 	Scratchpad        map[string]any
 	pacer             stepPacer
+	occurrences       map[string]int
+	activeOccurrences map[string][]int
 }
 
 func (rt *Runtime) observeOperation(ctx context.Context, observation OperationObservation) error {
@@ -262,12 +274,79 @@ func (rt *Runtime) runOperationWithAttempts(operation func() error) (int, error)
 	return RetryWithAttempts(rt.RetryPolicy, operation)
 }
 
-func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
-	evt := Event{RunID: rt.RunID, NodeID: nodeID, Phase: phase}
-	if rt.Facts != nil {
-		if err := rt.Facts.RecordEvent(ctx, evt); err != nil {
-			return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, err)
+func (rt *Runtime) activeOccurrence(nodeID string) (int, error) {
+	stack := rt.activeOccurrences[nodeID]
+	if len(stack) == 0 {
+		return 0, fmt.Errorf("node %s without active occurrence", nodeID)
+	}
+	return stack[len(stack)-1], nil
+}
+
+// releaseOccurrence releases only the occurrence owned by one invocation. It is
+// idempotent and never pops a nested same-ID frame by position alone.
+func (rt *Runtime) releaseOccurrence(nodeID string, occurrence int) {
+	stack := rt.activeOccurrences[nodeID]
+	for i := len(stack) - 1; i >= 0; i-- {
+		if stack[i] != occurrence {
+			continue
 		}
+		stack = append(stack[:i], stack[i+1:]...)
+		if len(stack) == 0 {
+			delete(rt.activeOccurrences, nodeID)
+		} else {
+			rt.activeOccurrences[nodeID] = stack
+		}
+		return
+	}
+}
+
+func (rt *Runtime) beginOccurrence(ctx context.Context, nodeID string) (int, error) {
+	if err := rt.emit(ctx, nodeID, PhaseRunning); err != nil {
+		return 0, err
+	}
+	return rt.activeOccurrence(nodeID)
+}
+
+func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
+	if rt.occurrences == nil {
+		rt.occurrences = make(map[string]int)
+		rt.activeOccurrences = make(map[string][]int)
+	}
+	stack := rt.activeOccurrences[nodeID]
+	occurrence := 0
+	if phase == PhaseRunning {
+		occurrence = rt.occurrences[nodeID] + 1
+	} else {
+		if len(stack) == 0 {
+			return fmt.Errorf("emit execution event %s/%s without active occurrence", nodeID, phase)
+		}
+		occurrence = stack[len(stack)-1]
+	}
+	evt := Event{RunID: rt.RunID, NodeID: nodeID, Occurrence: occurrence, Phase: phase}
+	fence := WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}
+	var recordErr error
+	if rt.Facts != nil {
+		if phase == PhaseSucceeded || phase == PhaseFailed || phase == PhaseCanceled {
+			recordErr = rt.Facts.CommitTerminal(ctx, fence, TerminalCommit{Event: evt})
+		} else {
+			recordErr = rt.Facts.RecordProgress(ctx, fence, evt)
+		}
+	}
+	if phase == PhaseRunning {
+		if recordErr != nil {
+			return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, recordErr)
+		}
+		rt.occurrences[nodeID] = occurrence
+		rt.activeOccurrences[nodeID] = append(stack, occurrence)
+		return nil
+	}
+	if phase == PhaseSucceeded || phase == PhaseFailed || phase == PhaseCanceled {
+		if recordErr == nil {
+			rt.releaseOccurrence(nodeID, occurrence)
+		}
+	}
+	if recordErr != nil {
+		return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, recordErr)
 	}
 	return nil
 }

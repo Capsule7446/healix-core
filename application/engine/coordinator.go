@@ -16,6 +16,9 @@ func (RunCoordinator) Run(ctx context.Context, program node.Program, cfg Config)
 	if cfg.RunID == "" {
 		return fmt.Errorf("run ID is required")
 	}
+	if cfg.Facts != nil && cfg.ClaimToken == "" {
+		return fmt.Errorf("claim token is required when execution facts are enabled")
+	}
 	if cfg.Driver == nil {
 		return fmt.Errorf("driver is required")
 	}
@@ -46,6 +49,7 @@ func newRuntime(program node.Program, cfg Config) *node.Runtime {
 	}
 	return &node.Runtime{
 		RunID:        cfg.RunID,
+		ClaimToken:   cfg.ClaimToken,
 		StepInterval: cfg.StepInterval,
 		Specs:        program.Specs,
 		Driver:       cfg.Driver,

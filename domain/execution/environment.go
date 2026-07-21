@@ -22,8 +22,3 @@ func (r CredentialReference) Validate() error {
 	}
 	return nil
 }
-
-// SecretResolver is the execution-only boundary for obtaining credentials.
-type SecretResolver interface {
-	ResolveCredential(CredentialReference) (string, error)
-}

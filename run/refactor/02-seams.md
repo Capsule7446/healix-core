@@ -24,7 +24,7 @@
 
 ## Seam D — Evidence projection
 
-- Current boundary: node `ExecutionSink` and heal sample observer emit facts consumed by workspace.
+- Current boundary: node `ExecutionSink` and heal sample observer emit facts consumed by evidence.
 - Extraction candidate: workspace adapter translating execution facts into candidate/evidence records.
 - Rollback: preserve existing sink interfaces and add adapter beside them.
 - Risk: ID-space confusion between nodeID and specID and persistence timing.

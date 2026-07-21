@@ -2,7 +2,7 @@
 
 ## 规划上下文
 
-`domain/workspace` owns workflow/test-task definitions, versions, dependency snapshots, run plans, and lifecycle transition rules. It is the source of what should run.
+`domain/automation` owns workflow/test-task definitions, versions, dependency snapshots, run plans, and lifecycle transition rules. It is the source of what should run.
 
 ## 执行上下文
 
@@ -18,7 +18,7 @@
 
 ## 证据上下文
 
-`domain/workspace/evidence.go` and `execution_facts.go` define projections for validation/healing/run evidence. Conceptually this is a reporting/audit context; physically it currently shares workspace package types and ports.
+`domain/automation/evidence.go` and `execution_facts.go` define projections for validation/healing/run evidence. Conceptually this is a reporting/audit context; physically it currently shares workspace package types and ports.
 
 ## 应用上下文
 

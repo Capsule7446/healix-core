@@ -71,17 +71,34 @@ func (h *testHealer) Heal(context.Context, fingerprint.NodeSpec, heal.DOMSnapsho
 
 type testFacts struct {
 	eventErrFor            map[Phase]error
+	eventErrors            []error
 	healDecisionErr        error
 	events                 []Event
 	healSpecIDs            []string
 	healDecisions          []heal.Decision
 	validationObservations []ValidationObservation
+	fences                 []WorkerFence
 	rejectCanceled         bool
 }
 
-func (m *testFacts) RecordEvent(ctx context.Context, evt Event) error {
+func (m *testFacts) RecordProgress(ctx context.Context, fence WorkerFence, evt Event) error {
+	m.fences = append(m.fences, fence)
+	return m.recordEvent(ctx, evt)
+}
+func (m *testFacts) CommitTerminal(ctx context.Context, fence WorkerFence, commit TerminalCommit) error {
+	m.fences = append(m.fences, fence)
+	return m.recordEvent(ctx, commit.Event)
+}
+func (m *testFacts) recordEvent(ctx context.Context, evt Event) error {
 	if m.rejectCanceled && ctx.Err() != nil {
 		return ctx.Err()
+	}
+	if len(m.eventErrors) > 0 {
+		err := m.eventErrors[0]
+		m.eventErrors = m.eventErrors[1:]
+		if err != nil {
+			return err
+		}
 	}
 	if err := m.eventErrFor[evt.Phase]; err != nil {
 		return err
@@ -89,12 +106,14 @@ func (m *testFacts) RecordEvent(ctx context.Context, evt Event) error {
 	m.events = append(m.events, evt)
 	return nil
 }
-func (m *testFacts) RecordHealDecision(_ context.Context, _, _, specID string, _ fingerprint.Selector, decision heal.Decision) error {
+func (m *testFacts) StageHealDecision(_ context.Context, fence WorkerFence, _, specID string, _ fingerprint.Selector, decision heal.Decision) error {
+	m.fences = append(m.fences, fence)
 	m.healSpecIDs = append(m.healSpecIDs, specID)
 	m.healDecisions = append(m.healDecisions, decision)
 	return m.healDecisionErr
 }
-func (m *testFacts) RecordValidationObservation(_ context.Context, _ string, observation ValidationObservation) error {
+func (m *testFacts) StageValidationObservation(_ context.Context, fence WorkerFence, observation ValidationObservation) error {
+	m.fences = append(m.fences, fence)
 	m.validationObservations = append(m.validationObservations, observation)
 	return nil
 }
@@ -105,6 +124,154 @@ func validDecision(selector fingerprint.Selector) heal.Decision {
 		Outcome:    heal.OutcomeApplied,
 		Best:       &candidate,
 		Candidates: []heal.Candidate{candidate},
+	}
+}
+
+func TestExecutionFactsUseWorkerFenceForProgressAndTerminalCommit(t *testing.T) {
+	sink := &testFacts{}
+	runtime := &Runtime{RunID: "run", ClaimToken: "claim", Facts: sink}
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.emitTerminal(context.Background(), "step", PhaseSucceeded); err != nil {
+		t.Fatal(err)
+	}
+	want := WorkerFence{RunID: "run", ClaimToken: "claim"}
+	if len(sink.fences) != 2 || sink.fences[0] != want || sink.fences[1] != want {
+		t.Fatalf("fences = %#v, want progress and terminal fenced by %#v", sink.fences, want)
+	}
+}
+
+func TestEmitRunningRollbackPreservesSuccessfulOccurrenceSequence(t *testing.T) {
+	sink := &testFacts{eventErrors: []error{errors.New("persist failed"), nil, nil}}
+	runtime := &Runtime{RunID: "run", Facts: sink}
+
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
+		t.Fatal("first RUNNING emit should fail")
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
+		t.Fatalf("second RUNNING emit: %v", err)
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err != nil {
+		t.Fatalf("SUCCEEDED emit: %v", err)
+	}
+	if len(sink.events) != 2 || sink.events[0].Occurrence != 1 || sink.events[1].Occurrence != 1 {
+		t.Fatalf("events = %#v, want successful occurrence 1 pair", sink.events)
+	}
+}
+
+func TestEmitRunningRollbackHandlesRepeatedFailures(t *testing.T) {
+	sink := &testFacts{eventErrors: []error{errors.New("one"), errors.New("two"), nil}}
+	runtime := &Runtime{RunID: "run", Facts: sink}
+
+	for i := 0; i < 2; i++ {
+		if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
+			t.Fatalf("RUNNING failure %d unexpectedly succeeded", i+1)
+		}
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
+		t.Fatalf("successful RUNNING emit: %v", err)
+	}
+	if got := sink.events[0].Occurrence; got != 1 {
+		t.Fatalf("successful occurrence = %d, want 1", got)
+	}
+}
+
+func TestEmitRunningRollbackPreservesNestedSameIDLIFO(t *testing.T) {
+	sink := &testFacts{}
+	runtime := &Runtime{RunID: "run", Facts: sink}
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
+		t.Fatal(err)
+	}
+	sink.eventErrors = []error{errors.New("nested persist failed"), nil, nil, nil}
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
+		t.Fatal("failed nested RUNNING unexpectedly succeeded")
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err != nil {
+		t.Fatal(err)
+	}
+	want := []int{1, 2, 2, 1}
+	for i, occurrence := range want {
+		if sink.events[i].Occurrence != occurrence {
+			t.Fatalf("event occurrences = %#v, want %v", sink.events, want)
+		}
+	}
+}
+
+func TestEmitTerminalFailureRetainsOccurrenceForFallback(t *testing.T) {
+	sink := &testFacts{eventErrors: []error{nil, errors.New("succeeded failed"), nil}}
+	runtime := &Runtime{RunID: "run", Facts: sink}
+
+	occurrence, err := runtime.beginOccurrence(context.Background(), "step")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.releaseOccurrence("step", occurrence)
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err == nil {
+		t.Fatal("SUCCEEDED emit should fail")
+	}
+	if err := runtime.emitTerminal(context.Background(), "step", PhaseFailed); err != nil {
+		t.Fatalf("fallback FAILED emit: %v", err)
+	}
+	if len(sink.events) != 2 || sink.events[0].Occurrence != sink.events[1].Occurrence || sink.events[1].Phase != PhaseFailed {
+		t.Fatalf("events = %#v, want RUNNING then FAILED on same occurrence", sink.events)
+	}
+}
+
+func TestOccurrenceCleanupAfterAllTerminalWritesFailAllowsReuse(t *testing.T) {
+	sink := &testFacts{eventErrors: []error{nil, errors.New("succeeded failed"), errors.New("failed failed"), nil, nil}}
+	runtime := &Runtime{RunID: "run", Facts: sink}
+
+	occurrence, err := runtime.beginOccurrence(context.Background(), "step")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err == nil {
+		t.Fatal("SUCCEEDED emit should fail")
+	}
+	if err := runtime.emitTerminal(context.Background(), "step", PhaseFailed); err == nil {
+		t.Fatal("FAILED emit should fail")
+	}
+	runtime.releaseOccurrence("step", occurrence)
+	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
+		t.Fatalf("reused RUNNING emit: %v", err)
+	}
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err != nil {
+		t.Fatalf("reused SUCCEEDED emit: %v", err)
+	}
+	if got := sink.events[1].Occurrence; got != 2 {
+		t.Fatalf("reused occurrence = %d, want 2", got)
+	}
+}
+
+func TestOccurrenceCleanupPreservesNestedSameIDLIFO(t *testing.T) {
+	sink := &testFacts{eventErrors: []error{nil, nil, errors.New("inner canceled failed"), nil}}
+	runtime := &Runtime{RunID: "run", Facts: sink}
+
+	outer, err := runtime.beginOccurrence(context.Background(), "step")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, err := runtime.beginOccurrence(context.Background(), "step")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.emitTerminal(context.Background(), "step", PhaseCanceled); err == nil {
+		t.Fatal("inner CANCELED emit should fail")
+	}
+	runtime.releaseOccurrence("step", inner)
+	if err := runtime.emit(context.Background(), "step", PhaseSucceeded); err != nil {
+		t.Fatalf("outer terminal emit: %v", err)
+	}
+	runtime.releaseOccurrence("step", outer)
+	if got := sink.events[len(sink.events)-1].Occurrence; got != outer {
+		t.Fatalf("outer terminal occurrence = %d, want %d", got, outer)
 	}
 }
 
@@ -290,7 +457,10 @@ func TestStepPropagatesCriticalFactErrors(t *testing.T) {
 			t.Fatalf("Run error = %v, want audit error", err)
 		}
 		if got := facts.events[len(facts.events)-1].Phase; got != PhaseFailed {
-			t.Fatalf("last persisted phase = %s, want FAILED", got)
+			t.Fatalf("last persisted phase = %s, want FAILED fallback", got)
+		}
+		if facts.events[len(facts.events)-1].Occurrence != facts.events[0].Occurrence {
+			t.Fatalf("fallback occurrence = %d, want %d", facts.events[len(facts.events)-1].Occurrence, facts.events[0].Occurrence)
 		}
 	})
 

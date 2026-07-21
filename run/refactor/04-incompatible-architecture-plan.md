@@ -19,14 +19,14 @@ application/
 
 ## 已完成
 
-1. 查询 DTO 从 `domain/workspace` 移至 `application/readmodel`。
+1. 查询 DTO 从 `domain/automation` 移至 `application/readmodel`。
 2. 旧 QueryResult、Dashboard 和 WorkspaceReader 组合接口删除。
 3. 应用层新增执行事实提交、进度写入和运行生命周期端口。
-4. 旧执行路径仍由 `domain/workspace` 类型支撑，保证当前工程可编译和可回滚。
+4. 旧执行路径仍由 `domain/automation` 类型支撑，保证当前工程可编译和可回滚。
 
 ## 后续不兼容切片
 
-1. 将 `TestTaskRunPlan`、`WorkflowExecutionPlan`、依赖快照迁移至 `domain/execution`，由编译器改用新包。
+1. 将 `sealed execution plan`、`WorkflowExecutionPlan`、依赖快照迁移至 `domain/execution`，由编译器改用新包。
 2. 将执行事实类型迁移至 `domain/evidence`，应用端口改用 evidence 契约。
 3. 将运行状态和运行生命周期规则从 workspace 资产包迁移至 `domain/execution`。
 4. 将 workspace ports 收缩为资产写入和发布端口；执行/证据端口只保留在 application/evidence 边界。

@@ -9,7 +9,7 @@ import (
 
 type fakeCommitter struct{}
 
-func (fakeCommitter) CommitStepTransition(context.Context, evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
+func (fakeCommitter) CommitStepTransition(context.Context, WorkerScope, evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
 	return evidence.StepTransitionCommitResult{}, nil
 }
 
@@ -19,13 +19,10 @@ func TestFactCommitterKeepsAtomicDomainCommitContract(t *testing.T) {
 
 type fakeProgressWriter struct{}
 
-func (fakeProgressWriter) RecordStepProgress(context.Context, evidence.StepPhaseEvent) error {
+func (fakeProgressWriter) RecordStepProgress(context.Context, WorkerScope, evidence.StepProgressEvent) error {
 	return nil
 }
-func (fakeProgressWriter) RecordValidationProgress(context.Context, evidence.ValidationObservation) error {
-	return nil
-}
-func (fakeProgressWriter) AttachTerminalStepError(context.Context, evidence.StepPhaseEvent) error {
+func (fakeProgressWriter) RecordValidationProgress(context.Context, WorkerScope, evidence.ValidationProgressObservation) error {
 	return nil
 }
 

@@ -1,6 +1,6 @@
 # 05 上下文映射
 
-- **Planning → Application**: `CompileExecution` consumes workspace plans and produces an execution Program. This is a published-language relationship through Go structs, with compiler validation as translation.
+- **Planning → Application**: `CompilePlan` consumes a sealed `execution.Plan` and produces one executable Program per ordered Entry. This is a published-language relationship through Go structs, with seal-time validation as translation.
 - **Application → Execution**: `RunProgram` supplies `node.Runtime` dependencies and delegates to the node tree.
 - **Execution → Fingerprint**: Node runtime and compiler use `NodeSpec`, selectors, and fingerprints as shared value objects.
 - **Execution → Healing**: node invokes `heal.Healer`, `heal.Assess`, and healing policies. Current relationship is direct dependency rather than ACL.

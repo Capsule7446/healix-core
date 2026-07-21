@@ -10,7 +10,7 @@
 ## 已落地
 
 - `application/scheduling` 拥有运行队列和运行生命周期端口。
-- `domain/workspace.WorkspaceWriter` 不再包含 TestRunWriter。
+- `domain/automation.WorkspaceWriter` 不再包含 TestRunWriter。
 - `application/readmodel` 已删除。
 - `domain/evidence` 拥有独立执行事实和终态提交契约。
 - Workspace 的旧执行事实提交端口已删除。
@@ -18,7 +18,7 @@
 ## Core 最终职责
 
 ```text
-domain/workspace  -> 资产、版本、发布不变量
+domain/automation  -> 资产、版本、发布不变量
  domain/execution  -> 运行状态、执行计划和执行快照
  domain/evidence   -> 执行事实、验证、自愈、网络证据
  domain/node       -> 可执行节点树和浏览器执行状态
@@ -30,6 +30,6 @@ domain/workspace  -> 资产、版本、发布不变量
 ## 尚未完成
 
 - 执行计划类型仍需从 Workspace 物理迁移到 `domain/execution`。
-- Workspace `evidence.go` 仍因依赖 TestTaskRunPlan 而保留组合模型。
+- Workspace `evidence.go` 仍因依赖 sealed execution plan 而保留组合模型。
 - Node 内部 ValidationObservation 需要通过 Application mapper 映射到 domain/evidence。
-- `domain/workspace.test_task_types.go` 仍同时承载资产版本类型与执行快照类型，需要先拆出共享资产快照值对象，再删除执行计划。
+- `domain/automation.test_task_types.go` 仍同时承载资产版本类型与执行快照类型，需要先拆出共享资产快照值对象，再删除执行计划。

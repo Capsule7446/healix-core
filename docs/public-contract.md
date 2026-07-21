@@ -14,6 +14,6 @@
 
 ## 执行契约
 
-- `CompileExecution` 只消费已冻结的 `TestTaskRunPlan`，不解析 `LATEST`，不访问 I/O。
+- `CompilePlan` 只消费已封存的 `execution.Plan`，不解析 `LATEST`，不访问 I/O。
 - `RunProgram` 每次创建独立 Runtime，只通过注入端口访问浏览器、录屏和事实写入。
-- Step 终态、final Validation 和 Heal 事实的原子性由宿主实现 `ExecutionFactCommitter` 保证。
+- Step 终态、final Validation 和 Heal 事实的原子性由宿主实现 `application/execution.FactCommitter` 保证；所有 Worker 写入必须校验 `WorkerScope.ClaimToken`。

@@ -76,6 +76,7 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseRunning); err != nil {
 		return err
 	}
+	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, err)
 	}
@@ -303,7 +304,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate {
 		if rt.Facts != nil {
-			if err := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
+			if err := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
 				return nil, false, fmt.Errorf("record heal decision: %w", err)
 			}
 		}
@@ -320,7 +321,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
-			if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
 				return nil, false, fmt.Errorf("record validation heal decision: %w", recordErr)
 			}
 		}
@@ -328,7 +329,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 				return nil, false, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
 			}
 		}
@@ -341,7 +342,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
 	if rt.Facts != nil {
-		if recordErr := rt.Facts.RecordHealDecision(ctx, rt.RunID, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
 		}
 	}
@@ -434,6 +435,7 @@ func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := transitionValidation(ctx, rt, execution, g.NodeID, PhaseRunning); err != nil {
 		return err
 	}
+	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
 	if err := transitionValidation(ctx, rt, execution, g.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, g.NodeID, err)
 	}
@@ -564,7 +566,7 @@ func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime,
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.RecordValidationObservation(cleanupCtx, rt.RunID, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
 		Assertion: assertion, Actual: actual, Passed: passed, Reason: reason,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: final,
@@ -598,6 +600,13 @@ func transitionValidation(ctx context.Context, rt *Runtime, execution *StepExecu
 	}
 	if err := rt.emit(ctx, nodeID, next); err != nil {
 		return err
+	}
+	if next == PhaseRunning {
+		occurrence, err := rt.activeOccurrence(nodeID)
+		if err != nil {
+			return err
+		}
+		execution.occurrence = occurrence
 	}
 	return execution.Transition(next)
 }

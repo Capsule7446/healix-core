@@ -1,20 +1,14 @@
 # 10 业务视图
 
-| 视图 | 消费者 | 字段/来源 | 刷新/同步状态 |
+Core 不拥有业务读模型。消费项目基于 Automation 资产和不可变 Evidence 事实建立自己的投影、查询 DTO、缓存与 API。
+
+| 视图 | 消费者 | 建议事实来源 | 所有者 |
 |---|---|---|---|
-| Node list/detail | authoring UI/API | `NodeQueryResult` (`NodeAggregate` + `RefCount`) | Reader port; concrete adapter owns joins/cache |
-| Workflow list/detail | authoring UI/API | `WorkflowQueryResult` plus `LastRunStatus/LastRunAt` | Reader port; latest-run derivation external |
-| Test task list/detail | task UI/API | `TestTaskQueryResult` plus latest-run fields | Reader port; concrete query path external |
-| Run dashboard | monitoring UI | `Dashboard`: status counts, recent runs, queue, task projections | Reader port; freshness/materialization unspecified |
-| Execution detail/timeline | monitor/replay UI | `ExecutionDetail`: execution, steps, requests, heals, validations | Facts synchronize through execution writer/committer contracts |
-| Healing review | review UI | `HealCandidateRecord`, `HealObservationDetail`, candidate evidence and samples | Review/read record exists; query and review-state persistence external |
-| Heal quality report | analytics UI | `metrics.Query` → immutable `ObservationFact` → `metrics.Report/Bucket` | Pure read projection; no writer in metrics package |
-| Framework diagnostics | debugging UI | `PageObservation`, `FrameworkStack`, NodeSpec/Fingerprint | Host supplies sanitized observations; persistence/query external |
+| Node / Workflow / TestTask 列表与详情 | authoring UI/API | Automation 聚合事件或持久化资产 | 消费项目 |
+| Run dashboard | monitoring UI | Execution Run/Entry 状态事实 | 消费项目 |
+| Execution timeline | monitor/replay UI | Evidence progress 与原子 terminal commits | 消费项目 |
+| Healing review | review UI | durable heal candidate 与 Evidence observations | 消费项目 |
+| Heal quality report | analytics UI | immutable Evidence observations | 消费项目 |
+| Framework diagnostics | debugging UI | sanitized sampling/fingerprint observations | 消费项目 |
 
-本仓库没有页面或 Controller 实现。 Workspace reader ports in `domain/workspace/ports.go` and metrics reader contracts define the integration surface; host adapters own API DTOs, storage and refresh jobs.
-
-## Read-side pollution visible today
-
-- Query results embed full write-side aggregates (`NodeQueryResult`, `WorkflowQueryResult`, `TestTaskQueryResult`).
-- `TestTaskRun` mixes lifecycle facts with display/progress fields such as queue position and current step.
-- `Environment`/`EnvironmentSnapshot` contain credentials and must not be reused directly as UI responses.
+Core 不提供 `NodeQueryResult`、`WorkflowQueryResult`、`TestTaskQueryResult`、`Dashboard`、`ExecutionDetail` 或 `metrics.Query`。这些已删除的类型不能作为集成契约。凭据值只允许在执行期通过 Application credential boundary 解析，不能进入投影、日志或 Evidence。

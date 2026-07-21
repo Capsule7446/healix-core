@@ -1,6 +1,6 @@
 # 12 读模型
 
-当前代码已经隐含了这些视图契约，但它们在物理上混杂于 `domain/workspace` 而不是独立的查询命名空间:
+当前代码已经隐含了这些视图契约，但它们在物理上混杂于 `domain/automation` 而不是独立的查询命名空间:
 
 - `NodeListItem`: stable node identity/display/version fields plus derived `RefCount`.
 - `WorkflowListItem`: workflow identity/version fields plus derived latest run status/time.

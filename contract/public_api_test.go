@@ -5,13 +5,12 @@ import (
 	"testing"
 
 	coreengine "github.com/Capsule7446/healix-core/application/engine"
+	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
-	"github.com/Capsule7446/healix-core/domain/metrics"
 	"github.com/Capsule7446/healix-core/domain/node"
 	"github.com/Capsule7446/healix-core/domain/sampling"
-	"github.com/Capsule7446/healix-core/domain/workspace"
 )
 
 type consumerResolver map[string]string
@@ -49,10 +48,10 @@ func TestPublicConsumerCanUseCoreContracts(t *testing.T) {
 	}); err == nil {
 		t.Fatal("public RunProgram accepted a missing root")
 	}
-	_ = coreengine.CompiledExecution{}
-	_ = metrics.Query{}
+	_ = coreengine.CompiledRun{}
 	_ = sampling.MatchProfile{}
-	_ = workspace.TestTaskRunPlan{}
+	_ = execution.Draft{}
+	_ = execution.Seal
 }
 
 var _ interpolation.Resolver = consumerResolver{}

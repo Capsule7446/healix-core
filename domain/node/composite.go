@@ -76,12 +76,14 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("wait %s: wait step interval: %w", w.NodeID, err)
 	}
-	if err := rt.emit(ctx, w.NodeID, PhaseRunning); err != nil {
+	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
+	if err != nil {
 		return fmt.Errorf("wait %s: enter running phase: %w", w.NodeID, err)
 	}
+	defer rt.releaseOccurrence(w.NodeID, occurrence)
 
 	started := time.Now()
-	var err error
+	err = nil
 	switch w.Kind {
 	case WaitSleep, "":
 		err = w.sleep(ctx)
@@ -168,9 +170,11 @@ type RepeatNode struct {
 func (r *RepeatNode) ID() string { return r.NodeID }
 
 func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
-	if err := rt.emit(ctx, r.NodeID, PhaseRunning); err != nil {
+	occurrence, err := rt.beginOccurrence(ctx, r.NodeID)
+	if err != nil {
 		return fmt.Errorf("repeat %s: enter running phase: %w", r.NodeID, err)
 	}
+	defer rt.releaseOccurrence(r.NodeID, occurrence)
 	for i := 0; i < r.Times; i++ {
 		for _, c := range r.Children {
 			if err := c.Run(ctx, rt); err != nil {
@@ -198,9 +202,11 @@ type WorkflowNode struct {
 func (w *WorkflowNode) ID() string { return w.NodeID }
 
 func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
-	if err := rt.emit(ctx, w.NodeID, PhaseRunning); err != nil {
+	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
+	if err != nil {
 		return fmt.Errorf("workflow %s: enter running phase: %w", w.NodeID, err)
 	}
+	defer rt.releaseOccurrence(w.NodeID, occurrence)
 	for _, c := range w.Children {
 		if err := c.Run(ctx, rt); err != nil {
 			if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
@@ -237,10 +243,12 @@ func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
 		return errors.New("workflow call target is required")
 	}
 	id := w.ID()
-	if err := rt.emit(ctx, id, PhaseRunning); err != nil {
+	occurrence, err := rt.beginOccurrence(ctx, id)
+	if err != nil {
 		return fmt.Errorf("workflow call %s: enter running phase: %w", id, err)
 	}
-	err := w.runTarget(ctx, rt)
+	defer rt.releaseOccurrence(id, occurrence)
+	err = w.runTarget(ctx, rt)
 	if err != nil {
 		if emitErr := rt.emitTerminal(ctx, id, failurePhase(ctx)); emitErr != nil {
 			return errors.Join(err, emitErr)

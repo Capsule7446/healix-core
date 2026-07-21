@@ -6,12 +6,12 @@ Healix Core models and executes browser workflows from immutable workspace plans
 
 ## 入口地图
 
-- `application/engine.CompileExecution` (`application/engine/compiler.go:40`) transforms workspace workflow/test-task plans into an executable `node.Program` plus indexed `fingerprint.NodeSpec` values.
+- `application/engine.CompilePlan` transforms a sealed multi-entry `execution.Plan` into one executable `node.Program` per Entry plus indexed `fingerprint.NodeSpec` values.
 - `application/engine.RunProgram` (`application/engine/engine.go:31`) is the execution entry point: validates inputs, snapshots variables, constructs `node.Runtime`, manages Recorder lifecycle, then runs the root node.
 - `node.Program.Root.Run` dispatches the composite execution tree; `WorkflowNode` and `WorkflowCallNode` model workflow composition (`domain/node/composite.go`).
 - Host browser adapters implement `node.Driver` and `node.Element`; Core has no browser SDK dependency.
 - `domain/fingerprint.DetectFrameworks` (`domain/fingerprint/detection.go:27`) consumes sanitized `PageObservation` supplied by the host adapter.
-- Workspace ports (`domain/workspace/ports.go`) define persistence-facing readers/writers; this repository contains contracts and models, not a concrete API/controller.
+- Workspace ports (`domain/automation/ports.go`) define persistence-facing readers/writers; this repository contains contracts and models, not a concrete API/controller.
 
 ## Core behavior
 

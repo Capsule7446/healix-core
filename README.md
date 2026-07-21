@@ -10,10 +10,13 @@
 | `domain/interpolation` | `${name}` 变量表达式 |
 | `domain/heal` | 确定性自愈决策、LCS 与 scorer |
 | `domain/node` | Program、Step 状态机、Runtime 与执行端口 |
-| `domain/sampling` | 采样 Session、Capture 幂等与匹配 |
-| `domain/workspace` | 资产、版本、TestTask、Run、事实与仓储端口 |
-| `domain/metrics` | 基于 Workspace 事实的只读质量投影契约 |
-| `application/engine` | 从冻结 Run 快照编译并执行内存 Program |
+| `domain/sampling` | 临时采样 Session、Capture 幂等与编辑状态 |
+| `domain/automation` | 持久化资产、不可变版本、TestTask 与 Revision 聚合规则 |
+| `domain/execution` | 封存多入口 Plan、Run/Entry 生命周期与执行预算 |
+| `domain/evidence` | 不可变执行事实与原子终态提交契约 |
+| `application/automation` | 资源命令、Revision CAS 与采样发布编排 |
+| `application/scheduling` | Plan 构造、顺序/失败策略决策与 claim 协调 |
+| `application/engine` | 从封存 Plan 独立编译并执行每个 Entry Program |
 
 ## 依赖方向
 
@@ -52,7 +55,7 @@ Core 不内置 Rod、Playwright、Wails、SQLite、rrweb、凭据存储、文件
 
 ## 运行语义
 
-- `Program`、Config 中的 map/slice 和冻结 Workspace 快照在执行期间由调用方视为不可变；同一份可变对象不得并发修改。
+- `Program`、Config 中的 map/slice 和封存 Execution Plan 在执行期间由调用方视为不可变；同一份可变对象不得并发修改。
 - Driver 定位不到目标时必须返回或包装 `node.ErrElementNotFound`，只有该错误允许触发确定性自愈。
 - 调用 Context 控制正常执行；Recorder Stop 等有界终态清理会脱离取消并最多继续 5 秒。
-- `CompileExecution` 只消费已经冻结的快照；`RunProgram` 不访问数据库、文件或网络资源存储。
+- `CompilePlan` 只消费已封存的 Execution Plan；`RunProgram` 不访问数据库、文件或网络资源存储。
