@@ -3,8 +3,6 @@ package engine
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/heal"
@@ -27,47 +25,9 @@ type Config struct {
 	Variables map[string]string
 }
 
-// RunProgram 执行已经从不可变运行快照编译出的内存 Program。
-func RunProgram(ctx context.Context, program node.Program, cfg Config) (runErr error) {
-	if cfg.RunID == "" {
-		return fmt.Errorf("run ID is required")
-	}
-	if cfg.Driver == nil {
-		return fmt.Errorf("driver is required")
-	}
-	if program.Root == nil {
-		return fmt.Errorf("program root is required")
-	}
-
-	scratchpad := make(map[string]any, len(cfg.Variables))
-	for name, value := range cfg.Variables {
-		scratchpad[name] = value
-	}
-	rt := &node.Runtime{
-		RunID:        cfg.RunID,
-		StepInterval: cfg.StepInterval,
-		Specs:        program.Specs,
-		Driver:       cfg.Driver,
-		Healer:       cfg.Healer,
-		Recorder:     cfg.Recorder,
-		Facts:        cfg.Facts,
-		Scratchpad:   scratchpad,
-	}
-
-	if cfg.Recorder != nil {
-		if err := cfg.Recorder.Start(ctx, cfg.RunID); err != nil {
-			return fmt.Errorf("start recorder: %w", err)
-		}
-		defer func() {
-			cleanupCtx, cancel := detachedTimeout(ctx, 5*time.Second)
-			defer cancel()
-			if err := cfg.Recorder.Stop(cleanupCtx, true); err != nil {
-				runErr = errors.Join(runErr, fmt.Errorf("stop recorder: %w", err))
-			}
-		}()
-	}
-
-	return program.Root.Run(ctx, rt)
+// RunProgram executes an in-memory Program compiled from an immutable run snapshot.
+func RunProgram(ctx context.Context, program node.Program, cfg Config) error {
+	return (RunCoordinator{}).Run(ctx, program, cfg)
 }
 
 func detachedTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
