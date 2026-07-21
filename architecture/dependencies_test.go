@@ -200,7 +200,7 @@ func walkGo(root string, includeTests bool, visit func(string, *ast.File, *token
 
 func domainContext(packageName string) (string, bool) {
 	switch packageName {
-	case "heal", "node", "execution":
+	case "heal", "node", "execution", "evidence":
 		return "execution", true
 	case "sampling", "workspace":
 		return "workspace", true
