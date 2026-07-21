@@ -3,12 +3,13 @@ package scheduling
 import (
 	"context"
 
+	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/workspace"
 )
 
 // Scheduler owns queueing and run lifecycle orchestration.
 type Scheduler interface {
-	CreateRun(context.Context, workspace.TestTaskRunPlan) error
+	CreateRun(context.Context, execution.Plan) error
 	CancelRun(context.Context, string, int64) error
 	ReorderQueue(context.Context, []string) error
 	DeleteRun(context.Context, string) error

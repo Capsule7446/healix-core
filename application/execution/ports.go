@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/workspace"
 )
 
@@ -21,8 +22,8 @@ type ProgressWriter interface {
 
 // RunCoordinator owns application-level run lifecycle transitions.
 type RunCoordinator interface {
-	Create(context.Context, workspace.TestTaskRunPlan) error
-	ClaimNext(context.Context, int64) (workspace.TestTaskRunPlan, bool, error)
+	Create(context.Context, execution.Plan) error
+	ClaimNext(context.Context, int64) (execution.Plan, bool, error)
 	StartWorkflow(context.Context, string, int64) error
 	FinishWorkflow(context.Context, string, workspace.ExecutionStatus, int64) error
 	Fail(context.Context, string, string, int64) error
