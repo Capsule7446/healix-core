@@ -32,4 +32,4 @@ domain/workspace  -> 资产、版本、发布不变量
 - 执行计划类型仍需从 Workspace 物理迁移到 `domain/execution`。
 - Workspace `evidence.go` 仍因依赖 TestTaskRunPlan 而保留组合模型。
 - Node 内部 ValidationObservation 需要通过 Application mapper 映射到 domain/evidence。
-- 需要删除 Workspace 中最终剩余的运行计划和组合证据类型。
+- `domain/workspace.test_task_types.go` 仍同时承载资产版本类型与执行快照类型，需要先拆出共享资产快照值对象，再删除执行计划。
