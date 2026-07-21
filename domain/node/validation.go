@@ -284,14 +284,14 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	if !errors.Is(err, ErrElementNotFound) {
 		return nil, false, err
 	}
-	if rt.Healer == nil {
+	if rt.Healing == nil && rt.Healer == nil {
 		return nil, true, nil
 	}
 	snapshot, err := rt.Driver.Snapshot(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("snapshot for healing: %w", err)
 	}
-	decision, err := rt.Healer.Heal(ctx, target, snapshot)
+	decision, err := rt.healingPort().Recover(ctx, target, snapshot)
 	if err != nil {
 		return nil, false, err
 	}

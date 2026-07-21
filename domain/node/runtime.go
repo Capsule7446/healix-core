@@ -203,7 +203,8 @@ type Runtime struct {
 	// 都通过 effectiveSpec 读取该 overlay。
 	SelectorOverlay   map[string][]fingerprint.Selector
 	Driver            Driver
-	Healer            heal.Healer   // nil = 关闭自愈
+	Healer            heal.Healer // nil = 关闭自愈
+	Healing           HealingPort
 	Recorder          Recorder      // nil = 关闭录屏
 	Facts             ExecutionSink // nil = 不输出执行事实
 	OperationObserver OperationObserver
@@ -226,6 +227,13 @@ func (rt *Runtime) observeOperationBestEffort(ctx context.Context, observation O
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), operationObservationTimeout)
 	defer cancel()
 	_ = rt.observeOperation(cleanupCtx, observation)
+}
+
+func (rt *Runtime) healingPort() HealingPort {
+	if rt.Healing != nil {
+		return rt.Healing
+	}
+	return adaptHealer(rt.Healer)
 }
 
 func (rt *Runtime) healingReviewCap() float64 {

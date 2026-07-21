@@ -134,7 +134,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 			}
 			return nil
 		}
-		if rt.Healer == nil {
+		if rt.Healing == nil && rt.Healer == nil {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed and healing disabled: %w", s.NodeID, err))
 		}
 		if err := s.transition(ctx, rt, execution, PhaseHealing); err != nil {
@@ -178,7 +178,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 		return nil, fmt.Errorf("snapshot for healing: %w", err)
 	}
 
-	decision, err := rt.Healer.Heal(ctx, target, snap)
+	decision, err := rt.healingPort().Recover(ctx, target, snap)
 	if err != nil {
 		return nil, err
 	}
