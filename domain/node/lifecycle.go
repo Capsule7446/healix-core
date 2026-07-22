@@ -361,7 +361,7 @@ func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind stri
 		return nil, fmt.Errorf("validate step timeline start: %w", err)
 	}
 	if err := rt.StepTimeline.RecordStepTimelineEvent(ctx, event); err != nil {
-		return nil, fmt.Errorf("%w for %s/%d: %v", ErrStepTimelineStart, nodeID, occurrence, err)
+		return nil, fmt.Errorf("%w for %s/%d: %w", ErrStepTimelineStart, nodeID, occurrence, err)
 	}
 	rt.leafExecutionStarted = true
 	return lifecycle, nil
@@ -391,7 +391,7 @@ func (l *leafLifecycle) Complete(ctx context.Context, nodeErr error) error {
 			cancel()
 		}
 		if timelineErr != nil {
-			timelineErr = fmt.Errorf("%w for %s/%d: %v", ErrStepTimelineFinish, l.execution.NodeID, l.execution.Occurrence, timelineErr)
+			timelineErr = fmt.Errorf("%w for %s/%d: %w", ErrStepTimelineFinish, l.execution.NodeID, l.execution.Occurrence, timelineErr)
 		}
 	}
 	snapshot := NodeExecutionSnapshot{

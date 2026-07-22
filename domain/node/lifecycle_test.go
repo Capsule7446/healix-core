@@ -22,10 +22,14 @@ func (t *timelineStub) Mark() TimelineMark {
 type timelineSinkStub struct {
 	events []StepTimelineEvent
 	errAt  StepBoundary
+	err    error
 }
 
 func (s *timelineSinkStub) RecordStepTimelineEvent(_ context.Context, event StepTimelineEvent) error {
 	if event.Boundary == s.errAt {
+		if s.err != nil {
+			return s.err
+		}
 		return errors.New("timeline rejected")
 	}
 	s.events = append(s.events, event)
@@ -225,25 +229,27 @@ func TestLeafLifecycleRecordsTimelineAndRunsCompletionHandlersInOrder(t *testing
 }
 
 func TestLeafLifecycleStartFailurePreventsExecution(t *testing.T) {
-	sink := &timelineSinkStub{errAt: StepBoundaryStarted}
+	original := errors.New("timeline rejected")
+	sink := &timelineSinkStub{errAt: StepBoundaryStarted, err: original}
 	rt := &Runtime{RunID: "run", Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}}}, StepTimeline: sink}
 	_, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
-	if !errors.Is(err, ErrStepTimelineStart) {
-		t.Fatalf("error = %v, want ErrStepTimelineStart", err)
+	if !errors.Is(err, ErrStepTimelineStart) || !errors.Is(err, original) {
+		t.Fatalf("error = %v, want start sentinel and original error", err)
 	}
 }
 
 func TestLeafLifecycleFinishFailurePreservesOriginalFailure(t *testing.T) {
-	original := errors.New("node failed")
-	sink := &timelineSinkStub{errAt: StepBoundaryFinished}
+	nodeErr := errors.New("node failed")
+	timelineErr := errors.New("timeline rejected")
+	sink := &timelineSinkStub{errAt: StepBoundaryFinished, err: timelineErr}
 	rt := &Runtime{RunID: "run", Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}, {Sequence: 2}}}, StepTimeline: sink}
 	lifecycle, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if err != nil {
 		t.Fatalf("beginLeafLifecycle: %v", err)
 	}
-	err = lifecycle.Complete(context.Background(), original)
-	if !errors.Is(err, original) || !errors.Is(err, ErrStepTimelineFinish) {
-		t.Fatalf("error chain = %v", err)
+	err = lifecycle.Complete(context.Background(), nodeErr)
+	if !errors.Is(err, nodeErr) || !errors.Is(err, ErrStepTimelineFinish) || !errors.Is(err, timelineErr) {
+		t.Fatalf("error chain = %v, want node, finish sentinel, and timeline errors", err)
 	}
 }
 
