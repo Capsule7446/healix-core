@@ -373,7 +373,7 @@ func (l *leafLifecycle) MarkSkipped() {
 
 func (l *leafLifecycle) Complete(ctx context.Context, nodeErr error) error {
 	completedAt := time.Now()
-	outcome, stepOutcome := lifecycleOutcome(ctx, nodeErr)
+	outcome, stepOutcome := lifecycleOutcome(nodeErr)
 	if l.nodeOutcome == NodeOutcomeSkipped && nodeErr == nil {
 		outcome = NodeOutcomeSkipped
 	}
@@ -419,11 +419,11 @@ func (l *leafLifecycle) Complete(ctx context.Context, nodeErr error) error {
 	return nodeErr
 }
 
-func lifecycleOutcome(ctx context.Context, err error) (NodeOutcome, StepOutcome) {
+func lifecycleOutcome(err error) (NodeOutcome, StepOutcome) {
 	if err == nil {
 		return NodeOutcomeSucceeded, StepOutcomeSucceeded
 	}
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return NodeOutcomeCanceled, StepOutcomeCanceled
 	}
 	return NodeOutcomeFailed, StepOutcomeFailed

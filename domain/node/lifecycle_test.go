@@ -115,6 +115,33 @@ func TestCompletionChainPropagatesCancellationReceivedDuringHandler(t *testing.T
 	<-done
 }
 
+func TestLeafLifecyclePreservesBusinessFailureAfterContextCancellation(t *testing.T) {
+	original := errors.New("business failed")
+	var observed NodeOutcome
+	chain, err := NewNodeCompletionChain(NodeCompletionOptions{}, completionHandlerStub{
+		name: "observe",
+		handle: func(input NodeCompletionContext) error {
+			observed = input.Snapshot.Outcome
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	lifecycle, err := (&Runtime{RunID: "run", CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	if err != nil {
+		t.Fatalf("beginLeafLifecycle: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := lifecycle.Complete(ctx, original); !errors.Is(err, original) {
+		t.Fatalf("Complete error = %v, want original failure", err)
+	}
+	if observed != NodeOutcomeFailed {
+		t.Fatalf("snapshot outcome = %s, want %s", observed, NodeOutcomeFailed)
+	}
+}
+
 func TestCompletionChainIsolatesSnapshotErrorBetweenHandlers(t *testing.T) {
 	original := errors.New("node failed")
 	var observed string
