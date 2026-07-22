@@ -11,14 +11,19 @@ import (
 )
 
 type resultTimelineSink struct {
-	startErr  error
-	finishErr error
-	events    []node.StepTimelineEvent
+	startErr      error
+	failStartAt   int
+	startedEvents int
+	finishErr     error
+	events        []node.StepTimelineEvent
 }
 
 func (s *resultTimelineSink) RecordStepTimelineEvent(_ context.Context, event node.StepTimelineEvent) error {
-	if event.Boundary == node.StepBoundaryStarted && s.startErr != nil {
-		return s.startErr
+	if event.Boundary == node.StepBoundaryStarted {
+		s.startedEvents++
+		if s.startErr != nil && (s.failStartAt == 0 || s.startedEvents == s.failStartAt) {
+			return s.startErr
+		}
 	}
 	if event.Boundary == node.StepBoundaryFinished && s.finishErr != nil {
 		return s.finishErr
@@ -44,6 +49,33 @@ func TestRunProgramWithResultReportsTimelineStartFailureBeforeLeafExecution(t *t
 	}
 	if driver.navigated != "" {
 		t.Fatalf("leaf executed navigation to %q", driver.navigated)
+	}
+}
+
+func TestRunProgramWithResultReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
+	driver := &engineTestDriver{}
+	startErr := errors.New("second start rejected")
+	program := node.Program{Root: &node.WorkflowNode{
+		NodeID: "two-leaves",
+		Children: []node.Node{
+			&node.StepNode{NodeID: "first", Action: node.Action{Kind: node.ActionNavigate, Value: "https://first.test"}},
+			&node.StepNode{NodeID: "second", Action: node.Action{Kind: node.ActionNavigate, Value: "https://second.test"}},
+		},
+	}}
+	result, err := RunProgramWithResult(context.Background(), program, Config{
+		RunID:        "run-second-timeline-start",
+		Driver:       driver,
+		Recorder:     &engineTestRecorder{},
+		StepTimeline: &resultTimelineSink{startErr: startErr, failStartAt: 2},
+	})
+	if !errors.Is(err, node.ErrStepTimelineStart) {
+		t.Fatalf("error = %v, want timeline start error", err)
+	}
+	if result.ExecutionOutcome != ExecutionFailed || result.TimelineOutcome != TimelineStartFailed {
+		t.Fatalf("result = %+v", result)
+	}
+	if driver.navigated != "https://first.test" {
+		t.Fatalf("navigated = %q, want only first leaf", driver.navigated)
 	}
 }
 

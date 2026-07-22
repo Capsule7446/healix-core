@@ -115,6 +115,34 @@ func TestCompletionChainPropagatesCancellationReceivedDuringHandler(t *testing.T
 	<-done
 }
 
+func TestCompletionChainIsolatesSnapshotErrorBetweenHandlers(t *testing.T) {
+	original := errors.New("node failed")
+	var observed string
+	chain, err := NewNodeCompletionChain(NodeCompletionOptions{},
+		completionHandlerStub{name: "mutate", handle: func(input NodeCompletionContext) error {
+			input.Snapshot.Error.Message = "mutated"
+			return nil
+		}},
+		completionHandlerStub{name: "observe", handle: func(input NodeCompletionContext) error {
+			observed = input.Snapshot.Error.Message
+			return nil
+		}},
+	)
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	lifecycle, err := (&Runtime{RunID: "run", CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	if err != nil {
+		t.Fatalf("beginLeafLifecycle: %v", err)
+	}
+	if err := lifecycle.Complete(context.Background(), original); !errors.Is(err, original) {
+		t.Fatalf("Complete error = %v, want original failure", err)
+	}
+	if observed != original.Error() {
+		t.Fatalf("second handler observed error %q, want %q", observed, original.Error())
+	}
+}
+
 func TestCompletionSnapshotDurationExcludesHandlerTime(t *testing.T) {
 	var snapshot NodeExecutionSnapshot
 	chain, err := NewNodeCompletionChain(NodeCompletionOptions{}, completionHandlerStub{name: "capture", handle: func(input NodeCompletionContext) error {

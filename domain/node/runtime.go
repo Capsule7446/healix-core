@@ -211,26 +211,31 @@ type Runtime struct {
 	// SelectorOverlay 是本次 run 内按 NodeSpec ID 保存的 healed selector 列表。
 	// 编译出的 Specs/StepNode 保持不变，同一 spec 的后续 step、repeat 和断言
 	// 都通过 effectiveSpec 读取该 overlay。
-	SelectorOverlay    map[string][]fingerprint.Selector
-	Driver             Driver
-	Healer             heal.Healer // nil = 关闭自愈
-	Healing            HealingPort
-	Recorder           Recorder      // nil = 关闭录屏
-	Facts              ExecutionSink // nil = 不输出执行事实
-	Timeline           RecordingTimeline
-	StepTimeline       StepTimelineSink
-	CompletionChain    *NodeCompletionChain
-	ReadOnlyBrowser    ReadOnlyBrowser
-	CompletionObserver NodeCompletionObserver
-	OperationObserver  OperationObserver
-	HealSamples        HealSampleObserver
-	RetryPolicy        RetryPolicy
-	HealingPolicy      heal.SafetyPolicy
-	HealingReviewCap   float64
-	Scratchpad         map[string]any
-	pacer              stepPacer
-	occurrences        map[string]int
-	activeOccurrences  map[string][]int
+	SelectorOverlay      map[string][]fingerprint.Selector
+	Driver               Driver
+	Healer               heal.Healer // nil = 关闭自愈
+	Healing              HealingPort
+	Recorder             Recorder      // nil = 关闭录屏
+	Facts                ExecutionSink // nil = 不输出执行事实
+	Timeline             RecordingTimeline
+	StepTimeline         StepTimelineSink
+	CompletionChain      *NodeCompletionChain
+	ReadOnlyBrowser      ReadOnlyBrowser
+	CompletionObserver   NodeCompletionObserver
+	OperationObserver    OperationObserver
+	HealSamples          HealSampleObserver
+	RetryPolicy          RetryPolicy
+	HealingPolicy        heal.SafetyPolicy
+	HealingReviewCap     float64
+	Scratchpad           map[string]any
+	leafExecutionStarted bool
+	pacer                stepPacer
+	occurrences          map[string]int
+	activeOccurrences    map[string][]int
+}
+
+func (rt *Runtime) LeafExecutionStarted() bool {
+	return rt != nil && rt.leafExecutionStarted
 }
 
 func (rt *Runtime) observeOperation(ctx context.Context, observation OperationObservation) error {

@@ -291,7 +291,9 @@ func (c *NodeCompletionChain) run(ctx context.Context, input NodeCompletionConte
 		}
 		handlerCtx, cancelHandler := context.WithTimeout(chainCtx, handlerTimeout)
 		startedAt := time.Now()
-		err := handler.Handle(handlerCtx, input)
+		handlerInput := input
+		handlerInput.Snapshot.Error = cloneErrorSnapshot(input.Snapshot.Error)
+		err := handler.Handle(handlerCtx, handlerInput)
 		completedAt := time.Now()
 		cancelHandler()
 		results = append(results, CompletionHandlerResult{HandlerName: handler.Name(), StartedAt: startedAt, CompletedAt: completedAt, Error: snapshotError(err)})
@@ -347,6 +349,7 @@ func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind stri
 		startedAt: time.Now(),
 	}
 	if rt.StepTimeline == nil {
+		rt.leafExecutionStarted = true
 		return lifecycle, nil
 	}
 	if rt.Timeline == nil {
@@ -360,6 +363,7 @@ func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind stri
 	if err := rt.StepTimeline.RecordStepTimelineEvent(ctx, event); err != nil {
 		return nil, fmt.Errorf("%w for %s/%d: %v", ErrStepTimelineStart, nodeID, occurrence, err)
 	}
+	rt.leafExecutionStarted = true
 	return lifecycle, nil
 }
 
@@ -423,6 +427,14 @@ func lifecycleOutcome(ctx context.Context, err error) (NodeOutcome, StepOutcome)
 		return NodeOutcomeCanceled, StepOutcomeCanceled
 	}
 	return NodeOutcomeFailed, StepOutcomeFailed
+}
+
+func cloneErrorSnapshot(source *ExecutionErrorSnapshot) *ExecutionErrorSnapshot {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	return &cloned
 }
 
 func snapshotError(err error) *ExecutionErrorSnapshot {
