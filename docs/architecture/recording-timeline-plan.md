@@ -358,7 +358,7 @@ Repeat 容器自身不产生时间线边界。
 | 10.7 | Retry 耗尽 | 允许重试至策略上限；耗尽后禁止继续尝试 | 单对边界、最终 FAILED |
 | 10.8 | 叶子步骤失败 | STARTED 成功后允许叶子执行 | 写入 FINISHED/FAILED，保留原始错误 |
 | 10.9 | 执行取消 | 取消前已 STARTED 的叶子不再继续业务行为 | 尽力写入 FINISHED/CANCELED |
-| 10.10 | Recorder 启动失败 | 禁止 root 和叶子执行 | NOT_STARTED、START_FAILED，无步骤事件 |
+| 10.10 | Recorder 启动失败 | 禁止 root 和叶子执行 | ExecutionOutcome 为 NOT_STARTED、RecordingOutcome 为 START_FAILED；启用 StepTimeline 时 TimelineOutcome 也为 START_FAILED |
 | 10.11 | Recorder 停止失败 | Program 已执行结果保持有效 | ExecutionOutcome 不变，RecordingOutcome 为 STOP_FAILED |
 | 10.12 | STARTED 写入失败 | 禁止该叶子业务行为执行 | START_FAILED，不产生 FINISHED |
 | 10.13 | 成功步骤的 FINISHED 写入失败 | 叶子已经执行成功，不回滚也不改写 | ExecutionOutcome 为 SUCCEEDED，TimelineOutcome 为 FINISH_FAILED |
@@ -430,7 +430,7 @@ Repeat 容器自身不产生时间线边界。
 
 **Given** Recorder.Start 返回错误。
 **When** RunProgram 被调用。
-**Then** Root 不执行、没有步骤事件、ExecutionOutcome 为 NOT_STARTED、RecordingOutcome 为 START_FAILED。
+**Then** Root 不执行且没有步骤事件；ExecutionOutcome 为 NOT_STARTED，RecordingOutcome 为 START_FAILED；若已配置 StepTimelineSink，TimelineOutcome 同时为 START_FAILED。
 
 ### 10.11 Recorder 停止失败
 

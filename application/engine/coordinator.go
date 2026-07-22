@@ -9,7 +9,10 @@ import (
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
-var ErrTimelineConfiguration = errors.New("engine: invalid timeline configuration")
+var (
+	ErrTimelineConfiguration   = errors.New("engine: invalid timeline configuration")
+	ErrCompletionConfiguration = errors.New("engine: invalid completion configuration")
+)
 
 // RunCoordinator owns application-level lifecycle around one compiled Program.
 type RunCoordinator struct{}
@@ -26,6 +29,9 @@ func (RunCoordinator) Run(ctx context.Context, program node.Program, cfg Config)
 		timeline, err = cfg.Recorder.Start(ctx, cfg.RunID)
 		if err != nil {
 			result.RecordingOutcome = RecordingStartFailed
+			if cfg.StepTimeline != nil {
+				result.TimelineOutcome = TimelineStartFailed
+			}
 			return result, fmt.Errorf("start recorder: %w", err)
 		}
 		result.RecordingOutcome = RecordingSucceeded
@@ -75,7 +81,7 @@ func validateConfig(program node.Program, cfg Config) error {
 		return fmt.Errorf("%w: recorder is required when step timeline is enabled", ErrTimelineConfiguration)
 	}
 	if cfg.CompletionChain != nil && cfg.ReadOnlyBrowser == nil {
-		return fmt.Errorf("read-only browser is required when completion chain is enabled")
+		return fmt.Errorf("%w: read-only browser is required when completion chain is enabled", ErrCompletionConfiguration)
 	}
 	return nil
 }

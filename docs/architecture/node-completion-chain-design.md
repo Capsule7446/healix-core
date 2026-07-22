@@ -266,7 +266,7 @@ return nodeErr
 
 **Given** `CompletionChain` 非空，但 `ReadOnlyBrowser` 为空。
 **When** 调用 `RunProgramWithResult`。
-**Then** Core 在 root 执行前返回配置错误；root 和任何 Handler 均不得执行。
+**Then** Core 在 root 执行前返回可通过 `errors.Is(err, engine.ErrCompletionConfiguration)` 识别的配置错误；root 和任何 Handler 均不得执行。
 
 ### 11.4 情景 D：未配置处理链时允许正常执行
 
@@ -375,6 +375,12 @@ return nodeErr
 **Given** 一次 Program 已开始，Chain 的 Handler 列表已固定。
 **When** 调用方尝试在运行期间增加、删除或重排 Handler。
 **Then** 本次运行不得采用变更后的列表；每个叶子均按运行开始时固定的注册顺序执行。
+
+### 11.22 情景 V：Completion Observer 写入失败必须反馈
+
+**Given** 叶子 Node 原始结果为成功，Handler 已完成，但 `CompletionObserver` 返回错误。
+**When** 叶子完成生命周期结束。
+**Then** Core 返回可通过 `errors.Is(err, ErrNodeCompletionObservation)` 识别的错误并保留 Observer 原始错误；ExecutionOutcome 仍为 SUCCEEDED。
 
 ## 12. 实施步骤
 

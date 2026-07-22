@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
@@ -48,4 +50,78 @@ func TestRunProgramWithResultRejectsTimelineWithoutRecorder(t *testing.T) {
 	if root.runs != 0 || result.ExecutionOutcome != ExecutionNotStarted {
 		t.Fatalf("root runs = %d, result = %+v", root.runs, result)
 	}
+}
+
+func TestRunProgramWithResultReportsTimelineStartFailureWhenRecorderStartFails(t *testing.T) {
+	result, err := RunProgramWithResult(context.Background(), navigationProgram("start-failure", "https://example.test"), Config{
+		RunID:        "run-start-failure",
+		Driver:       &engineTestDriver{},
+		Recorder:     &engineTestRecorder{startErr: errors.New("start failed")},
+		StepTimeline: &resultTimelineSink{},
+	})
+	if err == nil {
+		t.Fatal("recorder start failure was accepted")
+	}
+	if result.ExecutionOutcome != ExecutionNotStarted || result.RecordingOutcome != RecordingStartFailed || result.TimelineOutcome != TimelineStartFailed {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestRunProgramWithResultClassifiesMissingCompletionBrowser(t *testing.T) {
+	root := &runtimeCaptureNode{}
+	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{}, completionHandlerNoop{})
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	result, err := RunProgramWithResult(context.Background(), node.Program{Root: root}, Config{
+		RunID: "run", Driver: &engineTestDriver{}, CompletionChain: chain,
+	})
+	if !errors.Is(err, ErrCompletionConfiguration) {
+		t.Fatalf("error = %v, want completion configuration error", err)
+	}
+	if root.runs != 0 || result.ExecutionOutcome != ExecutionNotStarted {
+		t.Fatalf("root runs = %d, result = %+v", root.runs, result)
+	}
+}
+
+func TestRunProgramWithResultReportsObserverFailureWithoutChangingExecutionOutcome(t *testing.T) {
+	observerErr := errors.New("observer failed")
+	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{}, completionHandlerNoop{})
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	result, err := RunProgramWithResult(context.Background(), navigationProgram("observer", "https://example.test"), Config{
+		RunID:              "run-observer",
+		Driver:             &engineTestDriver{},
+		CompletionChain:    chain,
+		ReadOnlyBrowser:    readOnlyBrowserNoop{},
+		CompletionObserver: completionObserverError{err: observerErr},
+	})
+	if !errors.Is(err, node.ErrNodeCompletionObservation) || !errors.Is(err, observerErr) {
+		t.Fatalf("error = %v, want completion observation error", err)
+	}
+	if result.ExecutionOutcome != ExecutionSucceeded {
+		t.Fatalf("execution outcome = %s", result.ExecutionOutcome)
+	}
+}
+
+type completionHandlerNoop struct{}
+
+func (completionHandlerNoop) Name() string                                             { return "noop" }
+func (completionHandlerNoop) Handle(context.Context, node.NodeCompletionContext) error { return nil }
+
+type completionObserverError struct{ err error }
+
+func (o completionObserverError) RecordNodeCompletion(context.Context, node.NodeCompletionObservation) error {
+	return o.err
+}
+
+type readOnlyBrowserNoop struct{}
+
+func (readOnlyBrowserNoop) CaptureScreenshot(context.Context, node.ScreenshotOptions) (node.ScreenshotArtifact, error) {
+	return node.ScreenshotArtifact{}, nil
+}
+func (readOnlyBrowserNoop) SnapshotDOM(context.Context) (heal.DOMSnapshot, error) { return nil, nil }
+func (readOnlyBrowserNoop) ObserveElement(context.Context, fingerprint.NodeSpec, []string) (node.ElementObservation, error) {
+	return node.ElementObservation{}, nil
 }

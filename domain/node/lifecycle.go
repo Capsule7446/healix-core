@@ -16,8 +16,9 @@ const (
 )
 
 var (
-	ErrStepTimelineStart  = errors.New("node: record step timeline start")
-	ErrStepTimelineFinish = errors.New("node: record step timeline finish")
+	ErrStepTimelineStart         = errors.New("node: record step timeline start")
+	ErrStepTimelineFinish        = errors.New("node: record step timeline finish")
+	ErrNodeCompletionObservation = errors.New("node: record completion observation")
 )
 
 type TimelineMark struct {
@@ -300,16 +301,17 @@ type NodeCompletionObserver interface {
 }
 
 type LeafCompletionError struct {
-	NodeErr     error
-	TimelineErr error
+	NodeErr        error
+	TimelineErr    error
+	ObservationErr error
 }
 
 func (e *LeafCompletionError) Error() string {
-	return errors.Join(e.NodeErr, e.TimelineErr).Error()
+	return errors.Join(e.NodeErr, e.TimelineErr, e.ObservationErr).Error()
 }
 
 func (e *LeafCompletionError) Unwrap() []error {
-	return []error{e.NodeErr, e.TimelineErr}
+	return []error{e.NodeErr, e.TimelineErr, e.ObservationErr}
 }
 
 func LeafExecutionError(err error) error {
@@ -390,14 +392,17 @@ func (l *leafLifecycle) Complete(ctx context.Context, nodeErr error) error {
 		Error:       snapshotError(nodeErr),
 	}
 	results := l.runtime.CompletionChain.run(ctx, NodeCompletionContext{Snapshot: snapshot, Browser: l.runtime.completionBrowser()})
+	var observationErr error
 	if l.runtime.CompletionObserver != nil && len(results) > 0 {
 		observation := NodeCompletionObservation{Execution: l.execution, Results: append([]CompletionHandlerResult(nil), results...)}
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
-		_ = l.runtime.CompletionObserver.RecordNodeCompletion(cleanupCtx, observation)
+		if err := l.runtime.CompletionObserver.RecordNodeCompletion(cleanupCtx, observation); err != nil {
+			observationErr = fmt.Errorf("%w for %s/%d: %w", ErrNodeCompletionObservation, l.execution.NodeID, l.execution.Occurrence, err)
+		}
 		cancel()
 	}
-	if timelineErr != nil {
-		return &LeafCompletionError{NodeErr: nodeErr, TimelineErr: timelineErr}
+	if timelineErr != nil || observationErr != nil {
+		return &LeafCompletionError{NodeErr: nodeErr, TimelineErr: timelineErr, ObservationErr: observationErr}
 	}
 	return nodeErr
 }
