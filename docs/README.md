@@ -7,10 +7,11 @@
 ### 架构学习者
 
 1. [系统总览](architecture/system-overview.md)：建立八个领域包、四个应用模块与宿主适配器的整体视图。
-2. [上下文地图](architecture/context-map.md)：理解 Automation、Execution 与共享内核的协作边界。
-3. [依赖规则](architecture/dependency-rules.md)：确认允许的依赖方向、端口位置与原子写入要求。
-4. [端到端执行](architecture/end-to-end-execution.md)：沿 TestTask、Plan、Program、Progress 与 Evidence 串起完整执行链路。
-5. 按需进入下方的领域、应用与集成文档。
+2. [领域术语对照表](terminology.md)：统一业务名称、代码符号、所属领域与模型角色。
+3. [上下文地图](architecture/context-map.md)：理解 Automation、Execution 与共享内核的协作边界。
+4. [依赖规则](architecture/dependency-rules.md)：确认允许的依赖方向、端口位置与原子写入要求。
+5. [端到端执行](architecture/end-to-end-execution.md)：沿 TestTask、Plan、Program、Progress 与 Evidence 串起完整执行链路。
+6. 按需进入下方的领域、应用与集成文档。
 
 ### 领域工程师
 
@@ -55,7 +56,8 @@ flowchart TD
   Portal --> Integration[集成文档]
 
   Architecture --> Overview[系统总览]
-  Overview --> Context[上下文地图]
+  Overview --> Terminology[领域术语对照表]
+  Terminology --> Context[上下文地图]
   Context --> Dependencies[依赖规则]
   Dependencies --> E2E[端到端执行]
 
@@ -82,6 +84,7 @@ flowchart TD
 ### 架构文档
 
 - [系统总览](architecture/system-overview.md)：领域、应用和适配器的全局结构与能力状态。
+- [领域术语对照表](terminology.md)：业务名称、代码符号、所属领域、模型角色及跨上下文转换。
 - [上下文地图](architecture/context-map.md)：上下文边界、协作关系、共享内核与禁止捷径。
 - [依赖规则](architecture/dependency-rules.md)：可执行依赖约束、端口规则及原子写入要求。
 - [端到端执行](architecture/end-to-end-execution.md)：从 TestTask 发布到终态 Evidence 的完整链路。
