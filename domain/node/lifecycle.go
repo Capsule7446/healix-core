@@ -147,22 +147,22 @@ func (b runtimeReadOnlyBrowser) CaptureScreenshot(ctx context.Context, options S
 }
 
 type copiedDOMSnapshot struct {
-	source heal.DOMSnapshot
+	candidates []heal.SnapshotCandidate
 }
 
-func (s copiedDOMSnapshot) Candidates(ctx context.Context) ([]heal.SnapshotCandidate, error) {
-	candidates, err := s.source.Candidates(ctx)
-	if err != nil {
-		return nil, err
-	}
-	copied := make([]heal.SnapshotCandidate, len(candidates))
-	for i, candidate := range candidates {
+func (s copiedDOMSnapshot) Candidates(context.Context) ([]heal.SnapshotCandidate, error) {
+	return cloneSnapshotCandidates(s.candidates), nil
+}
+
+func cloneSnapshotCandidates(source []heal.SnapshotCandidate) []heal.SnapshotCandidate {
+	copied := make([]heal.SnapshotCandidate, len(source))
+	for i, candidate := range source {
 		copied[i] = candidate
 		copied[i].Fingerprint.Attributes = cloneStringMap(candidate.Fingerprint.Attributes)
 		copied[i].Fingerprint.Path = append([]string(nil), candidate.Fingerprint.Path...)
 		copied[i].Fingerprint.Framework = append(fingerprint.FrameworkStack(nil), candidate.Fingerprint.Framework...)
 	}
-	return copied, nil
+	return copied
 }
 
 func cloneStringMap(source map[string]string) map[string]string {
@@ -181,7 +181,11 @@ func (b runtimeReadOnlyBrowser) SnapshotDOM(ctx context.Context) (heal.DOMSnapsh
 	if err != nil {
 		return nil, err
 	}
-	return copiedDOMSnapshot{source: snapshot}, nil
+	candidates, err := snapshot.Candidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return copiedDOMSnapshot{candidates: cloneSnapshotCandidates(candidates)}, nil
 }
 
 func (b runtimeReadOnlyBrowser) ObserveElement(ctx context.Context, spec fingerprint.NodeSpec, attributes []string) (ElementObservation, error) {

@@ -54,7 +54,7 @@ func (RunCoordinator) Run(ctx context.Context, program node.Program, cfg Config)
 
 	rt := newRuntime(program, cfg, timeline)
 	runErr = program.Root.Run(ctx, rt)
-	result.ExecutionOutcome = executionOutcome(ctx, node.LeafExecutionError(runErr))
+	result.ExecutionOutcome = executionOutcome(node.LeafExecutionError(runErr))
 	if errors.Is(runErr, node.ErrStepTimelineStart) {
 		if !rt.LeafExecutionStarted() {
 			result.ExecutionOutcome = ExecutionNotStarted
@@ -89,11 +89,8 @@ func validateConfig(program node.Program, cfg Config) error {
 	return nil
 }
 
-func executionOutcome(ctx context.Context, err error) ExecutionOutcome {
+func executionOutcome(err error) ExecutionOutcome {
 	if err == nil {
-		if ctx.Err() != nil {
-			return ExecutionCanceled
-		}
 		return ExecutionSucceeded
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

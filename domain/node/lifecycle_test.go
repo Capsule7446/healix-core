@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/heal"
 )
 
 type timelineStub struct {
@@ -118,6 +121,61 @@ func TestCompletionChainPropagatesCancellationReceivedDuringHandler(t *testing.T
 	}
 	<-done
 }
+
+func TestReadOnlyBrowserSnapshotDOMFreezesCandidates(t *testing.T) {
+	attributes := map[string]string{"role": "button"}
+	path := []string{"main", "button"}
+	framework := fingerprint.FrameworkStack{{Kind: fingerprint.FrameworkReact}}
+	source := &mutableDOMSnapshot{candidates: []heal.SnapshotCandidate{{
+		Fingerprint: fingerprint.Fingerprint{
+			Attributes: attributes,
+			Path:       path,
+			Framework:  framework,
+		},
+	}}}
+	browser := runtimeReadOnlyBrowser{
+		runtime: &Runtime{Driver: snapshotDriverStub{snapshot: source}},
+	}
+
+	snapshot, err := browser.SnapshotDOM(context.Background())
+	if err != nil {
+		t.Fatalf("SnapshotDOM: %v", err)
+	}
+	attributes["role"] = "link"
+	path[0] = "aside"
+	framework[0].Kind = fingerprint.FrameworkVue
+
+	candidates, err := snapshot.Candidates(context.Background())
+	if err != nil {
+		t.Fatalf("Candidates: %v", err)
+	}
+	got := candidates[0].Fingerprint
+	if got.Attributes["role"] != "button" || got.Path[0] != "main" || got.Framework[0].Kind != fingerprint.FrameworkReact {
+		t.Fatalf("snapshot changed after capture: %+v", got)
+	}
+}
+
+type mutableDOMSnapshot struct {
+	candidates []heal.SnapshotCandidate
+}
+
+func (s *mutableDOMSnapshot) Candidates(context.Context) ([]heal.SnapshotCandidate, error) {
+	return s.candidates, nil
+}
+
+type snapshotDriverStub struct {
+	snapshot heal.DOMSnapshot
+}
+
+func (d snapshotDriverStub) Navigate(context.Context, string) error { return nil }
+func (d snapshotDriverStub) Press(context.Context, string) error    { return nil }
+func (d snapshotDriverStub) Locate(context.Context, fingerprint.NodeSpec) (Element, error) {
+	return nil, nil
+}
+func (d snapshotDriverStub) Snapshot(context.Context) (heal.DOMSnapshot, error) {
+	return d.snapshot, nil
+}
+func (d snapshotDriverStub) WaitNetworkIdle(context.Context) error { return nil }
 
 func TestLeafLifecyclePreservesBusinessFailureAfterContextCancellation(t *testing.T) {
 	original := errors.New("business failed")

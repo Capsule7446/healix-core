@@ -108,10 +108,14 @@ func TestRunProgramWithResultRejectsTimelineWithoutRecorder(t *testing.T) {
 	}
 }
 
-func TestExecutionOutcomePreservesBusinessFailureAfterContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if got := executionOutcome(ctx, errors.New("business failed")); got != ExecutionFailed {
+func TestExecutionOutcomePreservesSuccess(t *testing.T) {
+	if got := executionOutcome(nil); got != ExecutionSucceeded {
+		t.Fatalf("execution outcome = %s, want %s", got, ExecutionSucceeded)
+	}
+}
+
+func TestExecutionOutcomePreservesBusinessFailure(t *testing.T) {
+	if got := executionOutcome(errors.New("business failed")); got != ExecutionFailed {
 		t.Fatalf("execution outcome = %s, want %s", got, ExecutionFailed)
 	}
 }
