@@ -11,16 +11,40 @@ import (
 )
 
 type resultTimelineSink struct {
+	startErr  error
 	finishErr error
 	events    []node.StepTimelineEvent
 }
 
 func (s *resultTimelineSink) RecordStepTimelineEvent(_ context.Context, event node.StepTimelineEvent) error {
+	if event.Boundary == node.StepBoundaryStarted && s.startErr != nil {
+		return s.startErr
+	}
 	if event.Boundary == node.StepBoundaryFinished && s.finishErr != nil {
 		return s.finishErr
 	}
 	s.events = append(s.events, event)
 	return nil
+}
+
+func TestRunProgramWithResultReportsTimelineStartFailureBeforeLeafExecution(t *testing.T) {
+	driver := &engineTestDriver{}
+	startErr := errors.New("start rejected")
+	result, err := RunProgramWithResult(context.Background(), navigationProgram("timeline-start", "https://example.test"), Config{
+		RunID:        "run-timeline-start",
+		Driver:       driver,
+		Recorder:     &engineTestRecorder{},
+		StepTimeline: &resultTimelineSink{startErr: startErr},
+	})
+	if !errors.Is(err, node.ErrStepTimelineStart) {
+		t.Fatalf("error = %v, want timeline start error", err)
+	}
+	if result.ExecutionOutcome != ExecutionNotStarted || result.TimelineOutcome != TimelineStartFailed {
+		t.Fatalf("result = %+v", result)
+	}
+	if driver.navigated != "" {
+		t.Fatalf("leaf executed navigation to %q", driver.navigated)
+	}
 }
 
 func TestRunProgramWithResultKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {

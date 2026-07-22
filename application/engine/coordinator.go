@@ -56,6 +56,7 @@ func (RunCoordinator) Run(ctx context.Context, program node.Program, cfg Config)
 	runErr = program.Root.Run(ctx, rt)
 	result.ExecutionOutcome = executionOutcome(ctx, node.LeafExecutionError(runErr))
 	if errors.Is(runErr, node.ErrStepTimelineStart) {
+		result.ExecutionOutcome = ExecutionNotStarted
 		result.TimelineOutcome = TimelineStartFailed
 	}
 	if errors.Is(runErr, node.ErrStepTimelineFinish) {
