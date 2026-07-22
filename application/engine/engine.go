@@ -15,9 +15,13 @@ type Config struct {
 	ClaimToken string
 	Driver     node.Driver
 	// Healer 由组合根注入；nil 表示关闭自愈。
-	Healer   heal.Healer
-	Recorder node.Recorder
-	Facts    node.ExecutionSink
+	Healer             heal.Healer
+	Recorder           node.Recorder
+	Facts              node.ExecutionSink
+	StepTimeline       node.StepTimelineSink
+	CompletionChain    *node.NodeCompletionChain
+	ReadOnlyBrowser    node.ReadOnlyBrowser
+	CompletionObserver node.NodeCompletionObserver
 	// StepInterval 是执行局部的节奏设置。它应用于叶子 Step 之间，
 	// 不会取代显式的条件等待。
 	StepInterval time.Duration
@@ -26,8 +30,42 @@ type Config struct {
 	Variables map[string]string
 }
 
+type ExecutionOutcome string
+
+type RecordingOutcome string
+
+type TimelineOutcome string
+
+const (
+	ExecutionSucceeded  ExecutionOutcome = "SUCCEEDED"
+	ExecutionFailed     ExecutionOutcome = "FAILED"
+	ExecutionCanceled   ExecutionOutcome = "CANCELED"
+	ExecutionNotStarted ExecutionOutcome = "NOT_STARTED"
+
+	RecordingDisabled    RecordingOutcome = "DISABLED"
+	RecordingSucceeded   RecordingOutcome = "SUCCEEDED"
+	RecordingStartFailed RecordingOutcome = "START_FAILED"
+	RecordingStopFailed  RecordingOutcome = "STOP_FAILED"
+
+	TimelineDisabled     TimelineOutcome = "DISABLED"
+	TimelineComplete     TimelineOutcome = "COMPLETE"
+	TimelineStartFailed  TimelineOutcome = "START_FAILED"
+	TimelineFinishFailed TimelineOutcome = "FINISH_FAILED"
+)
+
+type RunResult struct {
+	ExecutionOutcome ExecutionOutcome
+	RecordingOutcome RecordingOutcome
+	TimelineOutcome  TimelineOutcome
+}
+
 // RunProgram executes an in-memory Program compiled from an immutable run snapshot.
 func RunProgram(ctx context.Context, program node.Program, cfg Config) error {
+	_, err := RunProgramWithResult(ctx, program, cfg)
+	return err
+}
+
+func RunProgramWithResult(ctx context.Context, program node.Program, cfg Config) (RunResult, error) {
 	return (RunCoordinator{}).Run(ctx, program, cfg)
 }
 

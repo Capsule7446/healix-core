@@ -74,7 +74,7 @@ func validateNavigationURL(value string) error {
 	return nil
 }
 
-func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
+func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("node %s: wait step interval: %w", s.NodeID, err)
 	}
@@ -90,6 +90,11 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 		return fmt.Errorf("node %s: enter running phase: %w", s.NodeID, err)
 	}
 	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
+	lifecycle, err := rt.beginLeafLifecycle(ctx, s.NodeID, "STEP", execution.occurrence)
+	if err != nil {
+		return s.fail(ctx, parentCtx, rt, execution, err)
+	}
+	defer func() { runErr = lifecycle.Complete(parentCtx, runErr) }()
 
 	action := s.Action
 	action.Values = append([]string(nil), s.Action.Values...)
@@ -155,6 +160,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) error {
 			if err := s.transition(ctx, rt, execution, PhaseSucceeded); err != nil {
 				return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: skip optional step: %w", s.NodeID, err))
 			}
+			lifecycle.MarkSkipped()
 			return nil
 		}
 		if rt.Healing == nil && rt.Healer == nil {

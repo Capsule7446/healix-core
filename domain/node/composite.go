@@ -69,7 +69,7 @@ func (w *WaitNode) Validate() error {
 	return nil
 }
 
-func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
+func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := w.Validate(); err != nil {
 		return fmt.Errorf("wait %s: validate: %w", w.NodeID, err)
 	}
@@ -81,6 +81,14 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) error {
 		return fmt.Errorf("wait %s: enter running phase: %w", w.NodeID, err)
 	}
 	defer rt.releaseOccurrence(w.NodeID, occurrence)
+	lifecycle, err := rt.beginLeafLifecycle(ctx, w.NodeID, "WAIT", occurrence)
+	if err != nil {
+		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
+			return errors.Join(err, emitErr)
+		}
+		return err
+	}
+	defer func() { runErr = lifecycle.Complete(ctx, runErr) }()
 
 	started := time.Now()
 	err = nil

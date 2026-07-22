@@ -159,7 +159,7 @@ type Driver interface {
 // Recorder 是框架无关的会话录制端口，由宿主提供适配器。
 // Runtime 上的 Recorder 为 nil 表示"录屏关闭"，Start/Stop 也就不会被调用。
 type Recorder interface {
-	Start(ctx context.Context, runID string) error
+	Start(ctx context.Context, runID string) (RecordingTimeline, error)
 	Stop(ctx context.Context, retain bool) error
 }
 
@@ -211,21 +211,26 @@ type Runtime struct {
 	// SelectorOverlay 是本次 run 内按 NodeSpec ID 保存的 healed selector 列表。
 	// 编译出的 Specs/StepNode 保持不变，同一 spec 的后续 step、repeat 和断言
 	// 都通过 effectiveSpec 读取该 overlay。
-	SelectorOverlay   map[string][]fingerprint.Selector
-	Driver            Driver
-	Healer            heal.Healer // nil = 关闭自愈
-	Healing           HealingPort
-	Recorder          Recorder      // nil = 关闭录屏
-	Facts             ExecutionSink // nil = 不输出执行事实
-	OperationObserver OperationObserver
-	HealSamples       HealSampleObserver
-	RetryPolicy       RetryPolicy
-	HealingPolicy     heal.SafetyPolicy
-	HealingReviewCap  float64
-	Scratchpad        map[string]any
-	pacer             stepPacer
-	occurrences       map[string]int
-	activeOccurrences map[string][]int
+	SelectorOverlay    map[string][]fingerprint.Selector
+	Driver             Driver
+	Healer             heal.Healer // nil = 关闭自愈
+	Healing            HealingPort
+	Recorder           Recorder      // nil = 关闭录屏
+	Facts              ExecutionSink // nil = 不输出执行事实
+	Timeline           RecordingTimeline
+	StepTimeline       StepTimelineSink
+	CompletionChain    *NodeCompletionChain
+	ReadOnlyBrowser    ReadOnlyBrowser
+	CompletionObserver NodeCompletionObserver
+	OperationObserver  OperationObserver
+	HealSamples        HealSampleObserver
+	RetryPolicy        RetryPolicy
+	HealingPolicy      heal.SafetyPolicy
+	HealingReviewCap   float64
+	Scratchpad         map[string]any
+	pacer              stepPacer
+	occurrences        map[string]int
+	activeOccurrences  map[string][]int
 }
 
 func (rt *Runtime) observeOperation(ctx context.Context, observation OperationObservation) error {

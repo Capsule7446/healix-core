@@ -1,0 +1,169 @@
+package node
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"testing"
+	"time"
+)
+
+type timelineStub struct {
+	marks []TimelineMark
+	next  int
+}
+
+func (t *timelineStub) Mark() TimelineMark {
+	mark := t.marks[t.next]
+	t.next++
+	return mark
+}
+
+type timelineSinkStub struct {
+	events []StepTimelineEvent
+	errAt  StepBoundary
+}
+
+func (s *timelineSinkStub) RecordStepTimelineEvent(_ context.Context, event StepTimelineEvent) error {
+	if event.Boundary == s.errAt {
+		return errors.New("timeline rejected")
+	}
+	s.events = append(s.events, event)
+	return nil
+}
+
+func TestStepTimelineEventValidate(t *testing.T) {
+	tests := []struct {
+		name  string
+		event StepTimelineEvent
+		valid bool
+	}{
+		{name: "started", event: StepTimelineEvent{Step: StepExecutionRef{RunID: "run", NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1}}, valid: true},
+		{name: "finished", event: StepTimelineEvent{Step: StepExecutionRef{RunID: "run", NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryFinished, Outcome: StepOutcomeSucceeded, Mark: TimelineMark{Offset: time.Millisecond, Sequence: 2}}, valid: true},
+		{name: "started with outcome", event: StepTimelineEvent{Step: StepExecutionRef{RunID: "run", NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryStarted, Outcome: StepOutcomeSucceeded, Mark: TimelineMark{Sequence: 1}}},
+		{name: "finished without outcome", event: StepTimelineEvent{Step: StepExecutionRef{RunID: "run", NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryFinished, Mark: TimelineMark{Sequence: 2}}},
+		{name: "invalid identity", event: StepTimelineEvent{Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.event.Validate() == nil; got != test.valid {
+				t.Fatalf("Validate valid = %v, want %v", got, test.valid)
+			}
+		})
+	}
+}
+
+func TestCompletionChainBlocksNextLeafAndIgnoresHandlerFailure(t *testing.T) {
+	order := []string{}
+	chain, err := NewNodeCompletionChain(NodeCompletionOptions{},
+		completionHandlerStub{name: "capture", handle: func(input NodeCompletionContext) error {
+			order = append(order, "handler:"+input.Snapshot.Execution.NodeID)
+			return errors.New("capture failed")
+		}},
+	)
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	rt := &Runtime{RunID: "run", CompletionChain: chain}
+	for _, nodeID := range []string{"first", "second"} {
+		lifecycle, beginErr := rt.beginLeafLifecycle(context.Background(), nodeID, "STEP", 1)
+		if beginErr != nil {
+			t.Fatalf("begin %s: %v", nodeID, beginErr)
+		}
+		order = append(order, "node:"+nodeID)
+		if completeErr := lifecycle.Complete(context.Background(), nil); completeErr != nil {
+			t.Fatalf("complete %s: %v", nodeID, completeErr)
+		}
+	}
+	want := []string{"node:first", "handler:first", "node:second", "handler:second"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("order = %v, want %v", order, want)
+	}
+}
+
+func TestCompletionSnapshotDurationExcludesHandlerTime(t *testing.T) {
+	var snapshot NodeExecutionSnapshot
+	chain, err := NewNodeCompletionChain(NodeCompletionOptions{}, completionHandlerStub{name: "capture", handle: func(input NodeCompletionContext) error {
+		snapshot = input.Snapshot
+		time.Sleep(20 * time.Millisecond)
+		return nil
+	}})
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	lifecycle, err := (&Runtime{RunID: "run", CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	if err != nil {
+		t.Fatalf("beginLeafLifecycle: %v", err)
+	}
+	if err := lifecycle.Complete(context.Background(), nil); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if snapshot.Duration >= 20*time.Millisecond {
+		t.Fatalf("snapshot duration %s includes handler time", snapshot.Duration)
+	}
+}
+
+func TestLeafLifecycleRecordsTimelineAndRunsCompletionHandlersInOrder(t *testing.T) {
+	timeline := &timelineStub{marks: []TimelineMark{{Sequence: 1}, {Offset: 5 * time.Millisecond, Sequence: 2}}}
+	sink := &timelineSinkStub{}
+	order := []string{}
+	chain, err := NewNodeCompletionChain(NodeCompletionOptions{},
+		completionHandlerStub{name: "first", handle: func(NodeCompletionContext) error { order = append(order, "first"); return errors.New("ignored") }},
+		completionHandlerStub{name: "second", handle: func(NodeCompletionContext) error { order = append(order, "second"); return nil }},
+	)
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	rt := &Runtime{RunID: "run", Timeline: timeline, StepTimeline: sink, CompletionChain: chain}
+
+	lifecycle, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	if err != nil {
+		t.Fatalf("beginLeafLifecycle: %v", err)
+	}
+	runErr := lifecycle.Complete(context.Background(), nil)
+	if runErr != nil {
+		t.Fatalf("Complete changed node result: %v", runErr)
+	}
+	if !reflect.DeepEqual(order, []string{"first", "second"}) {
+		t.Fatalf("handler order = %v", order)
+	}
+	if len(sink.events) != 2 || sink.events[0].Boundary != StepBoundaryStarted || sink.events[1].Boundary != StepBoundaryFinished {
+		t.Fatalf("timeline events = %#v", sink.events)
+	}
+	if sink.events[1].Outcome != StepOutcomeSucceeded {
+		t.Fatalf("finish outcome = %s", sink.events[1].Outcome)
+	}
+}
+
+func TestLeafLifecycleStartFailurePreventsExecution(t *testing.T) {
+	sink := &timelineSinkStub{errAt: StepBoundaryStarted}
+	rt := &Runtime{RunID: "run", Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}}}, StepTimeline: sink}
+	_, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	if !errors.Is(err, ErrStepTimelineStart) {
+		t.Fatalf("error = %v, want ErrStepTimelineStart", err)
+	}
+}
+
+func TestLeafLifecycleFinishFailurePreservesOriginalFailure(t *testing.T) {
+	original := errors.New("node failed")
+	sink := &timelineSinkStub{errAt: StepBoundaryFinished}
+	rt := &Runtime{RunID: "run", Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}, {Sequence: 2}}}, StepTimeline: sink}
+	lifecycle, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	if err != nil {
+		t.Fatalf("beginLeafLifecycle: %v", err)
+	}
+	err = lifecycle.Complete(context.Background(), original)
+	if !errors.Is(err, original) || !errors.Is(err, ErrStepTimelineFinish) {
+		t.Fatalf("error chain = %v", err)
+	}
+}
+
+type completionHandlerStub struct {
+	name   string
+	handle func(NodeCompletionContext) error
+}
+
+func (h completionHandlerStub) Name() string { return h.name }
+func (h completionHandlerStub) Handle(_ context.Context, input NodeCompletionContext) error {
+	return h.handle(input)
+}

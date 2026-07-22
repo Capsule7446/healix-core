@@ -68,7 +68,7 @@ type ValidationNode struct {
 
 func (v *ValidationNode) ID() string { return v.NodeID }
 
-func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) error {
+func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("validation %s: wait step interval: %w", v.NodeID, err)
 	}
@@ -77,6 +77,11 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) error {
 		return err
 	}
 	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
+	lifecycle, err := rt.beginLeafLifecycle(ctx, v.NodeID, "VALIDATION", execution.occurrence)
+	if err != nil {
+		return validationFail(ctx, rt, execution, v.NodeID, err)
+	}
+	defer func() { runErr = lifecycle.Complete(ctx, runErr) }()
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, err)
 	}
@@ -427,7 +432,7 @@ type ValidationGroupNode struct {
 
 func (g *ValidationGroupNode) ID() string { return g.NodeID }
 
-func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) error {
+func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("validation group %s: wait step interval: %w", g.NodeID, err)
 	}
@@ -436,6 +441,11 @@ func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) error {
 		return err
 	}
 	defer rt.releaseOccurrence(execution.nodeID, execution.occurrence)
+	lifecycle, err := rt.beginLeafLifecycle(ctx, g.NodeID, "VALIDATION_GROUP", execution.occurrence)
+	if err != nil {
+		return validationFail(ctx, rt, execution, g.NodeID, err)
+	}
+	defer func() { runErr = lifecycle.Complete(ctx, runErr) }()
 	if err := transitionValidation(ctx, rt, execution, g.NodeID, PhaseValidating); err != nil {
 		return validationFail(ctx, rt, execution, g.NodeID, err)
 	}
