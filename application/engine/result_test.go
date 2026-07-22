@@ -52,6 +52,14 @@ func TestRunProgramWithResultRejectsTimelineWithoutRecorder(t *testing.T) {
 	}
 }
 
+func TestExecutionOutcomePreservesBusinessFailureAfterContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := executionOutcome(ctx, errors.New("business failed")); got != ExecutionFailed {
+		t.Fatalf("execution outcome = %s, want %s", got, ExecutionFailed)
+	}
+}
+
 func TestRunProgramWithResultReportsTimelineStartFailureWhenRecorderStartFails(t *testing.T) {
 	result, err := RunProgramWithResult(context.Background(), navigationProgram("start-failure", "https://example.test"), Config{
 		RunID:        "run-start-failure",

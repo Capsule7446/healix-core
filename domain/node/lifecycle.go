@@ -270,7 +270,11 @@ func (c *NodeCompletionChain) run(ctx context.Context, input NodeCompletionConte
 	if chainTimeout == 0 {
 		chainTimeout = defaultCompletionChainTimeout
 	}
-	chainCtx, cancelChain := context.WithTimeout(context.WithoutCancel(ctx), chainTimeout)
+	chainParent := ctx
+	if ctx.Err() != nil {
+		chainParent = context.WithoutCancel(ctx)
+	}
+	chainCtx, cancelChain := context.WithTimeout(chainParent, chainTimeout)
 	defer cancelChain()
 	results := make([]CompletionHandlerResult, 0, len(c.handlers))
 	for _, handler := range c.handlers {

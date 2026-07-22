@@ -213,7 +213,8 @@ return nodeErr
 处理链是阻塞式的，但不能无限阻塞：
 
 - 每个 Handler 使用独立的有界 context。
-- Node context 已取消时，使用 `context.WithoutCancel` 创建有界处理 context。
+- Node context 在进入 Chain 前已经取消时，使用 `context.WithoutCancel` 创建有界处理 context。
+- Node context 在 Handler 执行期间才取消时，取消信号必须传播到当前 Handler 和 Chain。
 - 单个 Handler 超时时，Core 取消该 Handler 的 context；Handler 返回后记录失败，再决定是否执行下一个 Handler。
 - Chain 可配置总超时；Core 在启动每个 Handler 前检查总超时，达到上限后不再启动剩余 Handler，主链保持 Node 原始结果。
 - Core 不在后台运行 Handler，也不强制终止 Handler goroutine；`Handle` 是同步调用。
@@ -310,73 +311,79 @@ return nodeErr
 **When** 原 Node context 已取消。
 **Then** Core 使用脱离原取消信号的有界 context 执行 Chain；完成快照为 `CANCELED`；Chain 结束后仍返回原取消结果。
 
-### 11.11 情景 K：可选步骤缺少目标时允许执行处理链
+### 11.11 情景 K：处理链执行期间收到取消必须传播
+
+**Given** Chain 开始时 Node context 尚未取消，当前 Handler 正在执行。
+**When** Node context 在 Handler 执行期间被取消。
+**Then** 当前 Handler 必须收到取消信号；Core 不得无条件剥离本次取消，也不得启动后续 Handler。
+
+### 11.12 情景 L：可选步骤缺少目标时允许执行处理链
 
 **Given** Optional Step 因目标不存在而跳过。
 **When** 叶子执行结束。
 **Then** Core 执行一次 Chain；完成快照为 `SKIPPED`；执行 phase 和时间线终态保持成功语义。
 
-### 11.12 情景 L：Retry 内部尝试禁止重复触发处理链
+### 11.13 情景 M：Retry 内部尝试禁止重复触发处理链
 
 **Given** 同一 Step occurrence 的第一次尝试失败，重试后成功。
 **When** Step 最终结束。
 **Then** Core 只执行一次 Chain；内部每次 Retry attempt 均不得单独触发 Chain。
 
-### 11.13 情景 M：Repeat 每轮叶子执行允许分别触发处理链
+### 11.14 情景 N：Repeat 每轮叶子执行允许分别触发处理链
 
 **Given** Repeat 将同一叶子 Node 执行三轮。
 **When** 三个 occurrence 依次完成。
 **Then** Core 分别执行三次 Chain；快照 occurrence 依次为 1、2、3；Repeat 容器自身不得额外触发。
 
-### 11.14 情景 N：Handler 响应超时取消后允许后续 Handler 继续
+### 11.15 情景 O：Handler 响应超时取消后允许后续 Handler 继续
 
 **Given** Handler A 超过单 Handler 超时，后续存在 Handler B，且 Chain 总超时尚未到达。
 **When** Core 取消 A 的 context，且 A 响应取消并返回。
 **Then** Core 将 A 记录为失败并继续执行 B；在 A 返回前不得启动 B。
 
-### 11.15 情景 O：Handler 不响应超时取消时继续阻塞
+### 11.16 情景 P：Handler 不响应超时取消时继续阻塞
 
 **Given** Handler A 超过单 Handler超时且不响应 context 取消。
 **When** A 的 `Handle` 始终没有返回。
 **Then** Core 继续同步等待 A；后续 Handler 和下一个 Node 均不得开始；Core 不承诺强制终止 A。
 
-### 11.16 情景 P：Chain 总超时后禁止启动剩余 Handler
+### 11.17 情景 Q：Chain 总超时后禁止启动剩余 Handler
 
 **Given** 当前 Handler 已返回，Chain 总超时已经到达，仍有 Handler 尚未开始。
 **When** Core 准备启动下一个 Handler。
 **Then** Core 不再启动剩余 Handler；Node 原始结果保持不变。
 
-### 11.17 情景 Q：Handler 允许读取明确开放的状态
+### 11.18 情景 R：Handler 允许读取明确开放的状态
 
 **Given** Handler 获得有效 `NodeCompletionContext`。
 **When** Handler 调用 `CaptureScreenshot`、`SnapshotDOM` 或 `ObserveElement`。
 **Then** Core 允许读取，并返回与 Core 内部可变存储隔离的值对象。
 
-### 11.18 情景 R：Handler 禁止改变 Runtime 状态
+### 11.19 情景 S：Handler 禁止改变 Runtime 状态
 
 **Given** Handler 希望点击、输入、导航、执行脚本或取得实时 Element/Driver 句柄。
 **When** Handler 检查 `NodeCompletionContext` 与 `ReadOnlyBrowser`。
 **Then** Core 不提供这些能力；Handler 不能通过完成处理链改变 Runtime 或页面状态。
 
-### 11.19 情景 S：修改返回值禁止影响 Core 内部状态
+### 11.20 情景 T：修改返回值禁止影响 Core 内部状态
 
 **Given** Handler 已取得截图字节、元素属性或 DOM 快照复合数据。
 **When** Handler 修改这些返回值。
 **Then** Core 内部状态保持不变；后续 Handler 不得观察到由共享底层存储导致的修改。
 
-### 11.20 情景 T：空 Chain 允许作为无操作执行
+### 11.21 情景 U：空 Chain 允许作为无操作执行
 
 **Given** `NodeCompletionChain` 已创建但没有注册 Handler。
 **When** 叶子 occurrence 完成。
 **Then** Chain 立即返回，不产生 Handler 结果，也不改变 Node 结果。
 
-### 11.21 情景 U：运行中禁止修改 Handler 列表
+### 11.22 情景 V：运行中禁止修改 Handler 列表
 
 **Given** 一次 Program 已开始，Chain 的 Handler 列表已固定。
 **When** 调用方尝试在运行期间增加、删除或重排 Handler。
 **Then** 本次运行不得采用变更后的列表；每个叶子均按运行开始时固定的注册顺序执行。
 
-### 11.22 情景 V：Completion Observer 写入失败必须反馈
+### 11.23 情景 W：Completion Observer 写入失败必须反馈
 
 **Given** 叶子 Node 原始结果为成功，Handler 已完成，但 `CompletionObserver` 返回错误。
 **When** 叶子完成生命周期结束。

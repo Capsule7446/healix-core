@@ -81,6 +81,40 @@ func TestCompletionChainBlocksNextLeafAndIgnoresHandlerFailure(t *testing.T) {
 	}
 }
 
+func TestCompletionChainPropagatesCancellationReceivedDuringHandler(t *testing.T) {
+	started := make(chan struct{})
+	observed := make(chan error, 1)
+	chain, err := NewNodeCompletionChain(NodeCompletionOptions{HandlerTimeout: time.Second}, completionContextHandlerStub{
+		name: "cancel-aware",
+		handle: func(ctx context.Context, _ NodeCompletionContext) error {
+			close(started)
+			<-ctx.Done()
+			observed <- ctx.Err()
+			return ctx.Err()
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		chain.run(ctx, NodeCompletionContext{})
+		close(done)
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-observed:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("handler context error = %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("handler did not receive parent cancellation")
+	}
+	<-done
+}
+
 func TestCompletionSnapshotDurationExcludesHandlerTime(t *testing.T) {
 	var snapshot NodeExecutionSnapshot
 	chain, err := NewNodeCompletionChain(NodeCompletionOptions{}, completionHandlerStub{name: "capture", handle: func(input NodeCompletionContext) error {
@@ -156,6 +190,16 @@ func TestLeafLifecycleFinishFailurePreservesOriginalFailure(t *testing.T) {
 	if !errors.Is(err, original) || !errors.Is(err, ErrStepTimelineFinish) {
 		t.Fatalf("error chain = %v", err)
 	}
+}
+
+type completionContextHandlerStub struct {
+	name   string
+	handle func(context.Context, NodeCompletionContext) error
+}
+
+func (h completionContextHandlerStub) Name() string { return h.name }
+func (h completionContextHandlerStub) Handle(ctx context.Context, input NodeCompletionContext) error {
+	return h.handle(ctx, input)
 }
 
 type completionHandlerStub struct {

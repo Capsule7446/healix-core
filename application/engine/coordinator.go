@@ -88,9 +88,12 @@ func validateConfig(program node.Program, cfg Config) error {
 
 func executionOutcome(ctx context.Context, err error) ExecutionOutcome {
 	if err == nil {
+		if ctx.Err() != nil {
+			return ExecutionCanceled
+		}
 		return ExecutionSucceeded
 	}
-	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return ExecutionCanceled
 	}
 	return ExecutionFailed
