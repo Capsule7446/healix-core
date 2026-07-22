@@ -99,6 +99,23 @@ func TestRunProgramWithResultReportsTimelineStartFailureWhenRecorderStartFails(t
 	}
 }
 
+func TestRunProgramWithResultAllowsEmptyCompletionChainWithoutBrowser(t *testing.T) {
+	root := &runtimeCaptureNode{}
+	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{})
+	if err != nil {
+		t.Fatalf("NewNodeCompletionChain: %v", err)
+	}
+	result, err := RunProgramWithResult(context.Background(), node.Program{Root: root}, Config{
+		RunID: "run", Driver: &engineTestDriver{}, CompletionChain: chain,
+	})
+	if err != nil {
+		t.Fatalf("RunProgramWithResult: %v", err)
+	}
+	if root.runs != 1 || result.ExecutionOutcome != ExecutionSucceeded {
+		t.Fatalf("root runs = %d, result = %+v", root.runs, result)
+	}
+}
+
 func TestRunProgramWithResultClassifiesMissingCompletionBrowser(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{}, completionHandlerNoop{})

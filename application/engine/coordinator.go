@@ -81,8 +81,8 @@ func validateConfig(program node.Program, cfg Config) error {
 	if cfg.StepTimeline != nil && cfg.Recorder == nil {
 		return fmt.Errorf("%w: recorder is required when step timeline is enabled", ErrTimelineConfiguration)
 	}
-	if cfg.CompletionChain != nil && cfg.ReadOnlyBrowser == nil {
-		return fmt.Errorf("%w: read-only browser is required when completion chain is enabled", ErrCompletionConfiguration)
+	if cfg.CompletionChain.HasHandlers() && cfg.ReadOnlyBrowser == nil {
+		return fmt.Errorf("%w: read-only browser is required when completion handlers are enabled", ErrCompletionConfiguration)
 	}
 	return nil
 }

@@ -262,6 +262,10 @@ func NewNodeCompletionChain(options NodeCompletionOptions, handlers ...NodeCompl
 	return &NodeCompletionChain{handlers: copied, options: options}, nil
 }
 
+func (c *NodeCompletionChain) HasHandlers() bool {
+	return c != nil && len(c.handlers) > 0
+}
+
 func (c *NodeCompletionChain) run(ctx context.Context, input NodeCompletionContext) []CompletionHandlerResult {
 	if c == nil || len(c.handlers) == 0 {
 		return nil
