@@ -54,12 +54,8 @@ jobs:
           OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI__KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI__API_BASE: ${{ secrets.OPENAI_API_BASE }}
-          CONFIG__RESPONSE_LANGUAGE: zh-CN
-          PR_REVIEWER__EXTRA_INSTRUCTIONS: >-
-            请使用中文审查 Go 代码，重点检查 API 兼容性、架构依赖、错误处理、
-            敏感数据泄露、测试覆盖、gofmt、go vet、race test 和构建状态。
-          PR_DESCRIPTION__EXTRA_INSTRUCTIONS: 请使用中文总结 PR 变更。
-          PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS: 请使用中文给出代码改进建议。
           github_action_config.auto_review: 'true'
           github_action_config.auto_describe: 'false'
           github_action_config.auto_improve: 'false'
+          github_action_config.handle_push_trigger: "true"
+          pr_reviewer.incremental_review: "true"

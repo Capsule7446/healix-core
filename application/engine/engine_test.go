@@ -56,6 +56,15 @@ func (*engineTestDriver) Snapshot(context.Context) (heal.DOMSnapshot, error) {
 }
 func (*engineTestDriver) WaitNetworkIdle(context.Context) error { return nil }
 
+type engineTestTimeline struct {
+	sequence uint64
+}
+
+func (t *engineTestTimeline) Mark() node.TimelineMark {
+	t.sequence++
+	return node.TimelineMark{Sequence: t.sequence}
+}
+
 type engineTestRecorder struct {
 	startedRunID string
 	stopped      bool
@@ -65,9 +74,12 @@ type engineTestRecorder struct {
 	stopCtxErr   error
 }
 
-func (r *engineTestRecorder) Start(_ context.Context, runID string) error {
+func (r *engineTestRecorder) Start(_ context.Context, runID string) (node.RecordingTimeline, error) {
 	r.startedRunID = runID
-	return r.startErr
+	if r.startErr != nil {
+		return nil, r.startErr
+	}
+	return &engineTestTimeline{}, nil
 }
 
 func (r *engineTestRecorder) Stop(ctx context.Context, retain bool) error {

@@ -1,0 +1,36 @@
+[config]
+model = "gpt-5.6-sol"
+fallback_models = ["gpt-5.5"]
+custom_model_max_tokens = 128000
+response_language = "zh-CN"
+
+[pr_reviewer]
+require_tests_review = true
+require_security_review = true
+enable_review_labels_security = true
+enable_review_labels_effort = true
+extra_instructions = """
+请使用中文审查此 Go Core 仓库，只报告由本次 PR 引入且可操作的问题，并给出准确文件与行号。
+重点检查：
+- API、领域契约和架构依赖是否保持清晰；Core 不应引入 GUI、具体浏览器、存储、网络清洗或播放实现。
+- context.Context 的取消、截止时间和 context.WithoutCancel 使用是否符合生命周期语义，是否可能泄漏或永久阻塞。
+- errors.Is/errors.As、错误包装和结构化 outcome 是否保留原始业务结果；辅助观测或时间线失败不得改写执行结果。
+- 叶子 Node 与组合 Node 边界，以及 Optional、Retry、Repeat、occurrence、STARTED/FINISHED 事件是否保持既定不变量。
+- 并发、共享可变数据、深复制、处理链串行顺序以及 race 风险。
+- 新行为是否有对应单元、集成或业务契约测试，文档场景是否与实现一致。
+- Go 代码是否通过 gofmt、go vet、go test、go test -race，并维持至少 80% 覆盖率。
+不要建议超出 PR 范围的重构、产品层功能或与 Core 无关的外部实现。
+"""
+
+[pr_description]
+extra_instructions = """
+请用中文总结 PR 变更，明确 Core 契约、执行语义、兼容性影响和验证结果。
+不要描述未在 Core 中实现的 GUI、具体浏览器、存储、网络清洗或播放架构。
+"""
+
+[pr_code_suggestions]
+num_code_suggestions_per_chunk = 3
+extra_instructions = """
+请用中文给出少量高置信度、可直接执行的改进建议。
+优先处理正确性、取消与超时、错误链、并发安全、契约测试和文档一致性；忽略纯风格偏好和超出 PR 范围的重构。
+"""
