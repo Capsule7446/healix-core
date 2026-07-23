@@ -11,8 +11,7 @@
 3. [上下文地图](architecture/context-map.md)：理解 Automation、Execution 与共享内核的协作边界。
 4. [依赖规则](architecture/dependency-rules.md)：确认允许的依赖方向、端口位置与原子写入要求。
 5. [端到端执行](architecture/end-to-end-execution.md)：沿 TestTask、Plan、Program、Progress 与 Evidence 串起完整执行链路。
-6. [录制相对时间轴实施计划](architecture/recording-timeline-plan.md)：录制时间轴、叶子步骤边界及 Core 执行语义。
-7. 按需进入下方的领域、应用与集成文档。
+6. 按需进入下方的领域、应用与集成文档。
 
 ### 领域工程师
 
@@ -89,7 +88,6 @@ flowchart TD
 - [上下文地图](architecture/context-map.md)：上下文边界、协作关系、共享内核与禁止捷径。
 - [依赖规则](architecture/dependency-rules.md)：可执行依赖约束、端口规则及原子写入要求。
 - [端到端执行](architecture/end-to-end-execution.md)：从 TestTask 发布到终态 Evidence 的完整链路。
-- [录制相对时间轴实施计划](architecture/recording-timeline-plan.md)：已实现的录制相对时间、叶子步骤边界和结构化运行反馈。
 
 ### 领域文档（八个）
 
