@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"strings"
 	"testing"
 	"time"
@@ -90,15 +91,19 @@ func TestCompilePlanBuildsWaitKinds(t *testing.T) {
 }
 
 func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
+	number, err := parameter.NewNumberValue("01.20")
+	if err != nil {
+		t.Fatal(err)
+	}
 	plan := execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
 			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{
 				{ID: "select", DisplayName: "选择", Kind: execution.ActionStep, Action: "select", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Values: []string{"east", "west"}, Optional: true, CaptureScreenshot: true},
 				{ID: "validate", DisplayName: "验证", Kind: execution.ValidationStep, NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Validation: &execution.Validation{Kind: "text_contains", Expected: "ready", IgnoreCase: true, MaxWaitMS: 2_000, StabilityMS: 200}},
 				{ID: "repeat", DisplayName: "重复", Kind: execution.RepeatStep, RepeatCount: 2, Children: []execution.Step{{ID: "network", DisplayName: "网络", Kind: execution.WaitStep, WaitKind: "network_idle", WaitMS: 300}}},
-				{ID: "call", DisplayName: "调用", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]string{"region": "north"}}},
+				{ID: "call", DisplayName: "调用", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("north")), "enabled": parameter.LiteralBinding(parameter.BooleanValue(true)), "count": parameter.LiteralBinding(number), "regions": parameter.LiteralBinding(parameter.MultiSelectValue([]string{"north,east", "south"}))}}},
 			}},
-			{WorkflowID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1, Parameters: []execution.Parameter{{Name: "region", DefaultValue: "east"}}, Steps: []execution.Step{{ID: "child-wait", DisplayName: "子等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}},
+			{WorkflowID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1, Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Required: true}, {Name: "enabled", DisplayName: "Enabled", Type: parameter.Boolean, Required: true}, {Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []execution.Step{{ID: "child-wait", DisplayName: "子等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}},
 		},
 		Nodes:      []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "region")},
 		References: []execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}},
@@ -110,13 +115,14 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	children := compiled.Program.Root.(*node.WorkflowNode).Children
 	selectStep, validation := children[0].(*node.StepNode), children[1].(*node.ValidationNode)
 	repeat, call := children[2].(*node.RepeatNode), children[3].(*node.WorkflowCallNode)
-	if selectStep.Action.Kind != node.ActionSelect || !selectStep.Optional || len(selectStep.Action.Values) != 2 || validation.MaxWait != 2*time.Second || repeat.Times != 2 || call.Bindings["region"] != "north" {
+	regions := literalMultiSelect(call.Bindings["regions"])
+	if selectStep.Action.Kind != node.ActionSelect || !selectStep.Optional || len(selectStep.Action.Values) != 2 || validation.MaxWait != 2*time.Second || repeat.Times != 2 || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("north")) || !literalBindingEqual(call.Bindings["enabled"], parameter.BooleanValue(true)) || literalNumber(call.Bindings["count"]) != "1.2" || len(regions) != 2 || regions[0] != "north,east" || regions[1] != "south" {
 		t.Fatalf("compiled tree = %#v %#v %#v %#v", selectStep, validation, repeat, call)
 	}
 	plan.Workflows[0].Steps[0].Values[0] = "mutated"
-	plan.Workflows[0].Steps[3].Reference.ParameterBindings["region"] = "mutated"
+	plan.Workflows[0].Steps[3].Reference.ParameterBindings["region"] = parameter.LiteralBinding(parameter.TextValue("mutated"))
 	plan.Nodes[0].Selectors[0].Value = "mutated"
-	if selectStep.Action.Values[0] != "east" || call.Bindings["region"] != "north" || compiled.Program.Specs[compilerNodeV1].Selectors[0].Value != "region" {
+	if selectStep.Action.Values[0] != "east" || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("north")) || compiled.Program.Specs[compilerNodeV1].Selectors[0].Value != "region" {
 		t.Fatalf("compiled execution aliases plan: %#v", compiled)
 	}
 }

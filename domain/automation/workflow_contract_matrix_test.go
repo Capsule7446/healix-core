@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"strings"
 	"testing"
 )
@@ -131,19 +132,19 @@ func TestWorkflowAggregateValidateOwnsStepAndParameterIdentity(t *testing.T) {
 		want       string
 	}{
 		{name: "all supported parameter kinds", parameters: []ParameterDefinition{
-			{Name: "text", DisplayName: "文本", Type: ParameterText},
-			{Name: "number", DisplayName: "数字", Type: ParameterNumber},
-			{Name: "boolean", DisplayName: "布尔", Type: ParameterBoolean},
-			{Name: "single", DisplayName: "单选", Type: ParameterSingleSelect, Options: []string{"a"}},
-			{Name: "multi", DisplayName: "多选", Type: ParameterMultiSelect, Options: []string{"a", "b"}},
+			{Name: "text", DisplayName: "文本", Type: parameter.Text, Default: parameter.PresentValue(parameter.TextValue(""))},
+			{Name: "number", DisplayName: "数字", Type: parameter.Number, Required: true},
+			{Name: "boolean", DisplayName: "布尔", Type: parameter.Boolean, Default: parameter.PresentValue(parameter.BooleanValue(false))},
+			{Name: "single", DisplayName: "单选", Type: parameter.SingleSelect, Options: []string{"a"}, Default: parameter.PresentValue(parameter.SingleSelectValue("a"))},
+			{Name: "multi", DisplayName: "多选", Type: parameter.MultiSelect, Options: []string{"a", "b"}, Default: parameter.PresentValue(parameter.MultiSelectValue(nil))},
 		}},
-		{name: "missing name", parameters: []ParameterDefinition{{DisplayName: "参数", Type: ParameterText}}, want: "name and display name"},
-		{name: "missing display name", parameters: []ParameterDefinition{{Name: "param", Type: ParameterText}}, want: "name and display name"},
-		{name: "unsupported type", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: ParameterType("DATE")}}, want: "unsupported parameter type"},
-		{name: "select needs options", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: ParameterSingleSelect}}, want: "requires options"},
-		{name: "select rejects blank option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: ParameterMultiSelect, Options: []string{" "}}}, want: "cannot be empty"},
-		{name: "select rejects duplicate option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: ParameterSingleSelect, Options: []string{"a", "a"}}}, want: "duplicate option"},
-		{name: "duplicate parameter name", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数 A", Type: ParameterText}, {Name: "param", DisplayName: "参数 B", Type: ParameterText}}, want: "duplicate parameter"},
+		{name: "missing name", parameters: []ParameterDefinition{{DisplayName: "参数", Type: parameter.Text}}, want: "name and display name"},
+		{name: "missing display name", parameters: []ParameterDefinition{{Name: "param", Type: parameter.Text}}, want: "name and display name"},
+		{name: "unsupported type", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.Type("DATE")}}, want: "unsupported parameter type"},
+		{name: "select needs options", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.SingleSelect}}, want: "requires options"},
+		{name: "select rejects blank option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.MultiSelect, Options: []string{" "}}}, want: "cannot be empty"},
+		{name: "select rejects duplicate option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.SingleSelect, Options: []string{"a", "a"}}}, want: "duplicate option"},
+		{name: "duplicate parameter name", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数 A", Type: parameter.Text}, {Name: "param", DisplayName: "参数 B", Type: parameter.Text}}, want: "duplicate parameter"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

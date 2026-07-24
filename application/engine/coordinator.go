@@ -100,10 +100,6 @@ func executionOutcome(err error) ExecutionOutcome {
 }
 
 func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimeline) *node.Runtime {
-	scratchpad := make(map[string]any, len(cfg.Variables))
-	for name, value := range cfg.Variables {
-		scratchpad[name] = value
-	}
 	return &node.Runtime{
 		RunID:              cfg.RunID,
 		ClaimToken:         cfg.ClaimToken,
@@ -118,6 +114,6 @@ func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimelin
 		CompletionChain:    cfg.CompletionChain,
 		ReadOnlyBrowser:    cfg.ReadOnlyBrowser,
 		CompletionObserver: cfg.CompletionObserver,
-		Scratchpad:         scratchpad,
+		Scratchpad:         map[string]any{},
 	}
 }

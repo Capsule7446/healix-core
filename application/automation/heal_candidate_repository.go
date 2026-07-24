@@ -1,1 +1,234 @@
 package automation
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fingerprint"
+)
+
+const healReviewDigestV1 = "heal-review-v1"
+
+var (
+	ErrHealReviewIdentityConflict = errors.New("heal review command identity conflict")
+	ErrHealReviewDecisionConflict = errors.New("heal review decision conflict")
+	ErrHealReviewCASConflict      = errors.New("heal review compare-and-swap conflict")
+	ErrHealReviewContract         = errors.New("heal review transaction contract violation")
+)
+
+type HealReviewDecision string
+
+const (
+	HealReviewApprove HealReviewDecision = "APPROVE"
+	HealReviewReject  HealReviewDecision = "REJECT"
+)
+
+type HealReviewIntent struct {
+	CommandID                 string
+	RequestDigest             string
+	Decision                  HealReviewDecision
+	NodeID                    string
+	BaseNodeVersionID         string
+	CandidateHash             string
+	ExpectedCandidateRevision domain.Revision
+	ExpectedNodeRevision      domain.Revision
+	ExpectedStreak            *domain.HealStreak
+	ExpectedStreakDigest      string
+	NextCandidate             domain.HealCandidate
+	NextNode                  *domain.NodeAggregate
+	NextStreak                *domain.HealStreak
+	ReviewedBy                string
+	ReviewedAt                int64
+}
+
+type HealReviewStatus string
+
+const (
+	HealReviewApplied  HealReviewStatus = "APPLIED"
+	HealReviewReplayed HealReviewStatus = "REPLAYED"
+)
+
+type HealReviewResult struct {
+	Decision  HealReviewDecision
+	Candidate domain.HealCandidate
+	Node      *domain.NodeAggregate
+	Streak    *domain.HealStreak
+}
+
+type HealReviewOutcome struct {
+	Status        HealReviewStatus
+	CommandID     string
+	RequestDigest string
+	Result        HealReviewResult
+}
+
+type HealReviewTransaction interface {
+	LookupHealReview(context.Context, string, string) (HealReviewOutcome, bool, error)
+	CommitHealReview(context.Context, HealReviewIntent) (HealReviewOutcome, error)
+}
+
+type HealReviewRequest struct {
+	CommandID                 string
+	Decision                  HealReviewDecision
+	NodeID                    string
+	BaseNodeVersionID         string
+	CandidateHash             string
+	ExpectedCandidateRevision domain.Revision
+	ExpectedNodeRevision      domain.Revision
+}
+
+func (request HealReviewRequest) Validate() error {
+	if strings.TrimSpace(request.CommandID) == "" || strings.TrimSpace(request.NodeID) == "" || strings.TrimSpace(request.BaseNodeVersionID) == "" || strings.TrimSpace(request.CandidateHash) == "" {
+		return fmt.Errorf("heal review request requires command, node, base version, and candidate identity")
+	}
+	if request.Decision != HealReviewApprove && request.Decision != HealReviewReject {
+		return fmt.Errorf("unsupported heal review decision %q", request.Decision)
+	}
+	if err := request.ExpectedCandidateRevision.ValidatePersisted(); err != nil {
+		return err
+	}
+	return request.ExpectedNodeRevision.ValidatePersisted()
+}
+
+func HealReviewRequestIdentityDigest(request HealReviewRequest) (string, error) {
+	if err := request.Validate(); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(struct {
+		Schema  string
+		Request HealReviewRequest
+	}{Schema: healReviewDigestV1, Request: request})
+	if err != nil {
+		return "", fmt.Errorf("encode heal review request identity: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
+}
+
+func HealReviewStreakDigest(streak domain.HealStreak) (string, error) {
+	encoded, err := json.Marshal(streak)
+	if err != nil {
+		return "", fmt.Errorf("encode heal review streak authority: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
+}
+
+func (intent HealReviewIntent) Validate() error {
+	if strings.TrimSpace(intent.CommandID) == "" || strings.TrimSpace(intent.NodeID) == "" || strings.TrimSpace(intent.BaseNodeVersionID) == "" || strings.TrimSpace(intent.CandidateHash) == "" {
+		return fmt.Errorf("heal review intent requires command, node, base version, and candidate identity")
+	}
+	if strings.TrimSpace(intent.ReviewedBy) == "" || intent.ReviewedAt <= 0 {
+		return fmt.Errorf("heal review intent requires trusted reviewer metadata")
+	}
+	if err := intent.ExpectedCandidateRevision.ValidatePersisted(); err != nil {
+		return fmt.Errorf("heal review expected candidate revision: %w", err)
+	}
+	if err := intent.ExpectedNodeRevision.ValidatePersisted(); err != nil {
+		return fmt.Errorf("heal review expected node revision: %w", err)
+	}
+	if intent.NextCandidate.Hash != intent.CandidateHash || intent.NextCandidate.NodeID != intent.NodeID || intent.NextCandidate.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextCandidate.Revision != intent.ExpectedCandidateRevision+1 {
+		return fmt.Errorf("heal review candidate transition does not match authority")
+	}
+	switch intent.Decision {
+	case HealReviewApprove:
+		if intent.NextCandidate.Status != domain.HealCandidatePromoted || intent.NextNode == nil || intent.ExpectedStreak != nil || intent.NextStreak != nil {
+			return fmt.Errorf("approval requires promoted candidate and node only")
+		}
+		if intent.NextNode.Node.ID != intent.NodeID || intent.NextNode.Node.Revision != intent.ExpectedNodeRevision+1 || intent.NextNode.Current.ID == intent.BaseNodeVersionID {
+			return fmt.Errorf("approval node transition does not match authority")
+		}
+	case HealReviewReject:
+		if intent.NextCandidate.Status != domain.HealCandidateRejected || intent.NextNode != nil || intent.ExpectedStreak == nil || intent.NextStreak == nil {
+			return fmt.Errorf("rejection requires rejected candidate and streak transition only")
+		}
+		if strings.TrimSpace(intent.ExpectedStreakDigest) == "" || intent.ExpectedStreak.NodeID != intent.NodeID || intent.ExpectedStreak.BaseNodeVersionID != intent.BaseNodeVersionID || intent.ExpectedStreak.CandidateHash != intent.CandidateHash || intent.NextStreak.NodeID != intent.NodeID || intent.NextStreak.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextStreak.CandidateHash != intent.CandidateHash || intent.NextStreak.Disposition != domain.HealStreakRejected || intent.NextStreak.LastSequence <= intent.ExpectedStreak.LastSequence {
+			return fmt.Errorf("rejection streak transition does not match authority")
+		}
+	default:
+		return fmt.Errorf("unsupported heal review decision %q", intent.Decision)
+	}
+	return nil
+}
+
+func HealReviewRequestDigest(intent HealReviewIntent) (string, error) {
+	if err := intent.Validate(); err != nil {
+		return "", err
+	}
+	return HealReviewRequestIdentityDigest(HealReviewRequest{
+		CommandID: intent.CommandID, Decision: intent.Decision, NodeID: intent.NodeID,
+		BaseNodeVersionID: intent.BaseNodeVersionID, CandidateHash: intent.CandidateHash,
+		ExpectedCandidateRevision: intent.ExpectedCandidateRevision, ExpectedNodeRevision: intent.ExpectedNodeRevision,
+	})
+}
+
+func ValidateHealReviewIntentDigest(intent HealReviewIntent) error {
+	digest, err := HealReviewRequestDigest(intent)
+	if err != nil {
+		return err
+	}
+	if intent.RequestDigest != digest {
+		return ErrHealReviewIdentityConflict
+	}
+	return nil
+}
+
+func cloneHealReviewIntent(intent HealReviewIntent) HealReviewIntent {
+	result := intent
+	result.NextCandidate = cloneHealCandidate(intent.NextCandidate)
+	result.NextNode = cloneNodePointer(intent.NextNode)
+	result.ExpectedStreak = cloneHealStreakPointer(intent.ExpectedStreak)
+	result.NextStreak = cloneHealStreakPointer(intent.NextStreak)
+	return result
+}
+
+func cloneHealReviewOutcome(outcome HealReviewOutcome) HealReviewOutcome {
+	result := outcome
+	result.Result.Candidate = cloneHealCandidate(outcome.Result.Candidate)
+	result.Result.Node = cloneNodePointer(outcome.Result.Node)
+	result.Result.Streak = cloneHealStreakPointer(outcome.Result.Streak)
+	return result
+}
+
+func cloneHealCandidate(candidate domain.HealCandidate) domain.HealCandidate {
+	result := candidate
+	result.Selectors = append([]fingerprint.Selector(nil), candidate.Selectors...)
+	result.Fingerprint = cloneApplicationFingerprint(candidate.Fingerprint)
+	return result
+}
+
+func cloneNodePointer(node *domain.NodeAggregate) *domain.NodeAggregate {
+	if node == nil {
+		return nil
+	}
+	result := node.Clone()
+	return &result
+}
+
+func cloneHealStreakPointer(streak *domain.HealStreak) *domain.HealStreak {
+	if streak == nil {
+		return nil
+	}
+	result := *streak
+	result.Contributions = append([]domain.ContributingHealFact(nil), streak.Contributions...)
+	return &result
+}
+
+func cloneApplicationFingerprint(value fingerprint.Fingerprint) fingerprint.Fingerprint {
+	result := value
+	result.Path = append([]string(nil), value.Path...)
+	result.Framework = value.Framework.Clone()
+	if value.Attributes != nil {
+		result.Attributes = make(map[string]string, len(value.Attributes))
+		for key, item := range value.Attributes {
+			result.Attributes[key] = item
+		}
+	}
+	return result
+}

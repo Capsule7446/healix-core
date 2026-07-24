@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"strings"
 	"testing"
 )
@@ -14,7 +15,7 @@ func validTestTaskVersionPlan() TestTaskVersionPlan {
 	task := TestTask{ID: "task", DisplayName: "任务", CurrentVersionID: "task-v1", CreatedAt: 1, UpdatedAt: 1}
 	version := TestTaskVersion{ID: "task-v1", TestTaskID: task.ID, VersionNumber: 1, CreatedAt: 1, FailurePolicy: FailurePolicyStopOnFailure,
 		Items: []TestTaskItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1,
-			WorkflowID: workflow.ID, VersionPolicy: WorkflowVersionLatest, Parameters: ParameterValues{}}}}
+			WorkflowID: workflow.ID, VersionPolicy: WorkflowVersionLatest, Parameters: map[string]parameter.Value{}}}}
 	return TestTaskVersionPlan{Task: task, Version: version, Workflows: []WorkflowDependencySnapshot{{
 		Workflow: workflow, Version: workflowVersion, ResolvedFromLatest: true}}}
 }

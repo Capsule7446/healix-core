@@ -24,16 +24,15 @@ func (n *runtimeIsolationNode) Run(_ context.Context, runtime *node.Runtime) err
 	return nil
 }
 
-func TestRunProgramCreatesAnExecutionLocalRuntimeAndVariableCopy(t *testing.T) {
+func TestRunCompiledEntryCreatesAnExecutionLocalRuntime(t *testing.T) {
 	capture := &runtimeIsolationNode{}
-	variables := map[string]string{"tenant": "acme"}
 	program := node.Program{Root: capture}
-	config := Config{RunID: "run", Driver: &engineTestDriver{}, Variables: variables}
+	config := Config{RunID: "run", Driver: &engineTestDriver{}}
 
-	if err := RunProgram(context.Background(), program, config); err != nil {
+	if err := RunCompiledEntry(context.Background(), compiledEntry(program), config); err != nil {
 		t.Fatal(err)
 	}
-	if err := RunProgram(context.Background(), program, config); err != nil {
+	if err := RunCompiledEntry(context.Background(), compiledEntry(program), config); err != nil {
 		t.Fatal(err)
 	}
 	if len(capture.runtimes) != 2 || capture.runtimes[0] == capture.runtimes[1] {
@@ -41,9 +40,6 @@ func TestRunProgramCreatesAnExecutionLocalRuntimeAndVariableCopy(t *testing.T) {
 	}
 	if len(capture.overlayWasNil) != 2 || !capture.overlayWasNil[0] || !capture.overlayWasNil[1] {
 		t.Fatalf("selector overlay leaked between executions: %v", capture.overlayWasNil)
-	}
-	if variables["tenant"] != "acme" {
-		t.Fatalf("Config.Variables mutated to %#v", variables)
 	}
 	capture.runtimes[0].Scratchpad["only-first"] = "value"
 	if _, exists := capture.runtimes[1].Scratchpad["only-first"]; exists {
@@ -54,10 +50,10 @@ func TestRunProgramCreatesAnExecutionLocalRuntimeAndVariableCopy(t *testing.T) {
 	}
 }
 
-func TestRunProgramReturnsRecorderStopFailureAfterSuccessfulRoot(t *testing.T) {
+func TestRunCompiledEntryReturnsRecorderStopFailureAfterSuccessfulRoot(t *testing.T) {
 	stopErr := errors.New("stop failed")
 	recorder := &engineTestRecorder{stopErr: stopErr}
-	err := RunProgram(context.Background(), node.Program{Root: &runtimeCaptureNode{}}, Config{
+	err := RunCompiledEntry(context.Background(), compiledEntry(node.Program{Root: &runtimeCaptureNode{}}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, stopErr) || !recorder.stopped || !recorder.retained {

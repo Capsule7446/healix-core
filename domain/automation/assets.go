@@ -4,6 +4,7 @@ package automation
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"net/url"
 	"sort"
 	"strings"
@@ -129,42 +130,17 @@ func (a NodeAggregate) Validate() error {
 	return nil
 }
 
-type CredentialReference struct {
-	Provider string
-	Key      string
-}
-
-func (reference CredentialReference) Validate() error {
-	if strings.TrimSpace(reference.Provider) == "" || strings.TrimSpace(reference.Key) == "" {
-		return errors.New("credential reference requires provider and key")
-	}
-	return nil
-}
-
 type Environment struct {
-	ID                   string
-	DisplayName          string
-	BaseURL              string
-	Variables            Properties
-	Properties           Properties
-	CredentialReferences map[string]CredentialReference
-	CreatedAt            int64
-	UpdatedAt            int64
-	DeletedAt            int64
-	LastUsedAt           int64
-	RunCount             int
-	Revision             Revision
-}
-
-func isCredentialLikeKey(key string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(key))
-	normalized = strings.NewReplacer("-", "_", ".", "_", " ", "_").Replace(normalized)
-	for _, marker := range []string{"password", "passwd", "secret", "token", "api_key", "apikey", "authorization", "credential", "private_key", "client_secret"} {
-		if normalized == marker || strings.HasSuffix(normalized, "_"+marker) || strings.HasPrefix(normalized, marker+"_") {
-			return true
-		}
-	}
-	return normalized == "username" || normalized == "base_url" || normalized == "bearer"
+	ID          string
+	DisplayName string
+	BaseURL     string
+	Properties  Properties
+	CreatedAt   int64
+	UpdatedAt   int64
+	DeletedAt   int64
+	LastUsedAt  int64
+	RunCount    int
+	Revision    Revision
 }
 
 func (e Environment) Validate() error {
@@ -188,49 +164,20 @@ func (e Environment) Validate() error {
 	if err := e.Properties.Validate(); err != nil {
 		problems = append(problems, err.Error())
 	}
-	if err := e.Variables.Validate(); err != nil {
-		problems = append(problems, "environment variables: "+err.Error())
-	}
-	for _, values := range []Properties{e.Variables, e.Properties} {
-		for key := range values {
-			if isCredentialLikeKey(key) {
-				problems = append(problems, fmt.Sprintf("configuration key %q is reserved for credential references", key))
-			}
-		}
-	}
-	for name, reference := range e.CredentialReferences {
-		if strings.TrimSpace(name) == "" {
-			problems = append(problems, "credential reference name is required")
-			continue
-		}
-		if err := reference.Validate(); err != nil {
-			problems = append(problems, fmt.Sprintf("credential reference %q: %v", name, err))
-		}
-	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
 	}
 	return nil
 }
 
-type ParameterType string
-
-const (
-	ParameterText         ParameterType = "TEXT"
-	ParameterNumber       ParameterType = "NUMBER"
-	ParameterBoolean      ParameterType = "BOOLEAN"
-	ParameterSingleSelect ParameterType = "SINGLE_SELECT"
-	ParameterMultiSelect  ParameterType = "MULTI_SELECT"
-)
-
 type ParameterDefinition struct {
-	Name         string
-	DisplayName  string
-	Description  string
-	Type         ParameterType
-	Required     bool
-	DefaultValue string
-	Options      []string
+	Name        string
+	DisplayName string
+	Description string
+	Type        parameter.Type
+	Required    bool
+	Default     parameter.OptionalValue
+	Options     []string
 }
 
 func (p ParameterDefinition) Validate() error {
@@ -238,9 +185,11 @@ func (p ParameterDefinition) Validate() error {
 		return errors.New("parameter name and display name are required")
 	}
 	switch p.Type {
-	case ParameterText, ParameterNumber, ParameterBoolean:
-		return nil
-	case ParameterSingleSelect, ParameterMultiSelect:
+	case parameter.Text, parameter.Number, parameter.Boolean:
+		if len(p.Options) != 0 {
+			return errors.New("non-select parameter cannot declare options")
+		}
+	case parameter.SingleSelect, parameter.MultiSelect:
 		if len(p.Options) == 0 {
 			return errors.New("select parameter requires options")
 		}
@@ -254,10 +203,55 @@ func (p ParameterDefinition) Validate() error {
 			}
 			seen[option] = struct{}{}
 		}
-		return nil
 	default:
 		return fmt.Errorf("unsupported parameter type %q", p.Type)
 	}
+	value, present := p.Default.Value()
+	if p.Required && present {
+		return errors.New("required parameter cannot declare a default")
+	}
+	if !p.Required && !present {
+		return errors.New("optional parameter requires a default")
+	}
+	if present {
+		return p.ValidateValue(value)
+	}
+	return nil
+}
+
+func (p ParameterDefinition) ValidateValue(value parameter.Value) error {
+	if err := value.Validate(); err != nil {
+		return err
+	}
+	if value.Type() != p.Type {
+		return fmt.Errorf("expected %s value, got %s", p.Type, value.Type())
+	}
+	allowed := func(candidate string) bool {
+		for _, option := range p.Options {
+			if option == candidate {
+				return true
+			}
+		}
+		return false
+	}
+	switch p.Type {
+	case parameter.SingleSelect:
+		if !allowed(value.SingleSelect()) {
+			return errors.New("single-select value is not an allowed option")
+		}
+	case parameter.MultiSelect:
+		seen := make(map[string]struct{}, len(value.MultiSelect()))
+		for _, selected := range value.MultiSelect() {
+			if !allowed(selected) {
+				return errors.New("multi-select value contains an unknown option")
+			}
+			if _, duplicate := seen[selected]; duplicate {
+				return errors.New("multi-select value contains a duplicate option")
+			}
+			seen[selected] = struct{}{}
+		}
+	}
+	return nil
 }
 
 type StepKind string
@@ -275,7 +269,7 @@ type WorkflowReference struct {
 	WorkflowID        string
 	WorkflowVersionID string
 	LatestPublished   bool
-	ParameterBindings map[string]string
+	ParameterBindings map[string]parameter.Binding
 }
 
 type WorkflowStep struct {
@@ -288,11 +282,7 @@ type WorkflowStep struct {
 	NodeID            string
 	// NodeVersionID 是不可变的 WorkflowVersion 定义的一部分。  它故意位于 NodeID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
 	NodeVersionID string
-	// Value and Values are ordinary literal/interpolated workflow input. They do not
-	// infer credential provenance from content. Credential material must be named
-	// explicitly by Environment.CredentialReferences and resolved only through the
-	// Application CredentialService boundary; arbitrary literals cannot be proven safe by
-	// key-name or content heuristics.
+	// Value and Values are ordinary literal/interpolated workflow input.
 	Value       string
 	Values      []string
 	WaitKind    string

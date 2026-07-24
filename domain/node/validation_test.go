@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -64,6 +65,129 @@ func TestValidationGroupPassesWhenBranchStaysTrue(t *testing.T) {
 		}}}}
 	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver}); err != nil {
 		t.Fatalf("group Run: %v", err)
+	}
+}
+
+func TestValidationGroupRecordsWinnerAndEveryFinalMember(t *testing.T) {
+	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+		value := "no"
+		if spec.ID == "winner" {
+			value = "yes"
+		}
+		return &scriptedValidationElement{values: []string{value}}, nil
+	}}
+	facts := &testFacts{}
+	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond, Branches: []ValidationBranch{
+		{ID: "first", Nodes: []*ValidationNode{{NodeID: "winner", GroupID: "group", BranchID: "first", Target: fingerprint.NodeSpec{ID: "winner"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
+		{ID: "second", Nodes: []*ValidationNode{{NodeID: "loser", GroupID: "group", BranchID: "second", Target: fingerprint.NodeSpec{ID: "loser"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
+	}}
+	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Facts: facts}); err != nil {
+		t.Fatalf("group Run: %v", err)
+	}
+	if len(facts.validationGroups) != 1 {
+		t.Fatalf("terminal groups = %d, want 1", len(facts.validationGroups))
+	}
+	terminal := facts.validationGroups[0]
+	if terminal.TerminalReason != "passed" || terminal.WinningBranchID != "first" || len(terminal.ExpectedMembers) != 2 {
+		t.Fatalf("terminal group = %#v", terminal)
+	}
+	finals := make(map[string]ValidationObservation)
+	for _, observation := range facts.validationObservations {
+		if observation.Final {
+			finals[observation.NodeID] = observation
+		}
+	}
+	if len(finals) != 2 || finals["winner"].BranchDisposition != "won" || finals["loser"].BranchDisposition != "not_satisfied" {
+		t.Fatalf("final members = %#v", finals)
+	}
+}
+
+func TestValidationGroupDeduplicatesRepeatedMemberIdentity(t *testing.T) {
+	member := &ValidationNode{NodeID: "member", Target: fingerprint.NodeSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}
+	facts := &testFacts{}
+	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond, Branches: []ValidationBranch{{ID: "branch", Nodes: []*ValidationNode{member, member}}}}
+	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		return &scriptedValidationElement{values: []string{"yes"}}, nil
+	}}
+	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Facts: facts}); err != nil {
+		t.Fatalf("group Run: %v", err)
+	}
+	if len(facts.validationGroups) != 1 || len(facts.validationGroups[0].ExpectedMembers) != 1 {
+		t.Fatalf("terminal groups = %#v", facts.validationGroups)
+	}
+	finals := 0
+	for _, observation := range facts.validationObservations {
+		if observation.Final {
+			finals++
+		}
+	}
+	if finals != 1 {
+		t.Fatalf("final observation count = %d, want 1", finals)
+	}
+}
+
+func TestValidationTerminalReasonClassification(t *testing.T) {
+	pollTimeout := &ClassifiedError{Kind: ErrorTimeout, Operation: "poll", Err: context.DeadlineExceeded}
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"canceled", context.Canceled, "canceled"},
+		{"parent deadline", context.DeadlineExceeded, "canceled"},
+		{"poll timeout", pollTimeout, "timeout"},
+		{"joined cancellation wins", errors.Join(context.Canceled, pollTimeout), "canceled"},
+		{"system error", errors.New("driver"), "system_error"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := validationTerminalReason(test.err); got != test.want {
+				t.Fatalf("validationTerminalReason() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestValidationGroupRecordsCanceledTerminalReason(t *testing.T) {
+	facts := &testFacts{}
+	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: time.Second, Branches: []ValidationBranch{{ID: "branch", Nodes: []*ValidationNode{{NodeID: "member", GroupID: "group", BranchID: "branch", Target: fingerprint.NodeSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "visible"}}}}}}
+	err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		return nil, context.Canceled
+	}}, Facts: facts})
+	if err == nil {
+		t.Fatal("canceled group succeeded")
+	}
+	if len(facts.validationGroups) != 1 || facts.validationGroups[0].TerminalReason != "canceled" {
+		t.Fatalf("terminal groups = %#v", facts.validationGroups)
+	}
+	finals := make([]ValidationObservation, 0)
+	for _, observation := range facts.validationObservations {
+		if observation.Final {
+			finals = append(finals, observation)
+		}
+	}
+	if len(finals) != 1 || finals[0].BranchDisposition != "not_observed" {
+		t.Fatalf("final observations = %#v", finals)
+	}
+}
+
+func TestValidationEvaluationErrorRecordsOneFinalObservation(t *testing.T) {
+	facts := &testFacts{}
+	validation := &ValidationNode{NodeID: "validation", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "visible"}, MaxWait: time.Second}
+	err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		return nil, errors.New("driver failure")
+	}}, Facts: facts})
+	if err == nil {
+		t.Fatal("validation succeeded")
+	}
+	finals := 0
+	for _, observation := range facts.validationObservations {
+		if observation.Final {
+			finals++
+		}
+	}
+	if finals != 1 {
+		t.Fatalf("final observation count = %d, want 1: %#v", finals, facts.validationObservations)
 	}
 }
 
@@ -144,6 +268,87 @@ func TestValidationGroupExpandsRuntimeVariablesForEachBranchMember(t *testing.T)
 			Assertion: ValidationAssertion{Kind: "text_equals", Expected: "${expected_status}"}}}}}}
 	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Scratchpad: map[string]any{"expected_status": "READY"}}); err != nil {
 		t.Fatalf("validation group Run: %v", err)
+	}
+}
+
+func TestValidationSetObservationPreservesTypedSourceCollection(t *testing.T) {
+	selected := []string{"second", "", "first\x1fpart", "second"}
+	facts := &testFacts{}
+	validation := &ValidationNode{
+		NodeID: "selection",
+		Target: fingerprint.NodeSpec{ID: "selection"},
+		Assertion: ValidationAssertion{
+			Kind:           "selected_set_equals",
+			ExpectedValues: []string{"second", "", "first\x1fpart", "second"},
+		},
+		MaxWait:   time.Second,
+		Stability: time.Nanosecond,
+	}
+	element := &matrixElement{exists: true, visible: true, state: ValidationState{SelectedTexts: selected}}
+
+	if err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &matrixDriver{element: element}, Facts: facts}); err != nil {
+		t.Fatalf("validation Run: %v", err)
+	}
+	final := facts.validationObservations[len(facts.validationObservations)-1]
+	if got := fmt.Sprint(final.ActualValues); got != fmt.Sprint(selected) {
+		t.Fatalf("actual values = %#v, want source collection %#v", final.ActualValues, selected)
+	}
+	selected[0] = "mutated"
+	if final.ActualValues[0] != "second" {
+		t.Fatalf("observation aliases driver collection: %#v", final.ActualValues)
+	}
+}
+
+func TestCompareSetEqualsDoesNotCollideOnDelimiterValues(t *testing.T) {
+	assertion := ValidationAssertion{Kind: "selected_set_equals", ExpectedValues: []string{"a\x1fb"}}
+	passed, _, err := compareSet(assertion, []string{"a", "b"})
+	if err != nil {
+		t.Fatalf("compareSet: %v", err)
+	}
+	if passed {
+		t.Fatal("different collection boundaries compared equal")
+	}
+}
+
+func TestCompareSetContainsPreservesMultiplicity(t *testing.T) {
+	assertion := ValidationAssertion{Kind: "selected_set_contains", ExpectedValues: []string{"a", "a"}}
+	passed, _, err := compareSet(assertion, []string{"a"})
+	if err != nil {
+		t.Fatalf("compareSet: %v", err)
+	}
+	if passed {
+		t.Fatal("single actual value satisfied duplicate expected values")
+	}
+}
+
+func TestSensitiveSetObservationRedactsTypedValues(t *testing.T) {
+	facts := &testFacts{}
+	validation := &ValidationNode{
+		NodeID:    "secret-selection",
+		Target:    fingerprint.NodeSpec{ID: "secret-selection", Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}},
+		Assertion: ValidationAssertion{Kind: "selected_set_equals", ExpectedValues: []string{"secret"}},
+		MaxWait:   time.Second, Stability: time.Nanosecond,
+	}
+	element := &matrixElement{exists: true, visible: true, state: ValidationState{SelectedTexts: []string{"secret"}}}
+	if err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &matrixDriver{element: element}, Facts: facts}); err != nil {
+		t.Fatalf("validation Run: %v", err)
+	}
+	final := facts.validationObservations[len(facts.validationObservations)-1]
+	if final.Actual != "••••••••" || final.ActualValues != nil || final.Assertion.ExpectedValues != nil {
+		t.Fatalf("sensitive collection leaked: %#v", final)
+	}
+}
+
+func TestValidationDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
+	systemErr := errors.New("browser disconnected")
+	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		return nil, errors.Join(ErrElementNotFound, systemErr)
+	}}
+	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
+	validation := &ValidationNode{NodeID: "field", Target: fingerprint.NodeSpec{ID: "field"}}
+	_, _, err := validation.locate(context.Background(), &Runtime{Driver: driver, Healer: healer})
+	if !errors.Is(err, systemErr) || healer.calls != 0 {
+		t.Fatalf("locate error = %v, healer calls = %d", err, healer.calls)
 	}
 }
 

@@ -3,6 +3,8 @@ package automation
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/parameter"
+	"strings"
 )
 
 var ErrDeletedAggregate = errors.New("deleted aggregate cannot be mutated")
@@ -22,16 +24,14 @@ func NewEnvironment(value Environment) (Environment, error) {
 	if value.CreatedAt <= 0 || value.UpdatedAt != value.CreatedAt {
 		return Environment{}, errors.New("environment creation time must be positive and equal updated time")
 	}
-	value.Variables = value.Variables.Clone()
 	value.Properties = value.Properties.Clone()
-	value.CredentialReferences = cloneCredentialReferences(value.CredentialReferences)
 	if err := value.Validate(); err != nil {
 		return Environment{}, err
 	}
 	return value, nil
 }
 
-func (e Environment) UpdateMetadata(displayName, baseURL string, variables, properties Properties, at int64) (Environment, error) {
+func (e Environment) UpdateMetadata(displayName, baseURL string, properties Properties, at int64) (Environment, error) {
 	if e.DeletedAt != 0 {
 		return Environment{}, ErrDeletedAggregate
 	}
@@ -45,9 +45,7 @@ func (e Environment) UpdateMetadata(displayName, baseURL string, variables, prop
 	next := e
 	next.DisplayName = displayName
 	next.BaseURL = baseURL
-	next.Variables = variables.Clone()
 	next.Properties = properties.Clone()
-	next.CredentialReferences = cloneCredentialReferences(e.CredentialReferences)
 	next.UpdatedAt = at
 	next.Revision = nextRevision
 	if err := next.Validate(); err != nil {
@@ -78,21 +76,8 @@ func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, 
 	}
 	next.UpdatedAt = at
 	next.Revision = r
-	next.Variables = e.Variables.Clone()
 	next.Properties = e.Properties.Clone()
-	next.CredentialReferences = cloneCredentialReferences(e.CredentialReferences)
 	return next, nil
-}
-
-func cloneCredentialReferences(references map[string]CredentialReference) map[string]CredentialReference {
-	if references == nil {
-		return nil
-	}
-	cloned := make(map[string]CredentialReference, len(references))
-	for name, reference := range references {
-		cloned[name] = reference
-	}
-	return cloned
 }
 
 func NewNode(node Node, initial NodeVersion) (NodeAggregate, error) {
@@ -217,6 +202,51 @@ func (a WorkflowAggregate) setDeleted(deleted bool, at int64) (WorkflowAggregate
 	return n, nil
 }
 
+func (a TestTaskAggregate) PublishVersion(publication TestTaskVersionPublication) (TestTaskAggregate, error) {
+	if err := a.Validate(); err != nil {
+		return TestTaskAggregate{}, err
+	}
+	if a.Task.DeletedAt != 0 {
+		return TestTaskAggregate{}, ErrDeletedAggregate
+	}
+	if strings.TrimSpace(publication.ID) == "" || publication.CreatedAt <= 0 || publication.CreatedAt < a.Task.UpdatedAt {
+		return TestTaskAggregate{}, errors.New("test task publication requires a new version identity and monotonic timestamp")
+	}
+	for _, existing := range a.Versions {
+		if existing.ID == publication.ID {
+			return TestTaskAggregate{}, errors.New("test task version id already exists")
+		}
+	}
+	next := cloneTestTaskAggregate(a)
+	version := cloneTestTaskVersion(TestTaskVersion{
+		ID:                      publication.ID,
+		TestTaskID:              a.Task.ID,
+		VersionNumber:           len(a.Versions) + 1,
+		SourceVersionID:         a.Current.ID,
+		Items:                   publication.Items,
+		FailurePolicy:           publication.FailurePolicy,
+		RequiredEnvironmentKeys: publication.RequiredEnvironmentKeys,
+		CreatedAt:               publication.CreatedAt,
+	})
+	for index := range version.Items {
+		version.Items[index].TestTaskVersionID = version.ID
+		version.Items[index].SequenceNumber = index + 1
+	}
+	nextRevision, err := a.Task.Revision.Next()
+	if err != nil {
+		return TestTaskAggregate{}, err
+	}
+	next.Task.CurrentVersionID = version.ID
+	next.Task.UpdatedAt = version.CreatedAt
+	next.Task.Revision = nextRevision
+	next.Current = cloneTestTaskVersion(version)
+	next.Versions = append(next.Versions, cloneTestTaskVersion(version))
+	if err := next.Validate(); err != nil {
+		return TestTaskAggregate{}, err
+	}
+	return next, nil
+}
+
 func NewTestTask(task TestTask, initial TestTaskVersion) (TestTaskAggregate, error) {
 	task.Revision = 1
 	task.CurrentVersionID = initial.ID
@@ -258,13 +288,24 @@ func cloneTestTaskVersion(version TestTaskVersion) TestTaskVersion {
 	return cloned
 }
 
-func cloneParameterValues(values ParameterValues) ParameterValues {
+func cloneParameterBindings(values map[string]parameter.Binding) map[string]parameter.Binding {
 	if values == nil {
 		return nil
 	}
-	cloned := make(ParameterValues, len(values))
+	cloned := make(map[string]parameter.Binding, len(values))
+	for key, binding := range values {
+		cloned[key] = binding.Clone()
+	}
+	return cloned
+}
+
+func cloneParameterValues(values map[string]parameter.Value) map[string]parameter.Value {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]parameter.Value, len(values))
 	for key, value := range values {
-		cloned[key] = value
+		cloned[key] = value.Clone()
 	}
 	return cloned
 }

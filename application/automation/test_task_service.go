@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
@@ -25,51 +26,37 @@ func (s TestTaskService) Create(ctx context.Context, task domain.TestTask, initi
 	return result, nil
 }
 
-func (s TestTaskService) SavePublished(ctx context.Context, aggregate domain.TestTaskAggregate, expected domain.Revision) (domain.TestTaskAggregate, error) {
-	current, err := s.repository.Load(ctx, aggregate.Task.ID)
+func (s TestTaskService) PublishVersion(
+	ctx context.Context,
+	taskID string,
+	expected domain.Revision,
+	publication domain.TestTaskVersionPublication,
+) (domain.TestTaskAggregate, error) {
+	if strings.TrimSpace(taskID) == "" {
+		return domain.TestTaskAggregate{}, fmt.Errorf("test task ID is required")
+	}
+	if strings.TrimSpace(publication.ID) == "" {
+		return domain.TestTaskAggregate{}, fmt.Errorf("test task version ID is required")
+	}
+	current, err := s.repository.Load(ctx, taskID)
 	if err != nil {
-		return domain.TestTaskAggregate{}, fmt.Errorf("load test task %q: %w", aggregate.Task.ID, err)
+		return domain.TestTaskAggregate{}, fmt.Errorf("load test task %q: %w", taskID, err)
 	}
 	if current.Task.Revision != expected {
-		return domain.TestTaskAggregate{}, RevisionConflictError{AggregateKind: "test task", ID: aggregate.Task.ID, Expected: expected, Actual: current.Task.Revision}
+		return domain.TestTaskAggregate{}, RevisionConflictError{
+			AggregateKind: "test task",
+			ID:            taskID,
+			Expected:      expected,
+			Actual:        current.Task.Revision,
+		}
 	}
-	nextRevision, err := expected.Next()
+	published, err := current.PublishVersion(publication)
 	if err != nil {
-		return domain.TestTaskAggregate{}, fmt.Errorf("advance test task revision: %w", err)
+		return domain.TestTaskAggregate{}, fmt.Errorf("publish test task %q version: %w", taskID, err)
 	}
-	if aggregate.Task.Revision != nextRevision {
-		return domain.TestTaskAggregate{}, fmt.Errorf("test task %q publication must advance revision exactly once", aggregate.Task.ID)
-	}
-	if err := aggregate.Validate(); err != nil {
-		return domain.TestTaskAggregate{}, fmt.Errorf("validate test task publication: %w", err)
-	}
-	result, err := s.repository.SaveAggregate(ctx, expected, aggregate)
+	result, err := s.repository.SaveAggregate(ctx, expected, published)
 	if err != nil {
-		return domain.TestTaskAggregate{}, fmt.Errorf("persist test task %q: %w", aggregate.Task.ID, err)
-	}
-	return result, nil
-}
-
-type SamplingPublicationRepository interface {
-	Publish(context.Context, string, domain.SamplingPublication) (domain.SamplingPublicationResult, error)
-}
-
-type SamplingPublicationService struct{ repository SamplingPublicationRepository }
-
-func NewSamplingPublicationService(repository SamplingPublicationRepository) SamplingPublicationService {
-	return SamplingPublicationService{repository: repository}
-}
-
-func (s SamplingPublicationService) Publish(ctx context.Context, publicationID string, publication domain.SamplingPublication) (domain.SamplingPublicationResult, error) {
-	if publicationID == "" {
-		return domain.SamplingPublicationResult{}, fmt.Errorf("sampling publication id is required")
-	}
-	if err := publication.Validate(); err != nil {
-		return domain.SamplingPublicationResult{}, fmt.Errorf("validate sampling publication: %w", err)
-	}
-	result, err := s.repository.Publish(ctx, publicationID, publication)
-	if err != nil {
-		return domain.SamplingPublicationResult{}, fmt.Errorf("publish sampling result: %w", err)
+		return domain.TestTaskAggregate{}, fmt.Errorf("persist test task %q: %w", taskID, err)
 	}
 	return result, nil
 }

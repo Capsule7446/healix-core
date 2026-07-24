@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // ErrUnsealedPlan identifies a Plan value that was not created by Seal.
@@ -50,7 +51,7 @@ type Step struct {
 type Reference struct {
 	WorkflowID        string
 	WorkflowVersionID string
-	ParameterBindings map[string]string
+	ParameterBindings map[string]parameter.Binding
 }
 
 type Validation struct {
@@ -76,8 +77,20 @@ type ValidationBranch struct {
 }
 
 type Parameter struct {
-	Name         string
-	DefaultValue string
+	Name        string
+	DisplayName string
+	Description string
+	Type        parameter.Type
+	Required    bool
+	Default     parameter.OptionalValue
+	Options     []string
+}
+
+type ParameterSnapshot struct {
+	ID                string
+	SchemaVersion     int
+	WorkflowVersionID string
+	Values            map[string]parameter.Value
 }
 
 type WorkflowSnapshot struct {
@@ -111,10 +124,11 @@ type WorkflowReferenceKey struct {
 }
 
 type ReferenceResolution struct {
-	ParentVersionID   string
-	StepID            string
-	WorkflowID        string
-	WorkflowVersionID string
+	ParentVersionID    string
+	StepID             string
+	WorkflowID         string
+	WorkflowVersionID  string
+	ResolvedFromLatest bool
 }
 
 type FailurePolicy string
@@ -134,6 +148,7 @@ type WorkflowEntry struct {
 	SequenceNumber    int
 	WorkflowID        string
 	WorkflowVersionID string
+	Parameters        ParameterSnapshot
 }
 
 type Draft struct {
@@ -179,7 +194,11 @@ func (p Plan) RunID() string { return p.draft.RunID }
 func (p Plan) FailurePolicy() FailurePolicy { return p.draft.FailurePolicy }
 
 func (p Plan) Entries() []WorkflowEntry {
-	return append([]WorkflowEntry(nil), p.draft.Entries...)
+	entries := append([]WorkflowEntry(nil), p.draft.Entries...)
+	for i := range entries {
+		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
+	}
+	return entries
 }
 
 func (p Plan) Workflows() []WorkflowSnapshot { return cloneWorkflows(p.draft.Workflows) }
@@ -191,9 +210,13 @@ func (p Plan) References() []ReferenceResolution {
 }
 
 func cloneDraft(draft Draft) Draft {
+	entries := append([]WorkflowEntry(nil), draft.Entries...)
+	for i := range entries {
+		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
+	}
 	return Draft{
 		RunID: draft.RunID, FailurePolicy: draft.FailurePolicy,
-		Entries:   append([]WorkflowEntry(nil), draft.Entries...),
+		Entries:   entries,
 		Workflows: cloneWorkflows(draft.Workflows), Nodes: cloneNodes(draft.Nodes),
 		References: append([]ReferenceResolution(nil), draft.References...),
 	}
@@ -204,6 +227,12 @@ func cloneWorkflows(workflows []WorkflowSnapshot) []WorkflowSnapshot {
 	for i, workflow := range workflows {
 		result[i] = workflow
 		result[i].Parameters = append([]Parameter(nil), workflow.Parameters...)
+		for j := range result[i].Parameters {
+			result[i].Parameters[j].Options = append([]string(nil), workflow.Parameters[j].Options...)
+			if value, present := workflow.Parameters[j].Default.Value(); present {
+				result[i].Parameters[j].Default = parameter.PresentValue(value)
+			}
+		}
 		result[i].Steps = cloneSteps(workflow.Steps)
 	}
 	return result
@@ -217,7 +246,7 @@ func cloneSteps(steps []Step) []Step {
 		result[i].Children = cloneSteps(step.Children)
 		if step.Reference != nil {
 			copy := *step.Reference
-			copy.ParameterBindings = cloneMap(step.Reference.ParameterBindings)
+			copy.ParameterBindings = cloneBindings(step.Reference.ParameterBindings)
 			result[i].Reference = &copy
 		}
 		if step.Validation != nil {
@@ -253,6 +282,32 @@ func cloneFingerprint(value fingerprint.Fingerprint) fingerprint.Fingerprint {
 	value.Path = append([]string(nil), value.Path...)
 	value.Framework = value.Framework.Clone()
 	return value
+}
+
+func cloneBindings(source map[string]parameter.Binding) map[string]parameter.Binding {
+	if source == nil {
+		return nil
+	}
+	result := make(map[string]parameter.Binding, len(source))
+	for name, binding := range source {
+		result[name] = binding.Clone()
+	}
+	return result
+}
+func cloneParameterValues(source map[string]parameter.Value) map[string]parameter.Value {
+	if source == nil {
+		return nil
+	}
+	result := make(map[string]parameter.Value, len(source))
+	for key, value := range source {
+		result[key] = value.Clone()
+	}
+	return result
+}
+
+func cloneParameterSnapshot(snapshot ParameterSnapshot) ParameterSnapshot {
+	snapshot.Values = cloneParameterValues(snapshot.Values)
+	return snapshot
 }
 
 func cloneMap(source map[string]string) map[string]string {

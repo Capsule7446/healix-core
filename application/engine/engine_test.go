@@ -30,9 +30,9 @@ func (n *runtimeCaptureNode) Run(_ context.Context, runtime *node.Runtime) error
 	return n.err
 }
 
-func TestRunProgramPropagatesStepIntervalToRuntime(t *testing.T) {
+func TestRunCompiledEntryPropagatesStepIntervalToRuntime(t *testing.T) {
 	capture := &runtimeCaptureNode{}
-	err := RunProgram(context.Background(), node.Program{Root: capture}, Config{
+	err := RunCompiledEntry(context.Background(), CompiledEntry{Program: node.Program{Root: capture}}, Config{
 		RunID: "run-paced", Driver: &engineTestDriver{}, StepInterval: 750 * time.Millisecond,
 	})
 	if err != nil {
@@ -89,37 +89,22 @@ func (r *engineTestRecorder) Stop(ctx context.Context, retain bool) error {
 	return r.stopErr
 }
 
-func TestRunProgramExpandsInitialVariables(t *testing.T) {
-	driver := &engineTestDriver{}
-	err := RunProgram(context.Background(), navigationProgram("variables", "https://example.test/${TENANT}"), Config{
-		RunID:     "run-variables",
-		Driver:    driver,
-		Variables: map[string]string{"TENANT": "acme"},
-	})
-	if err != nil {
-		t.Fatalf("RunProgram: %v", err)
-	}
-	if driver.navigated != "https://example.test/acme" {
-		t.Fatalf("navigated = %q", driver.navigated)
-	}
-}
-
-func TestRunProgramRetainsSuccessfulRecording(t *testing.T) {
+func TestRunCompiledEntryRetainsSuccessfulRecording(t *testing.T) {
 	recorder := &engineTestRecorder{}
-	err := RunProgram(context.Background(), navigationProgram("retain-success", "https://example.test"), Config{
+	err := RunCompiledEntry(context.Background(), navigationCompiledEntry("retain-success", "https://example.test"), Config{
 		RunID:    "run-retain-success",
 		Driver:   &engineTestDriver{},
 		Recorder: recorder,
 	})
 	if err != nil {
-		t.Fatalf("RunProgram: %v", err)
+		t.Fatalf("RunCompiledEntry: %v", err)
 	}
 	if recorder.startedRunID != "run-retain-success" || !recorder.stopped || !recorder.retained {
 		t.Fatalf("recorder lifecycle = %+v, want successful run retained", recorder)
 	}
 }
 
-func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
+func TestRunCompiledEntryRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	tests := []struct {
 		name    string
@@ -132,7 +117,7 @@ func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := RunProgram(context.Background(), test.program, test.config); err == nil {
+			if err := RunCompiledEntry(context.Background(), compiledEntry(test.program), test.config); err == nil {
 				t.Fatal("incomplete engine configuration was accepted")
 			}
 		})
@@ -142,10 +127,10 @@ func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 	}
 }
 
-func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
+func TestRunCompiledEntryRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	startFailure := &engineTestRecorder{startErr: errors.New("start failed")}
-	if err := RunProgram(context.Background(), node.Program{Root: root}, Config{
+	if err := RunCompiledEntry(context.Background(), compiledEntry(node.Program{Root: root}), Config{
 		RunID: "run-start-failure", Driver: &engineTestDriver{}, Recorder: startFailure,
 	}); err == nil || !strings.Contains(err.Error(), "start recorder") {
 		t.Fatalf("recorder start error = %v", err)
@@ -160,7 +145,7 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	recorder := &engineTestRecorder{stopErr: stopFailure}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := RunProgram(ctx, node.Program{Root: root}, Config{
+	err := RunCompiledEntry(ctx, compiledEntry(node.Program{Root: root}), Config{
 		RunID: "run-cleanup", Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, rootFailure) || !errors.Is(err, stopFailure) {
@@ -171,7 +156,11 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	}
 }
 
-func navigationProgram(id, url string) node.Program {
-	return node.Program{Root: &node.WorkflowNode{NodeID: id,
-		Children: []node.Node{&node.StepNode{NodeID: "open", Action: node.Action{Kind: node.ActionNavigate, Value: url}}}}}
+func compiledEntry(program node.Program) CompiledEntry {
+	return CompiledEntry{Program: program}
+}
+
+func navigationCompiledEntry(id, url string) CompiledEntry {
+	return CompiledEntry{Program: node.Program{Root: &node.WorkflowNode{NodeID: id,
+		Children: []node.Node{&node.StepNode{NodeID: "open", Action: node.Action{Kind: node.ActionNavigate, Value: url}}}}}}
 }

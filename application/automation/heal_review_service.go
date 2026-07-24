@@ -3,31 +3,14 @@ package automation
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
-type HealApprovalCommit struct {
-	Candidate                 domain.HealCandidate
-	ExpectedCandidateRevision domain.Revision
-	Node                      domain.NodeAggregate
-	ExpectedNodeRevision      domain.Revision
-	Status                    domain.HealCandidateStatus
-	ReviewedBy                string
-	ReviewedAt                int64
-}
-
-type HealRejectionCommit struct {
-	Candidate                 domain.HealCandidate
-	ExpectedCandidateRevision domain.Revision
-	ReviewedBy                string
-	ReviewedAt                int64
-}
-
-type HealCandidateRepository interface {
-	Load(context.Context, string) (domain.HealCandidate, error)
-	CommitApproval(context.Context, HealApprovalCommit) (domain.NodeAggregate, error)
-	CommitRejection(context.Context, HealRejectionCommit) error
+type HealReviewSource interface {
+	LoadCandidate(context.Context, string, string, string) (domain.HealCandidate, error)
+	LoadStreak(context.Context, string, string, string) (domain.HealStreak, error)
 }
 
 type ReviewerAuthorizer interface {
@@ -42,113 +25,303 @@ type CandidateVerifier interface {
 	VerifyCandidate(context.Context, domain.HealCandidate) error
 }
 
-type HealReviewService struct {
-	candidates HealCandidateRepository
-	nodes      NodeRepository
-	reviewers  ReviewerAuthorizer
-	clock      ReviewClock
-	verifier   CandidateVerifier
+type HealReviewIdentityProvider interface {
+	NewNodeVersionID(context.Context, string) (string, error)
+	NextRejectionSequence(context.Context, string) (uint64, error)
 }
 
-func NewHealReviewService(candidates HealCandidateRepository, nodes NodeRepository, reviewers ReviewerAuthorizer, clock ReviewClock, verifier CandidateVerifier) HealReviewService {
-	return HealReviewService{candidates: candidates, nodes: nodes, reviewers: reviewers, clock: clock, verifier: verifier}
+type HealReviewService struct {
+	source      HealReviewSource
+	nodes       NodeRepository
+	transaction HealReviewTransaction
+	reviewers   ReviewerAuthorizer
+	clock       ReviewClock
+	verifier    CandidateVerifier
+	identities  HealReviewIdentityProvider
+}
+
+func NewHealReviewService(source HealReviewSource, nodes NodeRepository, transaction HealReviewTransaction, reviewers ReviewerAuthorizer, clock ReviewClock, verifier CandidateVerifier, identities HealReviewIdentityProvider) (HealReviewService, error) {
+	for name, dependency := range map[string]any{
+		"heal review source":            source,
+		"node repository":               nodes,
+		"heal review transaction":       transaction,
+		"reviewer authorizer":           reviewers,
+		"review clock":                  clock,
+		"candidate verifier":            verifier,
+		"heal review identity provider": identities,
+	} {
+		if isNilHealReviewDependency(dependency) {
+			return HealReviewService{}, fmt.Errorf("%s is required", name)
+		}
+	}
+	return HealReviewService{source: source, nodes: nodes, transaction: transaction, reviewers: reviewers, clock: clock, verifier: verifier, identities: identities}, nil
+}
+
+func isNilHealReviewDependency(value any) bool {
+	if value == nil {
+		return true
+	}
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return reflected.IsNil()
+	default:
+		return false
+	}
 }
 
 func (s HealReviewService) Approve(ctx context.Context, command domain.HealCandidateReviewCommand) (domain.NodeAggregate, error) {
-	if err := command.Validate(domain.HealApprovalApproved); err != nil {
-		return domain.NodeAggregate{}, err
-	}
-	candidate, node, err := s.loadForApproval(ctx, command)
+	reviewer, err := s.authorizeReviewer(ctx)
 	if err != nil {
 		return domain.NodeAggregate{}, err
 	}
-	reviewer, reviewedAt, err := s.reviewMetadata(ctx)
+	replay, found, err := s.lookup(ctx, command, HealReviewApprove)
 	if err != nil {
 		return domain.NodeAggregate{}, err
 	}
-	if node.Node.Revision != command.ExpectedNodeRevision {
-		return domain.NodeAggregate{}, RevisionConflictError{AggregateKind: "node", ID: node.Node.ID, Expected: command.ExpectedNodeRevision, Actual: node.Node.Revision}
+	if found {
+		if replay.Result.Node == nil {
+			return domain.NodeAggregate{}, fmt.Errorf("%w: replayed approval requires node", ErrHealReviewContract)
+		}
+		return replay.Result.Node.Clone(), nil
 	}
-	if node.Node.CurrentVersionID != candidate.BaseNodeVersionID {
-		return domain.NodeAggregate{}, fmt.Errorf("heal candidate base version is no longer current")
-	}
-	promoted, err := node.PublishVersion(command.PromotedVersionID, candidate.PageURL, candidate.Origin,
-		candidate.Selectors, candidate.Fingerprint, domain.SourceAutoHeal, reviewedAt)
+	intent, err := s.prepare(ctx, command, HealReviewApprove, reviewer, s.clock.Now())
 	if err != nil {
-		return domain.NodeAggregate{}, fmt.Errorf("publish healed node version: %w", err)
+		return domain.NodeAggregate{}, err
 	}
-	result, err := s.candidates.CommitApproval(ctx, HealApprovalCommit{
-		Candidate: candidate, ExpectedCandidateRevision: candidate.Revision,
-		Node: promoted, ExpectedNodeRevision: command.ExpectedNodeRevision,
-		Status: domain.HealCandidatePromoted, ReviewedBy: reviewer, ReviewedAt: reviewedAt,
-	})
+	versionID, err := s.identities.NewNodeVersionID(ctx, command.CommandID)
 	if err != nil {
-		return domain.NodeAggregate{}, fmt.Errorf("commit heal approval: %w", err)
+		return domain.NodeAggregate{}, fmt.Errorf("allocate heal node version identity: %w", err)
 	}
-	return result, nil
+	candidate := intent.NextCandidate
+	node, err := intent.NextNodeValue().PublishVersion(versionID, candidate.PageURL, candidate.Origin, candidate.Selectors, candidate.Fingerprint, domain.SourceAutoHeal, intent.ReviewedAt)
+	if err != nil {
+		return domain.NodeAggregate{}, fmt.Errorf("publish approved heal candidate: %w", err)
+	}
+	intent.NextNode = &node
+	intent.RequestDigest, err = HealReviewRequestDigest(intent)
+	if err != nil {
+		return domain.NodeAggregate{}, err
+	}
+	outcome, err := s.transaction.CommitHealReview(ctx, intent)
+	if err != nil {
+		return domain.NodeAggregate{}, fmt.Errorf("commit heal review: %w", err)
+	}
+	if err := validateHealReviewOutcome(intent, outcome); err != nil {
+		return domain.NodeAggregate{}, fmt.Errorf("%w: %v", ErrHealReviewContract, err)
+	}
+	if outcome.Result.Node == nil {
+		return domain.NodeAggregate{}, fmt.Errorf("%w: approval result requires node", ErrHealReviewContract)
+	}
+	return outcome.Result.Node.Clone(), nil
 }
 
 func (s HealReviewService) Reject(ctx context.Context, command domain.HealCandidateReviewCommand) error {
-	if err := command.Validate(domain.HealApprovalRejected); err != nil {
-		return err
-	}
-	candidate, err := s.loadCandidate(ctx, command)
+	reviewer, err := s.authorizeReviewer(ctx)
 	if err != nil {
 		return err
 	}
-	reviewer, reviewedAt, err := s.reviewMetadata(ctx)
+	_, found, err := s.lookup(ctx, command, HealReviewReject)
 	if err != nil {
 		return err
 	}
-	if err := s.candidates.CommitRejection(ctx, HealRejectionCommit{
-		Candidate: candidate, ExpectedCandidateRevision: candidate.Revision,
-		ReviewedBy: reviewer, ReviewedAt: reviewedAt,
-	}); err != nil {
-		return fmt.Errorf("commit heal rejection: %w", err)
+	if found {
+		return nil
+	}
+	intent, err := s.prepare(ctx, command, HealReviewReject, reviewer, s.clock.Now())
+	if err != nil {
+		return err
+	}
+	streak, err := s.source.LoadStreak(ctx, command.NodeID, command.BaseNodeVersionID, command.CandidateHash)
+	if err != nil {
+		return fmt.Errorf("load heal streak: %w", err)
+	}
+	sequence, err := s.identities.NextRejectionSequence(ctx, command.CommandID)
+	if err != nil {
+		return fmt.Errorf("allocate heal rejection sequence: %w", err)
+	}
+	next, err := streak.Reject(sequence)
+	if err != nil {
+		return err
+	}
+	intent.NextNode = nil
+	intent.ExpectedStreak = &streak
+	intent.ExpectedStreakDigest, err = HealReviewStreakDigest(streak)
+	if err != nil {
+		return err
+	}
+	intent.NextStreak = &next.Next
+	intent.RequestDigest, err = HealReviewRequestDigest(intent)
+	if err != nil {
+		return err
+	}
+	outcome, err := s.transaction.CommitHealReview(ctx, intent)
+	if err != nil {
+		return fmt.Errorf("commit heal review: %w", err)
+	}
+	return validateHealReviewOutcome(intent, outcome)
+}
+
+func (s HealReviewService) lookup(ctx context.Context, command domain.HealCandidateReviewCommand, decision HealReviewDecision) (HealReviewOutcome, bool, error) {
+	request := HealReviewRequest{CommandID: command.CommandID, Decision: decision, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision}
+	digest, err := HealReviewRequestIdentityDigest(request)
+	if err != nil {
+		return HealReviewOutcome{}, false, err
+	}
+	outcome, found, err := s.transaction.LookupHealReview(ctx, command.CommandID, digest)
+	if err != nil {
+		return HealReviewOutcome{}, false, fmt.Errorf("lookup heal review: %w", err)
+	}
+	if !found {
+		return HealReviewOutcome{}, false, nil
+	}
+	if err := validateHealReviewReplay(request, digest, outcome); err != nil {
+		return HealReviewOutcome{}, false, fmt.Errorf("%w: %v", ErrHealReviewContract, err)
+	}
+	return cloneHealReviewOutcome(outcome), true, nil
+}
+
+func validateHealReviewReplay(request HealReviewRequest, digest string, outcome HealReviewOutcome) error {
+	if outcome.Status != HealReviewApplied && outcome.Status != HealReviewReplayed {
+		return fmt.Errorf("unsupported replay status %q", outcome.Status)
+	}
+	if outcome.CommandID != request.CommandID || outcome.RequestDigest != digest || outcome.Result.Decision != request.Decision {
+		return fmt.Errorf("replay identity does not match request")
+	}
+	candidate := outcome.Result.Candidate
+	if err := candidate.ValidateReviewed(); err != nil {
+		return fmt.Errorf("validate replay candidate: %w", err)
+	}
+	if candidate.Hash != request.CandidateHash || candidate.NodeID != request.NodeID || candidate.BaseNodeVersionID != request.BaseNodeVersionID || candidate.Revision != request.ExpectedCandidateRevision+1 {
+		return fmt.Errorf("replay candidate does not match request")
+	}
+	switch request.Decision {
+	case HealReviewApprove:
+		if outcome.Result.Node == nil || outcome.Result.Streak != nil || candidate.Status != domain.HealCandidatePromoted {
+			return fmt.Errorf("approval replay has invalid decision shape")
+		}
+		node := outcome.Result.Node
+		if err := node.ValidateLoadedHistory(); err != nil {
+			return fmt.Errorf("validate replay node: %w", err)
+		}
+		if node.Node.ID != request.NodeID || node.Node.Revision != request.ExpectedNodeRevision+1 || node.Node.CurrentVersionID != node.Current.ID || node.Current.ID == request.BaseNodeVersionID {
+			return fmt.Errorf("approval replay node does not match request")
+		}
+		if node.Current.NodeID != request.NodeID || node.Current.Source != domain.SourceAutoHeal || node.Current.PageURL != candidate.PageURL || node.Current.Origin != candidate.Origin || !reflect.DeepEqual(node.Current.Selectors, candidate.Selectors) || !reflect.DeepEqual(node.Current.Fingerprint, candidate.Fingerprint) {
+			return fmt.Errorf("approval replay version does not match candidate")
+		}
+	case HealReviewReject:
+		if outcome.Result.Node != nil || outcome.Result.Streak == nil || candidate.Status != domain.HealCandidateRejected {
+			return fmt.Errorf("rejection replay has invalid decision shape")
+		}
+		streak := outcome.Result.Streak
+		if err := streak.Validate(); err != nil {
+			return fmt.Errorf("validate replay streak: %w", err)
+		}
+		if streak.NodeID != request.NodeID || streak.BaseNodeVersionID != request.BaseNodeVersionID || streak.CandidateHash != request.CandidateHash || streak.Disposition != domain.HealStreakRejected {
+			return fmt.Errorf("rejection replay streak does not match request")
+		}
 	}
 	return nil
 }
 
-func (s HealReviewService) loadCandidate(ctx context.Context, command domain.HealCandidateReviewCommand) (domain.HealCandidate, error) {
-	candidate, err := s.candidates.Load(ctx, command.CandidateHash)
+func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandidateReviewCommand, decision HealReviewDecision, reviewer string, reviewedAt int64) (HealReviewIntent, error) {
+	approval := domain.HealApprovalApproved
+	status := domain.HealCandidatePromoted
+	if decision == HealReviewReject {
+		approval = domain.HealApprovalRejected
+		status = domain.HealCandidateRejected
+	}
+	if err := command.Validate(approval); err != nil {
+		return HealReviewIntent{}, err
+	}
+	candidate, err := s.source.LoadCandidate(ctx, command.NodeID, command.BaseNodeVersionID, command.CandidateHash)
 	if err != nil {
-		return domain.HealCandidate{}, fmt.Errorf("load heal candidate: %w", err)
+		return HealReviewIntent{}, fmt.Errorf("load heal candidate: %w", err)
 	}
 	if err := candidate.Validate(); err != nil {
-		return domain.HealCandidate{}, err
+		return HealReviewIntent{}, err
 	}
-	if candidate.Hash != command.CandidateHash || candidate.NodeID != command.NodeID || candidate.BaseNodeVersionID != command.BaseNodeVersionID {
-		return domain.HealCandidate{}, fmt.Errorf("heal candidate identity mismatch")
+	if candidate.NodeID != command.NodeID || candidate.BaseNodeVersionID != command.BaseNodeVersionID || candidate.Hash != command.CandidateHash {
+		return HealReviewIntent{}, ErrHealReviewCASConflict
+	}
+	if candidate.Revision != command.ExpectedCandidateRevision {
+		return HealReviewIntent{}, RevisionConflictError{AggregateKind: "heal candidate", ID: candidate.Hash, Expected: command.ExpectedCandidateRevision, Actual: candidate.Revision}
 	}
 	if err := s.verifier.VerifyCandidate(ctx, candidate); err != nil {
-		return domain.HealCandidate{}, fmt.Errorf("verify heal candidate: %w", err)
-	}
-	return candidate, nil
-}
-
-func (s HealReviewService) loadForApproval(ctx context.Context, command domain.HealCandidateReviewCommand) (domain.HealCandidate, domain.NodeAggregate, error) {
-	candidate, err := s.loadCandidate(ctx, command)
-	if err != nil {
-		return domain.HealCandidate{}, domain.NodeAggregate{}, err
+		return HealReviewIntent{}, fmt.Errorf("verify heal candidate: %w", err)
 	}
 	node, err := s.nodes.Load(ctx, command.NodeID)
 	if err != nil {
-		return domain.HealCandidate{}, domain.NodeAggregate{}, fmt.Errorf("load node: %w", err)
+		return HealReviewIntent{}, fmt.Errorf("load node: %w", err)
 	}
-	return candidate, node, nil
+	if node.Node.ID != command.NodeID {
+		return HealReviewIntent{}, ErrHealReviewCASConflict
+	}
+	if node.Node.Revision != command.ExpectedNodeRevision {
+		return HealReviewIntent{}, RevisionConflictError{AggregateKind: "node", ID: node.Node.ID, Expected: command.ExpectedNodeRevision, Actual: node.Node.Revision}
+	}
+	if node.Node.CurrentVersionID != command.BaseNodeVersionID {
+		return HealReviewIntent{}, ErrHealCandidateStaleBase
+	}
+	nextCandidate, err := candidate.Review(status)
+	if err != nil {
+		return HealReviewIntent{}, err
+	}
+	if reviewedAt <= 0 {
+		return HealReviewIntent{}, fmt.Errorf("trusted review time must be positive")
+	}
+	return HealReviewIntent{CommandID: command.CommandID, Decision: decision, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision, NextCandidate: nextCandidate, NextNode: &node, ReviewedBy: reviewer, ReviewedAt: reviewedAt}, nil
 }
 
-func (s HealReviewService) reviewMetadata(ctx context.Context) (string, int64, error) {
+func (intent HealReviewIntent) NextNodeValue() domain.NodeAggregate {
+	if intent.NextNode == nil {
+		return domain.NodeAggregate{}
+	}
+	return intent.NextNode.Clone()
+}
+
+func validateHealReviewOutcome(intent HealReviewIntent, outcome HealReviewOutcome) error {
+	if outcome.Status != HealReviewApplied && outcome.Status != HealReviewReplayed {
+		return fmt.Errorf("unsupported status %q", outcome.Status)
+	}
+	if outcome.Status == HealReviewReplayed {
+		request := HealReviewRequest{
+			CommandID:                 intent.CommandID,
+			Decision:                  intent.Decision,
+			NodeID:                    intent.NodeID,
+			BaseNodeVersionID:         intent.BaseNodeVersionID,
+			CandidateHash:             intent.CandidateHash,
+			ExpectedCandidateRevision: intent.ExpectedCandidateRevision,
+			ExpectedNodeRevision:      intent.ExpectedNodeRevision,
+		}
+		if err := validateHealReviewReplay(request, intent.RequestDigest, outcome); err != nil {
+			return fmt.Errorf("validate concurrent heal review replay: %w", err)
+		}
+		return nil
+	}
+	if outcome.CommandID != intent.CommandID || outcome.RequestDigest != intent.RequestDigest || outcome.Result.Decision != intent.Decision {
+		return fmt.Errorf("outcome identity does not match intent")
+	}
+	if !reflect.DeepEqual(cloneHealCandidate(outcome.Result.Candidate), cloneHealCandidate(intent.NextCandidate)) {
+		return fmt.Errorf("outcome candidate does not match intent")
+	}
+	if !reflect.DeepEqual(cloneNodePointer(outcome.Result.Node), cloneNodePointer(intent.NextNode)) {
+		return fmt.Errorf("outcome node does not match intent")
+	}
+	if !reflect.DeepEqual(cloneHealStreakPointer(outcome.Result.Streak), cloneHealStreakPointer(intent.NextStreak)) {
+		return fmt.Errorf("outcome streak does not match intent")
+	}
+	return nil
+}
+
+func (s HealReviewService) authorizeReviewer(ctx context.Context) (string, error) {
 	reviewer, err := s.reviewers.AuthorizeReviewer(ctx)
 	if err != nil {
-		return "", 0, fmt.Errorf("authorize heal reviewer: %w", err)
+		return "", fmt.Errorf("authorize heal reviewer: %w", err)
 	}
 	if reviewer == "" {
-		return "", 0, fmt.Errorf("authorized heal reviewer is required")
+		return "", fmt.Errorf("authorized heal reviewer is required")
 	}
-	reviewedAt := s.clock.Now()
-	if reviewedAt <= 0 {
-		return "", 0, fmt.Errorf("trusted review time must be positive")
-	}
-	return reviewer, reviewedAt, nil
+	return reviewer, nil
 }

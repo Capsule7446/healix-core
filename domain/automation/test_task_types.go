@@ -1,5 +1,7 @@
 package automation
 
+import "github.com/Capsule7446/healix-core/domain/parameter"
+
 type FailurePolicy string
 
 const (
@@ -30,7 +32,7 @@ type TestTaskItem struct {
 	WorkflowID        string
 	VersionPolicy     WorkflowVersionPolicy
 	WorkflowVersionID string
-	Parameters        ParameterValues
+	Parameters        map[string]parameter.Value
 }
 
 type TestTaskVersion struct {
@@ -38,6 +40,14 @@ type TestTaskVersion struct {
 	TestTaskID              string
 	VersionNumber           int
 	SourceVersionID         string
+	Items                   []TestTaskItem
+	FailurePolicy           FailurePolicy
+	RequiredEnvironmentKeys []string
+	CreatedAt               int64
+}
+
+type TestTaskVersionPublication struct {
+	ID                      string
 	Items                   []TestTaskItem
 	FailurePolicy           FailurePolicy
 	RequiredEnvironmentKeys []string
@@ -76,4 +86,3 @@ type WorkflowReferenceResolution struct {
 	WorkflowVersionID       string
 	ResolvedFromLatest      bool
 }
-type ParameterValues map[string]any

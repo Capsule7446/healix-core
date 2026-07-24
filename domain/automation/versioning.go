@@ -3,6 +3,7 @@ package automation
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"sort"
 	"strings"
 
@@ -275,6 +276,10 @@ func workflowVersionIDs(versions []WorkflowVersion) []string {
 	return result
 }
 
+func (a NodeAggregate) Clone() NodeAggregate {
+	return cloneNodeAggregate(a)
+}
+
 func cloneNodeAggregate(input NodeAggregate) NodeAggregate {
 	result := input
 	result.Node.Properties = input.Node.Properties.Clone()
@@ -325,6 +330,9 @@ func cloneWorkflowDefinition(input WorkflowDefinition) WorkflowDefinition {
 		Parameters: append([]ParameterDefinition(nil), input.Parameters...)}
 	for index := range result.Parameters {
 		result.Parameters[index].Options = append([]string(nil), input.Parameters[index].Options...)
+		if value, present := input.Parameters[index].Default.Value(); present {
+			result.Parameters[index].Default = parameter.PresentValue(value)
+		}
 	}
 	return result
 }
@@ -337,10 +345,7 @@ func clonePublishedWorkflowSteps(input []WorkflowStep) []WorkflowStep {
 		copy.Children = clonePublishedWorkflowSteps(step.Children)
 		if step.Reference != nil {
 			reference := *step.Reference
-			reference.ParameterBindings = make(map[string]string, len(step.Reference.ParameterBindings))
-			for key, value := range step.Reference.ParameterBindings {
-				reference.ParameterBindings[key] = value
-			}
+			reference.ParameterBindings = cloneParameterBindings(step.Reference.ParameterBindings)
 			copy.Reference = &reference
 		}
 		if step.Validation != nil {

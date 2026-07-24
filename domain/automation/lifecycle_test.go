@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"math"
 	"strings"
 	"testing"
@@ -126,12 +127,46 @@ func TestNewTestTaskCreatesValidImmutableAggregate(t *testing.T) {
 	if err := created.Validate(); err != nil {
 		t.Fatalf("created aggregate invalid: %v", err)
 	}
-	plan.Version.Items[0].Parameters["key"] = "mutated"
+	plan.Version.Items[0].Parameters["key"] = parameter.TextValue("mutated")
 	if created.Task.Revision != 1 || created.Task.CurrentVersionID != plan.Version.ID || created.Current.VersionNumber != 1 {
 		t.Fatalf("invalid created task: %#v", created)
 	}
 	if _, exists := created.Current.Items[0].Parameters["key"]; exists {
 		t.Fatal("created task aliases input parameters")
+	}
+}
+
+func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.T) {
+	plan := validTestTaskVersionPlan()
+	created, err := NewTestTask(plan.Task, plan.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication := TestTaskVersionPublication{
+		ID:                      "task-v2",
+		Items:                   cloneTestTaskVersion(plan.Version).Items,
+		FailurePolicy:           plan.Version.FailurePolicy,
+		RequiredEnvironmentKeys: append([]string(nil), plan.Version.RequiredEnvironmentKeys...),
+		CreatedAt:               2,
+	}
+
+	published, err := created.PublishVersion(publication)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publication.Items[0].Parameters["key"] = parameter.TextValue("mutated")
+	if published.Task.Revision != 2 || published.Task.CurrentVersionID != "task-v2" ||
+		published.Current.TestTaskID != "task" || published.Current.VersionNumber != 2 ||
+		published.Current.SourceVersionID != "task-v1" ||
+		published.Current.Items[0].TestTaskVersionID != "task-v2" ||
+		published.Current.Items[0].SequenceNumber != 1 {
+		t.Fatalf("publication did not derive authoritative fields: %#v", published)
+	}
+	if _, exists := published.Current.Items[0].Parameters["key"]; exists {
+		t.Fatal("published task aliases candidate parameters")
+	}
+	if len(created.Versions) != 1 || created.Task.Revision != 1 {
+		t.Fatalf("publication mutated source aggregate: %#v", created)
 	}
 }
 
@@ -143,31 +178,21 @@ func TestNewTestTaskRejectsInvalidCreation(t *testing.T) {
 	}
 }
 
-func TestEnvironmentRejectsCredentialBearingConfiguration(t *testing.T) {
-	cases := []Environment{
-		{ID: "env", DisplayName: "环境", BaseURL: "https://user:password@example.test", Variables: Properties{}, Properties: Properties{}},
-		{ID: "env", DisplayName: "环境", Variables: Properties{"PASSWORD": "plain-text"}, Properties: Properties{}},
-		{ID: "env", DisplayName: "环境", Variables: Properties{"Api_Key": "plain-text"}, Properties: Properties{}},
-		{ID: "env", DisplayName: "环境", Variables: Properties{}, Properties: Properties{"client_secret": "plain-text"}},
-		{ID: "env", DisplayName: "环境", Variables: Properties{}, Properties: Properties{}, CredentialReferences: map[string]CredentialReference{"login": {Provider: "", Key: "browser/login"}}},
-	}
-	for _, environment := range cases {
-		if err := environment.Validate(); err == nil {
-			t.Fatalf("credential-bearing environment accepted: %#v", environment)
-		}
-	}
-}
-
-func TestNewEnvironmentOwnsCredentialReferences(t *testing.T) {
-	input := Environment{ID: "env", DisplayName: "环境", Variables: Properties{}, Properties: Properties{}, CreatedAt: 1, UpdatedAt: 1,
-		CredentialReferences: map[string]CredentialReference{"login": {Provider: "vault", Key: "browser/login"}}}
-	created, err := NewEnvironment(input)
+func TestEnvironmentAllowsCredentialLikePropertyNamesButRejectsURLCredentials(t *testing.T) {
+	properties := Properties{"PASSWORD": "plain-text", "Api_Key": "key", "client_secret": "value"}
+	environment := Environment{ID: "env", DisplayName: "环境", Properties: properties, CreatedAt: 1, UpdatedAt: 1}
+	created, err := NewEnvironment(environment)
 	if err != nil {
-		t.Fatalf("NewEnvironment: %v", err)
+		t.Fatalf("credential-like properties rejected: %v", err)
 	}
-	input.CredentialReferences["login"] = CredentialReference{Provider: "mutated", Key: "mutated"}
-	if created.CredentialReferences["login"].Provider != "vault" {
-		t.Fatal("environment aliases credential references")
+	properties["PASSWORD"] = "mutated"
+	if created.Properties["PASSWORD"] != "plain-text" {
+		t.Fatal("environment aliases properties")
+	}
+	invalid := environment
+	invalid.BaseURL = "https://user:password@example.test"
+	if err := invalid.Validate(); err == nil {
+		t.Fatal("URL credentials accepted")
 	}
 }
 

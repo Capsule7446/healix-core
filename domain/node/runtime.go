@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 const terminalEventTimeout = 5 * time.Second
@@ -177,11 +179,6 @@ type HealSampleRecord struct {
 	Samples     []heal.CandidateSample
 }
 
-type WorkerFence struct {
-	RunID      string
-	ClaimToken string
-}
-
 type TerminalCommit struct {
 	Event Event
 }
@@ -189,10 +186,11 @@ type TerminalCommit struct {
 // ExecutionSink stages terminal-associated facts and publishes them only when
 // CommitTerminal atomically commits the terminal event under the same fence.
 type ExecutionSink interface {
-	RecordProgress(context.Context, WorkerFence, Event) error
-	StageHealDecision(context.Context, WorkerFence, string, string, fingerprint.Selector, heal.Decision) error
-	StageValidationObservation(context.Context, WorkerFence, ValidationObservation) error
-	CommitTerminal(context.Context, WorkerFence, TerminalCommit) error
+	RecordProgress(context.Context, domainexecution.WorkerFence, Event) error
+	StageHealDecision(context.Context, domainexecution.WorkerFence, string, string, fingerprint.Selector, heal.Decision) error
+	StageValidationObservation(context.Context, domainexecution.WorkerFence, ValidationObservation) error
+	StageValidationGroupTerminal(context.Context, domainexecution.WorkerFence, ValidationGroupTerminalObservation) error
+	CommitTerminal(context.Context, domainexecution.WorkerFence, TerminalCommit) error
 }
 
 // Runtime 是贯穿整棵 Node 树的、每次运行专属的执行上下文。
@@ -228,10 +226,22 @@ type Runtime struct {
 	HealingPolicy        heal.SafetyPolicy
 	HealingReviewCap     float64
 	Scratchpad           map[string]any
+	parameterScope       map[string]parameter.Value
 	leafExecutionStarted bool
 	pacer                stepPacer
 	occurrences          map[string]int
 	activeOccurrences    map[string][]int
+}
+
+func (rt *Runtime) Parameters() map[string]parameter.Value {
+	if rt == nil || rt.parameterScope == nil {
+		return nil
+	}
+	result := make(map[string]parameter.Value, len(rt.parameterScope))
+	for name, value := range rt.parameterScope {
+		result[name] = value.Clone()
+	}
+	return result
 }
 
 func (rt *Runtime) LeafExecutionStarted() bool {
@@ -333,7 +343,7 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 		occurrence = stack[len(stack)-1]
 	}
 	evt := Event{RunID: rt.RunID, NodeID: nodeID, Occurrence: occurrence, Phase: phase}
-	fence := WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}
+	fence := domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}
 	var recordErr error
 	if rt.Facts != nil {
 		if phase == PhaseSucceeded || phase == PhaseFailed || phase == PhaseCanceled {

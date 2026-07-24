@@ -10,6 +10,7 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 const (
@@ -45,8 +46,161 @@ const (
 )
 
 func (p Parameter) Validate() error {
-	if strings.TrimSpace(p.Name) == "" {
-		return errors.New("parameter name is required")
+	if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.DisplayName) == "" {
+		return errors.New("parameter name and display name are required")
+	}
+	switch p.Type {
+	case parameter.Text, parameter.Number, parameter.Boolean:
+		if len(p.Options) != 0 {
+			return errors.New("non-select parameter cannot declare options")
+		}
+	case parameter.SingleSelect, parameter.MultiSelect:
+		if len(p.Options) == 0 {
+			return errors.New("select parameter requires options")
+		}
+		seen := map[string]struct{}{}
+		for _, option := range p.Options {
+			if strings.TrimSpace(option) == "" {
+				return errors.New("select option cannot be blank")
+			}
+			if _, exists := seen[option]; exists {
+				return errors.New("duplicate select option")
+			}
+			seen[option] = struct{}{}
+		}
+	default:
+		return fmt.Errorf("unsupported parameter type %q", p.Type)
+	}
+	value, present := p.Default.Value()
+	if p.Required && present {
+		return errors.New("required parameter cannot declare default")
+	}
+	if !p.Required && !present {
+		return errors.New("optional parameter requires default")
+	}
+	if present {
+		return p.validateValue(value)
+	}
+	return nil
+}
+
+func (p Parameter) validateValue(value parameter.Value) error {
+	if err := value.Validate(); err != nil {
+		return err
+	}
+	if value.Type() != p.Type {
+		return errors.New("parameter value type mismatch")
+	}
+	allowed := func(candidate string) bool {
+		for _, option := range p.Options {
+			if option == candidate {
+				return true
+			}
+		}
+		return false
+	}
+	if p.Type == parameter.SingleSelect && !allowed(value.SingleSelect()) {
+		return errors.New("single-select value is not an option")
+	}
+	if p.Type == parameter.MultiSelect {
+		seen := map[string]struct{}{}
+		for _, selected := range value.MultiSelect() {
+			if !allowed(selected) {
+				return errors.New("multi-select value is not an option")
+			}
+			if _, exists := seen[selected]; exists {
+				return errors.New("duplicate multi-select value")
+			}
+			seen[selected] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func validateBindings(parent, child []Parameter, bindings map[string]parameter.Binding) error {
+	parents := map[string]Parameter{}
+	for _, definition := range parent {
+		parents[definition.Name] = definition
+	}
+	values := map[string]parameter.Value{}
+	children := make(map[string]Parameter, len(child))
+	for _, definition := range child {
+		children[definition.Name] = definition
+	}
+	for name, binding := range bindings {
+		childDefinition, exists := children[name]
+		if !exists {
+			return fmt.Errorf("parameter %q is unknown", name)
+		}
+		if literal, ok := binding.Literal(); ok {
+			values[name] = literal
+			continue
+		}
+		parentName, ok := binding.ParentName()
+		if !ok || parentName == "" {
+			return fmt.Errorf("parameter %q has invalid binding", name)
+		}
+		parentDefinition, exists := parents[parentName]
+		if !exists {
+			return fmt.Errorf("parameter %q references missing parent parameter %q", name, parentName)
+		}
+		if parentDefinition.Type != childDefinition.Type {
+			return fmt.Errorf("parameter %q parent reference type mismatch", name)
+		}
+		if childDefinition.Type == parameter.SingleSelect || childDefinition.Type == parameter.MultiSelect {
+			for _, option := range parentDefinition.Options {
+				if err := childDefinition.validateValue(selectProbe(childDefinition.Type, option)); err != nil {
+					return fmt.Errorf("parameter %q parent option mismatch", name)
+				}
+			}
+		}
+	}
+	for _, definition := range child {
+		if _, exists := bindings[definition.Name]; !exists {
+			if _, present := definition.Default.Value(); present {
+				continue
+			}
+			return fmt.Errorf("parameter %q is missing", definition.Name)
+		}
+		if value, exists := values[definition.Name]; exists {
+			if err := definition.validateValue(value); err != nil {
+				return fmt.Errorf("parameter %q: %w", definition.Name, err)
+			}
+		}
+	}
+	return nil
+}
+func selectProbe(kind parameter.Type, option string) parameter.Value {
+	if kind == parameter.SingleSelect {
+		return parameter.SingleSelectValue(option)
+	}
+	return parameter.MultiSelectValue([]string{option})
+}
+
+func validateSnapshotValues(definitions []Parameter, values map[string]parameter.Value) error {
+	byName := make(map[string]Parameter, len(definitions))
+	for _, definition := range definitions {
+		if err := definition.Validate(); err != nil {
+			return fmt.Errorf("parameter %q: %w", definition.Name, err)
+		}
+		if _, duplicate := byName[definition.Name]; duplicate {
+			return fmt.Errorf("duplicate parameter %q", definition.Name)
+		}
+		byName[definition.Name] = definition
+	}
+	for name := range values {
+		if _, exists := byName[name]; !exists {
+			return fmt.Errorf("parameter %q is unknown", name)
+		}
+	}
+	for _, definition := range definitions {
+		value, exists := values[definition.Name]
+		if !exists {
+			return fmt.Errorf("parameter %q is missing", definition.Name)
+		}
+		if err := definition.validateValue(value); err != nil {
+			return fmt.Errorf("parameter %q: %w", definition.Name, err)
+		}
 	}
 	return nil
 }
@@ -107,6 +261,18 @@ func (p Draft) Validate() error {
 		}
 		if workflow.WorkflowID != entry.WorkflowID {
 			return fmt.Errorf("entry workflow version %q belongs to workflow %q, not %q", entry.WorkflowVersionID, workflow.WorkflowID, entry.WorkflowID)
+		}
+		if len(workflow.Parameters) == 0 {
+			if entry.Parameters.ID != "" || entry.Parameters.SchemaVersion != 0 || entry.Parameters.WorkflowVersionID != "" || len(entry.Parameters.Values) != 0 {
+				return fmt.Errorf("entry %q parameterless workflow requires an empty parameter snapshot", entry.ExecutionID)
+			}
+		} else {
+			if strings.TrimSpace(entry.Parameters.ID) == "" || entry.Parameters.SchemaVersion < 1 || entry.Parameters.WorkflowVersionID != entry.WorkflowVersionID {
+				return fmt.Errorf("entry %q parameter snapshot identity is invalid", entry.ExecutionID)
+			}
+			if err := validateSnapshotValues(workflow.Parameters, entry.Parameters.Values); err != nil {
+				return fmt.Errorf("entry %q parameter snapshot: %w", entry.ExecutionID, err)
+			}
 		}
 	}
 	nodes := make(map[NodeDependencyKey]struct{}, len(p.Nodes))
@@ -181,13 +347,18 @@ func validateAggregateInputBounds(p Draft) error {
 		return errors.New("execution plan aggregate collection limit exceeded")
 	}
 	steps, parameters, selectors, attributes, paths, bindings := 0, 0, 0, 0, 0, 0
-	collectionElements := len(p.Entries) + len(p.Workflows) + len(p.Nodes) + len(p.References)
+	remainingCollectionElements := MaxAggregateCollectionElements
 	addCollectionElements := func(count int) error {
-		if count > MaxAggregateCollectionElements-collectionElements {
+		if count < 0 || count > remainingCollectionElements {
 			return fmt.Errorf("aggregate collection elements exceed maximum %d", MaxAggregateCollectionElements)
 		}
-		collectionElements += count
+		remainingCollectionElements -= count
 		return nil
+	}
+	for _, count := range []int{len(p.Entries), len(p.Workflows), len(p.Nodes), len(p.References)} {
+		if err := addCollectionElements(count); err != nil {
+			return err
+		}
 	}
 	stringBytes := 0
 	addString := func(value string) error {
@@ -208,12 +379,48 @@ func validateAggregateInputBounds(p Draft) error {
 		}
 		return nil
 	}
+	addParameterValue := func(value parameter.Value) error {
+		switch value.Type() {
+		case parameter.Text:
+			return addString(value.Text())
+		case parameter.Number:
+			return addString(value.Number())
+		case parameter.SingleSelect:
+			return addString(value.SingleSelect())
+		case parameter.Boolean:
+			return nil
+		case parameter.MultiSelect:
+			items := value.MultiSelect()
+			if err := addCollectionElements(len(items)); err != nil {
+				return err
+			}
+			for _, item := range items {
+				if err := addString(item); err != nil {
+					return err
+				}
+			}
+			return nil
+		default:
+			return value.Validate()
+		}
+	}
 	if err := addString(p.RunID); err != nil {
 		return err
 	}
 	for _, entry := range p.Entries {
-		if err := addStrings(entry.ExecutionID, entry.TestTaskItemID, entry.WorkflowID, entry.WorkflowVersionID); err != nil {
+		if err := addStrings(entry.ExecutionID, entry.TestTaskItemID, entry.WorkflowID, entry.WorkflowVersionID, entry.Parameters.ID, entry.Parameters.WorkflowVersionID); err != nil {
 			return err
+		}
+		if err := addCollectionElements(len(entry.Parameters.Values)); err != nil {
+			return err
+		}
+		for name, value := range entry.Parameters.Values {
+			if err := addString(name); err != nil {
+				return err
+			}
+			if err := addParameterValue(value); err != nil {
+				return err
+			}
 		}
 	}
 	stack := make([]stepFrame, 0)
@@ -229,8 +436,21 @@ func validateAggregateInputBounds(p Draft) error {
 			return err
 		}
 		for _, parameter := range workflow.Parameters {
-			if err := addStrings(parameter.Name, parameter.DefaultValue); err != nil {
+			if err := addCollectionElements(len(parameter.Options)); err != nil {
 				return err
+			}
+			if err := addStrings(parameter.Name, parameter.DisplayName, parameter.Description, string(parameter.Type)); err != nil {
+				return err
+			}
+			if value, present := parameter.Default.Value(); present {
+				if err := addParameterValue(value); err != nil {
+					return err
+				}
+			}
+			for _, option := range parameter.Options {
+				if err := addString(option); err != nil {
+					return err
+				}
 			}
 		}
 		stack = append(stack, stepFrame{workflow.Steps, 1})
@@ -269,8 +489,21 @@ func validateAggregateInputBounds(p Draft) error {
 					return fmt.Errorf("aggregate parameter bindings exceed maximum %d", MaxAggregateBindings)
 				}
 				bindings += len(step.Reference.ParameterBindings)
-				for key, value := range step.Reference.ParameterBindings {
-					if err := addStrings(key, value); err != nil {
+				for key, binding := range step.Reference.ParameterBindings {
+					if err := addString(key); err != nil {
+						return err
+					}
+					if literal, ok := binding.Literal(); ok {
+						if err := addParameterValue(literal); err != nil {
+							return err
+						}
+						continue
+					}
+					parentName, ok := binding.ParentName()
+					if !ok {
+						return errors.New("invalid parameter binding")
+					}
+					if err := addString(parentName); err != nil {
 						return err
 					}
 				}
@@ -519,6 +752,9 @@ func validateDependencies(workflow WorkflowSnapshot, workflows map[string]Workfl
 		if !exists || target.WorkflowID != resolution.WorkflowID {
 			return fmt.Errorf("workflow reference step %q targets missing workflow version", step.ID)
 		}
+		if err := validateBindings(workflow.Parameters, target.Parameters, step.Reference.ParameterBindings); err != nil {
+			return fmt.Errorf("workflow reference step %q parameter bindings: %w", step.ID, err)
+		}
 	}
 	return nil
 }
@@ -608,6 +844,16 @@ func validateSealedNavigationURL(value string) error {
 	if err != nil {
 		return err
 	}
+	authorityEnd := len(value)
+	if scheme := strings.Index(value, "://"); scheme >= 0 {
+		authorityEnd = scheme + 3
+		if slash := strings.IndexAny(value[authorityEnd:], "/?#"); slash >= 0 {
+			authorityEnd += slash
+		}
+	}
+	if strings.Contains(value[:authorityEnd], "${") {
+		return errors.New("interpolation is not allowed in URL scheme or authority")
+	}
 	parseable := value
 	for _, name := range names {
 		parseable = strings.ReplaceAll(parseable, "${"+name+"}", "placeholder")
@@ -681,12 +927,14 @@ func (r *Reference) Validate(s Step) []string {
 		p = append(p, fmt.Sprintf("step %q requires a workflow reference", s.DisplayName))
 	}
 	if r != nil {
-		for name, value := range r.ParameterBindings {
+		for name, binding := range r.ParameterBindings {
 			if strings.TrimSpace(name) == "" {
 				p = append(p, fmt.Sprintf("step %q has an empty parameter binding", s.DisplayName))
 			}
-			if _, err := interpolation.Names(value); err != nil {
-				p = append(p, fmt.Sprintf("step %q parameter binding %q: %v", s.DisplayName, name, err))
+			if _, err := binding.Resolve(nil); err != nil {
+				if _, isReference := binding.ParentName(); !isReference {
+					p = append(p, fmt.Sprintf("step %q parameter binding %q: %v", s.DisplayName, name, err))
+				}
 			}
 		}
 	}

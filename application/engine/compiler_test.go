@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"testing"
 	"time"
 
@@ -17,10 +18,33 @@ const (
 	compilerNodeV2 = "00000000-0000-7000-8000-000000000103"
 )
 
+func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
+	draft := minimalCompilerPlan()
+	plan, err := execution.Seal(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compileSnapshotDraft(plan.Snapshot(), execution.RunSnapshot{}); err == nil {
+		t.Fatal("missing root invocation was accepted")
+	}
+	root := execution.WorkflowSnapshot{WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", Steps: []execution.Step{{ID: "call", DisplayName: "Call", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}}
+	child := execution.WorkflowSnapshot{WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child"}
+	compiler := executionCompiler{
+		versions:    map[string]execution.WorkflowSnapshot{"root-v1": root, "child-v1": child},
+		resolutions: map[execution.WorkflowReferenceKey]execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call"}: {ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}},
+		invocations: map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot{}, metadata: map[string]StepMetadata{}, programSpecs: map[string]fingerprint.NodeSpec{}, runtimeNodes: map[string]RuntimeNodeIdentity{},
+	}
+	count := 0
+	compiler.compiledNodes = &count
+	if _, err := compiler.compileWorkflow("root-v1", "root", "root", 1); err == nil {
+		t.Fatal("missing concrete child invocation was accepted")
+	}
+}
+
 func TestCompilePlanRejectsUnsealedPlanWithDomainError(t *testing.T) {
-	_, err := CompilePlan(execution.Plan{})
+	_, err := compilePlanForTest(execution.Plan{})
 	if !errors.Is(err, execution.ErrUnsealedPlan) {
-		t.Fatalf("CompilePlan() error = %v, want ErrUnsealedPlan", err)
+		t.Fatalf("compilePlanForTest() error = %v, want ErrUnsealedPlan", err)
 	}
 }
 
@@ -40,9 +64,9 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 	plan := execution.Draft{
 		RunID: "exec", Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", WorkflowID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
-			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "call", DisplayName: "调用子流程", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}},
+			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "call", DisplayName: "调用子流程", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}}},
 			{WorkflowID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1,
-				Parameters: []execution.Parameter{{Name: "region", DefaultValue: "east"}},
+				Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Default: parameter.PresentValue(parameter.TextValue("east"))}},
 				Steps:      []execution.Step{{ID: "click", DisplayName: "点击", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}},
 		},
 		Nodes:      []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "submit-v1")},
@@ -58,7 +82,7 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 		t.Fatalf("root = %#v", compiled.Program.Root)
 	}
 	call, ok := root.Children[0].(*node.WorkflowCallNode)
-	if !ok || call.Target == nil || call.Target.ID() != "workflow|15:execution-entry4:call8:child-v1" || call.Bindings["region"] != "east" {
+	if !ok || call.Target == nil || call.Target.ID() != "workflow|15:execution-entry4:call8:child-v1" || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("east")) {
 		t.Fatalf("workflow call = %#v", root.Children[0])
 	}
 	childStepID := runtimeInvocationStepID("15:execution-entry4:call8:child-v1", "click")
@@ -69,9 +93,10 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 
 func TestCompilePlanCreatesDistinctRuntimeIdentitiesForSharedChildInvocations(t *testing.T) {
 	child := execution.WorkflowSnapshot{WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1,
-		Steps: []execution.Step{{ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}
+		Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Required: true}},
+		Steps:      []execution.Step{{ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}
 	call := func(id string) execution.Step {
-		return execution.Step{ID: id, DisplayName: id, Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}
+		return execution.Step{ID: id, DisplayName: id, Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}
 	}
 	plan := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{
 		{WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", VersionNumber: 1, Steps: []execution.Step{call("first"), call("second")}}, child},
@@ -178,7 +203,7 @@ func compileDraft(draft execution.Draft) (CompiledEntry, error) {
 	if err != nil {
 		return CompiledEntry{}, err
 	}
-	compiled, err := CompilePlan(plan)
+	compiled, err := compilePlanForTest(plan)
 	if err != nil {
 		return CompiledEntry{}, err
 	}
@@ -199,7 +224,7 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := CompilePlan(plan)
+	compiled, err := compilePlanForTest(plan)
 	if err != nil {
 		t.Fatal(err)
 	}

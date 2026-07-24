@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestWorkflowSnapshotValidateRejectsMalformedExecutionContracts(t *testing.T) {
@@ -196,14 +197,13 @@ func TestWorkflowSnapshotValidateBoundsNestingWithoutOverflow(t *testing.T) {
 	}
 }
 
-func TestParameterValidateRequiresOnlyExecutionIdentity(t *testing.T) {
+func TestParameterValidateRequiresCompleteDefinition(t *testing.T) {
 	t.Parallel()
-	// Immutable plans omit authoring-only labels, descriptions, types, and option catalogs.
-	if err := (Parameter{Name: "query"}).Validate(); err != nil {
-		t.Fatalf("execution parameter rejected without authoring metadata: %v", err)
+	if err := (Parameter{Name: "query", DisplayName: "Query", Type: parameter.Text, Required: true}).Validate(); err != nil {
+		t.Fatalf("execution parameter rejected: %v", err)
 	}
 	if err := (Parameter{}).Validate(); err == nil {
-		t.Fatal("empty execution parameter name accepted")
+		t.Fatal("empty execution parameter accepted")
 	}
 }
 
@@ -382,7 +382,7 @@ func TestNavigateSealValidation(t *testing.T) {
 		{"https://example.com/path", true},
 		{"http://example.com", true},
 		{"${base}/path", false},
-		{"https://${host}/path", true},
+		{"https://${host}/path", false},
 		{"/relative", false},
 		{"ftp://example.com/${path}", false},
 		{"https://${}/path", false},
@@ -397,6 +397,13 @@ func TestNavigateSealValidation(t *testing.T) {
 				t.Fatalf("Validate() error = %v, valid = %v", err, test.valid)
 			}
 		})
+	}
+}
+
+func TestAggregateInputLimitsRejectTopLevelEntriesBeforeSealClone(t *testing.T) {
+	draft := Draft{Entries: make([]WorkflowEntry, MaxAggregateCollectionElements+1)}
+	if err := validateAggregateInputBounds(draft); err == nil || !strings.Contains(err.Error(), "aggregate collection elements") {
+		t.Fatalf("aggregate preflight error = %v", err)
 	}
 }
 
