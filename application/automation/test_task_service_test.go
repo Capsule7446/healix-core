@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
@@ -141,6 +142,57 @@ func samplingPublicationFixture(t *testing.T) domain.SamplingPublication {
 		t.Fatal(err)
 	}
 	return domain.SamplingPublication{Workflow: aggregate}
+}
+
+func TestPublishSamplingIntentDigestValidation(t *testing.T) {
+	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
+	digest, err := SamplingPublicationRequestDigest(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := PublishSamplingIntent{PublicationID: command.PublicationID, Publication: command.Publication, RequestDigest: digest}
+	if err := ValidatePublishSamplingIntentDigest(intent); err != nil {
+		t.Fatalf("valid digest rejected: %v", err)
+	}
+	intent.RequestDigest = "sha256:wrong"
+	if err := ValidatePublishSamplingIntentDigest(intent); !errors.Is(err, ErrSamplingPublicationDigestMismatch) {
+		t.Fatalf("digest mismatch error = %v", err)
+	}
+	intent.PublicationID = ""
+	if err := ValidatePublishSamplingIntentDigest(intent); err == nil || !strings.Contains(err.Error(), "validate sampling publication intent") {
+		t.Fatalf("invalid intent error = %v", err)
+	}
+}
+
+func TestSamplingPublicationErrorsExposeStableClassification(t *testing.T) {
+	identity := &SamplingPublicationIdentityConflictError{PublicationID: "publication"}
+	if !errors.Is(identity, ErrSamplingPublicationIdentityConflict) || !strings.Contains(identity.Error(), "publication") {
+		t.Fatalf("identity error = %v", identity)
+	}
+	cause := errors.New("bad outcome")
+	contract := &SamplingPublicationContractError{Cause: cause}
+	if !errors.Is(contract, ErrSamplingPublicationContract) || !errors.Is(contract, cause) || !strings.Contains(contract.Error(), cause.Error()) {
+		t.Fatalf("contract error = %v", contract)
+	}
+}
+
+func TestSamplingPublicationServiceRejectsMissingTransaction(t *testing.T) {
+	_, err := NewSamplingPublicationService(nil, nil).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
+	if !errors.Is(err, ErrSamplingPublicationConfiguration) {
+		t.Fatalf("Publish() error = %v", err)
+	}
+}
+
+func TestSamplingPublicationServiceRejectsInvalidAdapterOutcome(t *testing.T) {
+	repository := &samplingRepositoryFake{outcome: PublishSamplingOutcome{Status: "UNKNOWN"}}
+	_, err := NewSamplingPublicationService(repository, nil).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
+	if !errors.Is(err, ErrSamplingPublicationContract) {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	var contract *SamplingPublicationContractError
+	if !errors.As(err, &contract) || !strings.Contains(contract.Error(), "unsupported status") {
+		t.Fatalf("Publish() contract context = %v", err)
+	}
 }
 
 func TestSamplingPublicationServiceValidatesAndPublishes(t *testing.T) {

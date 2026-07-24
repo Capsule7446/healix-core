@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,6 +109,28 @@ type panicValidFactory struct{ events *[]string }
 func (f panicValidFactory) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.WorkflowEntry) (BrowserSession, error) {
 	*f.events = append(*f.events, "create:"+entry.ExecutionID)
 	return panicValidSession{events: f.events}, nil
+}
+
+func TestEntryLifecyclePanicErrorReportsBothFailures(t *testing.T) {
+	got := (EntryLifecyclePanic{RunnerPanic: "runner failed", ClosePanic: "close failed"}).Error()
+	want := "entry runner panic: runner failed; browser close panic: close failed"
+	if got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestEntryExecutorRejectsInvalidFenceBeforeAllocatingSession(t *testing.T) {
+	events := []string{}
+	executor := mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events})
+
+	err := executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}})
+
+	if err == nil || !strings.Contains(err.Error(), "execute entries") || !strings.Contains(err.Error(), "worker fence run id and claim token are required") {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !reflect.DeepEqual(events, []string{}) {
+		t.Fatalf("session events = %#v, want none", events)
+	}
 }
 
 func TestEntryExecutorValidPanicClosesSynchronouslyAndStops(t *testing.T) {
