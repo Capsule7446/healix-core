@@ -1,4 +1,4 @@
-# Fingerprint 领域
+# 元素指纹领域
 
 ## 目的与边界
 Fingerprint 定义可移植的元素身份：selector、结构/语义指纹、NodeSpec，以及前端框架检测结果的规范化。它验证并排序观察数据；不查询 DOM、不执行 selector、不评分修复候选，也不内置具体框架探测器。
@@ -59,10 +59,10 @@ sequenceDiagram
 未知 selector/framework/evidence 类型、空值、非法 priority/confidence、畸形 URL/origin/UUID、无 selector 或 detector 返回无效结果会失败。Detector 错误原样形成调用失败；领域不重试或降级伪造结果。
 
 ## 并发、安全与资源
-模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone` 提供浅值复制，Fingerprint map/path 的深拷贝由聚合边界负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正注入安全由 Driver 适配器负责。当前没有显式 selector/attribute/path 数量上限；Execution Seal 对计划聚合输入设限。
+模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone` 提供浅值复制，Fingerprint map/path 的深拷贝由聚合边界负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正注入安全由 Driver 适配器负责。当前没有显式 selector/attribute/path 数量上限；执行 `Seal` 对计划聚合输入设限。
 
 ## 交互
-Sampling 创建 NodeSpec；Automation 版本保存 selector/fingerprint；Execution 冻结副本；Node 用 Driver 定位；Heal 用特征评分；框架 detector 由外部提供。这里不推断 Playwright、CDP 或任何 DOM adapter 的 selector 语义。
+采样 创建 NodeSpec；自动化 版本保存 selector/fingerprint；执行 冻结副本；Node 用 Driver 定位；自愈 用特征评分；框架 detector 由外部提供。这里不推断 Playwright、CDP 或任何 DOM adapter 的 selector 语义。
 
 ## 已实现与未支持
 已实现：selector、fingerprint、NodeSpec 校验；框架信息/栈校验、克隆、排序；多 detector 聚合、去重和规范化。未支持：selector 实际解析/执行、DOM 特征抽取、内置 React/Vue 等 detector、持久化、候选相似度评分。
@@ -70,4 +70,4 @@ Sampling 创建 NodeSpec；Automation 版本保存 selector/fingerprint；Execut
 ## 源码与测试
 - [核心模型](../../domain/fingerprint/fingerprint.go)、[框架模型](../../domain/fingerprint/framework.go)、[检测编排](../../domain/fingerprint/detection.go)
 - [核心与模糊测试](../../domain/fingerprint/fingerprint_test.go)、[框架检测测试](../../domain/fingerprint/framework_test.go)
-- [Heal 使用](../../domain/heal/scorer.go)、[Sampling 使用](../../domain/sampling/session.go)
+- [自愈 使用](../../domain/heal/scorer.go)、[采样 使用](../../domain/sampling/session.go)

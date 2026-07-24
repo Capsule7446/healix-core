@@ -6,17 +6,17 @@
 
 ### 架构学习者
 
-1. [系统总览](architecture/system-overview.md)：建立八个领域包、四个应用模块与宿主适配器的整体视图。
+1. [系统总览](architecture/system-overview.md)：建立九个领域包、四个应用模块与宿主适配器的整体视图。
 2. [领域术语对照表](terminology.md)：统一业务名称、代码符号、所属领域与模型角色。
-3. [上下文地图](architecture/context-map.md)：理解 Automation、Execution 与共享内核的协作边界。
+3. [上下文地图](architecture/context-map.md)：理解自动化、执行与共享内核的协作边界。
 4. [依赖规则](architecture/dependency-rules.md)：确认允许的依赖方向、端口位置与原子写入要求。
-5. [端到端执行](architecture/end-to-end-execution.md)：沿 TestTask、Plan、Program、Progress 与 Evidence 串起完整执行链路。
+5. [端到端执行](architecture/end-to-end-execution.md)：沿测试任务、执行计划、执行程序、进度与执行证据串起完整执行链路。
 6. 按需进入下方的领域、应用与集成文档。
 
 ### 领域工程师
 
 1. 先读[上下文地图](architecture/context-map.md)和[依赖规则](architecture/dependency-rules.md)。
-2. 从[八个领域文档](#领域文档八个)中选择目标领域，核对聚合、值对象、不变量、失败语义与源码证据。
+2. 从[九个领域文档](#领域文档九个)中选择目标领域，核对聚合、值对象、不变量、失败语义与源码证据。
 3. 若修改跨领域流程，再读[端到端执行](architecture/end-to-end-execution.md)以及相关应用模块 README。
 4. 用源码与测试验证文档中的“已实现”结论，并同步更新受影响文档。
 
@@ -31,8 +31,8 @@
 
 1. [公开契约](integration/public-contract.md)：先确定稳定入口、错误面与兼容边界。
 2. [适配器职责](integration/adapter-responsibilities.md)：实现入站、调度持久化、执行驱动与原子事实提交。
-3. [依赖规则](architecture/dependency-rules.md)：避免反向依赖，并兑现 CAS、fencing、幂等与事务约束。
-4. [端到端执行](architecture/end-to-end-execution.md)：逐段核对 claim、编译、运行、进度和终态 Evidence 的衔接。
+3. [依赖规则](architecture/dependency-rules.md)：避免反向依赖，并兑现 CAS（比较并交换）、栅栏校验、幂等与事务约束。
+4. [端到端执行](architecture/end-to-end-execution.md)：逐段核对领取执行权、编译、运行、进度和终态执行证据的衔接。
 5. 回到相关应用 Use Case 文档，落实端口调用的具体时序与失败处理。
 
 ## 状态图例
@@ -51,7 +51,7 @@
 ```mermaid
 flowchart TD
   Portal[文档导航] --> Architecture[架构文档]
-  Portal --> Domains[八个领域文档]
+  Portal --> Domains[九个领域文档]
   Portal --> Applications[应用模块与 Use Cases]
   Portal --> Integration[集成文档]
 
@@ -62,15 +62,15 @@ flowchart TD
   Dependencies --> E2E[端到端执行]
 
   Context --> Domains
-  Domains --> AutomationDomain[Automation / Sampling]
-  Domains --> ExecutionDomain[Execution / Node / Heal / Evidence]
-  Domains --> SharedKernel[Fingerprint / Interpolation]
+  Domains --> AutomationDomain[自动化 / 采样]
+  Domains --> ExecutionDomain[执行 / 节点 / 自愈 / 执行证据]
+  Domains --> SharedKernel[指纹 / 插值 / 参数]
 
   E2E --> Applications
-  Applications --> AutomationApp[Automation]
-  Applications --> SchedulingApp[Scheduling]
-  Applications --> EngineApp[Engine]
-  Applications --> ExecutionApp[Execution]
+  Applications --> AutomationApp[自动化]
+  Applications --> SchedulingApp[调度]
+  Applications --> EngineApp[执行引擎]
+  Applications --> ExecutionApp[执行]
 
   Applications --> Integration
   Integration --> PublicContract[公开契约]
@@ -89,20 +89,21 @@ flowchart TD
 - [依赖规则](architecture/dependency-rules.md)：可执行依赖约束、端口规则及原子写入要求。
 - [端到端执行](architecture/end-to-end-execution.md)：从 TestTask 发布到终态 Evidence 的完整链路。
 
-### 领域文档（八个）
+### 领域文档（九个）
 
 1. [Automation](domains/automation.md)：环境、文件夹、节点、工作流与测试任务的聚合和生命周期。
 2. [Sampling](domains/sampling.md)：采样会话、匹配、处理结果与发布输入。
-3. [Execution](domains/execution.md)：密封 Plan、入口顺序、预算与状态不变量。
+3. [Execution](domains/execution.md)：已封存 Plan、顶层执行项顺序、预算与状态不变量。
 4. [Node](domains/node.md)：可运行节点树、运行端口、动作、等待与校验机制。
 5. [Heal](domains/heal.md)：定位修复、评分、评估与候选证据。
 6. [Evidence](domains/evidence.md)：进度事实、终态事件、观察与原子提交不变量。
 7. [Fingerprint](domains/fingerprint.md)：节点规格、选择器、指纹与框架检测值语义。
 8. [Interpolation](domains/interpolation.md)：运行变量插值规则。
+9. [参数](terminology.md#核心术语)：类型化 `Value`、`Binding`、默认值与跨调用作用域规则。
 
 ### 应用文档
 
-#### Automation
+#### 自动化
 
 - [模块 README](application/automation/README.md)：通用约束、模块内索引与源码入口。
 - 环境：[创建环境](application/automation/create-environment.md)、[更新环境](application/automation/update-environment.md)、[删除环境](application/automation/delete-environment.md)、[恢复环境](application/automation/restore-environment.md)。
@@ -112,25 +113,25 @@ flowchart TD
 - 文件夹：[创建文件夹](application/automation/create-folder.md)、[移动文件夹](application/automation/move-folder.md)、[删除文件夹](application/automation/delete-folder.md)。
 - 修复审核：[批准修复候选](application/automation/approve-heal-candidate.md)、[拒绝修复候选](application/automation/reject-heal-candidate.md)。
 
-#### Scheduling
+#### 调度
 
 - [模块 README](application/scheduling/README.md)：调度流程、端口边界与当前限制。
 - [构建执行计划](application/scheduling/build-execution-plan.md)。
+- [冻结并注入环境属性](application/scheduling/freeze-environment-properties.md)。
 - [决定下一个入口](application/scheduling/decide-next-entry.md)。
-- [处理下一个 Claim](application/scheduling/process-next-claim.md)。
+- [处理下一次领取执行权](application/scheduling/process-next-claim.md)。
 
-#### Engine
+#### 执行引擎
 
 - [模块 README](application/engine/README.md)：编译与运行边界及当前限制。
 - [编译执行计划](application/engine/compile-plan.md)。
 - [运行程序](application/engine/run-program.md)。
 
-#### Execution
+#### 执行
 
-- [模块 README](application/execution/README.md)：worker 持久化边界、凭据装配与当前限制。
+- [模块 README](application/execution/README.md)：顶层执行项执行、浏览器隔离、工作器栅栏校验与执行证据提交边界。
 - [提交步骤状态迁移](application/execution/commit-step-transition.md)。
 - [记录执行进度](application/execution/record-progress.md)。
-- [解析凭据](application/execution/resolve-credential.md)。
 
 ### 集成文档
 
@@ -145,7 +146,7 @@ flowchart TD
 4. **不把设想写成现状。** 尚未支持的映射、参数或流程使用“不支持”标记；未来方案应放入独立设计记录，而不是混入当前行为说明。
 5. **变更必须成套更新。** 修改领域不变量、应用时序、端口、公开契约或适配器责任时，同一变更应更新相关领域文档、Use Case 文档、架构图和本索引。
 6. **Use Case 文档逐项维护。** 新增、重命名或删除应用用例时，必须同步更新模块 README 与本页完整索引；不得只依赖目录发现。
-7. **领域数量显式校验。** 当前领域索引固定列出八个领域文档；领域拆分或合并时，必须同步修改系统总览、上下文地图、关系图和本节标题。
+7. **领域数量显式校验。** 当前领域索引固定列出九个领域文档；领域拆分或合并时，必须同步修改系统总览、上下文地图、关系图和本节标题。
 8. **链接必须可解析。** 所有相对链接以当前文档所在目录为基准；提交前检查目标文件或目录存在，并避免链接到已删除或仅在宿主仓库存在的路径。
 9. **架构约束自动验证。** 依赖方向以 [`architecture/dependencies_test.go`](../architecture/dependencies_test.go) 的自动检查为准；文档中的依赖规则应与该测试保持一致。
 10. **本页不重复项目介绍。** 根 README 负责项目入口与对外说明；本页只维护文档的信息架构、阅读路径、状态含义和事实治理。

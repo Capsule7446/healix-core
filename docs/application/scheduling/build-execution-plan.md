@@ -1,68 +1,38 @@
-# 构建执行计划
+# 创建执行实例与冻结执行计划
 
 ## 目标
 
-把已发布测试任务快照和逐入口运行身份无损映射为已封印的 `execution.Plan`。
+`CreateRunService.CreateRun` 在一个事务中解析并冻结一次完整执行输入：TestTask 版本、fixed/latest workflow 依赖、typed parameters、invocation bindings、Environment Properties、失败/截图/修复策略，以及串行 entry identities。输出是带摘要的不可变 `execution.RunSnapshot` 和 `QUEUED` Run。
 
 ## 输入
 
-- `BuildExecutionPlanInput.RunID: string`：非空。
-- `Publication: automation.TestTaskVersionPlan`：必须通过领域校验。
-- `Entries: []ExecutionEntryInput`：数量、顺序、任务项、版本策略均须匹配 publication。
-- `ParameterScopes` 与每个 entry 的 `ParameterSnapshot`：当前必须为空。
+- `CreateRunCommand`：包含 command/run/task/environment identity、创建时间和策略。
+- `Entries map[itemID]map[name]parameter.Value`：每个顶层 TestTask item 的 typed 参数值。
+- `CreateRunStore`：在 transaction 内提供幂等命令查询、资产解析和原子插入。
 
-## 输出
+## 冻结流程
 
-成功返回 `execution.Plan`（sealed）；失败返回零值 Plan 与带上下文的 error。
-
-## 时序
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Mapper as BuildExecutionPlan
-    participant Publication
-    participant Domain as execution.Seal
-    Caller->>Mapper: input
-    Mapper->>Publication: Validate()
-    Mapper->>Mapper: 校验 entries/参数可无损映射
-    Mapper->>Mapper: 映射 workflow/node/reference/policy
-    Mapper->>Domain: Seal(Draft)
-    Domain-->>Mapper: sealed Plan / error
-    Mapper-->>Caller: Plan / error
-```
-
-## 流程与错误
-
-```mermaid
-flowchart TD
-    A[接收 input] --> B{Publication 有效?}
-    B -- 否 --> E1[error: invalid publication]
-    B -- 是 --> C{RunID/entries/版本匹配?}
-    C -- 否 --> E2[映射校验错误]
-    C -- 是 --> D{存在参数语义?}
-    D -- 是 --> E3[error: cannot map losslessly]
-    D -- 否 --> F{映射成功?}
-    F -- 否 --> E4[unsupported semantics]
-    F -- 是 --> G[execution.Seal]
-    G --> H{Seal 成功?}
-    H -- 否 --> E5[seal error]
-    H -- 是 --> I[返回 sealed Plan]
-```
+1. 复制并规范化 command，校验资源上限及 typed values。
+2. 计算稳定 request digest；相同 command ID + 相同 digest 返回既有结果，不同 digest 返回冲突。
+3. 解析指定 TestTask version、Environment revision/properties 和所有 workflow dependencies。
+4. 对 `LATEST` 项和嵌套引用读取当时 current published version，并把解析结果写入 snapshot；此后执行、重试均不得重新解析 latest。
+5. 校验 parameter declarations、required/type/options、parent bindings 和 invocation graph。
+6. `SealRunSnapshot` 深拷贝并计算 canonical digest。
+7. 在同一事务中插入 Run、snapshot、entries 和 command 幂等结果。
 
 ## 不变量
 
-- entry 数量等于 publication item 数量，并按索引一一对应。
-- `ExecutionID` 在计划内唯一；同一 workflow 可重复出现且保持独立 identity。
-- fixed/latest 版本解析必须与 publication 快照一致。
-- 当前无法表达的参数直接拒绝，而非静默降级。
-- 返回计划必须通过 `execution.Seal`。
+- `EnvironmentSnapshot` 只有 identity、revision、base URL 和普通 `Properties map[string]string`；没有凭据引用或 secret。Engine 将这些值只读注入 `env.`。
+- 参数使用 `domain/parameter.Value`（text、number、boolean、single-select、multi-select）及 typed `Binding`；不得字符串化或在执行时回源。
+- 每个顶层 TestTask item 生成独立 entry identity。Execution 随后为每个 entry 获取独立浏览器；该 entry 内的嵌套 workflow 共享它。
+- persisted snapshot 必须能通过 stored digest hydrate；adapter 返回的 identity、digest 或 entry 顺序不一致属于 contract error。
 
-## 当前边界与延期能力
+## 边界
 
-以下能力当前**不受支持或明确延期**：lease heartbeat 与过期恢复、active cancellation registry、完整队列实现、参数优先级合并、生产级 adapters 与 read projections。调用方不得从现有接口推断这些能力已经存在。
+Scheduling 只拥有 Run 创建、队列/claim 和状态推进。它不打开浏览器、不执行 Program、不提交 Evidence。Engine 只消费冻结 snapshot；Execution 协调浏览器和 fenced Evidence 写入。
 
 ## 源码与测试
 
-- 源码：[`application/scheduling/plan_mapper.go`](../../../application/scheduling/plan_mapper.go)
-- 测试：[`application/scheduling/plan_mapper_test.go`](../../../application/scheduling/plan_mapper_test.go)
+- 源码：[`application/scheduling/create_run_service.go`](../../../application/scheduling/create_run_service.go)、[`application/scheduling/create_run_builder.go`](../../../application/scheduling/create_run_builder.go)
+- 快照：[`domain/execution/run_snapshot.go`](../../../domain/execution/run_snapshot.go)
+- 测试：[`application/scheduling/create_run_test.go`](../../../application/scheduling/create_run_test.go)、[`application/scheduling/create_run_transaction_test.go`](../../../application/scheduling/create_run_transaction_test.go)

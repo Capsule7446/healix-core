@@ -1,10 +1,10 @@
 # C27 — 临时资产转正式资产
 
-> 来源：Healix 仓库 `docs/refactor/healix-core-v0.3.0-replacement-assessment.md` 对应 Case；本清单以该评估要求为输入，并以 healix-core 当前 `master` 源码重新核验。
+> 来源：历史替换评估中的同编号案例；本清单以该评估要求为输入，并以 healix-core 当前实现（`12d1ba2`）重新核验。
 
 ## 状态
 
-**当前：mapping result 和最终引用校验存在；规范化 rewrite 算法缺失。**
+**当前结果：已由 v0.3 替换实现覆盖；以下证据、清单与验收项按当前模型解释。**
 
 ## 业务不变量
 
@@ -13,7 +13,7 @@
 ## 当前证据
 
 - `domain/sampling/workspace.go`：`RebuildTemporaryNodeReferences`
-- `domain/automation/sampling_publication.go`：`SamplingNodeMapping`、recursive reference validation
+- `domain/automation/sampling_publication.go`：`SamplingNodeMapping`、递归引用校验
 
 ## 调整清单
 
@@ -23,7 +23,7 @@
 - [x] input temp IDs 与 output mappings exact-set equality。
 - [x] missing/duplicate/extra mappings 拒绝。
 - [x] rewrite 将每个 node reference 精确替换为 mapping 的 `(NodeID, NodeVersionID)`，保留 step/workflow identity 和结构；MERGE 即使保留 NodeID，也必须写入新 NodeVersionID。
-- [x] publication retry 返回原 mapping，不重新分配。
+- [x] 发布 retry 返回原 mapping，不重新分配。
 - [x] mappings 与正式 assets 同事务持久化。
 - [x] 断言 publishable workflow 中无 temp IDs。
 
@@ -32,7 +32,7 @@
 - [x] 两 steps 共用 temp node 得到同 mapping。
 - [x] 各层级递归引用全部重写。
 - [x] missing/duplicate mapping 在持久化前失败。
-- [x] failed publication 不留 mapping/assets。
+- [x] failed 发布不留 mapping/assets。
 - [x] retry mapping byte-for-byte 等价。
 
 ## 依赖与风险

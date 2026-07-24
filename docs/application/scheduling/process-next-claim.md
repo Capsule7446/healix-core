@@ -1,4 +1,4 @@
-# 处理下一 Claim
+# 处理下一次领取执行权
 
 ## 目标
 
@@ -43,7 +43,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[ClaimNext] --> B{端口错误?}
-    B -- 是 --> E1[claim error]
+    B -- 是 --> E1[领取执行权错误]
     B -- 否 --> C{found?}
     C -- 否 --> Z[false,nil]
     C -- 是 --> D{token 非空且 plan sealed?}

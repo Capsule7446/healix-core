@@ -2,28 +2,34 @@
 
 ## 目标
 
-定义一次原子提交步骤终态及最终事实的端口契约；当前没有 application service 实现。
+定义一次原子提交步骤终态及最终事实的应用服务与端口契约；`StepTransitionService` 已实现，但当前不包含生产持久化适配器。
 
 ## 输入
 
 - `context.Context`。
-- fenced `WorkerScope`。
-- `evidence.StepTransitionCommit`，含 commit identity、期望 revision、终态事实及 promotion/reset 目标。
+- fenced `WorkerFence`。
+- `evidence.StepTransitionCommit`，含 commit identity、期望 revision、终态事件、终态验证证据、`HealObservation` 与 `OriginalSelectorResets`；不含 promotions。
 
 ## 输出
 
-`evidence.StepTransitionCommitResult` 或 error；标准冲突分类为 `ErrStepRevisionConflict`、`ErrCommitIdentityConflict`。
+`evidence.StepTransitionCommitResult` 或 error；标准冲突分类为 `ErrStepRevisionConflict`、`ErrCommitIdentityConflict`。事务内通过 `HealGovernancePlanner` 计算的 promotions 仅由 `StepTransitionCommitResult.Promotions` 返回。
 
 ## 时序
 
 ```mermaid
 sequenceDiagram
     participant Engine
+    participant Service as StepTransitionService
     participant Port as FactCommitter
-    participant Adapter
-    Engine->>Port: CommitStepTransition(scope, commit)
-    Port->>Adapter: 原子校验并写入
-    Adapter-->>Engine: result / typed conflict / error
+    participant Planner as HealGovernancePlanner
+    participant Adapter as StepTransitionTransaction
+    Engine->>Service: Commit(ctx, fence, commit)
+    Service->>Port: CommitStepTransition(fence, commit)
+    Port->>Adapter: CommitStepTransition(fence, commit, planner)
+    Adapter->>Planner: 事务内计算治理决策
+    Planner-->>Adapter: promotions / governance facts
+    Adapter-->>Service: StepTransitionCommitResult / typed conflict / error
+    Service-->>Engine: result / error
 ```
 
 ## 流程与错误
@@ -31,23 +37,23 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[接收 commit] --> B{claim fencing 有效?}
-    B -- 否 --> E1[拒绝过期 worker]
+    B -- 否 --> E1[拒绝过期工作器]
     B -- 是 --> C{commit identity 冲突?}
     C -- 是 --> E2[ErrCommitIdentityConflict]
     C -- 否 --> D{expected revision 匹配?}
     D -- 否 --> E3[ErrStepRevisionConflict]
-    D -- 是 --> F{promotion/reset 属于 sealed dependency?}
-    F -- 否 --> E4[拒绝越权目标]
-    F -- 是 --> G[原子写终态与最终事实]
-    G --> H[返回 CommitResult]
+    D -- 是 --> F[事务内由 HealGovernancePlanner 计算治理决策]
+    F --> G[原子写终态、最终事实与治理结果]
+    G --> H[仅通过 StepTransitionCommitResult.Promotions 返回 promotions]
 ```
 
 ## 不变量
 
 - 终态迁移与最终 facts 必须同一原子事务。
 - adapter 必须校验 fencing、revision 与 commit identity 幂等性。
-- promotion/reset 目标必须属于被提交步骤的 sealed node dependencies。
-- port 契约不等于已存在持久化实现。
+- `StepTransitionCommit` 携带终态证据、`HealObservation` 与 `OriginalSelectorResets`，调用方不得提交 promotions。
+- promotions 必须在事务内通过 `HealGovernancePlanner` 计算，并且仅在 `StepTransitionCommitResult.Promotions` 中返回。
+- `StepTransitionService` 已实现；port 契约与应用服务不等于已存在生产持久化适配器。
 
 ## 当前边界与延期能力
 
@@ -55,5 +61,5 @@ flowchart TD
 
 ## 源码与测试
 
-- 源码：[`application/execution/ports.go`](../../../application/execution/ports.go)
-- 测试：[`application/execution/ports_test.go`](../../../application/execution/ports_test.go)
+- 源码：[`application/execution/ports.go`](../../../application/execution/ports.go)、[`application/execution/heal_governance.go`](../../../application/execution/heal_governance.go)
+- 测试：[`application/execution/ports_test.go`](../../../application/execution/ports_test.go)、[`application/execution/heal_governance_test.go`](../../../application/execution/heal_governance_test.go)

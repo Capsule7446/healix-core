@@ -1,20 +1,20 @@
-# C05 — 嵌套 Workflow 参数绑定
+# C05 — 嵌套工作流参数绑定
 
-> 来源：Healix 仓库 `docs/refactor/healix-core-v0.3.0-replacement-assessment.md` 对应 Case；本清单以该评估要求为输入，并以 healix-core 当前 `master` 源码重新核验。
+> 来源：历史替换评估中的同编号案例；本清单以该评估要求为输入，并以 healix-core 当前实现（`12d1ba2`）重新核验。
 
 ## 状态
 
-**当前：字符串 binding 和运行期 scope restore 存在；typed lexical scope 缺失。**
+**当前结果：已由 v0.3 替换实现覆盖；以下证据、清单与验收项按当前模型解释。**
 
 ## 业务不变量
 
-每次 Workflow invocation 拥有独立、不可变作用域；child binding 只读取 parent scope，再按 child schema 转换、校验和补 default。
+每次工作流 invocation 拥有独立、不可变作用域；child binding 只读取 parent scope，再按 child schema 转换、校验和补 default。
 
 ## 当前证据
 
 - `domain/automation/assets.go`：`WorkflowReference.ParameterBindings`
 - `application/engine/compiler.go`：`compileWorkflowCall`
-- `domain/node/composite.go`：shared scratchpad overlay/restore
+- `application/engine/compiler.go`：递归编译嵌套调用并生成 按出现位置区分的作用域
 - `domain/interpolation/variables.go`：表达式解析
 
 ## 调整清单
@@ -33,7 +33,7 @@
 - [x] parent 可绑定 child 的全部参数类型。
 - [x] binding > child default；缺 required 失败。
 - [x] 同名 parent/child 不泄漏。
-- [x] 同一 Workflow 两次调用可拥有不同快照。
+- [x] 同一工作流两次调用可拥有不同快照。
 - [x] repeat 每次 invocation scope 独立。
 
 ## 依赖与风险

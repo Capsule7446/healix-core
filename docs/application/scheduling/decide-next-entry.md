@@ -32,9 +32,9 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[校验 Plan] --> B{状态数量/ID 集合有效?}
+    A[校验执行计划] --> B{状态数量/ID 集合有效？}
     B -- 否 --> E1[ErrInvalidEntryStates]
-    B -- 是 --> C[按 Plan 顺序排列]
+    B -- 是 --> C[按执行计划顺序排列]
     C --> D{串行状态形状有效?}
     D -- 否 --> E2[ErrInvalidEntryStates]
     D -- 是 --> F{存在可运行入口?}

@@ -1,14 +1,14 @@
 # C24 — 采样会话生命周期
 
-> 来源：Healix 仓库 `docs/refactor/healix-core-v0.3.0-replacement-assessment.md` 对应 Case；本清单以该评估要求为输入，并以 healix-core 当前 `master` 源码重新核验。
+> 来源：历史替换评估中的同编号案例；本清单以该评估要求为输入，并以 healix-core 当前实现（`12d1ba2`）重新核验。
 
 ## 状态
 
-**当前：内存领域状态机和 CaptureID 幂等已实现。**
+**当前结果：已由 v0.3 替换实现覆盖；以下证据、清单与验收项按当前模型解释。**
 
 ## 业务不变量
 
-Created→Recording→Paused/Ended，active 状态可 Interrupted；terminal 不可继续。CaptureID 第一次结果固定，重试不得生成新动作/节点。
+Created→Recording→Paused/Ended，活动状态可 Interrupted；终态不可继续。CaptureID 第一次结果固定，重试不得生成新动作/节点。
 
 ## 当前证据
 
@@ -18,18 +18,18 @@ Created→Recording→Paused/Ended，active 状态可 Interrupted；terminal 不
 
 ## 调整清单
 
-- [x] lifecycle transitions。
-- [x] CaptureID required 与 first-result-wins。
-- [x] pause/resume 保留 identity maps。
+- [x] 生命周期转换。
+- [x] `CaptureID` 为必填项并采用首次结果胜出语义。
+- [x] 暂停/恢复保留身份映射。
 
 本次保持单会话内存状态机边界，不引入容量/保留策略、跨进程恢复或并发 Record 协议。
 
 ## 测试与验收
 
 - [x] 单线程命令序列下同 CaptureID 重试只产生一个结果。
-- [x] distinct captures 顺序/identity 正确。
-- [x] pause/resume 后 retry 返回原结果。
-- [x] terminal 后 capture 被拒绝。
+- [x] 不同捕获的顺序与身份正确。
+- [x] 暂停/恢复后重试返回原结果。
+- [x] 终态后拒绝捕获。
 
 ## 依赖与风险
 

@@ -1,45 +1,46 @@
-# C08 — Workflow 编译执行
+# C08 — 工作流编译执行
 
-> 来源：Healix 仓库 `docs/refactor/healix-core-v0.3.0-replacement-assessment.md` 对应 Case；本清单以该评估要求为输入，并以 healix-core 当前 `master` 源码重新核验。
+> 来源：历史替换评估中的同编号案例；本清单以该评估要求为输入，并以 healix-core 当前实现（`12d1ba2`）重新核验。
 
 ## 状态
 
-**当前：核心能力已实现；需接入完整 RunSnapshot 与 typed scopes。**
+**当前结果：已由 v0.3 替换实现覆盖；以下证据、清单与验收项按当前模型解释。**
 
 ## 业务不变量
 
-Action、Wait、Repeat、WorkflowRef 只从 sealed exact-version graph 编译；Compiler/Worker 不查询 current assets。
+动作、等待、重复和工作流引用只能从已封存的精确版本图中编译；编译器和工作器不得查询当前资产。
 
 ## 当前证据
 
-- `domain/execution/plan.go`：exact snapshots 与 seal
-- `domain/execution/validation.go`：graph/budget 校验
-- `application/engine/compiler.go`：全部 step 编译
-- `domain/node`：program/runtime 执行
+- `domain/execution/plan.go`：精确快照与封存
+- `domain/execution/validation.go`：图与预算校验
+- `application/engine/compiler.go`：全部步骤编译
+- `application/engine/engine.go`、`application/engine/coordinator.go`：临时执行程序与运行时执行
 
 ## 调整清单
 
-- [x] exact workflow/node/reference IDs。
-- [x] recursive WorkflowRef/Repeat 编译。
-- [x] graph depth/count/wait/expansion budget。
-- [x] deterministic invocation IDs。
-- [x] 输入改为 durable RunSnapshot。
-- [x] C03 materialize nested latest exact IDs。
-- [x] C04–C06 typed scopes 接入 compiler。
-- [x] 明确无 repository lookup 的契约测试。
-- [x] 提供跨 browser adapter conformance suite。
+- [x] 使用精确的工作流、节点与引用标识。
+- [x] 递归编译工作流引用与重复步骤。
+- [x] 校验图深度、数量、等待时长与展开预算。
+- [x] 生成确定性的调用标识。
+- [x] 输入改为持久化的 `RunSnapshot`。
+- [x] C03 将嵌套的 `LATEST` 解析并固化为精确标识。
+- [x] C04–C06 的类型化作用域接入编译器。
+- [x] 明确无需查询存储库的契约测试。
+- [x] 编译器与运行时测试不依赖具体浏览器适配器。
+- [ ] 提供具体的跨浏览器适配器一致性测试矩阵；Core 当前没有该矩阵，此项由宿主适配器补充。
 
 ## 测试与验收
 
-- [x] 所有 action/wait kind 通过矩阵。
-- [x] missing/mismatched exact dependency 在浏览器调用前失败。
-- [x] 同 child version 两次调用 runtime IDs 唯一且稳定。
-- [x] source mutation 不影响 sealed/compiled program。
-- [x] 同一 frozen Run 重编译结构等价。
+- [x] 所有动作与等待类型均通过矩阵测试。
+- [x] 缺失或不匹配的精确依赖在调用浏览器前失败。
+- [x] 同一子版本的两次调用具有唯一且稳定的运行时标识。
+- [x] 源对象变更不影响已封存或已编译的执行程序。
+- [x] 同一已冻结执行实例重新编译后结构等价。
 
 ## 依赖与风险
 
-依赖 C02–C06；runtime ID 若已持久化，格式变化需迁移。
+依赖 C02–C06；若运行时标识已持久化，格式变化需要迁移。
 
 ## 审核
 

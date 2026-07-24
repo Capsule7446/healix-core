@@ -1,24 +1,24 @@
-# 运行程序
+# 执行程序
 
 ## 目标
 
-为一次 compiled Program 创建 execution-local Runtime，管理 Recorder、共享相对时间轴、叶子步骤时间线和完成处理链，并执行 root node。
+为一次已编译的执行程序创建执行实例局部运行时，管理录制器、共享相对时间轴、叶子步骤时间线和完成处理链，并执行根节点。
 
 ## 输入
 
 - `ctx context.Context`。
-- `node.Program{Root, Specs}`。
-- `Config`：RunID、Driver 必填；Facts 非空时 ClaimToken 必填；Healer、Recorder、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval 与 Variables。
+- `CompiledEntry`：由不可变 `execution.RunSnapshot` 编译得到，包含 `node.Program`、执行身份与元数据；入口不接受裸 `node.Program`。
+- `Config`：RunID、驱动器必填；Facts 非空时 ClaimToken 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是从不可变 RunSnapshot 的 invocation scopes 与 Environment 数据编译到 `CompiledEntry.Program`。
 
 配置约束：
 
-- StepTimeline 非空时 Recorder 必须非空，且 Recorder.Start 必须返回非 nil Timeline。
+- StepTimeline 非空时 录制器 必须非空，且 录制器.Start 必须返回非 空值 Timeline。
 - CompletionChain 非空时 ReadOnlyBrowser 必须非空。
-- Recorder 与 StepTimeline 均为空时保持无录制执行能力。
+- 录制器 与 StepTimeline 均为空时保持无录制执行能力。
 
 ## 输出
 
-`RunProgram` 保留 error-only 入口并委托 `RunProgramWithResult`。`RunProgramWithResult` 返回：
+`RunCompiledEntry(ctx, entry, cfg)` 提供仅错误入口并委托 `RunCompiledEntryWithResult(ctx, entry, cfg)`。后者返回：
 
 ```go
 type RunResult struct {
@@ -34,12 +34,12 @@ type RunResult struct {
 
 ```mermaid
 sequenceDiagram
-    participant Caller
+    participant Caller as 调用方
     participant C as RunCoordinator
-    participant Recorder
-    participant Root as Program.Root
-    participant Chain as CompletionChain
-    Caller->>C: RunProgramWithResult(program, cfg)
+    participant Recorder as 录制器
+    participant Root as 执行程序根节点
+    participant Chain as 完成处理链
+    Caller->>C: RunCompiledEntryWithResult(ctx, entry, cfg)
     C->>C: 校验配置
     opt recorder
       C->>Recorder: Start(runID)
@@ -54,27 +54,27 @@ sequenceDiagram
     end
     Root-->>C: run error
     opt recorder
-      C->>Recorder: Stop(detached 5s, retain=true)
+      C->>Recorder: Stop（分离上下文 5 秒，retain=true）
     end
-    C-->>Caller: RunResult + joined error
+    C-->>Caller: RunResult + 合并错误
 ```
 
 ## 不变量
 
-- 每次调用创建新的 Runtime 和 Scratchpad；Variables 被复制。
-- Recorder Start 失败时不执行 root；成功后始终尝试 detached Stop。
-- Recorder Start 建立本次运行唯一的相对时间轴零点。
+- 每次调用根据 `CompiledEntry.Program` 创建新的运行时和 Scratchpad；运行变量来自编译后的不可变调用作用域与 Environment 数据。
+- 录制器 Start 失败时不执行 root；成功后始终尝试 分离的 Stop。
+- 录制器 Start 建立本次运行唯一的相对时间轴零点。
 - StepTimeline STARTED 写入失败时叶子行为不执行。
 - FINISHED 写入失败不改写叶子真实结果；`RunResult` 分别表达 ExecutionOutcome 与 TimelineOutcome。
 - completion Handler 在叶子返回前严格串行执行；Handler 失败不改变节点结果。
-- 当前总是 `retain=true`，不提供 active cancellation registry。
+- 当前总是 `retain=true`，不提供 活动取消注册表。
 
 补充契约矩阵：[`application/engine/engine_contract_matrix_test.go`](../../../application/engine/engine_contract_matrix_test.go)。
 
 ## 当前契约边界
 
-- `RunProgramWithResult` 只编排本次 Program 的运行及其已注入端口。
-- 当前不提供 active cancellation registry。
+- `RunCompiledEntryWithResult` 只编排本次 `CompiledEntry` 中程序的运行及其已注入端口。
+- 当前不提供 活动取消注册表。
 - 如需接收步骤时间线，可接入 `StepTimelineSink`。
 - 如需在叶子完成后进行只读处理，可接入 `NodeCompletionChain` 及 `ReadOnlyBrowser`。
 

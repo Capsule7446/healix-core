@@ -8,7 +8,7 @@ flowchart BT
   Application[应用层]:::app
   Inbound[入站适配器]:::adapter
   Outbound[出站适配器]:::adapter
-  Infrastructure[数据库 / 队列 / 浏览器 / 密钥库]:::infra
+  Infrastructure[数据库 / 队列 / 浏览器]:::infra
 
   Application --> Domain
   Inbound --> Application
@@ -45,28 +45,29 @@ flowchart BT
 | 端口类型 | 应放位置 | 示例 | 适配器义务 |
 |---|---|---|---|
 | 聚合持久化 | 应用使用点 | `TestTaskRepository`、`NodeRepository` | 乐观并发、原子保存、错误映射 |
-| 调度租约 | `application/scheduling` | `ClaimSource` | 独占领取、token fencing、可靠释放 |
-| 调度状态 | `application/scheduling` | `EntryStateReader`、`DecisionWriter` | 同一 claim 下读取并原子应用决策 |
+| 调度租约 | `application/scheduling` | `ClaimSource` | 独占领取、token 栅栏校验、可靠释放 |
+| 调度状态 | `application/scheduling` | `EntryStateReader`、`DecisionWriter` | 同一领取执行权下读取并原子应用决策 |
 | 浏览器能力 | `domain/node` 运行端口 | `Driver`、`Recorder` | 页面生命周期、超时、取消、截图/录制 |
 | 执行事实 | `application/execution` 与 `domain/node` | `FactCommitter`、`ProgressWriter`、`ExecutionSink` | 幂等、修订检查、终态事务原子性 |
-| 凭据读取 | `application/execution` | `CredentialReader` | 安全存储、授权、审计；只向 Runtime 提供内存值 |
+| 参数值 | `domain/parameter` 共享内核 | `Value`、`Binding` | 保持类型、复制隔离并在边界校验 |
+| 执行实例创建与读取 | `application/scheduling` / `application/execution` | `CreateRun*`、`RunReader` | 原子冻结与加载不可变快照 |
 
 ## 原子性与并发要求
 
 ### 调度写入
 
-`DecisionWriter.ApplyDecision` 不是逐条更新建议。适配器应在一个受 claim token 保护的事务中应用：
+`DecisionWriter.ApplyDecision` 不是逐条更新建议。适配器应在一个受领取令牌保护的事务中应用：
 
-- 待运行 entry 的 `PENDING → RUNNING`；或
-- 后续 entry 的 `PENDING → SKIPPED` 及其因果；和
-- Run 的最终状态。
+- 待运行顶层执行项的 `PENDING → RUNNING`；或
+- 后续顶层执行项的 `PENDING → SKIPPED` 及其因果；和
+- 执行实例的最终状态。
 
 失败时不得留下部分转换。
 
-### Evidence 写入
+### 执行证据写入
 
-`FactCommitter.CommitStepTransition` 表示一个终态步骤事件及其最终校验、修复观察、截图和 selector reset 的原子提交。适配器必须同时校验 `WorkerScope`、`CommitID` 和 `ExpectedRevision`，并对重复提交返回稳定结果。非终态 `RUNNING/HEALING/TRANSITIONING/VALIDATING` 通过 `ProgressWriter` 单独记录，不得冒充终态。
+`FactCommitter.CommitStepTransition` 表示一个终态步骤事件及其最终校验、修复观察、截图和 selector reset 的原子提交。适配器必须同时校验 `execution.WorkerFence`、`CommitID` 和 `ExpectedRevision`，并对重复提交返回稳定结果。非终态 `RUNNING/HEALING/TRANSITIONING/VALIDATING` 通过 `ProgressWriter` 单独记录，不得冒充终态。
 
 ## 删除过的旧概念
 
-旧的 `RootVersionID` 与 `CompileExecution` 已从当前执行契约移除：Plan 现在有多个显式 entry，编译入口是 `engine.CompilePlan`，结果按 `ExecutionID` 索引。文档不得再把它们描述成现行 API。
+旧的 `RootVersionID`、`CompileExecution`、封存的 Plan/Draft 主模型和凭据服务已从当前执行契约移除。现行边界由调度创建不可变执行实例，执行引擎从被调度顶层执行项编译临时执行程序；文档不得把删除路径描述成现行 API。

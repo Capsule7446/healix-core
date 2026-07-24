@@ -6,9 +6,16 @@
 
 ## 输入
 
-- `WorkerScope{RunID, ClaimToken}`。
+- `execution.WorkerFence`。
 - `evidence.StepProgressEvent` 或 `evidence.ValidationProgressObservation`。
 - `context.Context`。
+
+对应导出接口签名：
+
+```go
+RecordStepProgress(context.Context, execution.WorkerFence, evidence.StepProgressEvent) error
+RecordValidationProgress(context.Context, execution.WorkerFence, evidence.ValidationProgressObservation) error
+```
 
 ## 输出
 
@@ -43,7 +50,7 @@ flowchart TD
 ## 不变量
 
 - 仅用于非终态观测，不替代终态原子 commit。
-- adapter 必须以 RunID + ClaimToken fencing。
+- adapter 必须校验完整且当前有效的 `execution.WorkerFence`，不得仅按其中部分字段判断工作器所有权。
 - 不得把进度写入成功解释为步骤终态已提交。
 - 当前 core 只定义端口，不提供生产存储。
 

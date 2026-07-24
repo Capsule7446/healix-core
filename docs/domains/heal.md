@@ -1,7 +1,7 @@
-# Heal 领域
+# 自愈领域
 
 ## 目的与边界
-Heal 根据目标 fingerprint 与 DOMSnapshot 候选计算排序、阈值决策和安全评估，并生成可审计样本。它不定位元素、不执行动作、不保存候选、不修改 NodeSpec，也不决定 Automation 的版本发布。Node 与 Heal 分离：Node 是执行者和策略调用方，Heal 是纯候选决策域。
+自愈 根据目标 fingerprint 与 DOMSnapshot 候选计算排序、阈值决策和安全评估，并生成可审计样本。它不定位元素、不执行动作、不保存候选、不修改 NodeSpec，也不决定 自动化 的版本发布。Node 与自愈 分离：Node 是执行者和策略调用方，自愈 是纯候选决策域。
 
 ```mermaid
 flowchart LR
@@ -47,10 +47,10 @@ sequenceDiagram
 Nil snapshot、快照错误、非法配置、无效候选、非法 Decision、URL/上下文不一致或安全策略无效会返回错误/阻断评估。没有候选和低于阈值是合法 Outcome，不是基础设施错误。
 
 ## 并发、安全与资源
-DefaultHealer 在配置不变且 DOMSnapshot 实现并发安全时无内部共享可变状态；接口本身不承诺快照并发性。context 传入候选读取以支持取消。安全评估阻止跨 origin/page 和语义不匹配，Review 带保留人工审查信号。LCS 使用滚动缓冲降低空间；评分为候选线性遍历，当前领域未设置候选数量上限，适配器/Execution 应限制输入。
+DefaultHealer 在配置不变且 DOMSnapshot 实现并发安全时无内部共享可变状态；接口本身不承诺快照并发性。context 传入候选读取以支持取消。安全评估阻止跨 origin/page 和语义不匹配，Review 带保留人工审查信号。LCS 使用滚动缓冲降低空间；评分为候选线性遍历，当前领域未设置候选数量上限，适配器/执行 应限制输入。
 
 ## 交互
-fingerprint 提供目标与候选特征；node 通过 HealingPort 调用并维护 selector overlay；evidence/node 可保存 Samples 和 Decision；Automation 可把稳定候选晋升为新版本。Heal 不知道 Driver、数据库或审核 UI。
+fingerprint 提供目标与候选特征；node 通过 HealingPort 调用并维护 selector overlay；evidence/node 可保存 Samples 和 Decision；自动化 可把稳定候选晋升为新版本。自愈 不知道 Driver、数据库或审核 UI。
 
 ## 已实现与未支持
 已实现：默认权重/策略 v1、评分、框架可选维度、LCS 缩窄、稳定排序、阈值决策、Decision 校验、安全评估、证据维度和样本哈希。未支持：DOM 抓取适配器、机器学习模型、持久化、自动版本发布、用户审核流程、候选容量控制。

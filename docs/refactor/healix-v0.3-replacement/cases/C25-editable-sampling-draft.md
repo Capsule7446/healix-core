@@ -1,10 +1,10 @@
 # C25 — 采样草稿编辑
 
-> 来源：Healix 仓库 `docs/refactor/healix-core-v0.3.0-replacement-assessment.md` 对应 Case；本清单以该评估要求为输入，并以 healix-core 当前 `master` 源码重新核验。
+> 来源：历史替换评估中的同编号案例；本清单以该评估要求为输入，并以 healix-core 当前实现（`12d1ba2`）重新核验。
 
 ## 状态
 
-**当前：稳定临时 ID 数据模型存在；完整编辑命令层缺失。**
+**当前结果：已由 v0.3 替换实现覆盖；以下证据、清单与验收项按当前模型解释。**
 
 ## 业务不变量
 
@@ -12,8 +12,8 @@
 
 ## 当前证据
 
-- `domain/sampling/session.go`：stable capture identities
-- `domain/sampling/workspace.go`：temporary workflow/node/steps、reference rebuild
+- `domain/sampling/session.go`：稳定的捕获标识
+- `domain/sampling/workspace.go`：临时工作流、节点与步骤，以及引用重建
 
 ## 调整清单
 
@@ -28,13 +28,13 @@
 
 - [x] reorder/move/edit 保留 IDs。
 - [x] 删除仍被引用 node 失败。
-- [x] 删除 step 后 rebuilt refs 正确。
+- [x] 删除步骤后 rebuilt refs 正确。
 - [x] duplicate IDs 被拒绝。
 - [x] caller mutation 不改变 workspace。
 
 ## 依赖与风险
 
-现有 exported mutable slices 容易让 Host 破坏不变量；引入命令 API 可能是 breaking change。
+现有 exported mutable slices 容易让宿主破坏不变量；引入命令 API 可能是 breaking change。
 
 ## 审核
 

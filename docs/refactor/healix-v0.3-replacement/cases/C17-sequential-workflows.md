@@ -1,51 +1,51 @@
-# C17 — 多 Workflow 顺序执行
+# C17 — 多工作流顺序执行
 
-> 来源：Healix 仓库 `docs/refactor/healix-core-v0.3.0-replacement-assessment.md` 对应 Case；本清单以该评估要求为输入，并以 healix-core 当前 `master` 源码重新核验。
+> 来源：历史替换评估中的同编号案例；本清单以该评估要求为输入，并以 healix-core 当前实现（`12d1ba2`）重新核验。
 
 ## 状态
 
-**当前：决策层已实现；Host 必须原子 claim。**
+**当前结果：`EntryExecutor` 的直接生命周期行为已有测试覆盖；持久化/失败策略集成与浏览器隔离一致性仍待宿主适配器完成。以下证据、清单与验收项按当前模型解释。**
 
 ## 业务不变量
 
-Entry 是 TestTask 直接编排的顶层 Workflow 执行入口，同时也是浏览器会话隔离边界。Entry 严格按 sealed plan 顺序串行；每个 Entry 启动时由 Host 创建全新的浏览器实例/上下文，Entry 结束后必须关闭。同一 Entry 内的根 Workflow 与嵌套 WorkflowRef 共享该浏览器；不同 Entry 不共享 cookies、LocalStorage、SessionStorage、IndexedDB、页面、登录态或其他浏览器会话状态。重复 Workflow 由 ExecutionID 区分。
+顶层执行项是测试任务直接编排的顶层工作流执行入口。顶层执行项严格按已封存 plan 顺序串行；Core 对每个顶层执行项调用一次 `BrowserSessionFactory.Create`，并在该顶层执行项结束后关闭返回的会话，再推进下一顶层执行项。同一顶层执行项内的根工作流与嵌套 WorkflowRef 复用该会话。每次创建全新且相互隔离的浏览器实例/会话上下文、使用不同会话身份，并隔离 cookies、LocalStorage、SessionStorage、IndexedDB、页面、登录态及其他浏览器状态，是宿主适配器的义务；当前不透明接口本身不强制或验证这些属性。重复工作流由 ExecutionID 区分。
 
 ## 当前证据
 
 - `application/scheduling/decision.go`：`DecideAdvance`、serial shape
 - `application/scheduling/coordinator.go`
-- `domain/execution/plan.go`：ordered entries
-- `application/engine/compiler.go`：occurrence-specific entries
+- `domain/execution/plan.go`：有序执行项
+- `application/engine/compiler.go`：按出现位置区分的执行项
 
 ## 调整清单
 
 - [x] plan order 唯一权威。
 - [x] state input 按 ExecutionID 归一化。
 - [x] malformed serial shape 拒绝。
-- [x] Host 对 next execution 采用 CAS/fence claim。
-- [x] 定义 Entry browser-session lifecycle port/contract：claim 成功后创建全新 browser，Entry terminal 后关闭，再允许启动下一 Entry。
-- [x] 浏览器创建失败时 Entry 明确失败且不得启动 Workflow；关闭失败需记录并完成隔离清理，不能复用污染会话。
-- [x] 禁止跨 Entry 复用 browser/profile/user-data-dir；cookies、LocalStorage、SessionStorage、IndexedDB、cache、页面和登录态均不得继承。
-- [x] 同一 Entry 的嵌套 WorkflowRef 必须复用该 Entry 的 browser session，不能为每个子 Workflow 重开浏览器。
-- [x] 明确 sealed array order 与 SequenceNumber 一致性。
-- [x] repeated Workflow 不得以 WorkflowID 作为 execution identity。
+- [x] 宿主对 next execution 采用 CAS/fence 领取执行权。
+- [x] `EntryExecutor` 校验 `WorkerFence`，并对调用方提供的顶层执行项顺序执行；每项恰好调用一次 `BrowserSessionFactory.Create`，同步关闭返回的会话后才允许继续。
+- [x] 浏览器创建失败时不调用 `EntryRunner`；如返回部分会话则同步尝试关闭，并在错误或 panic 时停止后续执行项。`EntryExecutor` 不持久化 Entry/Run 状态，也不应用 `FailurePolicy`。
+- [ ] 宿主适配器为每次 `Create` 提供全新隔离的浏览器实例/会话上下文、不同身份，并隔离 cookies、LocalStorage、SessionStorage、IndexedDB、cache、页面和登录态；当前不透明接口不强制或验证这些属性，尚无具体跨浏览器存储隔离一致性测试。
+- [x] 同一顶层执行项的嵌套 WorkflowRef 按 `EntryRunner` 契约复用该顶层执行项的浏览器会话，不能为每个子工作流再次调用 `Create`。
+- [x] 明确已封存 array order 与 SequenceNumber 一致性。
+- [x] repeated 工作流不得以 WorkflowID 作为 execution identity。
 - [x] 增加并发 scheduler adapter tests。
 
 ## 测试与验收
 
 - [x] 两 scheduler 竞争仅一个开始 frontier entry。
-- [x] 每个 Entry 获得不同 browser session identity；前一 Entry 的 cookies/LocalStorage/SessionStorage/IndexedDB/登录态在下一 Entry 不可见。
-- [x] Entry 内根 Workflow 与多层嵌套 WorkflowRef 使用同一 browser session。
-- [x] Entry 成功、失败或 abort 后均执行关闭；关闭完成或隔离确认前不得启动下一 Entry。
-- [x] browser 创建失败不执行任何 Workflow step，且 Entry/Run 按 failure policy 进入确定状态。
+- [ ] 宿主适配器契约测试验证每个顶层执行项获得不同浏览器会话身份，且前一顶层执行项的 cookies/LocalStorage/SessionStorage/IndexedDB/登录态在下一顶层执行项不可见；当前没有具体的宿主/跨浏览器存储隔离测试矩阵。
+- [x] 按 `EntryRunner` 契约，顶层执行项内根工作流与多层嵌套 WorkflowRef 使用同一浏览器会话。
+- [x] `EntryExecutor` 在 `EntryRunner` 成功、返回错误或 panic 后均同步调用关闭，并在关闭返回后才可能启动下一顶层执行项；错误或 panic 会停止后续执行项，实际隔离清理由宿主适配器保证。
+- [ ] 浏览器创建失败后的 Entry/Run 状态持久化与 `FailurePolicy` 集成；`EntryExecutor` 仅停止执行并返回错误，不知道持久化终态。
 - [x] running entry 阻止后续。
 - [x] success 后准确选择下一 entry。
-- [x] 相同 Workflow 多 occurrence 独立。
-- [x] stale worker lease 不能提交。
+- [x] 同一工作流的多次出现彼此独立。
+- [x] 持有失效租约的工作器租约不能提交。
 
 ## 依赖与风险
 
-纯决策正确不等于并发安全；Host CAS/fencing 是验收必要条件。
+纯决策正确不等于并发安全；宿主 CAS/fencing 是验收必要条件。
 
 ## 审核
 
