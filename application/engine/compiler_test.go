@@ -18,6 +18,32 @@ const (
 	compilerNodeV2 = "00000000-0000-7000-8000-000000000103"
 )
 
+func TestCompileRunSnapshotInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
+	draft := minimalCompilerPlan()
+	draft.Entries[0].Parameters.Values = nil
+	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{"Region": "east"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compiled, err := CompileRunSnapshot(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := compiled.Entries[0].Program.Root.(*node.WorkflowNode)
+	value, exists := root.Parameters["env.Region"]
+	if !exists || !value.Equal(parameter.TextValue("east")) {
+		t.Fatalf("env.Region = %#v, exists = %t", value, exists)
+	}
+}
+
+func TestCompileRunSnapshotRejectsUnsealedZeroValue(t *testing.T) {
+	_, err := CompileRunSnapshot(execution.RunSnapshot{})
+	if err == nil {
+		t.Fatal("unsealed zero-value run snapshot was accepted")
+	}
+}
+
 func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
 	draft := minimalCompilerPlan()
 	plan, err := execution.Seal(draft)

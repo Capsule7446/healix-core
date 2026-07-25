@@ -15,6 +15,14 @@ func compilePlanForTest(plan execution.Plan) (CompiledRun, error) {
 }
 
 func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
+	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+	if err != nil {
+		return CompiledRun{}, err
+	}
+	return CompileRunSnapshot(snapshot)
+}
+
+func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map[string]string) (execution.RunSnapshot, error) {
 	items := make([]execution.TestTaskVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
@@ -73,7 +81,7 @@ func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
 	for index, entry := range draft.Entries {
 		items[index] = execution.TestTaskVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID}
 		if err := addInvocation(entry.ExecutionID, "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
-			return CompiledRun{}, err
+			return execution.RunSnapshot{}, err
 		}
 	}
 	input := execution.RunSnapshotInput{
@@ -82,14 +90,14 @@ func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
 		TestTask:        execution.TestTaskSnapshot{ID: "task", CurrentVersionID: "task-v1"},
 		TestTaskVersion: execution.TestTaskVersionSnapshot{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, Items: items},
 		Plan:            draft, Invocations: invocations,
-		Environment:      execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: map[string]string{}},
+		Environment:      execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: environmentProperties},
 		FailurePolicy:    draft.FailurePolicy,
 		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1},
 		HealerPolicy:     execution.DefaultHealerPolicySnapshot(),
 	}
 	snapshot, err := execution.SealRunSnapshot(input)
 	if err != nil {
-		return CompiledRun{}, err
+		return execution.RunSnapshot{}, err
 	}
-	return CompileRunSnapshot(snapshot)
+	return snapshot, nil
 }

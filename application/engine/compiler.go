@@ -57,6 +57,9 @@ func (r CompiledRun) Entry(executionID string) (CompiledEntry, bool) {
 
 // CompileRunSnapshot compiles solely from the immutable run snapshot payload.
 func CompileRunSnapshot(snapshot execution.RunSnapshot) (CompiledRun, error) {
+	if snapshot.Digest() == "" {
+		return CompiledRun{}, fmt.Errorf("compile run snapshot: snapshot is not sealed")
+	}
 	return compileSnapshotDraft(snapshot.Plan(), snapshot)
 }
 
@@ -94,6 +97,9 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		}
 		root.Parameters = cloneParameterValues(invocation.Values)
 		environment := snapshot.Environment()
+		if len(environment.Properties) > 0 && root.Parameters == nil {
+			root.Parameters = make(map[string]parameter.Value, len(environment.Properties))
+		}
 		for name, value := range environment.Properties {
 			key := "env." + name
 			if _, collision := root.Parameters[key]; collision {
