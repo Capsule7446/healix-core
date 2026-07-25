@@ -598,6 +598,9 @@ func equalValues(left, right map[string]parameter.Value) bool {
 }
 
 func validateEnvironmentSnapshot(v EnvironmentSnapshot) error {
+	if v.Revision == 0 {
+		return errors.New("environment revision must be positive")
+	}
 	if !validString(v.ID, true) || !validString(v.DisplayName, true) || !validString(v.BaseURL, false) {
 		return errors.New("invalid environment identity")
 	}

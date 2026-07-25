@@ -1,7 +1,11 @@
 package execution
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"math"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -73,6 +77,49 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 		if got.Digest() == base.Digest() {
 			t.Fatal("digest unchanged")
 		}
+	}
+}
+
+func TestSealRunSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
+	input := validRunSnapshotInput(t)
+	input.Environment.Revision = 0
+
+	snapshot, err := SealRunSnapshot(input)
+
+	if err == nil {
+		t.Fatal("zero environment revision accepted")
+	}
+	if !reflect.DeepEqual(snapshot, RunSnapshot{}) {
+		t.Fatalf("rejected snapshot is not zero value: %#v", snapshot)
+	}
+	if snapshot.Digest() != "" {
+		t.Fatalf("rejected snapshot has digest %q", snapshot.Digest())
+	}
+}
+
+func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *testing.T) {
+	input := validRunSnapshotInput(t)
+	input.Environment.Revision = 0
+	canonicalInput := cloneSnapshotInput(input)
+	sort.Slice(canonicalInput.Invocations, func(i, j int) bool {
+		return canonicalInput.Invocations[i].Path < canonicalInput.Invocations[j].Path
+	})
+	normalizeHealerZeros(&canonicalInput.HealerPolicy)
+	digester := sha256.New()
+	encoder := canonicalEncoder{writer: digester}
+	encodeSnapshot(&encoder, canonicalInput)
+	storedDigest := "sha256:" + hex.EncodeToString(digester.Sum(nil))
+
+	snapshot, err := HydrateRunSnapshot(input, storedDigest)
+
+	if err == nil {
+		t.Fatal("zero environment revision accepted during hydration")
+	}
+	if !reflect.DeepEqual(snapshot, RunSnapshot{}) {
+		t.Fatalf("rejected hydrated snapshot is not zero value: %#v", snapshot)
+	}
+	if snapshot.Digest() != "" {
+		t.Fatalf("rejected hydrated snapshot has digest %q", snapshot.Digest())
 	}
 }
 
