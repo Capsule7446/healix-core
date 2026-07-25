@@ -61,7 +61,7 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 			v.Plan.References = []ReferenceResolution{{ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true}}
 			v.Plan.Workflows[0].Steps = []Step{{ID: "call", DisplayName: "Call", Kind: WorkflowReference, Reference: &Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}
 			v.Plan.Workflows = append(v.Plan.Workflows, WorkflowSnapshot{ID: "child", WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Steps: []Step{{ID: "wait-child", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}})
-			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: "entry-1/call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
+			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
 		},
 	} {
 		input := validRunSnapshotInput(t)

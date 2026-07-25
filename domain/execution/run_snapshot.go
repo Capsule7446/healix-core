@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -458,6 +459,10 @@ func validateSnapshot(v RunSnapshotInput) error {
 			parent, exists := paths[invocation.ParentPath]
 			if !exists {
 				return errors.New("invocation parent path is missing")
+			}
+			expectedPath := invocation.ParentPath + "/" + strconv.Itoa(len(invocation.StepID)) + ":" + invocation.StepID
+			if invocation.Path != expectedPath {
+				return fmt.Errorf("invocation %s path is not canonical for parent %s and step %s", invocation.Path, invocation.ParentPath, invocation.StepID)
 			}
 			key := referenceEdgeKey{ParentVersionID: invocation.ParentVersionID, StepID: invocation.StepID}
 			resolution, exists := indexes.referenceByEdge[key]

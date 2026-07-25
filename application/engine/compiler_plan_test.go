@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -69,7 +70,7 @@ func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map
 					}
 				}
 			}
-			childPath := path + "/" + step.ID
+			childPath := path + "/" + strconv.Itoa(len(step.ID)) + ":" + step.ID
 			before := len(invocations)
 			if err := addInvocation(childPath, path, versionID, step.ID, resolution.WorkflowVersionID, childValues, depth+1); err != nil {
 				return err
