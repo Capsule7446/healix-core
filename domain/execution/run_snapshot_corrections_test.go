@@ -8,6 +8,22 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
+	input := validRunSnapshotInput(t)
+	input.Invocations[0].Bindings = map[string]parameter.Binding{
+		"count": parameter.LiteralBinding(input.Invocations[0].Values["count"]),
+	}
+
+	snapshot, err := SealRunSnapshot(input)
+
+	if err == nil || !strings.Contains(err.Error(), "root invocation cannot have bindings") {
+		t.Fatalf("root invocation binding accepted with digest %q: %v", snapshot.Digest(), err)
+	}
+	if snapshot.Digest() != "" {
+		t.Fatalf("rejected snapshot has digest %q", snapshot.Digest())
+	}
+}
+
 func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T) {
 	input := validRunSnapshotInput(t)
 	input.Plan.Workflows[0].Steps[0].DisplayName = "original"

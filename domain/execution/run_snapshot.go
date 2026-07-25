@@ -393,6 +393,9 @@ func validateSnapshot(v RunSnapshotInput) error {
 	}
 	for _, invocation := range v.Invocations {
 		if invocation.ParentPath == "" {
+			if len(invocation.Bindings) != 0 {
+				return errors.New("root invocation cannot have bindings")
+			}
 			if invocation.ParentVersionID != "" || invocation.StepID != "" {
 				return errors.New("root invocation cannot identify a reference edge")
 			}
