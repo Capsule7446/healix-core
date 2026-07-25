@@ -77,10 +77,17 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		nodes[nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)] = snapshot
 	}
 	compiledNodes := 0
+	invocations := snapshot.Invocations()
+	invocationsByEdge := invocationIndex(invocations)
+	invocationsByPath := make(map[string]execution.InvocationScopeSnapshot, len(invocations))
+	for _, invocation := range invocations {
+		invocationsByPath[invocation.Path] = invocation
+	}
+	environment := snapshot.Environment()
 	result := CompiledRun{Entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
 		compiler := executionCompiler{
-			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationIndex(snapshot.Invocations()),
+			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
 			programSpecs: make(map[string]fingerprint.NodeSpec),
 			metadata:     make(map[string]StepMetadata), runtimeNodes: make(map[string]RuntimeNodeIdentity),
 			compiledNodes: &compiledNodes,
@@ -91,12 +98,11 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 			return CompiledRun{}, fmt.Errorf("compile execution %s: %w", entry.ExecutionID, err)
 		}
 		root.OwnsParameterScope = true
-		invocation, exists := snapshot.Invocation(entry.ExecutionID)
+		invocation, exists := invocationsByPath[entry.ExecutionID]
 		if !exists {
 			return CompiledRun{}, fmt.Errorf("compile execution %s: root invocation is missing", entry.ExecutionID)
 		}
 		root.Parameters = cloneParameterValues(invocation.Values)
-		environment := snapshot.Environment()
 		if len(environment.Properties) > 0 && root.Parameters == nil {
 			root.Parameters = make(map[string]parameter.Value, len(environment.Properties))
 		}

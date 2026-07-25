@@ -18,6 +18,61 @@ const (
 	compilerNodeV2 = "00000000-0000-7000-8000-000000000103"
 )
 
+func TestCompileRunSnapshotIndexesInvocationsOnceAcrossEntries(t *testing.T) {
+	allocationsForEntries := func(entryCount int) float64 {
+		draft := minimalCompilerPlan()
+		draft.Workflows[0].Parameters = []execution.Parameter{{Name: "payload", DisplayName: "Payload", Type: parameter.Text, Required: true}}
+		draft.Entries = make([]execution.WorkflowEntry, entryCount)
+		for index := range draft.Entries {
+			draft.Entries[index] = execution.WorkflowEntry{
+				ExecutionID:       fmt.Sprintf("execution-%03d", index),
+				TestTaskItemID:    fmt.Sprintf("item-%03d", index),
+				SequenceNumber:    index + 1,
+				WorkflowID:        "root",
+				WorkflowVersionID: "root-v1",
+				Parameters: execution.ParameterSnapshot{ID: fmt.Sprintf("parameters-%03d", index), SchemaVersion: 1, WorkflowVersionID: "root-v1", Values: map[string]parameter.Value{
+					"payload": parameter.TextValue("value"),
+				}},
+			}
+		}
+		snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+		if err != nil {
+			t.Fatalf("seal %d-entry snapshot: %v", entryCount, err)
+		}
+		compiled, err := CompileRunSnapshot(snapshot)
+		if err != nil {
+			t.Fatalf("compile %d-entry snapshot: %v", entryCount, err)
+		}
+		if len(compiled.Entries) != entryCount {
+			t.Fatalf("compiled entries = %d, want %d", len(compiled.Entries), entryCount)
+		}
+		return testing.AllocsPerRun(20, func() {
+			measured, compileErr := CompileRunSnapshot(snapshot)
+			if compileErr != nil {
+				panic(compileErr)
+			}
+			if len(measured.Entries) != entryCount {
+				panic("compiled entry count mismatch")
+			}
+		})
+	}
+
+	const smallEntryCount = 32
+	small := allocationsForEntries(smallEntryCount)
+	medium := allocationsForEntries(2 * smallEntryCount)
+	large := allocationsForEntries(4 * smallEntryCount)
+	if !(small < medium && medium < large) {
+		t.Fatalf("compile allocations are not monotonic: 32=%.0f, 64=%.0f, 128=%.0f", small, medium, large)
+	}
+	firstGrowth := medium - small
+	secondGrowth := large - medium
+	// Moving snapshot.Invocations or invocationIndex into the entry loop changes
+	// incremental growth from approximately 2x (linear) to approximately 4x.
+	if firstGrowth <= 0 || secondGrowth >= 3*firstGrowth {
+		t.Fatalf("compile allocation growth is not near-linear: 32=%.0f, 64=%.0f, 128=%.0f; growths=%.0f, %.0f (ratio %.2f); invocations must be cloned and indexed once", small, medium, large, firstGrowth, secondGrowth, secondGrowth/firstGrowth)
+	}
+}
+
 func TestCompileRunSnapshotInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Entries[0].Parameters.Values = nil

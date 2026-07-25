@@ -296,6 +296,43 @@ func consumeElements(count int, remaining *int) error {
 func validString(v string, required bool) bool {
 	return (!required || strings.TrimSpace(v) != "") && len(v) <= MaxSnapshotStringBytes
 }
+
+type itemLookupObserver func()
+
+func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersionItemSnapshot, entries []WorkflowEntry, observe itemLookupObserver) error {
+	itemsByID := make(map[string]TestTaskVersionItemSnapshot, len(items))
+	for index, item := range items {
+		if !validString(item.ID, true) || item.TestTaskVersionID != versionID || item.SequenceNumber != index+1 || !validString(item.WorkflowID, true) || !validString(item.WorkflowVersionID, true) {
+			return errors.New("test-task version item graph is inconsistent")
+		}
+		if _, exists := itemsByID[item.ID]; exists {
+			return errors.New("duplicate test-task version item")
+		}
+		itemsByID[item.ID] = item
+	}
+	if len(entries) != len(items) {
+		return errors.New("test-task items and execution entries must have equal count")
+	}
+	matchedItems := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		if _, duplicate := matchedItems[entry.TestTaskItemID]; duplicate {
+			return errors.New("duplicate execution entry item")
+		}
+		matchedItems[entry.TestTaskItemID] = struct{}{}
+		if observe != nil {
+			observe()
+		}
+		item, found := itemsByID[entry.TestTaskItemID]
+		if !found {
+			return errors.New("test-task item execution entry is missing")
+		}
+		if entry.SequenceNumber != item.SequenceNumber || entry.WorkflowID != item.WorkflowID || entry.WorkflowVersionID != item.WorkflowVersionID {
+			return errors.New("test-task item and execution entry identity mismatch")
+		}
+	}
+	return nil
+}
+
 func validateSnapshot(v RunSnapshotInput) error {
 	if v.SchemaVersion != RunSnapshotSchemaV1 {
 		return fmt.Errorf("unsupported run snapshot schema %d", v.SchemaVersion)
@@ -308,41 +345,8 @@ func validateSnapshot(v RunSnapshotInput) error {
 		v.TestTaskVersion.VersionNumber != v.TestTaskVersionNumber {
 		return errors.New("test-task snapshot graph identity is inconsistent")
 	}
-	seenItems := make(map[string]struct{}, len(v.TestTaskVersion.Items))
-	for index, item := range v.TestTaskVersion.Items {
-		if !validString(item.ID, true) || item.TestTaskVersionID != v.TestTaskVersionID || item.SequenceNumber != index+1 || !validString(item.WorkflowID, true) || !validString(item.WorkflowVersionID, true) {
-			return errors.New("test-task version item graph is inconsistent")
-		}
-		if _, exists := seenItems[item.ID]; exists {
-			return errors.New("duplicate test-task version item")
-		}
-		seenItems[item.ID] = struct{}{}
-	}
-	if len(v.Plan.Entries) != len(v.TestTaskVersion.Items) {
-		return errors.New("test-task items and execution entries must have equal count")
-	}
-	entriesByItem := make(map[string]WorkflowEntry, len(v.Plan.Entries))
-	for _, entry := range v.Plan.Entries {
-		if _, duplicate := entriesByItem[entry.TestTaskItemID]; duplicate {
-			return errors.New("duplicate execution entry item")
-		}
-		entriesByItem[entry.TestTaskItemID] = entry
-	}
-	for itemID := range seenItems {
-		entry, found := entriesByItem[itemID]
-		if !found {
-			return errors.New("test-task item execution entry is missing")
-		}
-		var item TestTaskVersionItemSnapshot
-		for _, candidate := range v.TestTaskVersion.Items {
-			if candidate.ID == itemID {
-				item = candidate
-				break
-			}
-		}
-		if entry.SequenceNumber != item.SequenceNumber || entry.WorkflowID != item.WorkflowID || entry.WorkflowVersionID != item.WorkflowVersionID {
-			return errors.New("test-task item and execution entry identity mismatch")
-		}
+	if err := validateTestTaskVersionItemEntries(v.TestTaskVersionID, v.TestTaskVersion.Items, v.Plan.Entries, nil); err != nil {
+		return err
 	}
 	if v.Plan.RunID != v.RunID || v.Plan.FailurePolicy != v.FailurePolicy {
 		return errors.New("execution plan identity is inconsistent")
@@ -425,6 +429,9 @@ func validateSnapshot(v RunSnapshotInput) error {
 				if value, present := definition.Default.Value(); present {
 					resolvedValues[definition.Name] = value
 				}
+			}
+			if err := validateSnapshotValues(target.Parameters, resolvedValues); err != nil {
+				return fmt.Errorf("invocation %s parameter values: %w", invocation.Path, err)
 			}
 			if !equalValues(resolvedValues, invocation.Values) {
 				return errors.New("invocation values and bindings diverge")

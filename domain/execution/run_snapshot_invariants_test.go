@@ -1,11 +1,70 @@
 package execution
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
+
+func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantReason string
+		mutate     func(*RunSnapshotInput, *InvocationScopeSnapshot)
+	}{
+		{
+			name:       "missing required value",
+			wantReason: `parameter "value" is missing`,
+			mutate: func(_ *RunSnapshotInput, child *InvocationScopeSnapshot) {
+				child.Bindings = map[string]parameter.Binding{}
+				child.Values = map[string]parameter.Value{}
+			},
+		},
+		{
+			name:       "wrong typed literal",
+			wantReason: `parameter "value": parameter value type mismatch`,
+			mutate: func(_ *RunSnapshotInput, child *InvocationScopeSnapshot) {
+				child.Bindings["value"] = parameter.LiteralBinding(parameter.TextValue("not-a-number"))
+				child.Values["value"] = parameter.TextValue("not-a-number")
+			},
+		},
+		{
+			name:       "invalid select option",
+			wantReason: `parameter "value": single-select value is not an option`,
+			mutate: func(input *RunSnapshotInput, child *InvocationScopeSnapshot) {
+				input.Plan.Workflows[0].Steps[0].Reference.ParameterBindings["value"] = parameter.LiteralBinding(parameter.SingleSelectValue("allowed"))
+				input.Plan.Workflows[1].Parameters[0] = Parameter{
+					Name: "value", DisplayName: "Value", Type: parameter.SingleSelect, Required: true, Options: []string{"allowed"},
+				}
+				child.Bindings["value"] = parameter.LiteralBinding(parameter.SingleSelectValue("forbidden"))
+				child.Values["value"] = parameter.SingleSelectValue("forbidden")
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := snapshotWithTwoConcreteReferenceEdges(t)
+			child := &input.Invocations[2]
+			test.mutate(&input, child)
+
+			_, err := SealRunSnapshot(input)
+			if err == nil {
+				t.Fatal("concrete child invocation outside target parameter contract accepted")
+			}
+			message := err.Error()
+			wantPath := fmt.Sprintf("invocation %s parameter values:", child.Path)
+			if !strings.Contains(message, wantPath) {
+				t.Fatalf("error does not identify child parameter validation path %q: %v", wantPath, err)
+			}
+			if !strings.Contains(message, test.wantReason) {
+				t.Fatalf("error does not identify expected validation failure %q: %v", test.wantReason, err)
+			}
+		})
+	}
+}
 
 func TestRunSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
 	tests := []struct {
