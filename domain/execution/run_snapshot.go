@@ -297,9 +297,7 @@ func validString(v string, required bool) bool {
 	return (!required || strings.TrimSpace(v) != "") && len(v) <= MaxSnapshotStringBytes
 }
 
-type itemLookupObserver func()
-
-func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersionItemSnapshot, entries []WorkflowEntry, observe itemLookupObserver) error {
+func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersionItemSnapshot, entries []WorkflowEntry) error {
 	itemsByID := make(map[string]TestTaskVersionItemSnapshot, len(items))
 	for index, item := range items {
 		if !validString(item.ID, true) || item.TestTaskVersionID != versionID || item.SequenceNumber != index+1 || !validString(item.WorkflowID, true) || !validString(item.WorkflowVersionID, true) {
@@ -319,9 +317,6 @@ func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersio
 			return errors.New("duplicate execution entry item")
 		}
 		matchedItems[entry.TestTaskItemID] = struct{}{}
-		if observe != nil {
-			observe()
-		}
 		item, found := itemsByID[entry.TestTaskItemID]
 		if !found {
 			return errors.New("test-task item execution entry is missing")
@@ -331,6 +326,58 @@ func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersio
 		}
 	}
 	return nil
+}
+
+type referenceEdgeKey struct {
+	ParentVersionID string
+	StepID          string
+}
+
+type snapshotValidationIndexes struct {
+	workflows         map[string]WorkflowSnapshot
+	entriesByID       map[string]WorkflowEntry
+	referenceSteps    map[referenceEdgeKey]Step
+	referenceByEdge   map[referenceEdgeKey]ReferenceResolution
+	stepsByWorkflowID map[string][]Step
+}
+
+func buildSnapshotValidationIndexes(plan Draft) (snapshotValidationIndexes, error) {
+	indexes := snapshotValidationIndexes{
+		workflows:         make(map[string]WorkflowSnapshot, len(plan.Workflows)),
+		entriesByID:       make(map[string]WorkflowEntry, len(plan.Entries)),
+		referenceSteps:    make(map[referenceEdgeKey]Step),
+		referenceByEdge:   make(map[referenceEdgeKey]ReferenceResolution, len(plan.References)),
+		stepsByWorkflowID: make(map[string][]Step, len(plan.Workflows)),
+	}
+	for _, entry := range plan.Entries {
+		if _, exists := indexes.entriesByID[entry.ExecutionID]; exists {
+			return snapshotValidationIndexes{}, fmt.Errorf("duplicate execution entry %q", entry.ExecutionID)
+		}
+		indexes.entriesByID[entry.ExecutionID] = entry
+	}
+	for _, workflow := range plan.Workflows {
+		if _, exists := indexes.workflows[workflow.VersionID]; exists {
+			return snapshotValidationIndexes{}, errors.New("duplicate workflow version")
+		}
+		indexes.workflows[workflow.VersionID] = workflow
+		steps := workflowReferenceSteps(workflow.Steps)
+		indexes.stepsByWorkflowID[workflow.VersionID] = steps
+		for _, step := range steps {
+			key := referenceEdgeKey{ParentVersionID: workflow.VersionID, StepID: step.ID}
+			if _, exists := indexes.referenceSteps[key]; exists {
+				return snapshotValidationIndexes{}, errors.New("duplicate workflow reference step edge")
+			}
+			indexes.referenceSteps[key] = step
+		}
+	}
+	for _, resolution := range plan.References {
+		key := referenceEdgeKey{ParentVersionID: resolution.ParentVersionID, StepID: resolution.StepID}
+		if _, exists := indexes.referenceByEdge[key]; exists {
+			return snapshotValidationIndexes{}, errors.New("duplicate reference resolution edge")
+		}
+		indexes.referenceByEdge[key] = resolution
+	}
+	return indexes, nil
 }
 
 func validateSnapshot(v RunSnapshotInput) error {
@@ -345,7 +392,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 		v.TestTaskVersion.VersionNumber != v.TestTaskVersionNumber {
 		return errors.New("test-task snapshot graph identity is inconsistent")
 	}
-	if err := validateTestTaskVersionItemEntries(v.TestTaskVersionID, v.TestTaskVersion.Items, v.Plan.Entries, nil); err != nil {
+	if err := validateTestTaskVersionItemEntries(v.TestTaskVersionID, v.TestTaskVersion.Items, v.Plan.Entries); err != nil {
 		return err
 	}
 	if v.Plan.RunID != v.RunID || v.Plan.FailurePolicy != v.FailurePolicy {
@@ -353,6 +400,10 @@ func validateSnapshot(v RunSnapshotInput) error {
 	}
 	if err := v.Plan.Validate(); err != nil {
 		return fmt.Errorf("execution plan: %w", err)
+	}
+	indexes, err := buildSnapshotValidationIndexes(v.Plan)
+	if err != nil {
+		return err
 	}
 	paths := make(map[string]InvocationScopeSnapshot, len(v.Invocations))
 	for _, invocation := range v.Invocations {
@@ -399,7 +450,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 			if invocation.ParentVersionID != "" || invocation.StepID != "" {
 				return errors.New("root invocation cannot identify a reference edge")
 			}
-			entry, exists := entryByExecutionPath(v.Plan.Entries, invocation.Path)
+			entry, exists := indexes.entriesByID[invocation.Path]
 			if !exists || entry.WorkflowID != invocation.WorkflowID || entry.WorkflowVersionID != invocation.WorkflowVersionID || !equalValues(entry.Parameters.Values, invocation.Values) {
 				return errors.New("root invocation and execution entry scope diverge")
 			}
@@ -408,8 +459,9 @@ func validateSnapshot(v RunSnapshotInput) error {
 			if !exists {
 				return errors.New("invocation parent path is missing")
 			}
-			resolution, exists := referenceResolution(v.Plan.References, invocation.ParentVersionID, invocation.StepID)
-			step, stepExists := referenceStep(v.Plan.Workflows, invocation.ParentVersionID, invocation.StepID)
+			key := referenceEdgeKey{ParentVersionID: invocation.ParentVersionID, StepID: invocation.StepID}
+			resolution, exists := indexes.referenceByEdge[key]
+			step, stepExists := indexes.referenceSteps[key]
 			if !exists || !stepExists || step.Reference == nil || parent.WorkflowVersionID != invocation.ParentVersionID || resolution.WorkflowID != invocation.WorkflowID || resolution.WorkflowVersionID != invocation.WorkflowVersionID || resolution.ResolvedFromLatest != invocation.ResolvedFromLatest {
 				return errors.New("invocation reference edge is inconsistent")
 			}
@@ -421,7 +473,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 				}
 				resolvedValues[name] = resolved
 			}
-			target, targetExists := workflowByVersion(v.Plan.Workflows, invocation.WorkflowVersionID)
+			target, targetExists := indexes.workflows[invocation.WorkflowVersionID]
 			if !targetExists {
 				return errors.New("invocation workflow version is missing")
 			}
@@ -459,16 +511,12 @@ func validateSnapshot(v RunSnapshotInput) error {
 	if roots != len(v.Plan.Entries) {
 		return errors.New("one root invocation per execution entry is required")
 	}
-	workflows := make(map[string]WorkflowSnapshot, len(v.Plan.Workflows))
-	for _, workflow := range v.Plan.Workflows {
-		workflows[workflow.VersionID] = workflow
-	}
 	for _, parent := range v.Invocations {
-		workflow, exists := workflows[parent.WorkflowVersionID]
+		workflow, exists := indexes.workflows[parent.WorkflowVersionID]
 		if !exists {
 			return errors.New("invocation workflow version is missing")
 		}
-		for _, step := range workflowReferenceSteps(workflow.Steps) {
+		for _, step := range indexes.stepsByWorkflowID[workflow.VersionID] {
 			children := childrenByEdge[InvocationEdgeKey{ParentPath: parent.Path, StepID: step.ID}]
 			if len(children) != 1 {
 				return errors.New("one child invocation per concrete reference edge is required")
@@ -488,27 +536,6 @@ func validateSnapshot(v RunSnapshotInput) error {
 		return err
 	}
 	return nil
-}
-
-func referenceStep(workflows []WorkflowSnapshot, parentVersionID, stepID string) (Step, bool) {
-	for _, workflow := range workflows {
-		if workflow.VersionID == parentVersionID {
-			for _, step := range workflowReferenceSteps(workflow.Steps) {
-				if step.ID == stepID {
-					return step, true
-				}
-			}
-		}
-	}
-	return Step{}, false
-}
-func workflowByVersion(workflows []WorkflowSnapshot, versionID string) (WorkflowSnapshot, bool) {
-	for _, workflow := range workflows {
-		if workflow.VersionID == versionID {
-			return workflow, true
-		}
-	}
-	return WorkflowSnapshot{}, false
 }
 
 func equalBindings(left, right map[string]parameter.Binding) bool {
@@ -552,14 +579,6 @@ func workflowReferenceSteps(steps []Step) []Step {
 	return result
 }
 
-func entryByExecutionPath(entries []WorkflowEntry, path string) (WorkflowEntry, bool) {
-	for _, entry := range entries {
-		if entry.ExecutionID == path {
-			return entry, true
-		}
-	}
-	return WorkflowEntry{}, false
-}
 func equalValues(left, right map[string]parameter.Value) bool {
 	if len(left) != len(right) {
 		return false
@@ -573,14 +592,6 @@ func equalValues(left, right map[string]parameter.Value) bool {
 	return true
 }
 
-func referenceResolution(values []ReferenceResolution, parentVersionID, stepID string) (ReferenceResolution, bool) {
-	for _, value := range values {
-		if value.ParentVersionID == parentVersionID && value.StepID == stepID {
-			return value, true
-		}
-	}
-	return ReferenceResolution{}, false
-}
 func validateEnvironmentSnapshot(v EnvironmentSnapshot) error {
 	if !validString(v.ID, true) || !validString(v.DisplayName, true) || !validString(v.BaseURL, false) {
 		return errors.New("invalid environment identity")
