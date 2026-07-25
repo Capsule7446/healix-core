@@ -1,3 +1,6 @@
-// Package engine 将冻结的工作区执行计划编译为可执行节点程序，
-// 并通过领域层拥有的端口运行这些程序。
+// Package engine compiles one entry from an immutable execution RunSnapshot,
+// resolves its typed parameter bindings (including frozen env. properties), and
+// runs the resulting node Program with runtime ports supplied by Execution.
+// Scheduling owns Run creation and latest-version freezing; Execution owns
+// browser lifetime, worker fencing, and Evidence persistence.
 package engine

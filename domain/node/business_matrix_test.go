@@ -11,6 +11,7 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 type matrixElement struct {
@@ -166,6 +167,11 @@ func TestStepActionBusinessMatrix(t *testing.T) {
 				t.Fatalf("inputs = %v", element.inputs)
 			}
 		}},
+		{name: "input expands namespaced parameter", action: Action{Kind: ActionInput, Value: "hello ${params.User} from ${env.Region}"}, check: func(t *testing.T, element *matrixElement, _ *matrixDriver, _ *Runtime) {
+			if !reflect.DeepEqual(element.inputs, []string{"hello Parameter Alice from east"}) {
+				t.Fatalf("inputs = %v", element.inputs)
+			}
+		}},
 		{name: "select falls back to scalar", action: Action{Kind: ActionSelect, Value: "east"}, check: func(t *testing.T, element *matrixElement, _ *matrixDriver, _ *Runtime) {
 			if !reflect.DeepEqual(element.selections, [][]string{{"east"}}) {
 				t.Fatalf("selections = %v", element.selections)
@@ -205,7 +211,7 @@ func TestStepActionBusinessMatrix(t *testing.T) {
 			driver := &matrixDriver{element: element}
 			facts := &testFacts{}
 			runtime := &Runtime{RunID: "run", Driver: driver, Facts: facts,
-				Scratchpad: map[string]any{"name": "Alice", "host": "example.test", "key": "Enter"}}
+				Scratchpad: map[string]any{"name": "Alice", "host": "example.test", "key": "Enter", "params.User": "contamination"}, parameterScope: map[string]parameter.Value{"User": parameter.TextValue("Parameter Alice"), "env.Region": parameter.TextValue("east")}}
 			step := &StepNode{NodeID: "step", Target: target, Action: test.action}
 			if err := step.Run(context.Background(), runtime); err != nil {
 				t.Fatalf("Run: %v", err)
@@ -220,6 +226,23 @@ func TestStepActionBusinessMatrix(t *testing.T) {
 				t.Fatalf("last phase = %s", got)
 			}
 		})
+	}
+}
+
+func TestNestedWorkflowExecutesWithNamespacedChildParameterAndEnvironment(t *testing.T) {
+	element := &matrixElement{exists: true, visible: true}
+	driver := &matrixDriver{element: element}
+	step := &StepNode{NodeID: "child-step", Target: fingerprint.NodeSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${params.User}@${env.Region}"}}
+	call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "child", Children: []Node{step}}, Bindings: map[string]parameter.Binding{"User": parameter.LiteralBinding(parameter.TextValue("Child Alice"))}, Values: map[string]parameter.Value{"User": parameter.TextValue("Child Alice")}, Constraints: map[string]parameter.Constraint{"User": {Type: parameter.Text}}}
+	runtime := &Runtime{RunID: "run", Driver: driver, Facts: &testFacts{}, Scratchpad: map[string]any{"params.User": "contamination", "env.Region": "contamination"}, parameterScope: map[string]parameter.Value{"User": parameter.TextValue("Parent Alice"), "env.Region": parameter.TextValue("east")}}
+	if err := call.Run(context.Background(), runtime); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(element.inputs, []string{"Child Alice@east"}) {
+		t.Fatalf("nested input = %v", element.inputs)
+	}
+	if runtime.Parameters()["User"].Text() != "Parent Alice" || runtime.Scratchpad["params.User"] != "contamination" {
+		t.Fatal("nested scope leaked or polluted scratchpad")
 	}
 }
 
@@ -405,7 +428,7 @@ func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 		facts := &testFacts{}
 		validation := &ValidationNode{NodeID: "secret", Target: fingerprint.NodeSpec{ID: "secret", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#secret"}}, Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "top-secret", ExpectedValues: []string{"must-not-leak"}}}
 		recorder := newValidationObservationRecorder()
-		if err := recorder.record(context.Background(), &Runtime{RunID: "run", Facts: facts}, validation, false, "top-secret", "normal_unsatisfied", true); err != nil {
+		if err := recorder.record(context.Background(), &Runtime{RunID: "run", Facts: facts}, validation, false, "top-secret", nil, "normal_unsatisfied", true); err != nil {
 			t.Fatal(err)
 		}
 		got := facts.validationObservations[0]
@@ -540,7 +563,7 @@ func TestCompositeNodeExecutionMatrix(t *testing.T) {
 	t.Run("workflow call restores absent scope after child failure", func(t *testing.T) {
 		child := &matrixNode{id: "child", err: errors.New("stop")}
 		runtime := &Runtime{Scratchpad: map[string]any{"source": "east"}}
-		call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "target", Children: []Node{child}}, Bindings: map[string]string{"region": "${source}"}}
+		call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "target", Children: []Node{child}}, Bindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}, Values: map[string]parameter.Value{"region": parameter.TextValue("east")}}
 		if err := call.Run(context.Background(), runtime); err == nil {
 			t.Fatal("child failure was lost")
 		}

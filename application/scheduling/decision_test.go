@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestDecideAdvanceSerialABC(t *testing.T) {
@@ -99,13 +100,25 @@ func entryStates(values ...execution.ExecutionStatus) []EntryState {
 func causedStates(first execution.ExecutionStatus, cause SkipCause) []EntryState {
 	return []EntryState{{ExecutionID: "a", Status: first}, {ExecutionID: "b", Status: execution.ExecutionSkipped, SkipCause: cause}, {ExecutionID: "c", Status: execution.ExecutionSkipped, SkipCause: cause}}
 }
-func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.Plan {
+func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.RunSnapshot {
 	t.Helper()
-	plan, err := execution.Seal(planDraft(policy))
+	draft := planDraft(policy)
+	items := make([]execution.TestTaskVersionItemSnapshot, len(draft.Entries))
+	invocations := make([]execution.InvocationScopeSnapshot, len(draft.Entries))
+	for index, entry := range draft.Entries {
+		items[index] = execution.TestTaskVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID}
+		invocations[index] = execution.InvocationScopeSnapshot{Path: entry.ExecutionID, WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
+	}
+	snapshot, err := execution.SealRunSnapshot(execution.RunSnapshotInput{
+		SchemaVersion: execution.RunSnapshotSchemaV1, RunID: "run", TestTaskID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
+		TestTask: execution.TestTaskSnapshot{ID: "task", CurrentVersionID: "task-v1"}, TestTaskVersion: execution.TestTaskVersionSnapshot{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, Items: items},
+		Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: map[string]string{}}, FailurePolicy: policy,
+		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return plan
+	return snapshot
 }
 func planDraft(policy execution.FailurePolicy) execution.Draft {
 	workflow := execution.WorkflowSnapshot{ID: "workflow", VersionID: "workflow-v1", WorkflowID: "workflow", DisplayName: "Workflow", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "Wait", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}

@@ -1,62 +1,48 @@
-# Execution 领域
+# 执行领域
 
 ## 目的与边界
-Execution 定义可执行计划的密封快照、运行/执行状态机、环境公开描述与静态资源预算。它保证进入执行器的依赖闭包完整且不可变；不负责从 Automation 读取资产、排队、编译节点树、驱动浏览器或保存事实。
+执行定义创建后不可变的 `Run` 快照、顶层执行项状态机、工作器栅栏与静态资源预算。调度在创建执行实例时读取自动化发布物，把固定版本和 `latest` 都解析为具体版本并冻结环境、策略、参数与完整依赖闭包；执行不在运行时回读可变资产。
 
 ```mermaid
 flowchart LR
-  Scheduling[scheduling] --> Draft
-  Draft -->|Validate + Seal| Plan[sealed Plan]
-  Plan --> Engine[application/engine]
-  Plan --> Entries[WorkflowEntry]
-  Plan --> Workflows[WorkflowSnapshot]
-  Plan --> Nodes[NodeSnapshot]
-  Plan --> Refs[ReferenceResolution]
-  Engine -.执行.-> Node[node domain]
+  Scheduling[application/scheduling] -->|CreateRun| Run[immutable Run snapshot]
+  Run --> Executions[Execution snapshots]
+  Run --> Workflows[Workflow snapshots]
+  Run --> Nodes[Node snapshots]
+  Run --> Params[typed parameter snapshots]
+  Run --> Engine[application/engine]
+  Engine --> Program[ephemeral node.Program]
+  Program --> Runtime[ephemeral node.Runtime]
 ```
 
 ## 术语与公开模型
-`Draft` 是待验证输入；`Plan` 只能由 `Seal` 产生。`WorkflowEntry` 是按 `SequenceNumber` 排序的顶层执行入口；`WorkflowSnapshot`、`NodeSnapshot` 和 `ReferenceResolution` 是冻结依赖。`Run` 表示整体运行，`ExecutionStatus` 表示入口执行。`FailurePolicy` 为停止或继续。`EnvironmentDescriptor` 不含秘密，`CredentialReference` 只描述秘密边界。
+`CreateRunCommand` 是创建请求，`Run` 是唯一持久执行真相；其中的 `WorkflowEntry`、`WorkflowSnapshot`、`NodeSnapshot`、`EnvironmentSnapshot`、参数绑定和策略均为冻结值。参数由共享内核 `domain/parameter` 的 `Value` 与 `Binding` 表达，仅支持 `TEXT`、`NUMBER`、`BOOLEAN`、`SINGLE_SELECT` 与 `MULTI_SELECT` 五种封闭类型；`NUMBER` 内部使用规范化十进制字符串。`Program` 与 `Runtime` 只是执行期模型，不是可持久化聚合或快照。
 
 ## 不变量
-- 未经 `Seal` 的零值 `Plan` 必须返回 `ErrUnsealedPlan`。
-- Seal 校验后深拷贝所有切片、映射、嵌套步骤和 fingerprint，并规范化入口顺序；访问器再次返回副本。
-- RunID、入口身份/序号、快照身份唯一且互相引用一致；固定版本不能空缺或归属错误。
-- 可达工作流引用无环、解析项完整且无孤儿；节点依赖必须存在。
-- Step 是严格判别联合；导航 URL、等待、重复、验证及组分支必须满足各自约束。
-- 展开执行次数、累计等待、深度、边数、集合数量、字符串字节均受上限保护。
+- `RunID`、顶层执行项身份/序号、快照身份唯一且互相引用一致；所有 `latest` 引用在创建执行实例的调度事务内解析为具体版本。
+- 执行实例创建后不可修改其资产、环境、参数、截图/修复策略或依赖闭包；访问器返回隔离副本。
+- 工作流引用无环且解析完整；节点、调用边与参数绑定必须存在并类型兼容。
+- 参数作用域按执行实例 → 顶层执行项 → 测试任务条目 → 工作流调用逐层覆盖，复合值保持结构与类型。
+- 工作器栅栏单调且参与领取执行权、进度和终态写入，过期工作器不得提交。
+- 步骤判别联合、导航 URL、等待、重复、验证、深度、边数和展开预算均受验证。
 
 ## 状态与流程
-```mermaid
-stateDiagram-v2
-  [*] --> QUEUED
-  QUEUED --> RUNNING
-  QUEUED --> CANCELED
-  RUNNING --> SUCCEEDED
-  RUNNING --> FAILED
-  RUNNING --> CANCELED
-  RUNNING --> ABORTED
-  SUCCEEDED --> [*]
-  FAILED --> [*]
-  CANCELED --> [*]
-  ABORTED --> [*]
-```
-
-入口执行状态另有 `PENDING -> RUNNING|SKIPPED|CANCELED|ABORTED`，运行中可终结为成功、失败、取消或中止；终态不可重开。
+执行实例与顶层执行项状态由调度命令服务推进。显式中止由 `AbortRunService` 要求宿主事务原子提交权威的 `execution.Aborted` 并失效工作器栅栏，提交成功后才发送取消信号；信号失败保留已提交结果并返回 `ErrRunSignalRetryable`。普通执行上下文取消仍映射为 `CANCELED`，是独立于显式中止的操作。
 
 ## 失败
-失败包括未密封计划、非法状态迁移、未知枚举、身份重复/缺失、引用环或孤儿解析、依赖归属错误、非法步骤字段、危险导航 URL，以及任一资源预算超限。校验在克隆大输入之前先执行聚合界限，降低拒绝服务风险。
+失败包括非法状态迁移、未知枚举、身份重复/缺失、引用环或孤儿解析、版本解析失败、依赖归属错误、参数缺失/类型不兼容、危险导航 URL、过期栅栏，以及任一资源预算超限。创建执行实例任一步失败都不得暴露部分冻结快照。
 
 ## 并发、安全与资源
-Plan 是值快照，可安全供并发读取，但没有内部同步或运行时可变状态。状态持久化并发由调用者负责。环境描述明确不携带 credential 字段，秘密只能经应用层执行端口解析。资源常量包括 64 层步骤、32 层引用、10000 步、1000 工作流、10000 节点、百万展开执行和 24 小时累计等待等。
+执行实例 是不可变值，可安全并发读取；持久化原子性、领取执行权/租约 与乐观并发由应用端口和宿主适配器兑现。环境是普通字符串 `Properties`（`map[string]string`），并注入 `env.` 参数命名空间；Core 没有 CredentialReference、CredentialResolver 或 CredentialService 子系统。敏感值保护属于宿主的存储、授权与日志责任。
 
 ## 交互
-Scheduling 负责从仓储读取并构造 Draft；Engine 仅接受密封 Plan 并映射为 node Program；evidence 接收执行事实。Execution 不规定 Driver、CredentialResolver、仓储或队列适配器的行为。
+调度创建并持久化执行实例、冻结 `latest`，并决定串行推进；执行引擎从单个执行实例的顶层执行项编译临时执行程序；每个顶层执行项使用新的运行时和浏览器会话；Evidence 接收进度与终态结果。嵌套工作流共享该顶层执行项的运行时和浏览器会话，但每条调用路径拥有根据绑定派生的独立类型化参数作用域。
 
-## 已实现与未支持
-已实现：Seal、防变更快照、完整依赖/预算验证、Run 与 Execution 状态矩阵、环境/凭据公开边界。未支持：资产加载、计划缓存、分布式锁、队列优先级、浏览器生命周期、事实原子提交、秘密提供商语义。
+## 已实现
+已实现：不可变执行实例快照、类型化参数与绑定、创建事务/解析一致性、工作器栅栏、编译与执行入口服务，以及显式中止的 `ABORTED` 原子提交、提交后信号和可重试信号失败语义。中止实现与验收见 [`run_command_services.go`](../../application/scheduling/run_command_services.go)、[`run_command_services_test.go`](../../application/scheduling/run_command_services_test.go) 和 [`run_command_transaction_conformance_test.go`](../../application/scheduling/run_command_transaction_conformance_test.go)。
 
 ## 源码与测试
-- [计划](../../domain/execution/plan.go)、[校验与上限](../../domain/execution/validation.go)、[预算](../../domain/execution/budget.go)
-- [运行状态](../../domain/execution/run.go)、[执行状态](../../domain/execution/status.go)、[环境边界](../../domain/execution/environment.go)
-- [计划矩阵测试](../../domain/execution/validation_test.go)、[运行测试](../../domain/execution/run_test.go)、[环境安全测试](../../domain/execution/environment_test.go)、[引擎契约测试](../../application/engine/engine_contract_matrix_test.go)
+- [运行与状态](../../domain/execution/run.go)、[不可变 执行实例 快照](../../domain/execution/run_snapshot.go)、[校验与上限](../../domain/execution/validation.go)、[工作器 栅栏](../../domain/execution/worker_fence.go)
+- [类型化参数](../../domain/parameter/value.go)、[参数绑定](../../domain/parameter/binding.go)
+- [执行实例创建](../../application/scheduling/create_run_service.go)、[创建构建器](../../application/scheduling/create_run_builder.go)、[顶层执行项执行器](../../application/execution/entry_executor.go)
+- [执行实例快照测试](../../domain/execution/run_snapshot_test.go)、[参数校验测试](../../domain/execution/parameter_validation_test.go)、[执行实例创建测试](../../application/scheduling/create_run_test.go)

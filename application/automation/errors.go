@@ -7,7 +7,10 @@ import (
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
-var ErrRevisionConflict = errors.New("revision conflict")
+var (
+	ErrRevisionConflict       = errors.New("revision conflict")
+	ErrHealCandidateStaleBase = errors.New("heal candidate base version is no longer current")
+)
 
 type RevisionConflictError struct {
 	AggregateKind string

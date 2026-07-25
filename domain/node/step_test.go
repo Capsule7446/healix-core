@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 )
@@ -77,15 +78,16 @@ type testFacts struct {
 	healSpecIDs            []string
 	healDecisions          []heal.Decision
 	validationObservations []ValidationObservation
-	fences                 []WorkerFence
+	validationGroups       []ValidationGroupTerminalObservation
+	fences                 []domainexecution.WorkerFence
 	rejectCanceled         bool
 }
 
-func (m *testFacts) RecordProgress(ctx context.Context, fence WorkerFence, evt Event) error {
+func (m *testFacts) RecordProgress(ctx context.Context, fence domainexecution.WorkerFence, evt Event) error {
 	m.fences = append(m.fences, fence)
 	return m.recordEvent(ctx, evt)
 }
-func (m *testFacts) CommitTerminal(ctx context.Context, fence WorkerFence, commit TerminalCommit) error {
+func (m *testFacts) CommitTerminal(ctx context.Context, fence domainexecution.WorkerFence, commit TerminalCommit) error {
 	m.fences = append(m.fences, fence)
 	return m.recordEvent(ctx, commit.Event)
 }
@@ -106,15 +108,20 @@ func (m *testFacts) recordEvent(ctx context.Context, evt Event) error {
 	m.events = append(m.events, evt)
 	return nil
 }
-func (m *testFacts) StageHealDecision(_ context.Context, fence WorkerFence, _, specID string, _ fingerprint.Selector, decision heal.Decision) error {
+func (m *testFacts) StageHealDecision(_ context.Context, fence domainexecution.WorkerFence, _, specID string, _ fingerprint.Selector, decision heal.Decision) error {
 	m.fences = append(m.fences, fence)
 	m.healSpecIDs = append(m.healSpecIDs, specID)
 	m.healDecisions = append(m.healDecisions, decision)
 	return m.healDecisionErr
 }
-func (m *testFacts) StageValidationObservation(_ context.Context, fence WorkerFence, observation ValidationObservation) error {
+func (m *testFacts) StageValidationObservation(_ context.Context, fence domainexecution.WorkerFence, observation ValidationObservation) error {
 	m.fences = append(m.fences, fence)
 	m.validationObservations = append(m.validationObservations, observation)
+	return nil
+}
+func (m *testFacts) StageValidationGroupTerminal(_ context.Context, fence domainexecution.WorkerFence, observation ValidationGroupTerminalObservation) error {
+	m.fences = append(m.fences, fence)
+	m.validationGroups = append(m.validationGroups, observation)
 	return nil
 }
 
@@ -136,7 +143,7 @@ func TestExecutionFactsUseWorkerFenceForProgressAndTerminalCommit(t *testing.T) 
 	if err := runtime.emitTerminal(context.Background(), "step", PhaseSucceeded); err != nil {
 		t.Fatal(err)
 	}
-	want := WorkerFence{RunID: "run", ClaimToken: "claim"}
+	want := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
 	if len(sink.fences) != 2 || sink.fences[0] != want || sink.fences[1] != want {
 		t.Fatalf("fences = %#v, want progress and terminal fenced by %#v", sink.fences, want)
 	}
@@ -367,6 +374,19 @@ func TestStepDoesNotHealSystemLocateErrors(t *testing.T) {
 	}
 	if healer.calls != 0 {
 		t.Fatalf("healer calls = %d, want 0", healer.calls)
+	}
+}
+
+func TestStepDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
+	systemErr := errors.New("browser disconnected")
+	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		return nil, errors.Join(ErrElementNotFound, systemErr)
+	}}
+	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
+	step := &StepNode{NodeID: "submit", Target: fingerprint.NodeSpec{ID: "submit"}}
+	err := step.Run(context.Background(), &Runtime{Driver: driver, Healer: healer})
+	if !errors.Is(err, systemErr) || healer.calls != 0 {
+		t.Fatalf("Run error = %v, healer calls = %d", err, healer.calls)
 	}
 }
 

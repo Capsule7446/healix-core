@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"testing"
 	"time"
 
@@ -17,10 +18,114 @@ const (
 	compilerNodeV2 = "00000000-0000-7000-8000-000000000103"
 )
 
+func TestCompileRunSnapshotIndexesInvocationsOnceAcrossEntries(t *testing.T) {
+	allocationsForEntries := func(entryCount int) float64 {
+		draft := minimalCompilerPlan()
+		draft.Workflows[0].Parameters = []execution.Parameter{{Name: "payload", DisplayName: "Payload", Type: parameter.Text, Required: true}}
+		draft.Entries = make([]execution.WorkflowEntry, entryCount)
+		for index := range draft.Entries {
+			draft.Entries[index] = execution.WorkflowEntry{
+				ExecutionID:       fmt.Sprintf("execution-%03d", index),
+				TestTaskItemID:    fmt.Sprintf("item-%03d", index),
+				SequenceNumber:    index + 1,
+				WorkflowID:        "root",
+				WorkflowVersionID: "root-v1",
+				Parameters: execution.ParameterSnapshot{ID: fmt.Sprintf("parameters-%03d", index), SchemaVersion: 1, WorkflowVersionID: "root-v1", Values: map[string]parameter.Value{
+					"payload": parameter.TextValue("value"),
+				}},
+			}
+		}
+		snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+		if err != nil {
+			t.Fatalf("seal %d-entry snapshot: %v", entryCount, err)
+		}
+		compiled, err := CompileRunSnapshot(snapshot)
+		if err != nil {
+			t.Fatalf("compile %d-entry snapshot: %v", entryCount, err)
+		}
+		if len(compiled.Entries) != entryCount {
+			t.Fatalf("compiled entries = %d, want %d", len(compiled.Entries), entryCount)
+		}
+		return testing.AllocsPerRun(20, func() {
+			measured, compileErr := CompileRunSnapshot(snapshot)
+			if compileErr != nil {
+				panic(compileErr)
+			}
+			if len(measured.Entries) != entryCount {
+				panic("compiled entry count mismatch")
+			}
+		})
+	}
+
+	const smallEntryCount = 32
+	small := allocationsForEntries(smallEntryCount)
+	medium := allocationsForEntries(2 * smallEntryCount)
+	large := allocationsForEntries(4 * smallEntryCount)
+	if !(small < medium && medium < large) {
+		t.Fatalf("compile allocations are not monotonic: 32=%.0f, 64=%.0f, 128=%.0f", small, medium, large)
+	}
+	firstGrowth := medium - small
+	secondGrowth := large - medium
+	// Moving snapshot.Invocations or invocationIndex into the entry loop changes
+	// incremental growth from approximately 2x (linear) to approximately 4x.
+	if firstGrowth <= 0 || secondGrowth >= 3*firstGrowth {
+		t.Fatalf("compile allocation growth is not near-linear: 32=%.0f, 64=%.0f, 128=%.0f; growths=%.0f, %.0f (ratio %.2f); invocations must be cloned and indexed once", small, medium, large, firstGrowth, secondGrowth, secondGrowth/firstGrowth)
+	}
+}
+
+func TestCompileRunSnapshotInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
+	draft := minimalCompilerPlan()
+	draft.Entries[0].Parameters.Values = nil
+	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{"Region": "east"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compiled, err := CompileRunSnapshot(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := compiled.Entries[0].Program.Root.(*node.WorkflowNode)
+	value, exists := root.Parameters["env.Region"]
+	if !exists || !value.Equal(parameter.TextValue("east")) {
+		t.Fatalf("env.Region = %#v, exists = %t", value, exists)
+	}
+}
+
+func TestCompileRunSnapshotRejectsUnsealedZeroValue(t *testing.T) {
+	_, err := CompileRunSnapshot(execution.RunSnapshot{})
+	if err == nil {
+		t.Fatal("unsealed zero-value run snapshot was accepted")
+	}
+}
+
+func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
+	draft := minimalCompilerPlan()
+	plan, err := execution.Seal(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compileSnapshotDraft(plan.Snapshot(), execution.RunSnapshot{}); err == nil {
+		t.Fatal("missing root invocation was accepted")
+	}
+	root := execution.WorkflowSnapshot{WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", Steps: []execution.Step{{ID: "call", DisplayName: "Call", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}}
+	child := execution.WorkflowSnapshot{WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child"}
+	compiler := executionCompiler{
+		versions:    map[string]execution.WorkflowSnapshot{"root-v1": root, "child-v1": child},
+		resolutions: map[execution.WorkflowReferenceKey]execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call"}: {ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}},
+		invocations: map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot{}, metadata: map[string]StepMetadata{}, programSpecs: map[string]fingerprint.NodeSpec{}, runtimeNodes: map[string]RuntimeNodeIdentity{},
+	}
+	count := 0
+	compiler.compiledNodes = &count
+	if _, err := compiler.compileWorkflow("root-v1", "root", "root", 1); err == nil {
+		t.Fatal("missing concrete child invocation was accepted")
+	}
+}
+
 func TestCompilePlanRejectsUnsealedPlanWithDomainError(t *testing.T) {
-	_, err := CompilePlan(execution.Plan{})
+	_, err := compilePlanForTest(execution.Plan{})
 	if !errors.Is(err, execution.ErrUnsealedPlan) {
-		t.Fatalf("CompilePlan() error = %v, want ErrUnsealedPlan", err)
+		t.Fatalf("compilePlanForTest() error = %v, want ErrUnsealedPlan", err)
 	}
 }
 
@@ -40,9 +145,9 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 	plan := execution.Draft{
 		RunID: "exec", Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", WorkflowID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
-			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "call", DisplayName: "调用子流程", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}},
+			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "call", DisplayName: "调用子流程", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}}},
 			{WorkflowID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1,
-				Parameters: []execution.Parameter{{Name: "region", DefaultValue: "east"}},
+				Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Default: parameter.PresentValue(parameter.TextValue("east"))}},
 				Steps:      []execution.Step{{ID: "click", DisplayName: "点击", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}},
 		},
 		Nodes:      []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "submit-v1")},
@@ -58,7 +163,7 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 		t.Fatalf("root = %#v", compiled.Program.Root)
 	}
 	call, ok := root.Children[0].(*node.WorkflowCallNode)
-	if !ok || call.Target == nil || call.Target.ID() != "workflow|15:execution-entry4:call8:child-v1" || call.Bindings["region"] != "east" {
+	if !ok || call.Target == nil || call.Target.ID() != "workflow|15:execution-entry4:call8:child-v1" || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("east")) {
 		t.Fatalf("workflow call = %#v", root.Children[0])
 	}
 	childStepID := runtimeInvocationStepID("15:execution-entry4:call8:child-v1", "click")
@@ -69,9 +174,10 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 
 func TestCompilePlanCreatesDistinctRuntimeIdentitiesForSharedChildInvocations(t *testing.T) {
 	child := execution.WorkflowSnapshot{WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1,
-		Steps: []execution.Step{{ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}
+		Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Required: true}},
+		Steps:      []execution.Step{{ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}
 	call := func(id string) execution.Step {
-		return execution.Step{ID: id, DisplayName: id, Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}
+		return execution.Step{ID: id, DisplayName: id, Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}
 	}
 	plan := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{
 		{WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", VersionNumber: 1, Steps: []execution.Step{call("first"), call("second")}}, child},
@@ -178,7 +284,7 @@ func compileDraft(draft execution.Draft) (CompiledEntry, error) {
 	if err != nil {
 		return CompiledEntry{}, err
 	}
-	compiled, err := CompilePlan(plan)
+	compiled, err := compilePlanForTest(plan)
 	if err != nil {
 		return CompiledEntry{}, err
 	}
@@ -199,7 +305,7 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := CompilePlan(plan)
+	compiled, err := compilePlanForTest(plan)
 	if err != nil {
 		t.Fatal(err)
 	}

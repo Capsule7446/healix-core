@@ -32,10 +32,10 @@ func (s *resultTimelineSink) RecordStepTimelineEvent(_ context.Context, event no
 	return nil
 }
 
-func TestRunProgramWithResultReportsTimelineStartFailureBeforeLeafExecution(t *testing.T) {
+func TestRunCompiledEntryWithResultReportsTimelineStartFailureBeforeLeafExecution(t *testing.T) {
 	driver := &engineTestDriver{}
 	startErr := errors.New("start rejected")
-	result, err := RunProgramWithResult(context.Background(), navigationProgram("timeline-start", "https://example.test"), Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), navigationCompiledEntry("timeline-start", "https://example.test"), Config{
 		RunID:        "run-timeline-start",
 		Driver:       driver,
 		Recorder:     &engineTestRecorder{},
@@ -52,7 +52,7 @@ func TestRunProgramWithResultReportsTimelineStartFailureBeforeLeafExecution(t *t
 	}
 }
 
-func TestRunProgramWithResultReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
+func TestRunCompiledEntryWithResultReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
 	driver := &engineTestDriver{}
 	startErr := errors.New("second start rejected")
 	program := node.Program{Root: &node.WorkflowNode{
@@ -62,7 +62,7 @@ func TestRunProgramWithResultReportsFailureWhenLaterLeafTimelineStartFails(t *te
 			&node.StepNode{NodeID: "second", Action: node.Action{Kind: node.ActionNavigate, Value: "https://second.test"}},
 		},
 	}}
-	result, err := RunProgramWithResult(context.Background(), program, Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), compiledEntry(program), Config{
 		RunID:        "run-second-timeline-start",
 		Driver:       driver,
 		Recorder:     &engineTestRecorder{},
@@ -79,9 +79,9 @@ func TestRunProgramWithResultReportsFailureWhenLaterLeafTimelineStartFails(t *te
 	}
 }
 
-func TestRunProgramWithResultKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {
+func TestRunCompiledEntryWithResultKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {
 	finishErr := errors.New("finish rejected")
-	result, err := RunProgramWithResult(context.Background(), navigationProgram("result", "https://example.test"), Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), navigationCompiledEntry("result", "https://example.test"), Config{
 		RunID:        "run-result",
 		Driver:       &engineTestDriver{},
 		Recorder:     &engineTestRecorder{},
@@ -95,9 +95,9 @@ func TestRunProgramWithResultKeepsExecutionSuccessWhenTimelineFinishFails(t *tes
 	}
 }
 
-func TestRunProgramWithResultRejectsTimelineWithoutRecorder(t *testing.T) {
+func TestRunCompiledEntryWithResultRejectsTimelineWithoutRecorder(t *testing.T) {
 	root := &runtimeCaptureNode{}
-	result, err := RunProgramWithResult(context.Background(), node.Program{Root: root}, Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), compiledEntry(node.Program{Root: root}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, StepTimeline: &resultTimelineSink{},
 	})
 	if !errors.Is(err, ErrTimelineConfiguration) {
@@ -120,8 +120,8 @@ func TestExecutionOutcomePreservesBusinessFailure(t *testing.T) {
 	}
 }
 
-func TestRunProgramWithResultReportsTimelineStartFailureWhenRecorderStartFails(t *testing.T) {
-	result, err := RunProgramWithResult(context.Background(), navigationProgram("start-failure", "https://example.test"), Config{
+func TestRunCompiledEntryWithResultReportsTimelineStartFailureWhenRecorderStartFails(t *testing.T) {
+	result, err := RunCompiledEntryWithResult(context.Background(), navigationCompiledEntry("start-failure", "https://example.test"), Config{
 		RunID:        "run-start-failure",
 		Driver:       &engineTestDriver{},
 		Recorder:     &engineTestRecorder{startErr: errors.New("start failed")},
@@ -135,30 +135,30 @@ func TestRunProgramWithResultReportsTimelineStartFailureWhenRecorderStartFails(t
 	}
 }
 
-func TestRunProgramWithResultAllowsEmptyCompletionChainWithoutBrowser(t *testing.T) {
+func TestRunCompiledEntryWithResultAllowsEmptyCompletionChainWithoutBrowser(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{})
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	result, err := RunProgramWithResult(context.Background(), node.Program{Root: root}, Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), compiledEntry(node.Program{Root: root}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, CompletionChain: chain,
 	})
 	if err != nil {
-		t.Fatalf("RunProgramWithResult: %v", err)
+		t.Fatalf("RunCompiledEntryWithResult: %v", err)
 	}
 	if root.runs != 1 || result.ExecutionOutcome != ExecutionSucceeded {
 		t.Fatalf("root runs = %d, result = %+v", root.runs, result)
 	}
 }
 
-func TestRunProgramWithResultClassifiesMissingCompletionBrowser(t *testing.T) {
+func TestRunCompiledEntryWithResultClassifiesMissingCompletionBrowser(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{}, completionHandlerNoop{})
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	result, err := RunProgramWithResult(context.Background(), node.Program{Root: root}, Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), compiledEntry(node.Program{Root: root}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, CompletionChain: chain,
 	})
 	if !errors.Is(err, ErrCompletionConfiguration) {
@@ -169,13 +169,13 @@ func TestRunProgramWithResultClassifiesMissingCompletionBrowser(t *testing.T) {
 	}
 }
 
-func TestRunProgramWithResultReportsObserverFailureWithoutChangingExecutionOutcome(t *testing.T) {
+func TestRunCompiledEntryWithResultReportsObserverFailureWithoutChangingExecutionOutcome(t *testing.T) {
 	observerErr := errors.New("observer failed")
 	chain, err := node.NewNodeCompletionChain(node.NodeCompletionOptions{}, completionHandlerNoop{})
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	result, err := RunProgramWithResult(context.Background(), navigationProgram("observer", "https://example.test"), Config{
+	result, err := RunCompiledEntryWithResult(context.Background(), navigationCompiledEntry("observer", "https://example.test"), Config{
 		RunID:              "run-observer",
 		Driver:             &engineTestDriver{},
 		CompletionChain:    chain,

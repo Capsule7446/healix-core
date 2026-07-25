@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
-	"github.com/Capsule7446/healix-core/domain/interpolation"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // WaitKind 是 WaitNode 的等待条件类型。
@@ -203,13 +204,23 @@ func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 // 版本快照构造它；它也是 Workflow 相互引用时被引用的不可变执行单元。
 // Workflow 按顺序执行；跨 Workflow 调度由应用层负责。
 type WorkflowNode struct {
-	NodeID   string
-	Children []Node
+	NodeID             string
+	Children           []Node
+	OwnsParameterScope bool
+	Parameters         map[string]parameter.Value
 }
 
 func (w *WorkflowNode) ID() string { return w.NodeID }
 
 func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
+	previous := rt.parameterScope
+	if w.OwnsParameterScope {
+		rt.parameterScope = cloneParameterScope(w.Parameters)
+		if rt.parameterScope == nil {
+			rt.parameterScope = map[string]parameter.Value{}
+		}
+		defer func() { rt.parameterScope = previous }()
+	}
 	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
 	if err != nil {
 		return fmt.Errorf("workflow %s: enter running phase: %w", w.NodeID, err)
@@ -231,9 +242,11 @@ func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
 
 // WorkflowCallNode 在子工作流调用期间应用参考边参数绑定。当每个调用接收一个隔离的参数范围时，引用的不可变 WorkflowNode 保持可重用。
 type WorkflowCallNode struct {
-	NodeID   string
-	Target   *WorkflowNode
-	Bindings map[string]string
+	NodeID      string
+	Target      *WorkflowNode
+	Bindings    map[string]parameter.Binding
+	Values      map[string]parameter.Value
+	Constraints map[string]parameter.Constraint
 }
 
 func (w *WorkflowCallNode) ID() string {
@@ -270,51 +283,40 @@ func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
 }
 
 func (w *WorkflowCallNode) runTarget(ctx context.Context, rt *Runtime) error {
-	if len(w.Bindings) == 0 {
-		return w.Target.Run(ctx, rt)
-	}
-	if rt.Scratchpad == nil {
-		rt.Scratchpad = map[string]any{}
-	}
-	resolved := make(map[string]string, len(w.Bindings))
-	variables := workflowBindingContext{rt: rt}
-	for name, expression := range w.Bindings {
-		value, err := interpolation.Expand(expression, variables)
-		if err != nil {
+	resolved := make(map[string]parameter.Value, len(w.Values))
+	for name, value := range w.Values {
+		constraint, exists := w.Constraints[name]
+		if !exists {
+			return fmt.Errorf("workflow %s parameter %s has no schema", w.Target.ID(), name)
+		}
+		if err := constraint.Validate(value); err != nil {
 			return fmt.Errorf("workflow %s parameter %s: %w", w.Target.ID(), name, err)
 		}
-		resolved[name] = value
+		resolved[name] = value.Clone()
 	}
-	type previousValue struct {
-		value  any
-		exists bool
-	}
-	previous := make(map[string]previousValue, len(resolved)*2)
-	for name, value := range resolved {
-		for _, scopedName := range []string{name, "params." + name} {
-			old, exists := rt.Scratchpad[scopedName]
-			previous[scopedName] = previousValue{value: old, exists: exists}
-			rt.Scratchpad[scopedName] = value
+	for name := range w.Constraints {
+		if _, exists := resolved[name]; !exists {
+			return fmt.Errorf("workflow %s parameter %s is missing", w.Target.ID(), name)
 		}
 	}
-	defer func() {
-		for name, old := range previous {
-			if old.exists {
-				rt.Scratchpad[name] = old.value
-			} else {
-				delete(rt.Scratchpad, name)
-			}
+	for name, value := range rt.parameterScope {
+		if strings.HasPrefix(name, "env.") {
+			resolved[name] = value.Clone()
 		}
-	}()
+	}
+	previous := rt.parameterScope
+	rt.parameterScope = resolved
+	defer func() { rt.parameterScope = previous }()
 	return w.Target.Run(ctx, rt)
 }
 
-type workflowBindingContext struct{ rt *Runtime }
-
-func (c workflowBindingContext) Variable(name string) (string, bool) {
-	value, ok := c.rt.Scratchpad[name]
-	if !ok {
-		return "", false
+func cloneParameterScope(source map[string]parameter.Value) map[string]parameter.Value {
+	if source == nil {
+		return nil
 	}
-	return fmt.Sprint(value), true
+	result := make(map[string]parameter.Value, len(source))
+	for name, value := range source {
+		result[name] = value.Clone()
+	}
+	return result
 }

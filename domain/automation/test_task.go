@@ -3,6 +3,8 @@ package automation
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/parameter"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -181,6 +183,89 @@ func (a TestTaskAggregate) Validate() error {
 	if a.Current.ID != a.Task.CurrentVersionID || a.Current.ID != highest.ID {
 		return errors.New("test task current version must match the latest history version")
 	}
+	if !reflect.DeepEqual(a.Current, highest) {
+		return errors.New("test task current version content must match history")
+	}
+	return nil
+}
+
+func ResolveParameterValues(definitions []ParameterDefinition, supplied map[string]parameter.Value) (map[string]parameter.Value, error) {
+	byName := make(map[string]ParameterDefinition, len(definitions))
+	for _, definition := range definitions {
+		if err := definition.Validate(); err != nil {
+			return nil, fmt.Errorf("parameter %q: %w", definition.Name, err)
+		}
+		if _, duplicate := byName[definition.Name]; duplicate {
+			return nil, fmt.Errorf("duplicate parameter %q", definition.Name)
+		}
+		byName[definition.Name] = definition
+	}
+	for name := range supplied {
+		if _, exists := byName[name]; !exists {
+			return nil, fmt.Errorf("parameter %q is unknown", name)
+		}
+	}
+	resolved := make(map[string]parameter.Value, len(definitions))
+	for _, definition := range definitions {
+		value, exists := supplied[definition.Name]
+		if !exists {
+			if fallback, present := definition.Default.Value(); present {
+				value = fallback
+			} else {
+				return nil, fmt.Errorf("parameter %q is required", definition.Name)
+			}
+		}
+		if err := definition.ValidateValue(value); err != nil {
+			return nil, fmt.Errorf("parameter %q: %w", definition.Name, err)
+		}
+		resolved[definition.Name] = value.Clone()
+	}
+	return resolved, nil
+}
+
+func validateReferenceBindings(parent, child []ParameterDefinition, bindings map[string]parameter.Binding) error {
+	parents := map[string]ParameterDefinition{}
+	for _, definition := range parent {
+		parents[definition.Name] = definition
+	}
+	for _, definition := range child {
+		binding, exists := bindings[definition.Name]
+		if !exists {
+			if _, hasDefault := definition.Default.Value(); hasDefault {
+				continue
+			}
+			return fmt.Errorf("parameter %q is required", definition.Name)
+		}
+		if literal, ok := binding.Literal(); ok {
+			if err := definition.ValidateValue(literal); err != nil {
+				return fmt.Errorf("parameter %q: %w", definition.Name, err)
+			}
+			continue
+		}
+		name, ok := binding.ParentName()
+		if !ok || name == "" {
+			return fmt.Errorf("parameter %q has invalid binding", definition.Name)
+		}
+		parentDefinition, exists := parents[name]
+		if !exists {
+			return fmt.Errorf("parent parameter %q is missing", name)
+		}
+		if parentDefinition.Type != definition.Type {
+			return fmt.Errorf("parameter %q parent reference type mismatch", definition.Name)
+		}
+	}
+	for name := range bindings {
+		found := false
+		for _, definition := range child {
+			if name == definition.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("parameter %q is unknown", name)
+		}
+	}
 	return nil
 }
 
@@ -243,6 +328,14 @@ func (p TestTaskVersionPlan) Validate() error {
 		}
 		if !matched {
 			return fmt.Errorf("test task item %d has no matching workflow dependency", item.SequenceNumber)
+		}
+		for _, dependency := range p.Workflows {
+			if dependency.Workflow.ID == item.WorkflowID && (item.VersionPolicy == WorkflowVersionLatest && dependency.ResolvedFromLatest || item.VersionPolicy == WorkflowVersionFixed && dependency.Version.ID == item.WorkflowVersionID) {
+				if _, err := ResolveParameterValues(dependency.Version.Definition.Parameters, item.Parameters); err != nil {
+					return fmt.Errorf("test task item %d parameters: %w", item.SequenceNumber, err)
+				}
+				break
+			}
 		}
 	}
 	return p.validateDependencyGraph(nodes)
@@ -312,6 +405,9 @@ func (p TestTaskVersionPlan) validateDependencyGraph(nodes map[string]bool) erro
 						}
 					} else if resolution.ResolvedFromLatest || step.Reference.WorkflowVersionID != target.Version.ID {
 						return fmt.Errorf("step %s fixed workflow reference changed version", step.ID)
+					}
+					if err := validateReferenceBindings(dependency.Version.Definition.Parameters, target.Version.Definition.Parameters, step.Reference.ParameterBindings); err != nil {
+						return fmt.Errorf("step %s parameter bindings: %w", step.ID, err)
 					}
 					usedReferences[key] = true
 					if err := visit(target.Version.ID); err != nil {

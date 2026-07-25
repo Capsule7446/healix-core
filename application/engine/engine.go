@@ -25,9 +25,6 @@ type Config struct {
 	// StepInterval 是执行局部的节奏设置。它应用于叶子 Step 之间，
 	// 不会取代显式的条件等待。
 	StepInterval time.Duration
-	// Variables 是本次 run 的初始变量。组合根可从环境或密钥系统注入，
-	// domain 只接收内存值，不感知具体密钥来源。
-	Variables map[string]string
 }
 
 type ExecutionOutcome string
@@ -59,14 +56,14 @@ type RunResult struct {
 	TimelineOutcome  TimelineOutcome
 }
 
-// RunProgram executes an in-memory Program compiled from an immutable run snapshot.
-func RunProgram(ctx context.Context, program node.Program, cfg Config) error {
-	_, err := RunProgramWithResult(ctx, program, cfg)
+// RunCompiledEntry executes an entry compiled from an immutable run snapshot.
+func RunCompiledEntry(ctx context.Context, entry CompiledEntry, cfg Config) error {
+	_, err := RunCompiledEntryWithResult(ctx, entry, cfg)
 	return err
 }
 
-func RunProgramWithResult(ctx context.Context, program node.Program, cfg Config) (RunResult, error) {
-	return (RunCoordinator{}).Run(ctx, program, cfg)
+func RunCompiledEntryWithResult(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult, error) {
+	return (RunCoordinator{}).Run(ctx, entry.Program, cfg)
 }
 
 func detachedTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

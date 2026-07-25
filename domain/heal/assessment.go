@@ -72,10 +72,6 @@ func Assess(target fingerprint.NodeSpec, decision Decision, current ExecutionCon
 			add(ReasonFormMismatch)
 			a.Disposition = DispositionBlock
 		}
-		if decision.Outcome == OutcomeBelowCap && a.Disposition == DispositionAllow {
-			add(ReasonBelowCap)
-			a.Disposition = DispositionReview
-		}
 		if len(decision.Candidates) > 1 && policy.MinimumMargin > 0 && decision.Candidates[0].Score-decision.Candidates[1].Score < policy.MinimumMargin && a.Disposition == DispositionAllow {
 			add(ReasonAmbiguous)
 			a.Disposition = DispositionReview

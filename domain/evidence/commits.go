@@ -6,12 +6,9 @@ import (
 	"strings"
 )
 
-type HealObservationCommit struct {
-	Observation       HealObservation
-	PromotedVersionID string
-}
-
 type HealCandidateReset struct {
+	ExecutionID       string
+	StepExecutionID   string
 	NodeID            string
 	BaseNodeVersionID string
 	ObservedAt        int64
@@ -19,17 +16,15 @@ type HealCandidateReset struct {
 
 type StepRevision uint64
 
-const (
-	maxStepTransitionFacts = 10_000
-	maxStepTransitionBytes = 1 << 20
-)
+const maxStepTransitionFacts = 10_000
 
 type StepTransitionCommit struct {
 	CommitID               string
 	ExpectedRevision       StepRevision
 	Event                  StepPhaseEvent
 	FinalValidations       []ValidationObservation
-	HealObservations       []HealObservationCommit
+	FinalValidationGroups  []ValidationGroupTerminalObservation
+	HealObservations       []HealObservation
 	OriginalSelectorResets []HealCandidateReset
 }
 
@@ -52,13 +47,11 @@ func (c StepTransitionCommit) Validate() error {
 		return errors.New("step transition commit occurrence and timestamp must be positive")
 	}
 	if len(c.FinalValidations) > maxStepTransitionFacts ||
+		len(c.FinalValidationGroups) > maxStepTransitionFacts ||
 		len(c.HealObservations) > maxStepTransitionFacts ||
 		len(c.OriginalSelectorResets) > maxStepTransitionFacts ||
-		len(c.FinalValidations)+len(c.HealObservations)+len(c.OriginalSelectorResets) > maxStepTransitionFacts {
+		len(c.FinalValidations)+len(c.FinalValidationGroups)+len(c.HealObservations)+len(c.OriginalSelectorResets) > maxStepTransitionFacts {
 		return errors.New("step transition commit exceeds fact limit")
-	}
-	if stepTransitionPayloadBytes(c) > maxStepTransitionBytes {
-		return errors.New("step transition commit exceeds byte limit")
 	}
 	for _, validation := range c.FinalValidations {
 		if err := validation.Validate(); err != nil {
@@ -68,68 +61,132 @@ func (c StepTransitionCommit) Validate() error {
 			return errors.New("final validation must belong to committed step and execution")
 		}
 	}
+	if err := validateValidationGroupTopology(c.Event, c.FinalValidations, c.FinalValidationGroups); err != nil {
+		return err
+	}
+	seenHealIDs := make(map[string]struct{}, len(c.HealObservations))
 	for _, heal := range c.HealObservations {
-		if err := heal.Observation.Validate(); err != nil {
-			return fmt.Errorf("heal observation %s: %w", heal.Observation.ID, err)
+		if _, exists := seenHealIDs[heal.ID]; exists {
+			return errors.New("heal observation identity is duplicated")
 		}
-		if heal.Observation.StepExecutionID != c.Event.ID || heal.Observation.ExecutionID != c.Event.ExecutionID || heal.PromotedVersionID == "" {
-			return errors.New("heal observation commit has invalid identity")
+		seenHealIDs[heal.ID] = struct{}{}
+		if err := heal.Validate(); err != nil {
+			return fmt.Errorf("heal observation %s: %w", heal.ID, err)
+		}
+		if heal.StepExecutionID != c.Event.ID || heal.ExecutionID != c.Event.ExecutionID {
+			return errors.New("heal observation must belong to committed step and execution")
+		}
+		if heal.Succeeded && c.Event.Phase != "SUCCEEDED" {
+			return errors.New("successful heal observation requires a succeeded terminal step")
 		}
 	}
+	type resetIdentity struct {
+		ExecutionID       string
+		StepExecutionID   string
+		NodeID            string
+		BaseNodeVersionID string
+	}
+	seenResets := make(map[resetIdentity]struct{}, len(c.OriginalSelectorResets))
 	for _, reset := range c.OriginalSelectorResets {
-		if reset.NodeID == "" || reset.BaseNodeVersionID == "" || reset.ObservedAt <= 0 {
-			return errors.New("heal candidate reset is missing a required field")
+		identity := resetIdentity{reset.ExecutionID, reset.StepExecutionID, reset.NodeID, reset.BaseNodeVersionID}
+		if _, exists := seenResets[identity]; exists {
+			return errors.New("heal candidate reset identity is duplicated")
+		}
+		seenResets[identity] = struct{}{}
+		if c.Event.Phase != "SUCCEEDED" {
+			return errors.New("original selector reset requires a succeeded terminal step")
+		}
+		if reset.ExecutionID != c.Event.ExecutionID || reset.StepExecutionID != c.Event.ID || reset.NodeID == "" || reset.BaseNodeVersionID == "" || reset.ObservedAt <= 0 {
+			return errors.New("heal candidate reset must belong to committed step and execution")
 		}
 	}
 	return nil
 }
 
-func stepTransitionPayloadBytes(commit StepTransitionCommit) int {
-	total := len(commit.CommitID) + stepEventBytes(commit.Event)
-	for _, validation := range commit.FinalValidations {
-		total += validationBytes(validation)
+func validateValidationGroupTopology(event StepPhaseEvent, validations []ValidationObservation, groups []ValidationGroupTerminalObservation) error {
+	type memberKey struct {
+		GroupID  string
+		BranchID string
+		NodeID   string
 	}
-	for _, heal := range commit.HealObservations {
-		total += healObservationBytes(heal.Observation) + len(heal.PromotedVersionID)
+	members := make(map[memberKey]ValidationObservation, len(validations))
+	seenValidationIDs := make(map[string]struct{}, len(validations))
+	for _, validation := range validations {
+		if _, exists := seenValidationIDs[validation.ID]; exists {
+			return errors.New("final validation identity is duplicated")
+		}
+		seenValidationIDs[validation.ID] = struct{}{}
+		if validation.GroupID == "" {
+			continue
+		}
+		key := memberKey{GroupID: validation.GroupID, BranchID: validation.BranchID, NodeID: validation.NodeID}
+		if _, exists := members[key]; exists {
+			return errors.New("final validation member is duplicated")
+		}
+		members[key] = validation
 	}
-	for _, reset := range commit.OriginalSelectorResets {
-		total += len(reset.NodeID) + len(reset.BaseNodeVersionID)
+	seenGroups := make(map[string]struct{}, len(groups))
+	seenGroupIDs := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		if err := group.Validate(); err != nil {
+			return fmt.Errorf("final validation group %s: %w", group.ID, err)
+		}
+		if _, exists := seenGroupIDs[group.ID]; exists {
+			return errors.New("final validation group identity is duplicated")
+		}
+		seenGroupIDs[group.ID] = struct{}{}
+		if group.StepExecutionID != event.ID || group.ExecutionID != event.ExecutionID {
+			return errors.New("final validation group must belong to committed step and execution")
+		}
+		if !validationTerminalMatchesPhase(group.TerminalReason, event.Phase) {
+			return errors.New("final validation group terminal reason contradicts step phase")
+		}
+		if _, exists := seenGroups[group.GroupID]; exists {
+			return errors.New("final validation group is duplicated")
+		}
+		seenGroups[group.GroupID] = struct{}{}
+		for _, expected := range group.ExpectedMembers() {
+			member, exists := members[memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, NodeID: expected.NodeID}]
+			if !exists {
+				return errors.New("final validation group is missing an expected member")
+			}
+			if member.BranchDisposition == ValidationBranchWon && group.TerminalReason != ValidationTerminalPassed {
+				return errors.New("non-passed validation group member is marked won")
+			}
+			if (member.BranchDisposition == ValidationBranchWon || member.BranchDisposition == ValidationBranchSatisfiedNotWinner) && !member.Passed {
+				return errors.New("satisfied validation branch member did not pass")
+			}
+			if group.TerminalReason == ValidationTerminalPassed {
+				if expected.BranchID == group.WinningBranchID && member.BranchDisposition != ValidationBranchWon {
+					return errors.New("winning validation branch member is not marked won")
+				}
+				if expected.BranchID != group.WinningBranchID && member.BranchDisposition == ValidationBranchWon {
+					return errors.New("non-winning validation branch member is marked won")
+				}
+			}
+			delete(members, memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, NodeID: expected.NodeID})
+		}
 	}
-	return total
+	for key := range members {
+		if _, grouped := seenGroups[key.GroupID]; grouped {
+			return errors.New("final validation group contains an unexpected member")
+		}
+		return errors.New("grouped final validation has no terminal group fact")
+	}
+	return nil
 }
 
-func stepEventBytes(event StepPhaseEvent) int {
-	return len(event.ID) + len(event.ExecutionID) + len(event.WorkflowStepID) + len(event.DisplayName) +
-		len(event.Kind) + len(event.Phase) + len(event.HierarchyPath) + len(event.ErrorMessage)
-}
-
-func validationBytes(observation ValidationObservation) int {
-	return len(observation.ID) + len(observation.RunID) + len(observation.ExecutionID) +
-		len(observation.StepExecutionID) + len(observation.ValidationStepID) + len(observation.NodeID) +
-		len(observation.NodeVersionID) + len(observation.AssertionKind) + len(observation.Expected) +
-		len(observation.Actual) + len(observation.Reason) + len(observation.Selector.Type) +
-		len(observation.Selector.Value) + len(observation.HealReviewStatus)
-}
-
-func healObservationBytes(observation HealObservation) int {
-	total := len(observation.ID) + len(observation.RunID) + len(observation.ExecutionID) +
-		len(observation.StepExecutionID) + len(observation.NodeID) + len(observation.BaseNodeVersionID) +
-		len(observation.CandidateHash) + len(observation.Selector.Type) + len(observation.Selector.Value) +
-		len(observation.DecisionBand)
-	fingerprint := observation.Fingerprint
-	total += len(fingerprint.Tag) + len(fingerprint.Text) + len(fingerprint.ARIA.Role) + len(fingerprint.ARIA.Name) +
-		len(fingerprint.Neighbors.Prev) + len(fingerprint.Neighbors.Next) + len(fingerprint.Neighbors.ParentTag) +
-		len(fingerprint.LabelText) + len(fingerprint.FormID)
-	for key, value := range fingerprint.Attributes {
-		total += len(key) + len(value)
+func validationTerminalMatchesPhase(reason ValidationTerminalReason, phase string) bool {
+	switch reason {
+	case ValidationTerminalPassed:
+		return phase == "SUCCEEDED"
+	case ValidationTerminalTimeout, ValidationTerminalSystemError:
+		return phase == "FAILED"
+	case ValidationTerminalCanceled:
+		return phase == "CANCELED" || phase == "ABORTED"
+	default:
+		return false
 	}
-	for _, path := range fingerprint.Path {
-		total += len(path)
-	}
-	for _, info := range fingerprint.Framework {
-		total += len(info.Kind) + len(info.Version) + len(info.Evidence)
-	}
-	return total
 }
 
 type NodeVersionPromotion struct {

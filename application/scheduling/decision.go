@@ -36,13 +36,14 @@ type Decision struct {
 	FinalStatus     *execution.RunStatus
 }
 
-// DecideAdvance makes a serial scheduling decision using the sealed plan as the
+// DecideAdvance makes a serial scheduling decision using the run snapshot as the
 // sole authority for membership, order, and failure policy.
-func DecideAdvance(plan execution.Plan, states []EntryState) (Decision, error) {
-	if err := plan.Validate(); err != nil {
-		return Decision{}, fmt.Errorf("%w: %w", ErrInvalidEntryStates, err)
+func DecideAdvance(snapshot execution.RunSnapshot, states []EntryState) (Decision, error) {
+	if snapshot.Digest() == "" {
+		return Decision{}, fmt.Errorf("%w: unsealed run snapshot", ErrInvalidEntryStates)
 	}
-	entries := plan.Entries()
+	plan := snapshot.Plan()
+	entries := plan.Entries
 	if len(states) != len(entries) {
 		return Decision{}, fmt.Errorf("%w: state count %d does not match plan count %d", ErrInvalidEntryStates, len(states), len(entries))
 	}
@@ -66,7 +67,7 @@ func DecideAdvance(plan execution.Plan, states []EntryState) (Decision, error) {
 	if len(byID) != 0 {
 		return Decision{}, fmt.Errorf("%w: state contains identity outside plan", ErrInvalidEntryStates)
 	}
-	stopIndex, stopCause, finalStatus, err := validateSerialShape(ordered, plan.FailurePolicy())
+	stopIndex, stopCause, finalStatus, err := validateSerialShape(ordered, plan.FailurePolicy)
 	if err != nil {
 		return Decision{}, err
 	}

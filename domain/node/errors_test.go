@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -21,6 +22,27 @@ func TestClassifyErrorPreservesStableKinds(t *testing.T) {
 			}
 			if !errors.Is(classified, test.err) {
 				t.Fatalf("classification did not preserve original error")
+			}
+		})
+	}
+}
+
+func TestExclusiveElementNotFoundRejectsMixedJoinedErrors(t *testing.T) {
+	driverErr := errors.New("browser disconnected")
+	for _, test := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "sentinel", err: ErrElementNotFound, want: true},
+		{name: "wrapped", err: fmt.Errorf("all selectors failed: %w", ErrElementNotFound), want: true},
+		{name: "joined not found", err: errors.Join(ErrElementNotFound, fmt.Errorf("fallback: %w", ErrElementNotFound)), want: true},
+		{name: "mixed joined", err: errors.Join(ErrElementNotFound, driverErr), want: false},
+		{name: "driver", err: driverErr, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isExclusiveElementNotFound(test.err); got != test.want {
+				t.Fatalf("isExclusiveElementNotFound() = %v, want %v", got, test.want)
 			}
 		})
 	}

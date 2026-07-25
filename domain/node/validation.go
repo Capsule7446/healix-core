@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
@@ -25,16 +27,31 @@ type ValidationAssertion struct {
 
 // ValidationObservation 是一个仅附加执行事实。它仅包含框架中立的断言数据；基础设施将其映射到具体的 StepExecution 并保留事件时间线位置。 Final 是故意明确的：即使最后的记录与之前的轮询相同，它也会被保留。
 type ValidationObservation struct {
-	NodeID       string
-	GroupID      string
-	BranchID     string
-	Assertion    ValidationAssertion
-	Actual       string
-	Passed       bool
-	Reason       string
-	Selector     fingerprint.Selector
-	ObservedAtMS int64
-	Final        bool
+	NodeID            string
+	GroupID           string
+	BranchID          string
+	Assertion         ValidationAssertion
+	Actual            string
+	ActualValues      []string
+	Passed            bool
+	Reason            string
+	BranchDisposition string
+	Selector          fingerprint.Selector
+	ObservedAtMS      int64
+	Final             bool
+}
+
+type ValidationMemberIdentity struct {
+	BranchID string
+	NodeID   string
+}
+
+type ValidationGroupTerminalObservation struct {
+	GroupID         string
+	TerminalReason  string
+	WinningBranchID string
+	ExpectedMembers []ValidationMemberIdentity
+	ObservedAtMS    int64
 }
 
 // ValidationStateReader 是元素的可选功能。  现有的仅操作驱动程序保持源代码兼容；具有验证功能的驱动程序提供一种标准 DOM/ARIA 投影，而不会将框架类泄漏到域中。
@@ -111,17 +128,20 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	}
 	var stableSince time.Time
 	var lastActual string
+	var lastActualValues []string
 	observations := newValidationObservationRecorder()
 	pollErr := rt.poller().Run(parent, maxWait, func(pollCtx context.Context) (bool, error) {
-		ok, actual, err := v.evaluate(pollCtx, rt)
+		var actualValues []string
+		ok, actual, err := v.evaluateCollect(pollCtx, rt, &actualValues)
 		lastActual = actual
+		lastActualValues = append(lastActualValues[:0], actualValues...)
 		if err != nil {
-			if recordErr := observations.record(pollCtx, rt, v, false, actual, "system_error", true); recordErr != nil {
+			if recordErr := observations.record(pollCtx, rt, v, false, actual, actualValues, "system_error", false); recordErr != nil {
 				return false, recordErr
 			}
 			return false, err
 		}
-		if err := observations.record(pollCtx, rt, v, ok, actual, validationReason(ok), false); err != nil {
+		if err := observations.record(pollCtx, rt, v, ok, actual, actualValues, validationReason(ok), false); err != nil {
 			return false, err
 		}
 		if ok {
@@ -129,7 +149,7 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 				stableSince = time.Now()
 			}
 			if time.Since(stableSince) >= stability {
-				return true, observations.record(pollCtx, rt, v, true, actual, "passed", true)
+				return true, observations.record(pollCtx, rt, v, true, actual, actualValues, "passed", true)
 			}
 		} else {
 			stableSince = time.Time{}
@@ -141,7 +161,7 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 		if errorKind(pollErr) != ErrorTimeout {
 			reason = "system_error"
 		}
-		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, reason, true); err != nil {
+		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, lastActualValues, reason, true); err != nil {
 			return err
 		}
 		actual := lastActual
@@ -155,6 +175,10 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 
 // 评估恰好执行一轮读取/检查。  ValidationGroupNode 在派生分支结果之前为每个成员调用此方法，保留“同一轮 AND”不变量。
 func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, string, error) {
+	return v.evaluateCollect(ctx, rt, nil)
+}
+
+func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actualValues *[]string) (bool, string, error) {
 	assertion, err := v.resolvedAssertion(rt)
 	if err != nil {
 		return false, "", err
@@ -254,6 +278,9 @@ func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, strin
 		value := firstValue(state.SelectedValues)
 		return compareScalar(assertion, value, false)
 	case "selected_set_equals", "selected_set_contains":
+		if actualValues != nil {
+			*actualValues = append([]string(nil), state.SelectedTexts...)
+		}
 		return compareSet(assertion, state.SelectedTexts)
 	default:
 		return false, "", fmt.Errorf("unsupported validation assertion %q", assertion.Kind)
@@ -287,7 +314,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	if err == nil {
 		return el, false, nil
 	}
-	if !errors.Is(err, ErrElementNotFound) {
+	if !isExclusiveElementNotFound(err) {
 		return nil, false, err
 	}
 	if rt.Healing == nil && rt.Healer == nil {
@@ -309,7 +336,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate {
 		if rt.Facts != nil {
-			if err := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
+			if err := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
 				return nil, false, fmt.Errorf("record heal decision: %w", err)
 			}
 		}
@@ -326,7 +353,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
-			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
 				return nil, false, fmt.Errorf("record validation heal decision: %w", recordErr)
 			}
 		}
@@ -334,7 +361,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 				return nil, false, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
 			}
 		}
@@ -347,7 +374,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
 	if rt.Facts != nil {
-		if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
 		}
 	}
@@ -396,16 +423,25 @@ func compareSet(assertion ValidationAssertion, actual []string) (bool, string, e
 	sort.Strings(expected)
 	sort.Strings(actual)
 	if assertion.Kind == "selected_set_equals" {
-		return strings.Join(expected, "\x1f") == strings.Join(actual, "\x1f"), strings.Join(actual, ", "), nil
-	}
-	all := make(map[string]bool, len(actual))
-	for _, value := range actual {
-		all[value] = true
-	}
-	for _, value := range expected {
-		if !all[value] {
+		if len(expected) != len(actual) {
 			return false, strings.Join(actual, ", "), nil
 		}
+		for index := range expected {
+			if expected[index] != actual[index] {
+				return false, strings.Join(actual, ", "), nil
+			}
+		}
+		return true, strings.Join(actual, ", "), nil
+	}
+	available := make(map[string]int, len(actual))
+	for _, value := range actual {
+		available[value]++
+	}
+	for _, value := range expected {
+		if available[value] == 0 {
+			return false, strings.Join(actual, ", "), nil
+		}
+		available[value]--
 	}
 	return true, strings.Join(actual, ", "), nil
 }
@@ -468,21 +504,30 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	}
 	observations := newValidationObservationRecorder()
 	stableSince := make([]time.Time, len(g.Branches))
-	last := make(map[string]validationObservationState)
+	last := make(map[validationObservationKey]validationObservationState)
 	pollErr := rt.poller().Run(parent, maxWait, func(ctx context.Context) (bool, error) {
 		branchPassed := make([]bool, len(g.Branches))
 		for i, branch := range g.Branches {
 			branchPassed[i] = len(branch.Nodes) > 0
 			for _, member := range branch.Nodes {
-				ok, actual, err := member.evaluate(ctx, rt)
+				canonical := *member
+				canonical.GroupID = g.NodeID
+				canonical.BranchID = branch.ID
+				var actualValues []string
+				ok, actual, err := canonical.evaluateCollect(ctx, rt, &actualValues)
 				if err != nil {
-					if recordErr := observations.record(ctx, rt, member, false, actual, "system_error", true); recordErr != nil {
+					if actual != "" || actualValues != nil {
+						key := validationObservationKey{groupID: g.NodeID, branchID: branch.ID, nodeID: canonical.NodeID}
+						last[key] = validationObservationState{actual: actual, actualValues: append([]string(nil), actualValues...), reason: "system_error"}
+					}
+					if recordErr := observations.record(ctx, rt, &canonical, false, actual, actualValues, "system_error", false); recordErr != nil {
 						return false, recordErr
 					}
 					return false, fmt.Errorf("branch %s: %w", branch.ID, err)
 				}
-				last[member.NodeID] = validationObservationState{passed: ok, actual: actual, reason: validationReason(ok)}
-				if err := observations.record(ctx, rt, member, ok, actual, validationReason(ok), false); err != nil {
+				key := validationObservationKey{groupID: g.NodeID, branchID: branch.ID, nodeID: canonical.NodeID}
+				last[key] = validationObservationState{passed: ok, actual: actual, actualValues: actualValues, reason: validationReason(ok)}
+				if err := observations.record(ctx, rt, &canonical, ok, actual, actualValues, validationReason(ok), false); err != nil {
 					return false, err
 				}
 				if !ok {
@@ -500,17 +545,9 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 				stableSince[i] = now
 			}
 			if now.Sub(stableSince[i]) >= stability {
-				for _, branch := range g.Branches {
-					for _, member := range branch.Nodes {
-						state := last[member.NodeID]
-						reason := state.reason
-						if state.passed {
-							reason = "passed"
-						}
-						if err := observations.record(ctx, rt, member, state.passed, state.actual, reason, true); err != nil {
-							return false, err
-						}
-					}
+				winner := g.Branches[i].ID
+				if err := observations.recordGroupFinal(ctx, rt, g, last, "passed", winner); err != nil {
+					return false, err
 				}
 				return true, nil
 			}
@@ -519,17 +556,9 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	})
 	if pollErr != nil {
 		ctx := context.WithoutCancel(parent)
-		reason := "timeout"
-		if errorKind(pollErr) != ErrorTimeout {
-			reason = "system_error"
-		}
-		for _, branch := range g.Branches {
-			for _, member := range branch.Nodes {
-				state := last[member.NodeID]
-				if err := observations.record(ctx, rt, member, state.passed, state.actual, reason, true); err != nil {
-					return err
-				}
-			}
+		reason := validationTerminalReason(pollErr)
+		if err := observations.recordGroupFinal(ctx, rt, g, last, reason, ""); err != nil {
+			return err
 		}
 		return fmt.Errorf("no validation branch was continuously satisfied within %s: %w", maxWait, pollErr)
 	}
@@ -537,30 +566,42 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 }
 
 type validationObservationState struct {
-	passed bool
-	actual string
-	reason string
+	passed       bool
+	actual       string
+	actualValues []string
+	reason       string
+}
+
+func validationObservationStatesEqual(left, right validationObservationState) bool {
+	return left.passed == right.passed && left.actual == right.actual && left.reason == right.reason && slices.Equal(left.actualValues, right.actualValues)
+}
+
+type validationObservationKey struct {
+	groupID  string
+	branchID string
+	nodeID   string
 }
 
 type validationObservationRecorder struct {
-	last map[string]validationObservationState
+	last map[validationObservationKey]validationObservationState
 }
 
 func newValidationObservationRecorder() *validationObservationRecorder {
-	return &validationObservationRecorder{last: make(map[string]validationObservationState)}
+	return &validationObservationRecorder{last: make(map[validationObservationKey]validationObservationState)}
 }
 
 func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime, validation *ValidationNode,
-	passed bool, actual, reason string, final bool) error {
+	passed bool, actual string, actualValues []string, reason string, final bool) error {
 	if rt.Facts == nil {
 		return nil
 	}
-	state := validationObservationState{passed: passed, actual: actual, reason: reason}
-	previous, seen := r.last[validation.NodeID]
-	if !final && seen && previous == state {
+	state := validationObservationState{passed: passed, actual: actual, actualValues: append([]string(nil), actualValues...), reason: reason}
+	key := validationObservationKey{groupID: validation.GroupID, branchID: validation.BranchID, nodeID: validation.NodeID}
+	previous, seen := r.last[key]
+	if !final && seen && validationObservationStatesEqual(previous, state) {
 		return nil
 	}
-	r.last[validation.NodeID] = state
+	r.last[key] = state
 	spec := rt.effectiveSpec(validation.Target)
 	selector := fingerprint.Selector{}
 	if len(spec.Selectors) > 0 {
@@ -569,22 +610,131 @@ func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime,
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
 	defer cancel()
 	assertion := validation.Assertion
+	assertion.ExpectedValues = append([]string(nil), validation.Assertion.ExpectedValues...)
 	if validationEvidenceIsSensitive(validation.Target, assertion) {
 		actual = "••••••••"
+		actualValues = nil
 		if assertion.Expected != "" {
 			assertion.Expected = "••••••••"
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.StageValidationObservation(cleanupCtx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
-		Assertion: assertion, Actual: actual, Passed: passed, Reason: reason,
+		Assertion: assertion, Actual: actual, ActualValues: append([]string(nil), actualValues...), Passed: passed, Reason: reason,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: final,
 	})
 }
 
+func (r *validationObservationRecorder) recordGroupFinal(ctx context.Context, rt *Runtime, group *ValidationGroupNode, last map[validationObservationKey]validationObservationState, terminalReason, winningBranchID string) error {
+	members := make([]ValidationMemberIdentity, 0)
+	seen := make(map[ValidationMemberIdentity]struct{})
+	for _, branch := range group.Branches {
+		disposition := branchDisposition(group.NodeID, branch, last, terminalReason, winningBranchID)
+		for _, member := range branch.Nodes {
+			identity := ValidationMemberIdentity{BranchID: branch.ID, NodeID: member.NodeID}
+			if _, exists := seen[identity]; exists {
+				continue
+			}
+			seen[identity] = struct{}{}
+			members = append(members, identity)
+			canonical := *member
+			canonical.GroupID = group.NodeID
+			canonical.BranchID = branch.ID
+			key := validationObservationKey{groupID: group.NodeID, branchID: branch.ID, nodeID: member.NodeID}
+			state, observed := last[key]
+			if !observed {
+				state.reason = terminalReason
+			}
+			reason := state.reason
+			if terminalReason != "passed" {
+				reason = terminalReason
+			} else if state.passed {
+				reason = "passed"
+			}
+			if err := r.recordWithDisposition(ctx, rt, &canonical, state.passed, state.actual, state.actualValues, reason, disposition); err != nil {
+				return err
+			}
+		}
+	}
+	if rt.Facts == nil {
+		return nil
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
+	defer cancel()
+	return rt.Facts.StageValidationGroupTerminal(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationGroupTerminalObservation{
+		GroupID: group.NodeID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
+		ExpectedMembers: members, ObservedAtMS: time.Now().UnixMilli(),
+	})
+}
+
+func (r *validationObservationRecorder) recordWithDisposition(ctx context.Context, rt *Runtime, validation *ValidationNode, passed bool, actual string, actualValues []string, reason, disposition string) error {
+	if rt.Facts == nil {
+		return nil
+	}
+	state := validationObservationState{passed: passed, actual: actual, actualValues: append([]string(nil), actualValues...), reason: reason}
+	key := validationObservationKey{groupID: validation.GroupID, branchID: validation.BranchID, nodeID: validation.NodeID}
+	r.last[key] = state
+	spec := rt.effectiveSpec(validation.Target)
+	selector := fingerprint.Selector{}
+	if len(spec.Selectors) > 0 {
+		selector = spec.Selectors[0]
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
+	defer cancel()
+	assertion := validation.Assertion
+	assertion.ExpectedValues = append([]string(nil), validation.Assertion.ExpectedValues...)
+	if validationEvidenceIsSensitive(validation.Target, assertion) {
+		actual = "••••••••"
+		actualValues = nil
+		if assertion.Expected != "" {
+			assertion.Expected = "••••••••"
+		}
+		assertion.ExpectedValues = nil
+	}
+	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
+		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
+		Assertion: assertion, Actual: actual, ActualValues: append([]string(nil), actualValues...), Passed: passed, Reason: reason, BranchDisposition: disposition,
+		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: true,
+	})
+}
+
+func branchDisposition(groupID string, branch ValidationBranch, last map[validationObservationKey]validationObservationState, terminalReason, winningBranchID string) string {
+	if branch.ID == winningBranchID {
+		return "won"
+	}
+	observed := len(branch.Nodes) > 0
+	satisfied := observed
+	for _, member := range branch.Nodes {
+		state, exists := last[validationObservationKey{groupID: groupID, branchID: branch.ID, nodeID: member.NodeID}]
+		observed = observed && exists
+		satisfied = satisfied && exists && state.passed
+	}
+	if terminalReason == "passed" && satisfied {
+		return "satisfied_not_winner"
+	}
+	if observed {
+		return "not_satisfied"
+	}
+	return "not_observed"
+}
+
+func validationTerminalReason(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	var classified *ClassifiedError
+	if errors.As(err, &classified) && classified.Kind == ErrorTimeout {
+		return "timeout"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "canceled"
+	}
+	return "system_error"
+}
+
 func validationEvidenceIsSensitive(target fingerprint.NodeSpec, assertion ValidationAssertion) bool {
-	if !strings.HasPrefix(assertion.Kind, "value_") && assertion.Kind != "attribute_equals" && assertion.Kind != "attribute_contains" {
+	if !strings.HasPrefix(assertion.Kind, "value_") && !strings.HasPrefix(assertion.Kind, "selected_set_") && assertion.Kind != "attribute_equals" && assertion.Kind != "attribute_contains" {
 		return false
 	}
 	attributes := target.Fingerprint.Attributes

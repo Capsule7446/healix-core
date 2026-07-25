@@ -48,6 +48,28 @@ func (e *ClassifiedError) Unwrap() error {
 	return e.Err
 }
 
+func isExclusiveElementNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !isExclusiveElementNotFound(child) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return isExclusiveElementNotFound(wrapped.Unwrap())
+	}
+	return err == ErrElementNotFound
+}
+
 func TransientError(operation string, err error) error {
 	if err == nil {
 		return nil

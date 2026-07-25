@@ -284,7 +284,7 @@ func domainContext(packageName string) (string, bool) {
 		return "execution", true
 	case "sampling", "automation":
 		return "automation", true
-	case "fingerprint", "interpolation":
+	case "fingerprint", "interpolation", "parameter":
 		return "shared", true
 	default:
 		return "", false

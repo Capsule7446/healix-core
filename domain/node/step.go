@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // Node 是 workflow 的 step 树的执行单元——一个封闭的判别联合：
@@ -153,7 +156,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	})
 	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 	if err != nil {
-		if !errors.Is(err, ErrElementNotFound) {
+		if !isExclusiveElementNotFound(err) {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed: %w", s.NodeID, err))
 		}
 		if s.Optional {
@@ -224,7 +227,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome == heal.OutcomeNoCandidate {
 			if rt.Facts != nil {
-				if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+				if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 					return nil, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
 				}
 			}
@@ -236,7 +239,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 		}
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
-			if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
 				return nil, fmt.Errorf("record heal decision: %w", recordErr)
 			}
 		}
@@ -244,7 +247,9 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			_ = rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision)
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+				return nil, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+			}
 		}
 		return nil, fmt.Errorf("no heal candidate reached review_cap")
 	}
@@ -258,7 +263,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	}
 
 	if rt.Facts != nil {
-		if recordErr := rt.Facts.StageHealDecision(ctx, WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, fmt.Errorf("record heal decision: %w", recordErr)
 		}
 	}
@@ -358,6 +363,24 @@ func (s *StepNode) fail(ctx, parentCtx context.Context, rt *Runtime, execution *
 type runtimeVariables struct{ rt *Runtime }
 
 func (v runtimeVariables) Variable(name string) (string, bool) {
+	parameterName := name
+	if strings.HasPrefix(name, "params.") {
+		parameterName = strings.TrimPrefix(name, "params.")
+	}
+	if value, ok := v.rt.parameterScope[parameterName]; ok {
+		switch value.Type() {
+		case parameter.Text:
+			return value.Text(), true
+		case parameter.Number:
+			return value.Number(), true
+		case parameter.Boolean:
+			return strconv.FormatBool(value.Boolean()), true
+		case parameter.SingleSelect:
+			return value.SingleSelect(), true
+		case parameter.MultiSelect:
+			return "", false
+		}
+	}
 	value, ok := v.rt.Scratchpad[name]
 	if !ok {
 		return "", false

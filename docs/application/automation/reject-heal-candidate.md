@@ -3,7 +3,7 @@
 ## 方法、输入与输出
 
 - 方法：`HealReviewService.Reject(context.Context, HealCandidateReviewCommand)`
-- 输出：`error（成功为 nil）`；只有端口提交成功才返回成功结果。
+- 输出：`error`（成功为 `nil`）；只有端口提交成功才返回成功结果。
 - 领域转换：`candidate.Validate`。不加载节点；以候选 Revision CAS 写入拒绝及可信审核元数据。
 
 ## 校验与领域状态转换

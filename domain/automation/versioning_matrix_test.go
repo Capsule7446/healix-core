@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"github.com/Capsule7446/healix-core/domain/parameter"
 	"strings"
 	"testing"
 
@@ -230,11 +231,11 @@ func TestPublishVersionCountsCurrentWhenLoadedHistoryOmitsIt(t *testing.T) {
 func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.T) {
 	aggregate := versionedWorkflowAggregate()
 	definition := WorkflowDefinition{
-		Parameters: []ParameterDefinition{{Name: "region", DisplayName: "区域", Type: ParameterMultiSelect, Options: []string{"east", "west"}}},
+		Parameters: []ParameterDefinition{{Name: "region", DisplayName: "区域", Type: parameter.MultiSelect, Options: []string{"east", "west"}, Default: parameter.PresentValue(parameter.MultiSelectValue([]string{"east"}))}},
 		Steps: []WorkflowStep{
 			{ID: "select", DisplayName: "选择", Kind: StepAction, Action: "select", NodeID: "node", NodeVersionID: "node-v1", Values: []string{"east"}},
 			{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []WorkflowStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}},
-			{ID: "ref", DisplayName: "引用", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]string{"region": "east"}}},
+			{ID: "ref", DisplayName: "引用", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.SingleSelectValue("east"))}}},
 			{ID: "validation", DisplayName: "验证", Kind: StepValidation, NodeID: "node", NodeVersionID: "node-v1", Validation: &ValidationConfig{
 				Assertion: ValidationAssertion{Kind: ValidationSelectedSetEquals, ExpectedValues: []string{"east"}},
 				Wait:      ValidationWait{MaxWaitMS: 2_000, StabilityMS: 200}, SupportedKinds: []ValidationAssertionKind{ValidationSelectedSetEquals},
@@ -260,14 +261,14 @@ func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.
 	definition.Parameters[0].Options[0] = "mutated"
 	definition.Steps[0].Values[0] = "mutated"
 	definition.Steps[1].Children[0].DisplayName = "mutated"
-	definition.Steps[2].Reference.ParameterBindings["region"] = "mutated"
+	definition.Steps[2].Reference.ParameterBindings["region"] = parameter.LiteralBinding(parameter.SingleSelectValue("mutated"))
 	definition.Steps[3].Validation.Assertion.ExpectedValues[0] = "mutated"
 	definition.Steps[3].Validation.SupportedKinds[0] = ValidationExists
 	definition.Steps[4].ValidationGroup.Branches[0].Steps[0].DisplayName = "mutated"
 
 	got := published.Current.Definition
 	if got.Parameters[0].Options[0] != "east" || got.Steps[0].Values[0] != "east" ||
-		got.Steps[1].Children[0].DisplayName != "等待" || got.Steps[2].Reference.ParameterBindings["region"] != "east" ||
+		got.Steps[1].Children[0].DisplayName != "等待" || !literalBindingEqual(got.Steps[2].Reference.ParameterBindings["region"], parameter.SingleSelectValue("east")) ||
 		got.Steps[3].Validation.Assertion.ExpectedValues[0] != "east" || got.Steps[3].Validation.SupportedKinds[0] != ValidationSelectedSetEquals ||
 		got.Steps[4].ValidationGroup.Branches[0].Steps[0].DisplayName != "成员" {
 		t.Fatalf("published definition aliases caller input: %#v", got)
