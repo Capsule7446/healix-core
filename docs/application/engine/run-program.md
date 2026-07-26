@@ -8,7 +8,7 @@
 
 - `ctx context.Context`。
 - `CompiledEntry`：由不可变 `execution.RunSnapshot` 编译得到，包含 `node.Program`、执行身份与元数据；入口不接受裸 `node.Program`。
-- `Config`：RunID、驱动器必填；Facts 非空时 ClaimToken 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是从不可变 RunSnapshot 的 invocation scopes 与 Environment 数据编译到 `CompiledEntry.Program`。
+- `Config`：`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自已领取执行权的独立权威；前三项与 entry 的私有封印一致，ClaimToken 必须非空。Driver 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是在 `CompilePlan` 时从不可变 RunSnapshot 编入私有 Program。
 
 配置约束：
 
@@ -18,7 +18,7 @@
 
 ## 输出
 
-`RunCompiledEntry(ctx, entry, cfg)` 提供仅错误入口并委托 `RunCompiledEntryWithResult(ctx, entry, cfg)`。后者返回：
+唯一公开运行入口 `RunProgram(ctx, entry, cfg)` 返回：
 
 ```go
 type RunResult struct {
@@ -35,12 +35,12 @@ type RunResult struct {
 ```mermaid
 sequenceDiagram
     participant Caller as 调用方
-    participant C as RunCoordinator
+    participant C as RunProgram
     participant Recorder as 录制器
     participant Root as 执行程序根节点
     participant Chain as 完成处理链
-    Caller->>C: RunCompiledEntryWithResult(ctx, entry, cfg)
-    C->>C: 校验配置
+    Caller->>C: RunProgram(ctx, entry, cfg)
+    C->>C: 校验 entry 私有封印与权威执行身份
     opt recorder
       C->>Recorder: Start(runID)
       Recorder-->>C: RecordingTimeline
@@ -61,7 +61,8 @@ sequenceDiagram
 
 ## 不变量
 
-- 每次调用根据 `CompiledEntry.Program` 创建新的运行时和 Scratchpad；运行变量来自编译后的不可变调用作用域与 Environment 数据。
+- 身份校验发生在创建 Runtime 或访问 Driver、Recorder、Facts 等端口之前；错配返回 `ErrExecutionIdentityMismatch` 与 `ExecutionNotStarted`。
+- 每次调用根据 `CompiledEntry` 私有 Program 创建新的运行时和 Scratchpad；运行变量来自编译后的不可变调用作用域与 Environment 数据。
 - 录制器 Start 失败时不执行 root；成功后始终尝试 分离的 Stop。
 - 录制器 Start 建立本次运行唯一的相对时间轴零点。
 - StepTimeline STARTED 写入失败时叶子行为不执行。
@@ -73,7 +74,7 @@ sequenceDiagram
 
 ## 当前契约边界
 
-- `RunCompiledEntryWithResult` 只编排本次 `CompiledEntry` 中程序的运行及其已注入端口。
+- `RunProgram` 只编排本次 `CompiledEntry` 中私有程序的运行及其已注入端口。
 - 当前不提供 活动取消注册表。
 - 如需接收步骤时间线，可接入 `StepTimelineSink`。
 - 如需在叶子完成后进行只读处理，可接入 `NodeCompletionChain` 及 `ReadOnlyBrowser`。

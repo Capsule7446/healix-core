@@ -20,7 +20,7 @@ func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
 	if err != nil {
 		return CompiledRun{}, err
 	}
-	return CompileRunSnapshot(snapshot)
+	return CompilePlan(snapshot)
 }
 
 func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map[string]string) (execution.RunSnapshot, error) {

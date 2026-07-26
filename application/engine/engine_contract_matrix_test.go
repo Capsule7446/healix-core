@@ -24,15 +24,15 @@ func (n *runtimeIsolationNode) Run(_ context.Context, runtime *node.Runtime) err
 	return nil
 }
 
-func TestRunCompiledEntryCreatesAnExecutionLocalRuntime(t *testing.T) {
+func TestRunProgramCreatesAnExecutionLocalRuntime(t *testing.T) {
 	capture := &runtimeIsolationNode{}
 	program := node.Program{Root: capture}
 	config := Config{RunID: "run", Driver: &engineTestDriver{}}
 
-	if err := RunCompiledEntry(context.Background(), compiledEntry(program), config); err != nil {
+	if _, err := runProgramForTest(context.Background(), compiledEntry("run", program), config); err != nil {
 		t.Fatal(err)
 	}
-	if err := RunCompiledEntry(context.Background(), compiledEntry(program), config); err != nil {
+	if _, err := runProgramForTest(context.Background(), compiledEntry("run", program), config); err != nil {
 		t.Fatal(err)
 	}
 	if len(capture.runtimes) != 2 || capture.runtimes[0] == capture.runtimes[1] {
@@ -50,10 +50,10 @@ func TestRunCompiledEntryCreatesAnExecutionLocalRuntime(t *testing.T) {
 	}
 }
 
-func TestRunCompiledEntryReturnsRecorderStopFailureAfterSuccessfulRoot(t *testing.T) {
+func TestRunProgramReturnsRecorderStopFailureAfterSuccessfulRoot(t *testing.T) {
 	stopErr := errors.New("stop failed")
 	recorder := &engineTestRecorder{stopErr: stopErr}
-	err := RunCompiledEntry(context.Background(), compiledEntry(node.Program{Root: &runtimeCaptureNode{}}), Config{
+	_, err := runProgramForTest(context.Background(), compiledEntry("run", node.Program{Root: &runtimeCaptureNode{}}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, stopErr) || !recorder.stopped || !recorder.retained {

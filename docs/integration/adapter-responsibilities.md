@@ -12,7 +12,7 @@
 - `EntryStateReader`：返回与 `RunSnapshot` 中 `execution.Plan` 成员完全一致的状态集合。
 - `DecisionWriter`：在同一事务校验令牌并应用状态转换、下一项和最终状态。
 - `RunCommandStore`：宿主必须在单个原子事务中兑现取消与中止，持久化权威状态、队列成员关系和栅栏失效；Core 的 `CancelRunService` 与 `AbortRunService` 负责编排命令、校验提交结果，并在需要时调用宿主的 `RunCancellationSignaler`。
-- `QueueOrderWriter`：宿主负责原子校验队列修订号并持久化完整顺序。
+- `QueueCommandStore`：宿主负责原子校验队列修订号并持久化完整顺序。
 
 ## 执行适配器
 

@@ -56,10 +56,10 @@ stateDiagram-v2
 错误被分类为 not_found、not_visible、not_interactable、timeout、navigation、assertion、context_closed、transient_driver 或 unknown。关键事实写入错误会传播；最佳努力 operation observation 使用独立超时且不改变业务结果。轮询区分父 context 取消与自身 deadline。
 
 ## 并发、安全与资源
-运行时包含可变映射、节点出现栈和选择器覆盖层，未声明可由多个 goroutine 并发共享。终态/观察写使用 5 秒独立超时；等待/验证尊重上下文。导航 URL 在执行前校验，变量展开错误显式返回；敏感验证证据由目标/断言判断后避免记录值。重试次数、等待超时、轮询间隔、步骤间隔限制资源；执行程序规模由 `CompileRunSnapshot(snapshot execution.RunSnapshot)` 从冻结快照编译顶层执行项时约束。
+运行时包含可变映射、节点出现栈和选择器覆盖层，未声明可由多个 goroutine 并发共享。终态/观察写使用 5 秒独立超时；等待/验证尊重上下文。导航 URL 在执行前校验，变量展开错误显式返回；敏感验证证据由目标/断言判断后避免记录值。重试次数、等待超时、轮询间隔、步骤间隔限制资源；执行程序规模由 `CompilePlan(snapshot execution.RunSnapshot)` 从冻结快照编译顶层执行项时约束。
 
 ## 交互
-`CompileRunSnapshot(snapshot execution.RunSnapshot)` 从不可变执行实例快照编译所有顶层执行项，当前引擎不以已封存 `Plan` 作为输入。`Driver`、`HealingPort`、`ExecutionSink`、`Recorder`、`StepTimelineSink` 与 `ReadOnlyBrowser` 提供运行时所需能力；插值展开运行时变量。如需接入具体执行、事实记录、相对时间线或叶子节点完成后读取能力，可实现相应端口。
+`CompilePlan(snapshot execution.RunSnapshot)` 从不可变执行实例快照编译所有顶层执行项，当前引擎不以已封存 `Plan` 作为输入。Program 保持在带身份封印的 `CompiledEntry` 内部，只能交给 `RunProgram`。`Driver`、`HealingPort`、`ExecutionSink`、`Recorder`、`StepTimelineSink` 与 `ReadOnlyBrowser` 提供运行时所需能力；插值展开运行时变量。如需接入具体执行、事实记录、相对时间线或叶子节点完成后读取能力，可实现相应端口。
 
 ## 已实现与契约边界
 已实现：动作与组合节点、等待/轮询、参数作用域、阶段/栅栏、重试分类、节拍、选择器覆盖层、自愈调用、验证全集与证据暂存、录制相对时间轴、叶子步骤边界和阻塞式完成处理链。运行时不支持跨 goroutine 共享；其余能力以公开端口契约为边界。

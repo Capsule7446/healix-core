@@ -18,7 +18,7 @@ const (
 	compilerNodeV2 = "00000000-0000-7000-8000-000000000103"
 )
 
-func TestCompileRunSnapshotIndexesInvocationsOnceAcrossEntries(t *testing.T) {
+func TestCompilePlanIndexesInvocationsOnceAcrossEntries(t *testing.T) {
 	allocationsForEntries := func(entryCount int) float64 {
 		draft := minimalCompilerPlan()
 		draft.Workflows[0].Parameters = []execution.Parameter{{Name: "payload", DisplayName: "Payload", Type: parameter.Text, Required: true}}
@@ -39,19 +39,19 @@ func TestCompileRunSnapshotIndexesInvocationsOnceAcrossEntries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seal %d-entry snapshot: %v", entryCount, err)
 		}
-		compiled, err := CompileRunSnapshot(snapshot)
+		compiled, err := CompilePlan(snapshot)
 		if err != nil {
 			t.Fatalf("compile %d-entry snapshot: %v", entryCount, err)
 		}
-		if len(compiled.Entries) != entryCount {
-			t.Fatalf("compiled entries = %d, want %d", len(compiled.Entries), entryCount)
+		if len(compiled.Entries()) != entryCount {
+			t.Fatalf("compiled entries = %d, want %d", len(compiled.Entries()), entryCount)
 		}
 		return testing.AllocsPerRun(20, func() {
-			measured, compileErr := CompileRunSnapshot(snapshot)
+			measured, compileErr := CompilePlan(snapshot)
 			if compileErr != nil {
 				panic(compileErr)
 			}
-			if len(measured.Entries) != entryCount {
+			if len(measured.Entries()) != entryCount {
 				panic("compiled entry count mismatch")
 			}
 		})
@@ -73,7 +73,7 @@ func TestCompileRunSnapshotIndexesInvocationsOnceAcrossEntries(t *testing.T) {
 	}
 }
 
-func TestCompileRunSnapshotInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
+func TestCompilePlanInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Entries[0].Parameters.Values = nil
 	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{"Region": "east"})
@@ -81,19 +81,19 @@ func TestCompileRunSnapshotInjectsEnvironmentIntoParameterlessRoot(t *testing.T)
 		t.Fatal(err)
 	}
 
-	compiled, err := CompileRunSnapshot(snapshot)
+	compiled, err := CompilePlan(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := compiled.Entries[0].Program.Root.(*node.WorkflowNode)
+	root := compiled.Entries()[0].program.Root.(*node.WorkflowNode)
 	value, exists := root.Parameters["env.Region"]
 	if !exists || !value.Equal(parameter.TextValue("east")) {
 		t.Fatalf("env.Region = %#v, exists = %t", value, exists)
 	}
 }
 
-func TestCompileRunSnapshotRejectsUnsealedZeroValue(t *testing.T) {
-	_, err := CompileRunSnapshot(execution.RunSnapshot{})
+func TestCompilePlanRejectsUnsealedZeroValue(t *testing.T) {
+	_, err := CompilePlan(execution.RunSnapshot{})
 	if err == nil {
 		t.Fatal("unsealed zero-value run snapshot was accepted")
 	}
@@ -158,9 +158,9 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, ok := compiled.Program.Root.(*node.WorkflowNode)
+	root, ok := compiled.program.Root.(*node.WorkflowNode)
 	if !ok || root.ID() != "workflow|15:execution-entry" || len(root.Children) != 1 {
-		t.Fatalf("root = %#v", compiled.Program.Root)
+		t.Fatalf("root = %#v", compiled.program.Root)
 	}
 	call, ok := root.Children[0].(*node.WorkflowCallNode)
 	if !ok || call.Target == nil || call.Target.ID() != "workflow|15:execution-entry4:call8:child-v1" || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("east")) {
@@ -190,7 +190,7 @@ func TestCompilePlanCreatesDistinctRuntimeIdentitiesForSharedChildInvocations(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	children := compiled.Program.Root.(*node.WorkflowNode).Children
+	children := compiled.program.Root.(*node.WorkflowNode).Children
 	first := children[0].(*node.WorkflowCallNode).Target
 	second := children[1].(*node.WorkflowCallNode).Target
 	if first.ID() == second.ID() || first.Children[0].ID() == second.Children[0].ID() {
@@ -212,7 +212,7 @@ func TestCompilePlanKeepsTwoVersionsOfSameNodeExact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	children := compiled.Program.Root.(*node.WorkflowNode).Children
+	children := compiled.program.Root.(*node.WorkflowNode).Children
 	oldStep, newStep := children[0].(*node.StepNode), children[1].(*node.StepNode)
 	if oldStep.Target.ID != compilerNodeV1 || oldStep.Target.Selectors[0].Value != "checkout-old" {
 		t.Fatalf("old target = %#v", oldStep.Target)
@@ -243,7 +243,7 @@ func TestCompilePlanBuildsValidationGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	group := compiled.Program.Root.(*node.WorkflowNode).Children[0].(*node.ValidationGroupNode)
+	group := compiled.program.Root.(*node.WorkflowNode).Children[0].(*node.ValidationGroupNode)
 	validation := group.Branches[0].Nodes[0]
 	if validation.GroupID != runtimeWorkflowStepID("execution-entry", "group") || validation.BranchID != "success" || validation.Assertion.Expected != "成功" || validation.MaxWait != 2*time.Second {
 		t.Fatalf("validation member = %#v", validation)
@@ -309,11 +309,12 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(compiled.Entries) != 2 {
-		t.Fatalf("entries = %d", len(compiled.Entries))
+	entries := compiled.Entries()
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d", len(entries))
 	}
-	if compiled.Entries[0].ExecutionID != "execution-a" || compiled.Entries[1].ExecutionID != "execution-b" {
-		t.Fatalf("entry declaration order not preserved: %q, %q", compiled.Entries[0].ExecutionID, compiled.Entries[1].ExecutionID)
+	if entries[0].ExecutionID != "execution-a" || entries[1].ExecutionID != "execution-b" {
+		t.Fatalf("entry declaration order not preserved: %q, %q", entries[0].ExecutionID, entries[1].ExecutionID)
 	}
 	a, ok := compiled.Entry("execution-a")
 	if !ok {
@@ -332,10 +333,10 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	if !ok || again.ExecutionID != "execution-a" {
 		t.Fatal("lookup exposed mutable index state")
 	}
-	if a.Program.Root.ID() == b.Program.Root.ID() {
-		t.Fatalf("runtime roots collide: %q", a.Program.Root.ID())
+	if a.program.Root.ID() == b.program.Root.ID() {
+		t.Fatalf("runtime roots collide: %q", a.program.Root.ID())
 	}
-	if &a.Metadata == &b.Metadata || a.Program.Root.ID() != "workflow|11:execution-a" {
+	if &a.Metadata == &b.Metadata || a.program.Root.ID() != "workflow|11:execution-a" {
 		t.Fatalf("entries not occurrence-specific")
 	}
 }
