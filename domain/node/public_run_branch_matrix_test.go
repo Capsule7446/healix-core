@@ -43,6 +43,7 @@ func (observe operationObserverFunc) RecordOperation(ctx context.Context, observ
 func TestWaitNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 	persistenceErr := errors.New("execution facts unavailable")
 	waitErr := errors.New("network idle failed")
+	misconfiguredTimelineDriver := &matrixDriver{}
 	tests := []struct {
 		name       string
 		wait       *WaitNode
@@ -59,9 +60,9 @@ func TestWaitNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 			wantCauses: []error{persistenceErr},
 		},
 		{
-			name:     "leaf lifecycle cannot start without recording timeline",
-			wait:     &WaitNode{NodeID: "wait", Kind: WaitSleep},
-			runtime:  &Runtime{StepTimeline: &timelineSinkStub{}},
+			name:     "inconsistent timeline configuration rejects before wait",
+			wait:     &WaitNode{NodeID: "wait", Kind: WaitNetworkIdle},
+			runtime:  &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}},
 			wantText: "recording timeline is required",
 		},
 		{
@@ -108,6 +109,9 @@ func TestWaitNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 				t.Fatalf("Run() error = %v, want text %q", err, test.wantText)
 			}
 		})
+	}
+	if misconfiguredTimelineDriver.networkIdleCalls != 0 {
+		t.Fatalf("wait executed %d times before timeline configuration rejection", misconfiguredTimelineDriver.networkIdleCalls)
 	}
 }
 
@@ -264,8 +268,9 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 	pressObserverCalls := 0
 	actionObserverCalls := 0
 	timeoutDeadlineObserved := false
+	misconfiguredTimelineDriver := &matrixDriver{element: &matrixElement{exists: true}}
 	missingTimelineRuntime := func() *Runtime {
-		return &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, StepTimeline: &timelineSinkStub{}}
+		return &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}}
 	}
 	tests := []struct {
 		name     string
@@ -299,7 +304,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			want: persistenceErr,
 		},
 		{
-			name:     "leaf lifecycle requires timeline",
+			name:     "inconsistent timeline configuration rejects before action",
 			step:     &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
 			runtime:  missingTimelineRuntime(),
 			wantText: "recording timeline is required",
@@ -405,6 +410,9 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			}
 		})
 	}
+	if misconfiguredTimelineDriver.locateCalls != 0 {
+		t.Fatalf("action located target %d times before timeline configuration rejection", misconfiguredTimelineDriver.locateCalls)
+	}
 	if !timeoutDeadlineObserved {
 		t.Fatal("positive step timeout was not propagated to the driver")
 	}
@@ -436,6 +444,7 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 	persistenceErr := errors.New("execution facts unavailable")
 	observerErr := errors.New("operation observer unavailable")
 	observerCalls := 0
+	misconfiguredTimelineDriver := &matrixDriver{element: &matrixElement{exists: true}}
 	tests := []struct {
 		name     string
 		runtime  *Runtime
@@ -450,8 +459,8 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 			want: persistenceErr,
 		},
 		{
-			name:     "leaf lifecycle requires timeline",
-			runtime:  &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, StepTimeline: &timelineSinkStub{}},
+			name:     "inconsistent timeline configuration rejects before validation",
+			runtime:  &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}},
 			wantText: "recording timeline is required",
 		},
 		{
@@ -497,6 +506,9 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 			}
 		})
 	}
+	if misconfiguredTimelineDriver.locateCalls != 0 {
+		t.Fatalf("validation located target %d times before timeline configuration rejection", misconfiguredTimelineDriver.locateCalls)
+	}
 	if observerCalls != 1 {
 		t.Fatalf("best-effort observer calls = %d, want 1", observerCalls)
 	}
@@ -504,6 +516,7 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 
 func TestValidationGroupNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 	persistenceErr := errors.New("execution facts unavailable")
+	misconfiguredTimelineDriver := &matrixDriver{element: &matrixElement{exists: true}}
 	tests := []struct {
 		name     string
 		runtime  *Runtime
@@ -516,8 +529,8 @@ func TestValidationGroupNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T)
 			}},
 		},
 		{
-			name:     "leaf lifecycle requires timeline",
-			runtime:  &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, StepTimeline: &timelineSinkStub{}},
+			name:     "inconsistent timeline configuration rejects before validation group",
+			runtime:  &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}},
 			wantText: "recording timeline is required",
 		},
 		{
@@ -548,6 +561,9 @@ func TestValidationGroupNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T)
 				t.Fatalf("Run() error = %v, want persistence failure", err)
 			}
 		})
+	}
+	if misconfiguredTimelineDriver.locateCalls != 0 {
+		t.Fatalf("validation group located target %d times before timeline configuration rejection", misconfiguredTimelineDriver.locateCalls)
 	}
 }
 
