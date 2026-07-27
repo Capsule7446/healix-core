@@ -257,16 +257,17 @@ if !ok {
     return fmt.Errorf("compiled entry %q not found", executionID)
 }
 
-result, err := engine.RunProgram(ctx, entry, engine.Config{
-    RunID:          claimedRunID,
-    SnapshotDigest: claimedSnapshotDigest,
-    ExecutionID:    claimedExecutionID,
-    ClaimToken:     claimToken,
-    Driver:       driver,   // node.Driver，由宿主实现
-    Recorder:     recorder, // node.Recorder，由宿主实现
-    Facts:        facts,    // node.ExecutionSink，由宿主实现
-    Healer:       heal.NewDefaultHealer(), // nil 表示关闭自愈
-    StepInterval: 100 * time.Millisecond,
+runResult, err := engine.RunProgram(ctx, entry, engine.Config{
+    RunID:            claimedRunID,
+    SnapshotDigest:   claimedSnapshotDigest,
+    ExecutionID:      claimedExecutionID,
+    ClaimToken:       claimToken,
+    AuthorityVerifier: authorityVerifier, // engine.ExecutionAuthorityVerifier，由宿主权威适配器实现
+    Driver:           driver,             // node.Driver，由宿主实现
+    Recorder:         recorder,           // node.Recorder，由宿主实现
+    Facts:            facts,              // node.ExecutionSink，由宿主实现
+    Healer:           heal.NewDefaultHealer(), // nil 表示关闭自愈
+    StepInterval:     100 * time.Millisecond,
 })
 ```
 
