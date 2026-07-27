@@ -678,6 +678,45 @@ func TestCreateRunRejectsInvalidNonzeroFailurePolicy(t *testing.T) {
 	}
 }
 
+func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
+	command := validCreateRunCommand()
+	resolved := validResolvedCreateRun(t, command)
+	resolved.Environment.Variables = nil
+	currentSnapshot, err := BuildRunSnapshot(command, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := currentSnapshot.Input()
+	input.SchemaVersion = execution.RunSnapshotSchemaV1
+	input.Environment.Variables = nil
+	input.Environment.Properties = map[string]string{"Region": "east"}
+	snapshot, err := execution.SealRunSnapshot(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := execution.NewRun(execution.Run{ID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entryIDs := make([]string, len(snapshot.Plan().Entries))
+	for index, entry := range snapshot.Plan().Entries {
+		entryIDs[index] = entry.ExecutionID
+	}
+	digest, err := CreateRunRequestDigest(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &createRunFake{stored: &StoredCreateRunCommand{CommandID: command.CommandID, RequestDigest: digest, Result: StoredCreateRunResult{Run: run, Snapshot: snapshot, SnapshotDigest: snapshot.Digest(), EntryIDs: entryIDs}}}
+
+	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.WasApplied || result.Snapshot.SchemaVersion() != execution.RunSnapshotSchemaV1 || fake.resolveCalls != 0 || fake.insertCalls != 0 {
+		t.Fatalf("replayed result=%#v resolveCalls=%d insertCalls=%d", result, fake.resolveCalls, fake.insertCalls)
+	}
+}
+
 func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T) {
 	command := validCreateRunCommand()
 	winnerResolved := validResolvedCreateRun(t, command)
