@@ -10,6 +10,7 @@ import (
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 type environmentRepositoryProbe struct {
@@ -45,7 +46,7 @@ func environmentUseCaseFixture(t testing.TB) domain.Environment {
 	t.Helper()
 	value, err := domain.NewEnvironment(domain.Environment{
 		ID: "environment", DisplayName: "Environment", BaseURL: "https://example.test",
-		Properties: domain.Properties{"region": "us"}, CreatedAt: 1, UpdatedAt: 1,
+		Variables: domain.EnvironmentVariables{"region": parameter.TextValue("us")}, CreatedAt: 1, UpdatedAt: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -73,10 +74,10 @@ func TestEnvironmentTransitionUseCasesCoverRulesDependenciesAndState(t *testing.
 		{
 			name: "update", current: environmentUseCaseFixture,
 			invoke: func(service EnvironmentService, revision domain.Revision) (domain.Environment, error) {
-				return service.Update(context.Background(), "environment", "Updated", "https://updated.test", domain.Properties{"region": "eu"}, revision, 3)
+				return service.Update(context.Background(), "environment", "Updated", "https://updated.test", domain.EnvironmentVariables{"region": parameter.TextValue("eu")}, revision, 3)
 			},
 			assert: func(t *testing.T, result domain.Environment) {
-				if result.DisplayName != "Updated" || result.BaseURL != "https://updated.test" || result.Properties["region"] != "eu" {
+				if result.DisplayName != "Updated" || result.BaseURL != "https://updated.test" || result.Variables["region"].Text() != "eu" {
 					t.Fatalf("updated environment = %#v", result)
 				}
 			},
@@ -148,7 +149,7 @@ func TestEnvironmentTransitionUseCasesRejectDomainNoOpsBeforePersist(t *testing.
 		want    string
 	}{
 		{name: "update deleted", current: deleted, want: domain.ErrDeletedAggregate.Error(), invoke: func(service EnvironmentService, revision domain.Revision) error {
-			_, err := service.Update(context.Background(), "environment", "Updated", "https://updated.test", domain.Properties{}, revision, 3)
+			_, err := service.Update(context.Background(), "environment", "Updated", "https://updated.test", domain.EnvironmentVariables{}, revision, 3)
 			return err
 		}},
 		{name: "delete twice", current: deleted, want: "lifecycle transition is a no-op", invoke: func(service EnvironmentService, revision domain.Revision) error {
