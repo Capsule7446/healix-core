@@ -248,6 +248,55 @@ func TestEntryExecutorRetainsRunnerAndClosePanics(t *testing.T) {
 	}
 }
 
+func TestEntryExecutorPropagatesClosePanicAfterSuccessfulRunner(t *testing.T) {
+	executor := mustEntryExecutor(t, panicCloseFactory{}, EntryRunnerFunc(func(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry, BrowserSession) error {
+		return nil
+	}))
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+	}()
+	if recovered != "close panic" {
+		t.Fatalf("panic = %#v", recovered)
+	}
+}
+
+type invalidSession struct{ events *[]string }
+
+func (session invalidSession) Valid() bool { return false }
+func (session invalidSession) Close(context.Context) error {
+	*session.events = append(*session.events, "close")
+	return nil
+}
+
+type invalidSessionFactory struct{ events *[]string }
+
+func (factory invalidSessionFactory) Create(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry) (BrowserSession, error) {
+	*factory.events = append(*factory.events, "create")
+	return invalidSession{events: factory.events}, nil
+}
+
+func TestEntryExecutorRejectsInvalidSessionAndClosesBeforeStopping(t *testing.T) {
+	events := []string{}
+	runnerCalled := false
+	runner := EntryRunnerFunc(func(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry, BrowserSession) error {
+		runnerCalled = true
+		return nil
+	})
+	err := mustEntryExecutor(t, invalidSessionFactory{events: &events}, runner).Execute(
+		context.Background(),
+		domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
+		[]domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "Host returned invalid session") || runnerCalled {
+		t.Fatalf("error/runner = %v/%v", err, runnerCalled)
+	}
+	if !reflect.DeepEqual(events, []string{"create", "close"}) {
+		t.Fatalf("events = %v", events)
+	}
+}
+
 type partialSessionFactory struct {
 	events    *[]string
 	createErr error
@@ -297,6 +346,13 @@ func TestNewEntryExecutorRejectsMissingDependencies(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := NewEntryExecutor(test.factory, test.runner, time.Second); err == nil {
 				t.Fatalf("missing %s accepted", test.name)
+			}
+		})
+	}
+	for _, timeout := range []time.Duration{0, -time.Nanosecond} {
+		t.Run("nonpositive timeout "+timeout.String(), func(t *testing.T) {
+			if _, err := NewEntryExecutor(factory, runner, timeout); err == nil || !strings.Contains(err.Error(), "close timeout must be positive") {
+				t.Fatalf("NewEntryExecutor() error = %v", err)
 			}
 		})
 	}

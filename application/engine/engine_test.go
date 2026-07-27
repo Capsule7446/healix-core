@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
@@ -20,6 +21,24 @@ type runtimeCaptureNode struct {
 	interval time.Duration
 	runs     int
 	err      error
+}
+
+type noopExecutionSink struct{}
+
+func (noopExecutionSink) RecordProgress(context.Context, domainexecution.WorkerFence, node.Event) error {
+	return nil
+}
+func (noopExecutionSink) StageHealDecision(context.Context, domainexecution.WorkerFence, string, string, fingerprint.Selector, heal.Decision) error {
+	return nil
+}
+func (noopExecutionSink) StageValidationObservation(context.Context, domainexecution.WorkerFence, node.ValidationObservation) error {
+	return nil
+}
+func (noopExecutionSink) StageValidationGroupTerminal(context.Context, domainexecution.WorkerFence, node.ValidationGroupTerminalObservation) error {
+	return nil
+}
+func (noopExecutionSink) CommitTerminal(context.Context, domainexecution.WorkerFence, node.TerminalCommit) error {
+	return nil
 }
 
 func (*runtimeCaptureNode) ID() string { return "capture-runtime" }
@@ -72,12 +91,16 @@ type engineTestRecorder struct {
 	startErr     error
 	stopErr      error
 	stopCtxErr   error
+	nilTimeline  bool
 }
 
 func (r *engineTestRecorder) Start(_ context.Context, runID string) (node.RecordingTimeline, error) {
 	r.startedRunID = runID
 	if r.startErr != nil {
 		return nil, r.startErr
+	}
+	if r.nilTimeline {
+		return nil, nil
 	}
 	return &engineTestTimeline{}, nil
 }
@@ -112,6 +135,7 @@ func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 		config  Config
 	}{
 		{"missing run id", node.Program{Root: root}, Config{Driver: &engineTestDriver{}}},
+		{"missing claim token with facts", node.Program{Root: root}, Config{RunID: "run", Driver: &engineTestDriver{}, Facts: noopExecutionSink{}}},
 		{"missing driver", node.Program{Root: root}, Config{RunID: "run"}},
 		{"missing root", node.Program{}, Config{RunID: "run", Driver: &engineTestDriver{}}},
 	}

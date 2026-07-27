@@ -3,6 +3,7 @@ package scheduling
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
@@ -10,10 +11,11 @@ import (
 )
 
 type fakeClaimSource struct {
-	claim    Claim
-	found    bool
-	err      error
-	released *int
+	claim      Claim
+	found      bool
+	err        error
+	releaseErr error
+	released   *int
 }
 
 func (f fakeClaimSource) ClaimNext(context.Context, string, int64) (Claim, bool, error) {
@@ -24,7 +26,7 @@ func (f fakeClaimSource) Release(context.Context, Claim) error {
 	if f.released != nil {
 		*f.released++
 	}
-	return nil
+	return f.releaseErr
 }
 
 type fakeStateReader struct {
@@ -128,6 +130,54 @@ func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
+	plan := sealedCoordinatorPlan(t)
+	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}
+	decisionFailureState := []EntryState{{ExecutionID: "foreign", Status: execution.ExecutionPending}}
+	releaseFailure := errors.New("release failed")
+
+	t.Run("decision failure still releases", func(t *testing.T) {
+		released := 0
+		coordinator := NewCoordinator(
+			fakeClaimSource{claim: claim, found: true, released: &released},
+			fakeStateReader{states: decisionFailureState},
+			&recordingDecisionWriter{},
+		)
+		claimed, err := coordinator.ProcessNext(context.Background(), "worker", 10)
+		if !claimed || err == nil || released != 1 {
+			t.Fatalf("claimed/error/released = %v/%v/%d", claimed, err, released)
+		}
+		if !strings.Contains(err.Error(), "decide run advance") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("release failure is returned after success", func(t *testing.T) {
+		released := 0
+		coordinator := NewCoordinator(
+			fakeClaimSource{claim: claim, found: true, releaseErr: releaseFailure, released: &released},
+			fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionRunning}}},
+			&recordingDecisionWriter{},
+		)
+		claimed, err := coordinator.ProcessNext(context.Background(), "worker", 10)
+		if !claimed || !errors.Is(err, releaseFailure) || released != 1 {
+			t.Fatalf("claimed/error/released = %v/%v/%d", claimed, err, released)
+		}
+	})
+
+	t.Run("decision and release failures are joined", func(t *testing.T) {
+		coordinator := NewCoordinator(
+			fakeClaimSource{claim: claim, found: true, releaseErr: releaseFailure},
+			fakeStateReader{states: decisionFailureState},
+			&recordingDecisionWriter{},
+		)
+		_, err := coordinator.ProcessNext(context.Background(), "worker", 10)
+		if !errors.Is(err, releaseFailure) || !strings.Contains(err.Error(), "decide run advance") {
+			t.Fatalf("joined error = %v", err)
+		}
+	})
 }
 
 func sealedCoordinatorPlan(t *testing.T) execution.RunSnapshot {
