@@ -136,17 +136,23 @@ func TestUpdateDraftStepCoversEveryNestedContainerAndRebuildsReferences(t *testi
 				t.Fatal("updated workflow aliases replacement input")
 			}
 
+			replacementNodeFound := false
 			for _, node := range updated.Nodes {
 				contains := false
 				for _, stepID := range node.StepIDs {
 					contains = contains || stepID == test.stepID
 				}
-				if node.ID == "unused" && !contains {
-					t.Fatalf("replacement node references = %v, want %q", node.StepIDs, test.stepID)
-				}
-				if node.ID != "unused" && contains {
+				if node.ID == "unused" {
+					replacementNodeFound = true
+					if !contains {
+						t.Fatalf("replacement node references = %v, want %q", node.StepIDs, test.stepID)
+					}
+				} else if contains {
 					t.Fatalf("stale node %q still references %q", node.ID, test.stepID)
 				}
+			}
+			if !replacementNodeFound {
+				t.Fatal("replacement node was removed")
 			}
 		})
 	}
