@@ -82,7 +82,7 @@ func TestCompilePlanBuildsWaitKinds(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wait := compiled.Program.Root.(*node.WorkflowNode).Children[0].(*node.WaitNode)
+			wait := compiled.program.Root.(*node.WorkflowNode).Children[0].(*node.WaitNode)
 			if wait.Kind != test.want {
 				t.Fatalf("wait kind = %q, want %q", wait.Kind, test.want)
 			}
@@ -112,7 +112,7 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	children := compiled.Program.Root.(*node.WorkflowNode).Children
+	children := compiled.program.Root.(*node.WorkflowNode).Children
 	selectStep, validation := children[0].(*node.StepNode), children[1].(*node.ValidationNode)
 	repeat, call := children[2].(*node.RepeatNode), children[3].(*node.WorkflowCallNode)
 	regions := literalMultiSelect(call.Bindings["regions"])
@@ -122,7 +122,7 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	plan.Workflows[0].Steps[0].Values[0] = "mutated"
 	plan.Workflows[0].Steps[3].Reference.ParameterBindings["region"] = parameter.LiteralBinding(parameter.TextValue("mutated"))
 	plan.Nodes[0].Selectors[0].Value = "mutated"
-	if selectStep.Action.Values[0] != "east" || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("north")) || compiled.Program.Specs[compilerNodeV1].Selectors[0].Value != "region" {
+	if selectStep.Action.Values[0] != "east" || !literalBindingEqual(call.Bindings["region"], parameter.TextValue("north")) || compiled.program.Specs[compilerNodeV1].Selectors[0].Value != "region" {
 		t.Fatalf("compiled execution aliases plan: %#v", compiled)
 	}
 }
@@ -138,7 +138,7 @@ func TestCompilePlanPreservesCompleteFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := compiled.Program.Specs[compilerNodeV1]
+	got := compiled.program.Specs[compilerNodeV1]
 	if got.PageURL != dependency.PageURL || got.Origin != dependency.Origin || got.Fingerprint.Text != "提交" || got.Fingerprint.ARIA.Name != "提交" || got.Fingerprint.SiblingIndex != 2 || got.Fingerprint.Neighbors.ParentTag != "form" || got.Fingerprint.LabelText != "提交订单" || got.Fingerprint.FormID != "checkout" {
 		t.Fatalf("fingerprint fields were lost: %#v", got)
 	}

@@ -2,7 +2,7 @@
 
 ## 目标
 
-通过公开入口 `engine.CompileRunSnapshot(snapshot execution.RunSnapshot)`，把不可变执行实例快照中的每个顶层 entry 编译为独立、可执行的节点树和精确 spec 映射。
+通过唯一公开编译入口 `engine.CompilePlan(snapshot execution.RunSnapshot)`，把不可变执行实例快照中的每个顶层 entry 编译为独立、不可伪造的执行项和精确 spec 映射。
 
 ## 输入
 
@@ -12,26 +12,30 @@
 
 ## 输出
 
-`CompiledRun` 的实际导出字段只有：
+`CompiledRun` 不导出内部 entry 切片或索引，只提供以下访问器：
 
-| 字段 | 类型 | 含义 |
+| 访问器 | 返回值 | 含义 |
 |---|---|---|
-| `Entries` | `[]CompiledEntry` | 按快照 entry 顺序生成的编译结果 |
+| `Entries()` | `[]CompiledEntry` | 按快照顺序返回调用方拥有的 entry 与 map 副本 |
+| `Entry(executionID)` | `(CompiledEntry, bool)` | 校验私有身份封印后返回调用方拥有的 entry 副本 |
 
-`CompiledRun.Entry(executionID)` 可按 execution identity 查询 entry；其查找索引是私有实现细节。`CompiledRun` 没有 `RunID` 或 `FailurePolicy` 导出字段。
+查找索引和原始 entry 切片都是私有实现细节。`CompiledRun` 没有 `RunID` 或 `FailurePolicy` 导出字段。
 
 `CompiledEntry` 的实际导出字段为：
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
+| `RunID` | `string` | 编译时封印的 Run identity |
+| `SnapshotDigest` | `string` | 编译时封印的快照摘要 |
 | `ExecutionID` | `string` | 顶层执行项 identity |
 | `TestTaskItemID` | `string` | 来源 TestTask item identity |
 | `SequenceNumber` | `int` | 顶层执行顺序 |
 | `WorkflowID` | `string` | 稳定 Workflow identity |
 | `WorkflowVersionID` | `string` | 冻结的 Workflow version identity |
-| `Program` | `node.Program` | 该 entry 独立的可执行程序 |
 | `Metadata` | `map[string]StepMetadata` | runtime step identity 到工作区步骤元数据的映射 |
 | `RuntimeNodes` | `map[string]RuntimeNodeIdentity` | runtime NodeSpec identity 到稳定 Node/version identity 的映射 |
+
+`node.Program` 与 `(RunID, SnapshotDigest, ExecutionID)` 私有身份封印不导出；调用方只能把 `CompiledEntry` 交给 `RunProgram`，不能提取或替换 Program。
 
 失败返回 error，不返回部分编译结果。
 
@@ -40,7 +44,7 @@
 ```mermaid
 sequenceDiagram
     participant Caller
-    participant C as CompileRunSnapshot
+    participant C as CompilePlan
     participant S as immutable RunSnapshot
     participant Compiler
     Caller->>C: snapshot
@@ -83,6 +87,7 @@ flowchart TD
 - 每个 invocation 使用创建 Run 时冻结的类型化参数值和绑定结果；运行时不得重新解析绑定。
 - Environment `Properties` 只从快照读取，并以 `env.` 前缀注入根调用作用域；名称碰撞必须显式失败。
 - 编译结果不得与快照的可变 map/slice alias。
+- `CompiledEntry` 必须绑定 RunID、snapshot digest 与 ExecutionID；访问器必须拒绝内部索引或身份封印不一致。
 - 缺失解析、循环和不可达状态必须显式失败。
 
 补充矩阵测试：[`application/engine/compiler_matrix_test.go`](../../../application/engine/compiler_matrix_test.go)。

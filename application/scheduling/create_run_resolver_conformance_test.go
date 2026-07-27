@@ -429,7 +429,7 @@ func TestSealedResolverOutputIgnoresLaterCatalogMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := snapshot.Digest()
-	compiledBefore, err := engine.CompileRunSnapshot(snapshot)
+	compiledBefore, err := engine.CompilePlan(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestSealedResolverOutputIgnoresLaterCatalogMutation(t *testing.T) {
 	workflow := tx.view.versions["child-v1"]
 	workflow.Definition.Steps[0].DisplayName = "mutated"
 	tx.view.versions[workflow.ID] = workflow
-	compiledAfter, err := engine.CompileRunSnapshot(snapshot)
+	compiledAfter, err := engine.CompilePlan(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

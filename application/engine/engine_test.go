@@ -30,9 +30,9 @@ func (n *runtimeCaptureNode) Run(_ context.Context, runtime *node.Runtime) error
 	return n.err
 }
 
-func TestRunCompiledEntryPropagatesStepIntervalToRuntime(t *testing.T) {
+func TestRunProgramPropagatesStepIntervalToRuntime(t *testing.T) {
 	capture := &runtimeCaptureNode{}
-	err := RunCompiledEntry(context.Background(), CompiledEntry{Program: node.Program{Root: capture}}, Config{
+	_, err := runProgramForTest(context.Background(), compiledEntry("run-paced", node.Program{Root: capture}), Config{
 		RunID: "run-paced", Driver: &engineTestDriver{}, StepInterval: 750 * time.Millisecond,
 	})
 	if err != nil {
@@ -89,22 +89,22 @@ func (r *engineTestRecorder) Stop(ctx context.Context, retain bool) error {
 	return r.stopErr
 }
 
-func TestRunCompiledEntryRetainsSuccessfulRecording(t *testing.T) {
+func TestRunProgramRetainsSuccessfulRecording(t *testing.T) {
 	recorder := &engineTestRecorder{}
-	err := RunCompiledEntry(context.Background(), navigationCompiledEntry("retain-success", "https://example.test"), Config{
+	_, err := runProgramForTest(context.Background(), navigationCompiledEntry("run-retain-success", "retain-success", "https://example.test"), Config{
 		RunID:    "run-retain-success",
 		Driver:   &engineTestDriver{},
 		Recorder: recorder,
 	})
 	if err != nil {
-		t.Fatalf("RunCompiledEntry: %v", err)
+		t.Fatalf("RunProgram: %v", err)
 	}
 	if recorder.startedRunID != "run-retain-success" || !recorder.stopped || !recorder.retained {
 		t.Fatalf("recorder lifecycle = %+v, want successful run retained", recorder)
 	}
 }
 
-func TestRunCompiledEntryRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
+func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	tests := []struct {
 		name    string
@@ -117,7 +117,7 @@ func TestRunCompiledEntryRejectsIncompleteConfigurationBeforeExecution(t *testin
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := RunCompiledEntry(context.Background(), compiledEntry(test.program), test.config); err == nil {
+			if _, err := runProgramForTest(context.Background(), compiledEntry(test.config.RunID, test.program), test.config); err == nil {
 				t.Fatal("incomplete engine configuration was accepted")
 			}
 		})
@@ -127,10 +127,10 @@ func TestRunCompiledEntryRejectsIncompleteConfigurationBeforeExecution(t *testin
 	}
 }
 
-func TestRunCompiledEntryRecorderFailureAndDetachedCleanupContract(t *testing.T) {
+func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	startFailure := &engineTestRecorder{startErr: errors.New("start failed")}
-	if err := RunCompiledEntry(context.Background(), compiledEntry(node.Program{Root: root}), Config{
+	if _, err := runProgramForTest(context.Background(), compiledEntry("run-start-failure", node.Program{Root: root}), Config{
 		RunID: "run-start-failure", Driver: &engineTestDriver{}, Recorder: startFailure,
 	}); err == nil || !strings.Contains(err.Error(), "start recorder") {
 		t.Fatalf("recorder start error = %v", err)
@@ -145,7 +145,7 @@ func TestRunCompiledEntryRecorderFailureAndDetachedCleanupContract(t *testing.T)
 	recorder := &engineTestRecorder{stopErr: stopFailure}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := RunCompiledEntry(ctx, compiledEntry(node.Program{Root: root}), Config{
+	_, err := runProgramForTest(ctx, compiledEntry("run-cleanup", node.Program{Root: root}), Config{
 		RunID: "run-cleanup", Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, rootFailure) || !errors.Is(err, stopFailure) {
@@ -156,11 +156,23 @@ func TestRunCompiledEntryRecorderFailureAndDetachedCleanupContract(t *testing.T)
 	}
 }
 
-func compiledEntry(program node.Program) CompiledEntry {
-	return CompiledEntry{Program: program}
+func compiledEntry(runID string, program node.Program) CompiledEntry {
+	const snapshotDigest = "sha256:test-snapshot-digest"
+	const executionID = "test-execution"
+	return CompiledEntry{
+		RunID: runID, SnapshotDigest: snapshotDigest, ExecutionID: executionID,
+		program: program,
+		identity: compiledExecutionIdentity{
+			runID: runID, snapshotDigest: snapshotDigest, executionID: executionID,
+		},
+	}
 }
 
-func navigationCompiledEntry(id, url string) CompiledEntry {
-	return CompiledEntry{Program: node.Program{Root: &node.WorkflowNode{NodeID: id,
-		Children: []node.Node{&node.StepNode{NodeID: "open", Action: node.Action{Kind: node.ActionNavigate, Value: url}}}}}}
+func runProgramForTest(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult, error) {
+	return runProgram(ctx, entry.program, cfg)
+}
+
+func navigationCompiledEntry(runID, id, url string) CompiledEntry {
+	return compiledEntry(runID, node.Program{Root: &node.WorkflowNode{NodeID: id,
+		Children: []node.Node{&node.StepNode{NodeID: "open", Action: node.Action{Kind: node.ActionNavigate, Value: url}}}}})
 }
