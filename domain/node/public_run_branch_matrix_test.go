@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -220,11 +221,19 @@ func TestWorkflowNodeOwnsEmptyScopeWithoutLeakingIt(t *testing.T) {
 func TestPollerDefaultBoundariesAndRetainedErrors(t *testing.T) {
 	t.Run("non-positive timeout and interval use defaults", func(t *testing.T) {
 		calls := 0
-		err := (Poller{}).Run(context.Background(), 0, func(context.Context) (bool, error) {
+		err := (Poller{}).Run(context.Background(), 0, func(ctx context.Context) (bool, error) {
 			calls++
-			return true, nil
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("poll context has no default deadline")
+			}
+			remaining := time.Until(deadline)
+			if remaining <= 0 || remaining > DefaultWaitTimeout {
+				t.Fatalf("default poll deadline remaining = %s, want within (0, %s]", remaining, DefaultWaitTimeout)
+			}
+			return calls == 2, nil
 		})
-		if err != nil || calls != 1 {
+		if err != nil || calls != 2 {
 			t.Fatalf("Run() calls = %d, error = %v", calls, err)
 		}
 	})
@@ -254,6 +263,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 	navigateObserverCalls := 0
 	pressObserverCalls := 0
 	actionObserverCalls := 0
+	timeoutDeadlineObserved := false
 	missingTimelineRuntime := func() *Runtime {
 		return &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, StepTimeline: &timelineSinkStub{}}
 	}
@@ -265,9 +275,20 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 		wantText string
 	}{
 		{
-			name:    "positive timeout bounds execution",
-			step:    &StepNode{NodeID: "step", Timeout: time.Second, Target: fingerprint.NodeSpec{ID: "target"}},
-			runtime: &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}},
+			name: "positive timeout bounds execution",
+			step: &StepNode{NodeID: "step", Timeout: time.Second, Target: fingerprint.NodeSpec{ID: "target"}},
+			runtime: &Runtime{Driver: &matrixDriver{locate: func(ctx context.Context, _ fingerprint.NodeSpec) (Element, error) {
+				deadline, ok := ctx.Deadline()
+				if !ok {
+					return nil, errors.New("step context has no deadline")
+				}
+				remaining := time.Until(deadline)
+				if remaining <= 0 || remaining > time.Second {
+					return nil, fmt.Errorf("step deadline remaining = %s", remaining)
+				}
+				timeoutDeadlineObserved = true
+				return &matrixElement{exists: true}, nil
+			}}},
 		},
 		{
 			name: "running event rejected",
@@ -383,6 +404,9 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 				t.Fatalf("Run() error = %v, want text %q", err, test.wantText)
 			}
 		})
+	}
+	if !timeoutDeadlineObserved {
+		t.Fatal("positive step timeout was not propagated to the driver")
 	}
 	if navigateObserverCalls != 1 || pressObserverCalls != 1 || actionObserverCalls != 1 {
 		t.Fatalf("best-effort observer calls = navigate:%d press:%d action:%d, want 1 each", navigateObserverCalls, pressObserverCalls, actionObserverCalls)
