@@ -28,7 +28,7 @@ flowchart LR
 - `node.Recorder.Start` 成功后返回本次执行唯一的 `RecordingTimeline`；启用 `StepTimelineSink` 时不得返回 nil。如需消费叶子步骤时间线，可实现 `StepTimelineSink`。
 - `engine.CompilePlan(snapshot)` 是唯一公开编译入口；`CompiledRun` 只通过返回独立副本的 `Entries()` 与 `Entry(executionID)` 暴露结果。
 - `engine.RunProgram(ctx, entry, cfg)` 是唯一公开运行入口，接收带私有 Program 与身份封印的 `CompiledEntry`，并分别返回执行、录制和时间线结果；不接受裸 `node.Program`。
-- `engine.Config.RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自已领取执行权的独立权威。入口在访问 Runtime、Driver、Recorder 或 Facts 前校验前三项与 entry 私有封印一致且 ClaimToken 非空，错配返回 `ErrExecutionIdentityMismatch`。
+- `engine.Config.RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自已领取执行权的独立权威。入口先校验前三项与 entry 私有封印一致且 ClaimToken 非空，再通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份；只有验证成功后 Runtime、Driver、Recorder、Facts 等运行端口才可见。身份错配返回 `ErrExecutionIdentityMismatch`，缺失 verifier 返回 `ErrExecutionAuthorityRequired`，权威拒绝或故障原样传播。
 - `engine.Config` 不包含运行变量；参数由 `CompilePlan` 从不可变 `RunSnapshot` 的 invocation scopes 与 Environment 数据编译到私有 Program。
 - 完成处理器只能获得 `NodeExecutionSnapshot` 和受限 `ReadOnlyBrowser`，其错误不得改变节点原始结果。如需在叶子完成后读取状态，可实现 `NodeCompletionHandler`。
 

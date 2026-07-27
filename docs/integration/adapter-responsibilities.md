@@ -17,6 +17,7 @@
 ## 执行适配器
 
 - 环境快照适配器 提供所选 环境的身份、修订号、基础 URL 和克隆后的普通 `Properties`；Core 仅接收创建执行实例时冻结的副本，并在 `env.` 下提供，不做凭据特定解释。宿主负责安全存储这些属性、授权访问，并防止敏感值泄漏到日志。
+- `ExecutionAuthorityVerifier` 在任何 Driver、Recorder、Facts 或时间线端口可见前，向领取权威验证 `RunID + SnapshotDigest + ExecutionID + ClaimToken` 仍为当前有效组合；非空 token 不得视为授权证明。
 - `ProgressWriter` 对非终态事件实施工作器栅栏校验。
 - `FactCommitter` 原子提交终态与事实，检查修订号、提交身份及已封存依赖目标。
 - 驱动器、录制器、执行接收器必须尊重上下文；清理过程仍可能收到分离的上下文。

@@ -8,7 +8,7 @@
 
 - `ctx context.Context`。
 - `CompiledEntry`：由不可变 `execution.RunSnapshot` 编译得到，包含 `node.Program`、执行身份与元数据；入口不接受裸 `node.Program`。
-- `Config`：`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自已领取执行权的独立权威；前三项与 entry 的私有封印一致，ClaimToken 必须非空。Driver 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是在 `CompilePlan` 时从不可变 RunSnapshot 编入私有 Program。
+- `Config`：`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自已领取执行权的独立权威；前三项与 entry 的私有封印一致，ClaimToken 必须非空。`AuthorityVerifier` 必填，并必须在任何运行端口可见前向领取权威验证完整四元身份仍然有效；非空 ClaimToken 本身不构成授权证明。Driver 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是在 `CompilePlan` 时从不可变 RunSnapshot 编入私有 Program。
 
 配置约束：
 

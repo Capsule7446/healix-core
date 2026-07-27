@@ -270,7 +270,7 @@ result, err := engine.RunProgram(ctx, entry, engine.Config{
 })
 ```
 
-宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致且 ClaimToken 非空，并且不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `RunSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.RunSnapshot`，因为除 Plan 中冻结的 workflow/node/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
+宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `RunSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.RunSnapshot`，因为除 Plan 中冻结的 workflow/node/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
 
 ## 当前生命周期约束
 

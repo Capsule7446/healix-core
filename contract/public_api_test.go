@@ -25,6 +25,17 @@ func (r consumerResolver) Variable(name string) (string, bool) {
 
 type consumerDriver struct{}
 
+type consumerAuthorityVerifier struct {
+	want coreengine.ExecutionAuthority
+}
+
+func (v consumerAuthorityVerifier) VerifyExecutionAuthority(_ context.Context, authority coreengine.ExecutionAuthority) error {
+	if authority != v.want {
+		return execution.ErrStaleWorkerFence
+	}
+	return nil
+}
+
 func (consumerDriver) Navigate(context.Context, string) error { return nil }
 func (consumerDriver) Press(context.Context, string) error    { return nil }
 func (consumerDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
@@ -96,10 +107,13 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	if !ok {
 		t.Fatalf("compiled execution %q is missing", path)
 	}
+	authority := coreengine.ExecutionAuthority{
+		RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim",
+	}
 	runResult, err := coreengine.RunProgram(context.Background(), entry, coreengine.Config{
 		RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
-		ClaimToken: "claim",
-		Driver:     consumerDriver{},
+		ClaimToken: "claim", AuthorityVerifier: consumerAuthorityVerifier{want: authority},
+		Driver: consumerDriver{},
 	})
 	if err != nil || runResult.ExecutionOutcome != coreengine.ExecutionSucceeded {
 		t.Fatalf("external compile/run contract: result=%+v err=%v", runResult, err)
