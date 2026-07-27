@@ -9,6 +9,34 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+func TestRunSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema RunSnapshotSchema
+		key    string
+	}{
+		{name: "V1 malformed UTF-8", schema: RunSnapshotSchemaV1, key: string([]byte{0xff})},
+		{name: "V1 control character", schema: RunSnapshotSchemaV1, key: "bad\nkey"},
+		{name: "V2 oversized", schema: RunSnapshotSchemaV2, key: strings.Repeat("x", parameter.MaxNameBytes+1)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := validRunSnapshotInput(t)
+			input.SchemaVersion = test.schema
+			if test.schema == RunSnapshotSchemaV1 {
+				input.Environment.Properties = map[string]string{test.key: "value"}
+				input.Environment.Variables = nil
+			} else {
+				input.Environment.Properties = nil
+				input.Environment.Variables = map[string]parameter.Value{test.key: parameter.TextValue("value")}
+			}
+			if _, err := SealRunSnapshot(input); err == nil {
+				t.Fatal("invalid environment name accepted")
+			}
+		})
+	}
+}
+
 func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	canonical, err := SealRunSnapshot(input)

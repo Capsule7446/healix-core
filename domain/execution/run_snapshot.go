@@ -634,7 +634,7 @@ func validateEnvironmentSnapshot(schemaVersion RunSnapshotSchema, v EnvironmentS
 			return errors.New("V1 environment snapshot cannot contain typed variables")
 		}
 		for name, value := range v.Properties {
-			if !validString(name, true) || !validString(value, false) {
+			if parameter.ValidateName(name) != nil || !validString(value, false) {
 				return errors.New("invalid environment property")
 			}
 		}
@@ -644,8 +644,8 @@ func validateEnvironmentSnapshot(schemaVersion RunSnapshotSchema, v EnvironmentS
 		return errors.New("V2 environment snapshot cannot contain legacy properties")
 	}
 	for name, value := range v.Variables {
-		if !validString(name, true) {
-			return errors.New("invalid environment variable name")
+		if err := parameter.ValidateName(name); err != nil {
+			return fmt.Errorf("invalid environment variable name: %w", err)
 		}
 		if err := value.Validate(); err != nil {
 			return fmt.Errorf("environment variable %q: %w", name, err)

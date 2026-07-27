@@ -38,6 +38,29 @@ func TestEnvironmentVariablesValidateAllValueTypes(t *testing.T) {
 	}
 }
 
+func TestEnvironmentVariablesValidateNameContract(t *testing.T) {
+	tests := []struct {
+		name         string
+		variableName string
+		wantError    bool
+	}{
+		{name: "malformed UTF-8", variableName: string([]byte{0xff}), wantError: true},
+		{name: "control character", variableName: "region\nname", wantError: true},
+		{name: "format control character", variableName: "region" + string(rune(0x202e)) + "name", wantError: true},
+		{name: "over byte limit", variableName: strings.Repeat("x", parameter.MaxNameBytes+1), wantError: true},
+		{name: "exact byte limit with multibyte rune", variableName: strings.Repeat("界", parameter.MaxNameBytes/3) + "x", wantError: false},
+		{name: "surrounding whitespace preserved", variableName: " region ", wantError: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := (EnvironmentVariables{test.variableName: parameter.TextValue("value")}).Validate()
+			if (err != nil) != test.wantError {
+				t.Fatalf("Validate() error = %v, wantError = %v", err, test.wantError)
+			}
+		})
+	}
+}
+
 func TestEnvironmentVariablesCloneNormalizesNil(t *testing.T) {
 	var variables EnvironmentVariables
 	cloned := variables.Clone()

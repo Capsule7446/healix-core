@@ -287,8 +287,8 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 		}
 	}
 	for name, value := range resolved.Environment.Variables {
-		if strings.TrimSpace(name) == "" {
-			return invalid("environment variable name is required")
+		if err := parameter.ValidateName(name); err != nil {
+			return invalid(fmt.Sprintf("environment variable name: %v", err))
 		}
 		if err := value.Validate(); err != nil {
 			return invalid(fmt.Sprintf("environment variable %q: %v", name, err))

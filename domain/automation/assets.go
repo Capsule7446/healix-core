@@ -35,8 +35,8 @@ func (v EnvironmentVariables) Clone() EnvironmentVariables {
 // or modifying the map. The caller must prevent concurrent writes while it runs.
 func (v EnvironmentVariables) Validate() error {
 	for name, value := range v {
-		if strings.TrimSpace(name) == "" {
-			return errors.New("environment variable name is required")
+		if err := parameter.ValidateName(name); err != nil {
+			return fmt.Errorf("environment variable name: %w", err)
 		}
 		if err := value.Validate(); err != nil {
 			return fmt.Errorf("environment variable %q: %w", name, err)

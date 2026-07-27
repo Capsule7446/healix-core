@@ -905,6 +905,40 @@ func TestBuildRunSnapshotKeepsRepeatedConcreteBindingsPathLocal(t *testing.T) {
 	}
 }
 
+func TestResolvedCreateRunPreflightValidatesEnvironmentVariableNames(t *testing.T) {
+	command := validCreateRunCommand()
+	tests := []struct {
+		name         string
+		variableName string
+		wantError    bool
+	}{
+		{name: "malformed UTF-8", variableName: string([]byte{0xff}), wantError: true},
+		{name: "Unicode control character", variableName: "region" + string(rune(0x85)) + "name", wantError: true},
+		{name: "Unicode format character", variableName: "region" + string(rune(0x202e)) + "name", wantError: true},
+		{name: "over maximum bytes", variableName: strings.Repeat("x", parameter.MaxNameBytes+1), wantError: true},
+		{name: "exact maximum bytes", variableName: strings.Repeat("x", parameter.MaxNameBytes)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := validResolvedCreateRun(t, command)
+			resolved.Environment.Variables = map[string]parameter.Value{test.variableName: parameter.TextValue("value")}
+
+			snapshot, err := BuildRunSnapshot(command, resolved)
+
+			if test.wantError {
+				var typed *CreateRunAdapterContractError
+				if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || snapshot.Digest() != "" {
+					t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
+				}
+				return
+			}
+			if err != nil || snapshot.Digest() == "" {
+				t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
+			}
+		})
+	}
+}
+
 func TestResolvedCreateRunPreflightRejectsAdapterCollectionsBeforeBuild(t *testing.T) {
 	command := validCreateRunCommand()
 	tests := []struct {
