@@ -38,6 +38,14 @@ func TestEnvironmentVariablesValidateAllValueTypes(t *testing.T) {
 	}
 }
 
+func TestEnvironmentVariablesCloneNormalizesNil(t *testing.T) {
+	var variables EnvironmentVariables
+	cloned := variables.Clone()
+	if cloned == nil || len(cloned) != 0 {
+		t.Fatalf("Clone() = %#v, want empty non-nil map", cloned)
+	}
+}
+
 func TestEnvironmentVariablesCloneOwnsMultiSelect(t *testing.T) {
 	source := EnvironmentVariables{"regions": parameter.MultiSelectValue([]string{"east", "west"})}
 	cloned := source.Clone()

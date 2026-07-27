@@ -14,8 +14,15 @@ import (
 
 type Properties map[string]string
 
+// EnvironmentVariables contains the typed values exposed through the env. scope.
+// Callers retain ownership of maps passed to domain operations and may modify them
+// after the operation returns. They must not modify a map concurrently while a
+// domain operation is reading or cloning it; synchronize such access externally.
 type EnvironmentVariables map[string]parameter.Value
 
+// Clone returns an independently owned map and clones every value, including
+// MULTI_SELECT slices. A nil receiver is normalized to an empty, non-nil map.
+// The caller must prevent concurrent writes to the receiver while Clone runs.
 func (v EnvironmentVariables) Clone() EnvironmentVariables {
 	out := make(EnvironmentVariables, len(v))
 	for name, value := range v {
@@ -24,6 +31,8 @@ func (v EnvironmentVariables) Clone() EnvironmentVariables {
 	return out
 }
 
+// Validate checks every variable name and typed value without taking ownership
+// or modifying the map. The caller must prevent concurrent writes while it runs.
 func (v EnvironmentVariables) Validate() error {
 	for name, value := range v {
 		if strings.TrimSpace(name) == "" {
