@@ -73,6 +73,41 @@ func TestCompilePlanIndexesInvocationsOnceAcrossEntries(t *testing.T) {
 	}
 }
 
+func TestCompilePlanInjectsTypedEnvironmentValues(t *testing.T) {
+	draft := minimalCompilerPlan()
+	draft.Entries[0].Parameters.Values = nil
+	number, err := parameter.NewNumberValue("1.25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	variables := map[string]parameter.Value{
+		"text":    parameter.TextValue("east"),
+		"number":  number,
+		"boolean": parameter.BooleanValue(true),
+		"single":  parameter.SingleSelectValue("primary"),
+		"multi":   parameter.MultiSelectValue([]string{"east", "west"}),
+	}
+	snapshot, err := runSnapshotForCompilerTypedEnvironmentTest(draft, variables)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := CompilePlan(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := compiled.Entries()[0].program.Root.(*node.WorkflowNode)
+	for name, want := range variables {
+		got, exists := root.Parameters["env."+name]
+		if !exists || !got.Equal(want) {
+			t.Fatalf("env.%s = %#v, want %#v", name, got, want)
+		}
+	}
+	root.Parameters["env.multi"] = parameter.MultiSelectValue([]string{"mutated"})
+	if got := snapshot.Environment().Variables["multi"].MultiSelect(); len(got) != 2 || got[0] != "east" {
+		t.Fatalf("compiled scope aliases snapshot: %v", got)
+	}
+}
+
 func TestCompilePlanInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Entries[0].Parameters.Values = nil

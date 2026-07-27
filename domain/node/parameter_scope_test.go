@@ -86,6 +86,38 @@ func TestWorkflowCallExecutesFullyResolvedInvocationDefaultsWithoutBindings(t *t
 	}
 }
 
+func TestWorkflowCallKeepsTypedEnvironmentAvailableInNestedScope(t *testing.T) {
+	number, err := parameter.NewNumberValue("2.500")
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := &parameterCaptureNode{}
+	call := &WorkflowCallNode{
+		NodeID:      "call",
+		Target:      &WorkflowNode{NodeID: "child", Children: []Node{capture}},
+		Values:      map[string]parameter.Value{"child": parameter.TextValue("value")},
+		Constraints: map[string]parameter.Constraint{"child": {Type: parameter.Text}},
+	}
+	environment := map[string]parameter.Value{
+		"env.text": parameter.TextValue("east"), "env.number": number,
+		"env.boolean": parameter.BooleanValue(true), "env.single": parameter.SingleSelectValue("primary"),
+		"env.multi": parameter.MultiSelectValue([]string{"east", "west"}),
+	}
+	rootCapture := &parameterCaptureNode{}
+	root := &WorkflowNode{NodeID: "root", OwnsParameterScope: true, Parameters: environment, Children: []Node{rootCapture, call}}
+	if err := root.Run(context.Background(), &Runtime{}); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range environment {
+		if got := rootCapture.got[key]; !got.Equal(want) {
+			t.Fatalf("root %s = %#v, want %#v", key, got, want)
+		}
+		if got := capture.got[key]; !got.Equal(want) {
+			t.Fatalf("nested %s = %#v, want %#v", key, got, want)
+		}
+	}
+}
+
 func TestWorkflowCallResolvesTypedParentReferencesWithoutScratchpadFallback(t *testing.T) {
 	n, _ := parameter.NewNumberValue("1.20")
 	c := &parameterCaptureNode{}

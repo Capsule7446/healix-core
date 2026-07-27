@@ -64,7 +64,7 @@ func TestNodeAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 }
 
 func TestEnvironmentValidateSingleFactorRuleMatrix(t *testing.T) {
-	valid := Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Properties: Properties{}}
+	valid := Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: EnvironmentVariables{}}
 	tests := []struct {
 		name   string
 		mutate func(*Environment)
@@ -74,7 +74,9 @@ func TestEnvironmentValidateSingleFactorRuleMatrix(t *testing.T) {
 		{name: "missing display name", mutate: func(e *Environment) { e.DisplayName = "\n" }, want: "display name"},
 		{name: "relative base url", mutate: func(e *Environment) { e.BaseURL = "/relative" }, want: "absolute HTTP"},
 		{name: "unsupported base url scheme", mutate: func(e *Environment) { e.BaseURL = "ftp://example.test" }, want: "HTTP or HTTPS"},
-		{name: "invalid properties", mutate: func(e *Environment) { e.Properties = Properties{" ": "value"} }, want: "property key"},
+		{name: "invalid variables", mutate: func(e *Environment) {
+			e.Variables = EnvironmentVariables{" ": parameter.TextValue("value")}
+		}, want: "environment variable name"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -221,7 +223,7 @@ func TestHealStreakRejectRejectsInvalidReceiverAndDisposition(t *testing.T) {
 }
 
 func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
-	validEnvironment := Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Properties: Properties{}, CreatedAt: 2, UpdatedAt: 2}
+	validEnvironment := Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: EnvironmentVariables{}, CreatedAt: 2, UpdatedAt: 2}
 	if _, err := NewEnvironment(func() Environment { value := validEnvironment; value.UpdatedAt = 1; return value }()); err == nil {
 		t.Fatal("NewEnvironment accepted unequal timestamps")
 	}
@@ -234,7 +236,7 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 	}
 	deletedEnvironment := createdEnvironment
 	deletedEnvironment.DeletedAt = 2
-	if _, err := deletedEnvironment.UpdateMetadata("Environment", "", Properties{}, 3); !errors.Is(err, ErrDeletedAggregate) {
+	if _, err := deletedEnvironment.UpdateMetadata("Environment", "", EnvironmentVariables{}, 3); !errors.Is(err, ErrDeletedAggregate) {
 		t.Fatalf("deleted environment update error = %v", err)
 	}
 	for _, test := range []struct {
@@ -252,7 +254,7 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 		{name: "invalid result", value: createdEnvironment, at: 3, display: " "},
 	} {
 		t.Run("environment "+test.name, func(t *testing.T) {
-			if _, err := test.value.UpdateMetadata(test.display, "", Properties{}, test.at); err == nil {
+			if _, err := test.value.UpdateMetadata(test.display, "", EnvironmentVariables{}, test.at); err == nil {
 				t.Fatal("invalid environment update accepted")
 			}
 		})

@@ -178,21 +178,75 @@ func TestNewTestTaskRejectsInvalidCreation(t *testing.T) {
 	}
 }
 
-func TestEnvironmentAllowsCredentialLikePropertyNamesButRejectsURLCredentials(t *testing.T) {
-	properties := Properties{"PASSWORD": "plain-text", "Api_Key": "key", "client_secret": "value"}
-	environment := Environment{ID: "env", DisplayName: "环境", Properties: properties, CreatedAt: 1, UpdatedAt: 1}
+func TestEnvironmentAcceptsAllVariableKindsAndOwnsValues(t *testing.T) {
+	number, err := parameter.NewNumberValue("12.50")
+	if err != nil {
+		t.Fatalf("NewNumberValue: %v", err)
+	}
+	variables := EnvironmentVariables{
+		"PASSWORD": parameter.TextValue("plain-text"),
+		"count":    number,
+		"enabled":  parameter.BooleanValue(true),
+		"region":   parameter.SingleSelectValue("east"),
+		"regions":  parameter.MultiSelectValue([]string{"east", "west"}),
+	}
+	environment := Environment{ID: "env", DisplayName: "环境", Variables: variables, CreatedAt: 1, UpdatedAt: 1}
 	created, err := NewEnvironment(environment)
 	if err != nil {
-		t.Fatalf("credential-like properties rejected: %v", err)
+		t.Fatalf("typed variables rejected: %v", err)
 	}
-	properties["PASSWORD"] = "mutated"
-	if created.Properties["PASSWORD"] != "plain-text" {
-		t.Fatal("environment aliases properties")
+	variables["PASSWORD"] = parameter.TextValue("mutated")
+	multi := variables["regions"].MultiSelect()
+	multi[0] = "mutated"
+	if created.Variables["PASSWORD"].Text() != "plain-text" || created.Variables["regions"].MultiSelect()[0] != "east" {
+		t.Fatal("NewEnvironment aliases variables")
 	}
+
+	updatedInput := EnvironmentVariables{"regions": parameter.MultiSelectValue([]string{"north", "south"})}
+	updated, err := created.UpdateMetadata("Updated", "https://example.test", updatedInput, 2)
+	if err != nil {
+		t.Fatalf("UpdateMetadata: %v", err)
+	}
+	updatedInput["regions"] = parameter.MultiSelectValue([]string{"mutated"})
+	if updated.Variables["regions"].MultiSelect()[0] != "north" || created.Variables["PASSWORD"].Text() != "plain-text" {
+		t.Fatal("UpdateMetadata does not own variables or mutated receiver")
+	}
+
+	deleted, err := updated.Delete(3)
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	deleted.Variables["regions"] = parameter.TextValue("mutated")
+	if updated.Variables["regions"].MultiSelect()[0] != "north" {
+		t.Fatal("Delete aliases variables")
+	}
+	restored, err := deleted.Restore(4)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	restored.Variables["regions"] = parameter.TextValue("restored mutation")
+	if deleted.Variables["regions"].Text() != "mutated" {
+		t.Fatal("Restore aliases variables")
+	}
+
 	invalid := environment
 	invalid.BaseURL = "https://user:password@example.test"
 	if err := invalid.Validate(); err == nil {
 		t.Fatal("URL credentials accepted")
+	}
+}
+
+func TestEnvironmentVariablesRejectBlankKeyAndInvalidZeroValue(t *testing.T) {
+	for name, variables := range map[string]EnvironmentVariables{
+		"blank key":  {" \t": parameter.TextValue("value")},
+		"zero value": {"key": parameter.Value{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := Environment{ID: "env", DisplayName: "Env", Variables: variables, CreatedAt: 1, UpdatedAt: 1}
+			if _, err := NewEnvironment(value); err == nil {
+				t.Fatal("NewEnvironment accepted invalid variables")
+			}
+		})
 	}
 }
 

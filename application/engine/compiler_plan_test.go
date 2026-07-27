@@ -24,6 +24,14 @@ func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
 }
 
 func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map[string]string) (execution.RunSnapshot, error) {
+	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV1, environmentProperties, nil)
+}
+
+func runSnapshotForCompilerTypedEnvironmentTest(draft execution.Draft, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
+	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV2, nil, environmentVariables)
+}
+
+func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion execution.RunSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
 	items := make([]execution.TestTaskVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
@@ -86,12 +94,12 @@ func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map
 		}
 	}
 	input := execution.RunSnapshotInput{
-		SchemaVersion: execution.RunSnapshotSchemaV1,
+		SchemaVersion: schemaVersion,
 		RunID:         draft.RunID, TestTaskID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
 		TestTask:        execution.TestTaskSnapshot{ID: "task", CurrentVersionID: "task-v1"},
 		TestTaskVersion: execution.TestTaskVersionSnapshot{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, Items: items},
 		Plan:            draft, Invocations: invocations,
-		Environment:      execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: environmentProperties},
+		Environment:      execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: environmentProperties, Variables: environmentVariables},
 		FailurePolicy:    draft.FailurePolicy,
 		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1},
 		HealerPolicy:     execution.DefaultHealerPolicySnapshot(),

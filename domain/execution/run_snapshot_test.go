@@ -2,11 +2,40 @@ package execution
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
+
+func TestRunSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
+	tests := []struct {
+		name   string
+		schema RunSnapshotSchema
+		key    string
+	}{
+		{name: "V1 malformed UTF-8", schema: RunSnapshotSchemaV1, key: string([]byte{0xff})},
+		{name: "V1 control character", schema: RunSnapshotSchemaV1, key: "bad\nkey"},
+		{name: "V2 oversized", schema: RunSnapshotSchemaV2, key: strings.Repeat("x", parameter.MaxNameBytes+1)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := validRunSnapshotInput(t)
+			input.SchemaVersion = test.schema
+			if test.schema == RunSnapshotSchemaV1 {
+				input.Environment.Properties = map[string]string{test.key: "value"}
+				input.Environment.Variables = nil
+			} else {
+				input.Environment.Properties = nil
+				input.Environment.Variables = map[string]parameter.Value{test.key: parameter.TextValue("value")}
+			}
+			if _, err := SealRunSnapshot(input); err == nil {
+				t.Fatal("invalid environment name accepted")
+			}
+		})
+	}
+}
 
 func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
@@ -73,6 +102,84 @@ func validRunSnapshotInput(t *testing.T) RunSnapshotInput {
 		FailurePolicy:    FailurePolicyStopOnFailure,
 		ScreenshotPolicy: ScreenshotPolicySnapshot{Version: ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"},
 		HealerPolicy:     DefaultHealerPolicySnapshot(),
+	}
+}
+
+func TestRunSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
+	input := validRunSnapshotInput(t)
+	sealed, err := SealRunSnapshot(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const legacyDigest = "sha256:406acea99f506e283ac8c49fe4083d3d94b5a3a7275c653fecba010312982069"
+	if sealed.Digest() != legacyDigest {
+		t.Fatalf("V1 digest changed: got %q", sealed.Digest())
+	}
+	hydrated, err := HydrateRunSnapshot(input, legacyDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := hydrated.Environment().Variables["region"]
+	if value.Type() != parameter.Text || value.Text() != "east" {
+		t.Fatalf("V1 environment value = %#v", value)
+	}
+}
+
+func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T) {
+	input := validRunSnapshotInput(t)
+	input.SchemaVersion = RunSnapshotSchemaV2
+	input.Environment.Properties = nil
+	input.Environment.Variables = map[string]parameter.Value{
+		"flag": parameter.TextValue("true"),
+		"list": parameter.MultiSelectValue([]string{"east", "west"}),
+	}
+	sealed, err := SealRunSnapshot(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reordered := validRunSnapshotInput(t)
+	reordered.SchemaVersion = RunSnapshotSchemaV2
+	reordered.Environment.Properties = nil
+	reordered.Environment.Variables = map[string]parameter.Value{
+		"list": parameter.MultiSelectValue([]string{"east", "west"}),
+		"flag": parameter.TextValue("true"),
+	}
+	other, err := SealRunSnapshot(reordered)
+	if err != nil || sealed.Digest() != other.Digest() {
+		t.Fatalf("V2 digest unstable: %q %q %v", sealed.Digest(), other.Digest(), err)
+	}
+	typed := validRunSnapshotInput(t)
+	typed.SchemaVersion = RunSnapshotSchemaV2
+	typed.Environment.Properties = nil
+	typed.Environment.Variables = map[string]parameter.Value{
+		"flag": parameter.BooleanValue(true),
+		"list": parameter.MultiSelectValue([]string{"east", "west"}),
+	}
+	booleanSnapshot, err := SealRunSnapshot(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if booleanSnapshot.Digest() == sealed.Digest() {
+		t.Fatal("TEXT and BOOLEAN environment values have equal digests")
+	}
+	exported := sealed.Environment()
+	exported.Variables["list"] = parameter.MultiSelectValue([]string{"mutated"})
+	if got := sealed.Environment().Variables["list"].MultiSelect(); !reflect.DeepEqual(got, []string{"east", "west"}) {
+		t.Fatalf("snapshot aliases MULTI_SELECT: %v", got)
+	}
+	persisted := sealed.Input()
+	persisted.Environment.Variables["list"] = parameter.MultiSelectValue([]string{"persisted mutation"})
+	if got := sealed.Input().Environment.Variables["list"].MultiSelect(); !reflect.DeepEqual(got, []string{"east", "west"}) {
+		t.Fatalf("Input aliases MULTI_SELECT: %v", got)
+	}
+	hydrated, err := HydrateRunSnapshot(sealed.Input(), sealed.Digest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hydratedEnvironment := hydrated.Environment()
+	hydratedEnvironment.Variables["list"] = parameter.MultiSelectValue([]string{"hydrated mutation"})
+	if got := hydrated.Environment().Variables["list"].MultiSelect(); !reflect.DeepEqual(got, []string{"east", "west"}) {
+		t.Fatalf("hydrated snapshot aliases MULTI_SELECT: %v", got)
 	}
 }
 

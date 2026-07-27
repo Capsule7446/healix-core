@@ -27,7 +27,7 @@ func TestNodeAggregateValidate(t *testing.T) {
 }
 
 func TestEnvironmentValidateURL(t *testing.T) {
-	environment := Environment{ID: "env-1", DisplayName: "测试", BaseURL: "javascript:alert(1)", Properties: Properties{}}
+	environment := Environment{ID: "env-1", DisplayName: "测试", BaseURL: "javascript:alert(1)", Variables: EnvironmentVariables{}}
 	if err := environment.Validate(); err == nil {
 		t.Fatal("expected invalid URL")
 	}
