@@ -25,6 +25,17 @@ func (r consumerResolver) Variable(name string) (string, bool) {
 
 type consumerDriver struct{}
 
+type consumerAuthorityVerifier struct {
+	want coreengine.ExecutionAuthority
+}
+
+func (v consumerAuthorityVerifier) VerifyExecutionAuthority(_ context.Context, authority coreengine.ExecutionAuthority) error {
+	if authority != v.want {
+		return execution.ErrStaleWorkerFence
+	}
+	return nil
+}
+
 func (consumerDriver) Navigate(context.Context, string) error { return nil }
 func (consumerDriver) Press(context.Context, string) error    { return nil }
 func (consumerDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
@@ -84,6 +95,29 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	if err != nil || !result.WasApplied || store.digest == "" || store.input.RunID != "run" {
 		t.Fatalf("external CreateRun contract: result=%#v digest=%q err=%v", result, store.digest, err)
 	}
+	snapshot, err := execution.HydrateRunSnapshot(store.input, store.digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := coreengine.CompilePlan(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := compiled.Entry(path)
+	if !ok {
+		t.Fatalf("compiled execution %q is missing", path)
+	}
+	authority := coreengine.ExecutionAuthority{
+		RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim",
+	}
+	runResult, err := coreengine.RunProgram(context.Background(), entry, coreengine.Config{
+		RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+		ClaimToken: "claim", AuthorityVerifier: consumerAuthorityVerifier{want: authority},
+		Driver: consumerDriver{},
+	})
+	if err != nil || runResult.ExecutionOutcome != coreengine.ExecutionSucceeded {
+		t.Fatalf("external compile/run contract: result=%+v err=%v", runResult, err)
+	}
 }
 
 func TestPublicConsumerCanUseCoreContracts(t *testing.T) {
@@ -91,11 +125,7 @@ func TestPublicConsumerCanUseCoreContracts(t *testing.T) {
 	if err != nil || value != "north" {
 		t.Fatalf("public interpolation contract = %q, %v", value, err)
 	}
-	if err := coreengine.RunCompiledEntry(context.Background(), coreengine.CompiledEntry{Program: node.Program{}}, coreengine.Config{
-		RunID: "consumer-run", Driver: consumerDriver{}, Healer: heal.NewDefaultHealer(),
-	}); err == nil {
-		t.Fatal("public RunCompiledEntry accepted a missing root")
-	}
+	_ = coreengine.Config{Driver: consumerDriver{}, Healer: heal.NewDefaultHealer()}
 	_ = coreengine.CompiledRun{}
 	_ = sampling.MatchProfile{}
 	_ = execution.Draft{}

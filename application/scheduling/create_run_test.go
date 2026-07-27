@@ -7,10 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Capsule7446/healix-core/application/engine"
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
-	"github.com/Capsule7446/healix-core/domain/node"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -861,13 +859,9 @@ func TestBuildRunSnapshotKeepsRepeatedConcreteBindingsPathLocal(t *testing.T) {
 	if staticBinding.Kind() != parameter.ParentReferenceBindingKind {
 		t.Fatal("concrete bindings overwrote static workflow authoring metadata")
 	}
-	compiled, err := engine.CompileRunSnapshot(snapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	first := compiled.Entries[0].Program.Root.(*node.WorkflowNode).Children[0].(*node.WorkflowCallNode)
-	second := compiled.Entries[1].Program.Root.(*node.WorkflowNode).Children[0].(*node.WorkflowCallNode)
-	if first.Bindings["region"].Kind() != parameter.ParentReferenceBindingKind || second.Bindings["region"].Kind() != parameter.LiteralBindingKind {
+	first, firstOK := snapshot.Invocation(resolved.Invocations[1].Path)
+	second, secondOK := snapshot.Invocation(resolved.Invocations[3].Path)
+	if !firstOK || !secondOK || first.Bindings["region"].Kind() != parameter.ParentReferenceBindingKind || second.Bindings["region"].Kind() != parameter.LiteralBindingKind {
 		t.Fatalf("path-local bindings lost: %#v/%#v", first.Bindings, second.Bindings)
 	}
 }

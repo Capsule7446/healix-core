@@ -29,34 +29,79 @@ type RuntimeNodeIdentity struct {
 	NodeVersionID string
 }
 
+type compiledExecutionIdentity struct {
+	runID          string
+	snapshotDigest string
+	executionID    string
+}
+
 type CompiledEntry struct {
+	RunID             string
+	SnapshotDigest    string
 	ExecutionID       string
 	TestTaskItemID    string
 	SequenceNumber    int
 	WorkflowID        string
 	WorkflowVersionID string
-	Program           node.Program
 	Metadata          map[string]StepMetadata
 	RuntimeNodes      map[string]RuntimeNodeIdentity
+	program           node.Program
+	identity          compiledExecutionIdentity
 }
 
 type CompiledRun struct {
-	Entries []CompiledEntry
+	entries []CompiledEntry
 	byID    map[string]int
+}
+
+// Entries returns the compiled entries in execution order. The returned slice
+// and each entry's exported maps are owned by the caller.
+func (r CompiledRun) Entries() []CompiledEntry {
+	entries := make([]CompiledEntry, len(r.entries))
+	for index, entry := range r.entries {
+		entries[index] = cloneCompiledEntry(entry)
+	}
+	return entries
 }
 
 // Entry returns the compiled entry identified by executionID without exposing
 // the run's private lookup index.
 func (r CompiledRun) Entry(executionID string) (CompiledEntry, bool) {
 	index, ok := r.byID[executionID]
-	if !ok || index < 0 || index >= len(r.Entries) {
+	if !ok || index < 0 || index >= len(r.entries) {
 		return CompiledEntry{}, false
 	}
-	return r.Entries[index], true
+	entry := r.entries[index]
+	if !entry.hasIdentity(executionID) {
+		return CompiledEntry{}, false
+	}
+	return cloneCompiledEntry(entry), true
 }
 
-// CompileRunSnapshot compiles solely from the immutable run snapshot payload.
-func CompileRunSnapshot(snapshot execution.RunSnapshot) (CompiledRun, error) {
+func (entry CompiledEntry) hasIdentity(executionID string) bool {
+	return executionID != "" &&
+		entry.RunID != "" && entry.RunID == entry.identity.runID &&
+		entry.SnapshotDigest != "" && entry.SnapshotDigest == entry.identity.snapshotDigest &&
+		entry.ExecutionID == executionID && entry.ExecutionID == entry.identity.executionID
+}
+
+func cloneCompiledEntry(entry CompiledEntry) CompiledEntry {
+	metadataSource := entry.Metadata
+	entry.Metadata = make(map[string]StepMetadata, len(metadataSource))
+	for id, metadata := range metadataSource {
+		entry.Metadata[id] = metadata
+	}
+	runtimeNodesSource := entry.RuntimeNodes
+	entry.RuntimeNodes = make(map[string]RuntimeNodeIdentity, len(runtimeNodesSource))
+	for id, identity := range runtimeNodesSource {
+		entry.RuntimeNodes[id] = identity
+	}
+	return entry
+}
+
+// CompilePlan compiles solely from the immutable run snapshot payload. Every
+// returned entry is bound to the snapshot's Run, digest, and Execution ID.
+func CompilePlan(snapshot execution.RunSnapshot) (CompiledRun, error) {
 	if snapshot.Digest() == "" {
 		return CompiledRun{}, fmt.Errorf("compile run snapshot: snapshot is not sealed")
 	}
@@ -84,7 +129,7 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		invocationsByPath[invocation.Path] = invocation
 	}
 	environment := snapshot.Environment()
-	result := CompiledRun{Entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
+	result := CompiledRun{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
 		compiler := executionCompiler{
 			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
@@ -114,13 +159,15 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 			root.Parameters[key] = parameter.TextValue(value)
 		}
 		compiledEntry := CompiledEntry{
+			RunID: snapshot.RunID(), SnapshotDigest: snapshot.Digest(),
 			ExecutionID: entry.ExecutionID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
 			WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID,
-			Program:  node.Program{Root: root, Specs: compiler.programSpecs},
+			program:  node.Program{Root: root, Specs: compiler.programSpecs},
 			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
+			identity: compiledExecutionIdentity{runID: snapshot.RunID(), snapshotDigest: snapshot.Digest(), executionID: entry.ExecutionID},
 		}
-		result.byID[entry.ExecutionID] = len(result.Entries)
-		result.Entries = append(result.Entries, compiledEntry)
+		result.byID[entry.ExecutionID] = len(result.entries)
+		result.entries = append(result.entries, compiledEntry)
 	}
 	return result, nil
 }

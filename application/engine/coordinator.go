@@ -14,10 +14,7 @@ var (
 	ErrCompletionConfiguration = errors.New("engine: invalid completion configuration")
 )
 
-// RunCoordinator owns application-level lifecycle around one compiled Program.
-type RunCoordinator struct{}
-
-func (RunCoordinator) Run(ctx context.Context, program node.Program, cfg Config) (result RunResult, runErr error) {
+func runProgram(ctx context.Context, program node.Program, cfg Config) (result RunResult, runErr error) {
 	result = RunResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
 	if err := validateConfig(program, cfg); err != nil {
 		return result, err
