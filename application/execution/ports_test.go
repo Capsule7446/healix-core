@@ -2,7 +2,10 @@ package execution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -17,14 +20,26 @@ func (fakeTransaction) CommitStepTransition(context.Context, domainexecution.Wor
 }
 
 type recordingTransaction struct {
-	calls  int
-	result evidence.StepTransitionCommitResult
-	err    error
+	calls   int
+	result  evidence.StepTransitionCommitResult
+	err     error
+	fence   domainexecution.WorkerFence
+	commit  evidence.StepTransitionCommit
+	planner HealGovernancePlanner
 }
 
-func (c *recordingTransaction) CommitStepTransition(context.Context, domainexecution.WorkerFence, evidence.StepTransitionCommit, HealGovernancePlanner) (evidence.StepTransitionCommitResult, error) {
+func (c *recordingTransaction) CommitStepTransition(_ context.Context, fence domainexecution.WorkerFence, commit evidence.StepTransitionCommit, planner HealGovernancePlanner) (evidence.StepTransitionCommitResult, error) {
 	c.calls++
+	c.fence = fence
+	c.commit = commit
+	c.planner = planner
 	return c.result, c.err
+}
+
+type plannerFixture struct{}
+
+func (*plannerFixture) PlanHealGovernance(HealGovernancePlan) (HealGovernanceDecision, error) {
+	return HealGovernanceDecision{}, nil
 }
 
 func validStepTransitionCommit() evidence.StepTransitionCommit {
@@ -100,20 +115,60 @@ func TestStepTransitionServiceRejectsInvalidInputBeforeCommit(t *testing.T) {
 }
 
 func TestStepTransitionServiceRejectsCrossRunFactsBeforeCommit(t *testing.T) {
+	tests := []struct {
+		name   string
+		commit evidence.StepTransitionCommit
+	}{
+		{name: "final validation", commit: crossRunFinalValidationCommit()},
+		{name: "validation group", commit: crossRunValidationGroupCommit()},
+		{name: "heal observation", commit: crossRunHealObservationCommit()},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transaction := &recordingTransaction{}
+			_, err := NewStepTransitionService(NewFactCommitter(transaction, NewDefaultHealGovernancePlanner())).Commit(
+				context.Background(),
+				domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
+				test.commit,
+			)
+			if err == nil || !strings.Contains(err.Error(), "does not match worker fence run") || transaction.calls != 0 {
+				t.Fatalf("Commit() error = %v, calls = %d", err, transaction.calls)
+			}
+		})
+	}
+}
+
+func crossRunFinalValidationCommit() evidence.StepTransitionCommit {
+	commit := validStepTransitionCommit()
+	commit.FinalValidations = []evidence.ValidationObservation{{
+		ID: "validation", RunID: "other-run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
+		ValidationStepID: "validation-step", NodeID: "node", NodeVersionID: "node-v1", AssertionKind: "visible",
+		Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(),
+		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true,
+	}}
+	return commit
+}
+
+func crossRunValidationGroupCommit() evidence.StepTransitionCommit {
+	commit := validStepTransitionCommit()
+	commit.FinalValidations = []evidence.ValidationObservation{
+		{ID: "member-a", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-a", NodeID: "node-a", NodeVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Passed: true, Reason: "passed", BranchDisposition: evidence.ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
+		{ID: "member-b", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-b", NodeID: "node-b", NodeVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Reason: "normal_unsatisfied", BranchDisposition: evidence.ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
+	}
+	commit.FinalValidationGroups = []evidence.ValidationGroupTerminalObservation{evidence.NewValidationGroupTerminalObservation(
+		"group-final", "other-run", commit.Event.ExecutionID, commit.Event.ID, "group", evidence.ValidationTerminalPassed, "branch-a",
+		[]evidence.ValidationMemberIdentity{{BranchID: "branch-a", NodeID: "node-a"}, {BranchID: "branch-b", NodeID: "node-b"}}, 1,
+	)}
+	return commit
+}
+
+func crossRunHealObservationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
 		ID: "heal", RunID: "other-run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
 		NodeID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
 	}}
-	transaction := &recordingTransaction{}
-	_, err := NewStepTransitionService(NewFactCommitter(transaction, NewDefaultHealGovernancePlanner())).Commit(
-		context.Background(),
-		domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
-		commit,
-	)
-	if err == nil || transaction.calls != 0 {
-		t.Fatalf("Commit() error = %v, calls = %d", err, transaction.calls)
-	}
+	return commit
 }
 
 func TestStepTransitionServiceRejectsExactSerializedPayloadOverLimit(t *testing.T) {
@@ -127,6 +182,116 @@ func TestStepTransitionServiceRejectsExactSerializedPayloadOverLimit(t *testing.
 	if committer.calls != 0 {
 		t.Fatal("oversized payload reached transaction")
 	}
+}
+
+func TestValidateStepTransitionPayloadSizeRejectsOversizedTopLevelAndNestedStrings(t *testing.T) {
+	tests := []struct {
+		name      string
+		nested    bool
+		value     string
+		wantError bool
+	}{
+		{name: "empty payload", value: ""},
+		{name: "ordinary ascii", value: "command"},
+		{name: "ordinary unicode", value: "命令🚀"},
+		{name: "oversized ascii", value: strings.Repeat("a", MaxStepTransitionPayloadBytes+1), wantError: true},
+		{name: "oversized unicode", value: strings.Repeat("界", MaxStepTransitionPayloadBytes/len("界")+1), wantError: true},
+		{name: "nested ordinary unicode", nested: true, value: "节点🚀"},
+		{name: "nested oversized ascii", nested: true, value: strings.Repeat("a", MaxStepTransitionPayloadBytes+1), wantError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			commit := evidence.StepTransitionCommit{CommitID: test.value}
+			if test.nested {
+				commit = validStepTransitionCommit()
+				commit.OriginalSelectorResets = []evidence.HealCandidateReset{{
+					ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
+					NodeID: "node", BaseNodeVersionID: test.value, ObservedAt: 1,
+				}}
+				if !test.wantError {
+					if err := commit.Validate(); err != nil {
+						t.Fatalf("nested boundary fixture is invalid: %v", err)
+					}
+				}
+			}
+			err := ValidateStepTransitionPayloadSize(commit)
+			if (err != nil) != test.wantError {
+				t.Fatalf("ValidateStepTransitionPayloadSize() error = %v, wantError = %v", err, test.wantError)
+			}
+			if test.wantError && !strings.Contains(err.Error(), "string exceeds byte limit") {
+				t.Fatalf("error = %v, want string byte limit", err)
+			}
+		})
+	}
+}
+
+func TestValidateStepTransitionPayloadSizeAggregateByteBoundaries(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    int
+		wantError bool
+	}{
+		{name: "max minus one", target: MaxStepTransitionPayloadBytes - 1},
+		{name: "max", target: MaxStepTransitionPayloadBytes},
+		{name: "max plus one", target: MaxStepTransitionPayloadBytes + 1, wantError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			commit := stepTransitionCommitWithEncodedSize(t, test.target)
+			err := ValidateStepTransitionPayloadSize(commit)
+			if (err != nil) != test.wantError {
+				t.Fatalf("ValidateStepTransitionPayloadSize() error = %v, wantError = %v", err, test.wantError)
+			}
+			if test.wantError && !strings.Contains(err.Error(), "commit exceeds byte limit") {
+				t.Fatalf("error = %v, want aggregate byte limit", err)
+			}
+		})
+	}
+}
+
+func stepTransitionCommitWithEncodedSize(t *testing.T, target int) evidence.StepTransitionCommit {
+	t.Helper()
+	commit := validStepTransitionCommit()
+	commit.OriginalSelectorResets = make([]evidence.HealCandidateReset, 17)
+	for index := range commit.OriginalSelectorResets {
+		commit.OriginalSelectorResets[index] = evidence.HealCandidateReset{
+			ExecutionID:       commit.Event.ExecutionID,
+			StepExecutionID:   commit.Event.ID,
+			NodeID:            "node-" + strconv.Itoa(index),
+			BaseNodeVersionID: "v",
+			ObservedAt:        1,
+		}
+	}
+	payload, err := json.Marshal(commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remaining := target - len(payload)
+	if remaining < 0 {
+		t.Fatalf("target %d is smaller than base payload %d", target, len(payload))
+	}
+	perFieldCapacity := MaxStepTransitionPayloadBytes / len(commit.OriginalSelectorResets)
+	for index := range commit.OriginalSelectorResets {
+		length := min(remaining, perFieldCapacity-len(commit.OriginalSelectorResets[index].BaseNodeVersionID))
+		commit.OriginalSelectorResets[index].BaseNodeVersionID += strings.Repeat("x", length)
+		remaining -= length
+	}
+	if remaining != 0 {
+		t.Fatalf("target %d exceeds fixture string capacity by %d bytes", target, remaining)
+	}
+	payload, err = json.Marshal(commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) != target {
+		t.Fatalf("fixture payload size = %d, want %d", len(payload), target)
+	}
+	if err := commit.Validate(); err != nil {
+		t.Fatalf("sized fixture is not a valid domain commit: %v", err)
+	}
+	return commit
 }
 
 func TestStepTransitionServiceRejectsNilCommitter(t *testing.T) {
@@ -154,6 +319,52 @@ func TestFactCommitterKeepsAtomicDomainCommitContract(t *testing.T) {
 	committer := NewFactCommitter(fakeTransaction{}, NewDefaultHealGovernancePlanner())
 	if isNilInterface(committer.transaction) || isNilInterface(committer.planner) {
 		t.Fatal("valid fact committer dependencies were rejected")
+	}
+}
+
+func TestFactCommitterRejectsMissingDependenciesAndDelegatesAuthoritatively(t *testing.T) {
+	var typedNilTransaction *recordingTransaction
+	var typedNilPlanner *plannerFixture
+	tests := []struct {
+		name      string
+		committer FactCommitter
+		want      error
+		wantText  string
+	}{
+		{name: "missing transaction", committer: NewFactCommitter(nil, &plannerFixture{}), want: ErrFactCommitterRequired},
+		{name: "typed nil transaction", committer: NewFactCommitter(typedNilTransaction, &plannerFixture{}), want: ErrFactCommitterRequired},
+		{name: "missing planner", committer: NewFactCommitter(&recordingTransaction{}, nil), wantText: "heal governance planner is required"},
+		{name: "typed nil planner", committer: NewFactCommitter(&recordingTransaction{}, typedNilPlanner), wantText: "heal governance planner is required"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.committer.CommitStepTransition(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, validStepTransitionCommit())
+			if err == nil || !reflect.DeepEqual(result, evidence.StepTransitionCommitResult{}) {
+				t.Fatalf("CommitStepTransition() = (%#v, %v)", result, err)
+			}
+			if test.want != nil && !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+			if test.wantText != "" && !strings.Contains(err.Error(), test.wantText) {
+				t.Fatalf("error = %v, want text %q", err, test.wantText)
+			}
+		})
+	}
+
+	dependencyFailure := errors.New("transaction failed")
+	wantResult := evidence.StepTransitionCommitResult{Revision: 2, WasApplied: true}
+	transaction := &recordingTransaction{result: wantResult}
+	planner := &plannerFixture{}
+	fence := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
+	commit := validStepTransitionCommit()
+	result, err := NewFactCommitter(transaction, planner).CommitStepTransition(context.Background(), fence, commit)
+	if err != nil || !reflect.DeepEqual(result, wantResult) || transaction.calls != 1 || transaction.fence != fence || transaction.commit.CommitID != commit.CommitID || transaction.planner != planner {
+		t.Fatalf("delegation result/error/transaction = %#v/%v/%#v", result, err, transaction)
+	}
+	transaction.err = dependencyFailure
+	result, err = NewFactCommitter(transaction, planner).CommitStepTransition(context.Background(), fence, commit)
+	if !errors.Is(err, dependencyFailure) || !reflect.DeepEqual(result, wantResult) || transaction.calls != 2 {
+		t.Fatalf("dependency result/error/calls = %#v/%v/%d", result, err, transaction.calls)
 	}
 }
 

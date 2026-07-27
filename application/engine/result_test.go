@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
@@ -117,6 +118,37 @@ func TestExecutionOutcomePreservesSuccess(t *testing.T) {
 func TestExecutionOutcomePreservesBusinessFailure(t *testing.T) {
 	if got := executionOutcome(errors.New("business failed")); got != ExecutionFailed {
 		t.Fatalf("execution outcome = %s, want %s", got, ExecutionFailed)
+	}
+}
+
+func TestRunCompiledEntryWithResultClassifiesEveryContextTerminationAsCanceled(t *testing.T) {
+	for _, err := range []error{context.Canceled, context.DeadlineExceeded} {
+		t.Run(err.Error(), func(t *testing.T) {
+			root := &runtimeCaptureNode{err: err}
+			result, runErr := RunCompiledEntryWithResult(context.Background(), compiledEntry(node.Program{Root: root}), Config{
+				RunID: "run", Driver: &engineTestDriver{},
+			})
+			if !errors.Is(runErr, err) || result.ExecutionOutcome != ExecutionCanceled || root.runs != 1 {
+				t.Fatalf("RunCompiledEntryWithResult() = (%#v, %v), runs = %d", result, runErr, root.runs)
+			}
+		})
+	}
+}
+
+func TestRunCompiledEntryWithResultRejectsNilRecorderTimelineBeforeExecution(t *testing.T) {
+	root := &runtimeCaptureNode{}
+	recorder := &engineTestRecorder{nilTimeline: true}
+	result, err := RunCompiledEntryWithResult(context.Background(), compiledEntry(node.Program{Root: root}), Config{
+		RunID: "run", Driver: &engineTestDriver{}, Recorder: recorder, StepTimeline: &resultTimelineSink{},
+	})
+	if !errors.Is(err, ErrTimelineConfiguration) || !strings.Contains(err.Error(), "nil timeline") {
+		t.Fatalf("error = %v, want nil timeline configuration error", err)
+	}
+	if root.runs != 0 || !recorder.stopped || !recorder.retained {
+		t.Fatalf("root/recorder = %d/%+v", root.runs, recorder)
+	}
+	if result.ExecutionOutcome != ExecutionNotStarted || result.RecordingOutcome != RecordingSucceeded || result.TimelineOutcome != TimelineStartFailed {
+		t.Fatalf("result = %+v", result)
 	}
 }
 
