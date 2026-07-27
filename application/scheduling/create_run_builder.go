@@ -56,7 +56,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 	}
 	draft.FailurePolicy = command.FailurePolicy
 	invocations := cloneInvocationScopes(resolved.Invocations)
-	input := execution.RunSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaV1, RunID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, TestTask: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID, CurrentVersionID: resolved.Plan.Task.CurrentVersionID}, TestTaskVersion: execution.TestTaskVersionSnapshot{ID: resolved.Plan.Version.ID, TestTaskID: resolved.Plan.Version.TestTaskID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Properties: cloneProperties(resolved.Environment.Properties)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
+	input := execution.RunSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, RunID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, TestTask: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID, CurrentVersionID: resolved.Plan.Task.CurrentVersionID}, TestTaskVersion: execution.TestTaskVersionSnapshot{ID: resolved.Plan.Version.ID, TestTaskID: resolved.Plan.Version.TestTaskID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
 	return execution.SealRunSnapshot(input)
 }
 
@@ -138,7 +138,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 	if len(resolved.Plan.Workflows) > execution.MaxDraftWorkflows || len(resolved.Plan.Nodes) > execution.MaxDraftNodes || len(resolved.Plan.References) > execution.MaxDraftReferences {
 		return invalid("top-level catalog collection limit exceeded")
 	}
-	if err := budget.addElements(len(resolved.Plan.Workflows) + len(resolved.Plan.Nodes) + len(resolved.Plan.References) + len(resolved.Invocations) + len(resolved.Environment.Properties)); err != nil {
+	if err := budget.addElements(len(resolved.Plan.Workflows) + len(resolved.Plan.Nodes) + len(resolved.Plan.References) + len(resolved.Invocations) + len(resolved.Environment.Variables)); err != nil {
 		return invalid(err.Error())
 	}
 	if err := addStrings(resolved.Plan.Task.ID, resolved.Plan.Task.DisplayName, resolved.Plan.Task.CurrentVersionID, resolved.Plan.Version.ID, resolved.Plan.Version.TestTaskID, resolved.Environment.ID, resolved.Environment.DisplayName, resolved.Environment.BaseURL); err != nil {
@@ -286,9 +286,18 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 			return err
 		}
 	}
-	for key, value := range resolved.Environment.Properties {
-		if err := addStrings(key, value); err != nil {
-			return err
+	for name, value := range resolved.Environment.Variables {
+		if strings.TrimSpace(name) == "" {
+			return invalid("environment variable name is required")
+		}
+		if err := value.Validate(); err != nil {
+			return invalid(fmt.Sprintf("environment variable %q: %v", name, err))
+		}
+		if err := budget.addString(name); err != nil {
+			return invalid(err.Error())
+		}
+		if err := addResolvedValueBudget(&budget, value); err != nil {
+			return invalid(err.Error())
 		}
 	}
 	for _, invocation := range resolved.Invocations {

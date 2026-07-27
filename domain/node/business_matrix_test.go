@@ -229,6 +229,51 @@ func TestStepActionBusinessMatrix(t *testing.T) {
 	}
 }
 
+func TestTypedEnvironmentStringInterpolation(t *testing.T) {
+	number, err := parameter.NewNumberValue("001.2500")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]parameter.Value{
+		"env.text":    parameter.TextValue("hello 世界"),
+		"env.number":  number,
+		"env.boolean": parameter.BooleanValue(true),
+		"env.single":  parameter.SingleSelectValue("primary"),
+		"env.multi":   parameter.MultiSelectValue([]string{"east", "west"}),
+	}
+	tests := []struct {
+		name       string
+		expression string
+		want       string
+		wantError  string
+	}{
+		{name: "TEXT", expression: "${env.text}", want: "hello 世界"},
+		{name: "NUMBER uses canonical string", expression: "${env.number}", want: "1.25"},
+		{name: "BOOLEAN", expression: "${env.boolean}", want: "true"},
+		{name: "SINGLE_SELECT", expression: "${env.single}", want: "primary"},
+		{name: "MULTI_SELECT is not an ordinary string", expression: "${env.multi}", wantError: "undefined variable"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			element := &matrixElement{exists: true, visible: true}
+			runtime := &Runtime{RunID: "run", Driver: &matrixDriver{element: element}, Facts: &testFacts{}, parameterScope: values}
+			err := (&StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: test.expression}}).Run(context.Background(), runtime)
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("Run() error = %v, want containing %q", err, test.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(element.inputs, []string{test.want}) {
+				t.Fatalf("inputs = %v, want %q", element.inputs, test.want)
+			}
+		})
+	}
+}
+
 func TestNestedWorkflowExecutesWithNamespacedChildParameterAndEnvironment(t *testing.T) {
 	element := &matrixElement{exists: true, visible: true}
 	driver := &matrixDriver{element: element}

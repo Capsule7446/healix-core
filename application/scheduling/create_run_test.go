@@ -28,7 +28,7 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 			execution.InvocationScopeSnapshot{Path: entry.ExecutionID + "/10:call-child", ParentPath: entry.ExecutionID, ParentVersionID: "root-v1", StepID: "call-child", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
 		)
 	}
-	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Properties: automation.Properties{"Region": "east"}, Revision: 1}, Invocations: roots}
+	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}, Invocations: roots}
 }
 
 func TestCreateRunRequestDigestMatrix(t *testing.T) {
@@ -357,8 +357,8 @@ func TestBuildRunSnapshotMapsCatalogAndDefensivelyOwnsAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved.Environment.Properties["Region"] = "west"
-	if snapshot.Environment().Properties["Region"] != "east" || snapshot.TestTaskVersionID() != "task-v1" || len(snapshot.Plan().Entries) != 2 {
+	resolved.Environment.Variables["Region"] = parameter.TextValue("west")
+	if snapshot.Environment().Variables["Region"].Text() != "east" || snapshot.TestTaskVersionID() != "task-v1" || len(snapshot.Plan().Entries) != 2 {
 		t.Fatal("snapshot did not freeze complete resolved create data")
 	}
 }
@@ -681,7 +681,7 @@ func TestCreateRunRejectsInvalidNonzeroFailurePolicy(t *testing.T) {
 func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T) {
 	command := validCreateRunCommand()
 	winnerResolved := validResolvedCreateRun(t, command)
-	winnerResolved.Environment.Properties["Region"] = "winner"
+	winnerResolved.Environment.Variables["Region"] = parameter.TextValue("winner")
 	winnerSnapshot, err := BuildRunSnapshot(command, winnerResolved)
 	if err != nil {
 		t.Fatal(err)
@@ -704,7 +704,7 @@ func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.WasApplied || result.Snapshot.Digest() != winnerSnapshot.Digest() || result.Snapshot.Environment().Properties["Region"] != "winner" {
+	if result.WasApplied || result.Snapshot.Digest() != winnerSnapshot.Digest() || result.Snapshot.Environment().Variables["Region"].Text() != "winner" {
 		t.Fatalf("authoritative winner was not returned: %#v", result)
 	}
 }

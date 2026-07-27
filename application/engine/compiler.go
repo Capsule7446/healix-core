@@ -148,15 +148,15 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 			return CompiledRun{}, fmt.Errorf("compile execution %s: root invocation is missing", entry.ExecutionID)
 		}
 		root.Parameters = cloneParameterValues(invocation.Values)
-		if len(environment.Properties) > 0 && root.Parameters == nil {
-			root.Parameters = make(map[string]parameter.Value, len(environment.Properties))
+		if len(environment.Variables) > 0 && root.Parameters == nil {
+			root.Parameters = make(map[string]parameter.Value, len(environment.Variables))
 		}
-		for name, value := range environment.Properties {
+		for name, value := range environment.Variables {
 			key := "env." + name
 			if _, collision := root.Parameters[key]; collision {
 				return CompiledRun{}, fmt.Errorf("compile execution %s: environment parameter %s collides with workflow scope", entry.ExecutionID, key)
 			}
-			root.Parameters[key] = parameter.TextValue(value)
+			root.Parameters[key] = value.Clone()
 		}
 		compiledEntry := CompiledEntry{
 			RunID: snapshot.RunID(), SnapshotDigest: snapshot.Digest(),

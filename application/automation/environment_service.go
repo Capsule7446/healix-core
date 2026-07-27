@@ -27,9 +27,9 @@ func (s EnvironmentService) Create(ctx context.Context, value domain.Environment
 	return result, nil
 }
 
-func (s EnvironmentService) Update(ctx context.Context, id, displayName, baseURL string, properties domain.Properties, expected domain.Revision, at int64) (domain.Environment, error) {
+func (s EnvironmentService) Update(ctx context.Context, id, displayName, baseURL string, variables domain.EnvironmentVariables, expected domain.Revision, at int64) (domain.Environment, error) {
 	return s.transition(ctx, id, expected, func(current domain.Environment) (domain.Environment, error) {
-		return current.UpdateMetadata(displayName, baseURL, properties, at)
+		return current.UpdateMetadata(displayName, baseURL, variables, at)
 	})
 }
 

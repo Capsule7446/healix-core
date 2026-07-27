@@ -14,6 +14,28 @@ import (
 
 type Properties map[string]string
 
+type EnvironmentVariables map[string]parameter.Value
+
+func (v EnvironmentVariables) Clone() EnvironmentVariables {
+	out := make(EnvironmentVariables, len(v))
+	for name, value := range v {
+		out[name] = value.Clone()
+	}
+	return out
+}
+
+func (v EnvironmentVariables) Validate() error {
+	for name, value := range v {
+		if strings.TrimSpace(name) == "" {
+			return errors.New("environment variable name is required")
+		}
+		if err := value.Validate(); err != nil {
+			return fmt.Errorf("environment variable %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
 func isElementWaitKind(kind string) bool {
 	return kind == "element" || kind == "element_visible" || kind == "element_invisible"
 }
@@ -134,7 +156,7 @@ type Environment struct {
 	ID          string
 	DisplayName string
 	BaseURL     string
-	Properties  Properties
+	Variables   EnvironmentVariables
 	CreatedAt   int64
 	UpdatedAt   int64
 	DeletedAt   int64
@@ -161,7 +183,7 @@ func (e Environment) Validate() error {
 			problems = append(problems, "base URL cannot contain credentials")
 		}
 	}
-	if err := e.Properties.Validate(); err != nil {
+	if err := e.Variables.Validate(); err != nil {
 		problems = append(problems, err.Error())
 	}
 	if len(problems) > 0 {

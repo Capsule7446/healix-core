@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func contributions(runIDs ...string) []ContributingHealFact {
@@ -282,17 +284,17 @@ func TestHealCandidateReviewCommandValidation(t *testing.T) {
 	}
 }
 
-func TestEnvironmentAllowsBlankBaseURLAndArbitraryPropertyNames(t *testing.T) {
-	valid := Environment{ID: "env", DisplayName: "无地址环境", Properties: Properties{"Tenant": "north"}}
+func TestEnvironmentAllowsBlankBaseURLAndArbitraryVariableNames(t *testing.T) {
+	valid := Environment{ID: "env", DisplayName: "无地址环境", Variables: EnvironmentVariables{"Tenant": parameter.TextValue("north")}}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("blank base URL rejected: %v", err)
 	}
 	for _, key := range []string{"base_url", "username", "password"} {
 		candidate := valid
-		candidate.Properties = candidate.Properties.Clone()
-		candidate.Properties[key] = "property"
+		candidate.Variables = candidate.Variables.Clone()
+		candidate.Variables[key] = parameter.TextValue("value")
 		if err := candidate.Validate(); err != nil {
-			t.Fatalf("property key %q rejected: %v", key, err)
+			t.Fatalf("variable key %q rejected: %v", key, err)
 		}
 	}
 }

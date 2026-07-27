@@ -4,6 +4,8 @@ import (
 	"errors"
 	"math"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestRevisionValidationAndOverflow(t *testing.T) {
@@ -19,15 +21,15 @@ func TestRevisionValidationAndOverflow(t *testing.T) {
 }
 
 func TestEnvironmentLifecycleIsImmutableAndIncrementsOnce(t *testing.T) {
-	original, err := NewEnvironment(Environment{ID: "env", DisplayName: "Env", Properties: Properties{"tenant": "a"}, CreatedAt: 1, UpdatedAt: 1})
+	original, err := NewEnvironment(Environment{ID: "env", DisplayName: "Env", Variables: EnvironmentVariables{"tenant": parameter.TextValue("a")}, CreatedAt: 1, UpdatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := original.UpdateMetadata("New", "https://example.com", Properties{"x": "y"}, 1)
+	updated, err := original.UpdateMetadata("New", "https://example.com", EnvironmentVariables{"x": parameter.TextValue("y")}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Revision != 2 || original.Revision != 1 || original.Properties["tenant"] != "a" {
+	if updated.Revision != 2 || original.Revision != 1 || original.Variables["tenant"].Text() != "a" {
 		t.Fatal("update mutated input or revision")
 	}
 	deleted, err := updated.Delete(2)
