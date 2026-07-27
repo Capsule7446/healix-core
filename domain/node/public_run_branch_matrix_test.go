@@ -251,6 +251,9 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 	persistenceErr := errors.New("execution facts unavailable")
 	observerErr := errors.New("operation observer unavailable")
 	driverErr := errors.New("driver failed")
+	navigateObserverCalls := 0
+	pressObserverCalls := 0
+	actionObserverCalls := 0
 	missingTimelineRuntime := func() *Runtime {
 		return &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, StepTimeline: &timelineSinkStub{}}
 	}
@@ -299,12 +302,12 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			wantText: "invalid navigation URL",
 		},
 		{
-			name: "navigate observation rejected",
+			name: "navigate observation is best effort",
 			step: &StepNode{NodeID: "step", Action: Action{Kind: ActionNavigate, Value: "https://example.test"}},
 			runtime: &Runtime{Driver: &matrixDriver{}, OperationObserver: operationObserverFunc(func(context.Context, OperationObservation) error {
+				navigateObserverCalls++
 				return observerErr
 			})},
-			want: observerErr,
 		},
 		{
 			name:    "press driver failure",
@@ -313,12 +316,12 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			want:    driverErr,
 		},
 		{
-			name: "press observation rejected",
+			name: "press observation is best effort",
 			step: &StepNode{NodeID: "step", Action: Action{Kind: ActionPress, Value: "Enter"}},
 			runtime: &Runtime{Driver: &matrixDriver{}, OperationObserver: operationObserverFunc(func(context.Context, OperationObservation) error {
+				pressObserverCalls++
 				return observerErr
 			})},
-			want: observerErr,
 		},
 		{
 			name: "optional skip succeeded event rejected",
@@ -349,15 +352,15 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			want: persistenceErr,
 		},
 		{
-			name: "action observation rejected",
+			name: "action observation is best effort",
 			step: &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
 			runtime: &Runtime{
 				Driver: &matrixDriver{element: &matrixElement{exists: true}},
 				OperationObserver: operationObserverFunc(func(context.Context, OperationObservation) error {
+					actionObserverCalls++
 					return observerErr
 				}),
 			},
-			want: observerErr,
 		},
 	}
 
@@ -380,6 +383,9 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 				t.Fatalf("Run() error = %v, want text %q", err, test.wantText)
 			}
 		})
+	}
+	if navigateObserverCalls != 1 || pressObserverCalls != 1 || actionObserverCalls != 1 {
+		t.Fatalf("best-effort observer calls = navigate:%d press:%d action:%d, want 1 each", navigateObserverCalls, pressObserverCalls, actionObserverCalls)
 	}
 }
 
@@ -405,6 +411,7 @@ func validValidationGroup(id string) *ValidationGroupNode {
 func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 	persistenceErr := errors.New("execution facts unavailable")
 	observerErr := errors.New("operation observer unavailable")
+	observerCalls := 0
 	tests := []struct {
 		name     string
 		runtime  *Runtime
@@ -431,11 +438,11 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 			want: persistenceErr,
 		},
 		{
-			name: "operation observation rejected",
+			name: "operation observation is best effort",
 			runtime: &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, OperationObserver: operationObserverFunc(func(context.Context, OperationObservation) error {
+				observerCalls++
 				return observerErr
 			})},
-			want: observerErr,
 		},
 		{
 			name: "succeeded event rejected",
@@ -449,6 +456,12 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := validValidationNode("validation").Run(context.Background(), test.runtime)
+			if test.want == nil && test.wantText == "" {
+				if err != nil {
+					t.Fatalf("Run() error = %v", err)
+				}
+				return
+			}
 			if err == nil {
 				t.Fatal("Run() unexpectedly succeeded")
 			}
@@ -459,6 +472,9 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 				t.Fatalf("Run() error = %v, want text %q", err, test.wantText)
 			}
 		})
+	}
+	if observerCalls != 1 {
+		t.Fatalf("best-effort observer calls = %d, want 1", observerCalls)
 	}
 }
 
