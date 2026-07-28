@@ -62,16 +62,45 @@ func TestRunProgramRejectsNilContextAndNegativeInterval(t *testing.T) {
 	}
 }
 
-func TestCompilerRejectsMillisecondDurationOverflowWithoutAllocating(t *testing.T) {
+func TestMillisecondsDurationRejectsOnlyInvalidInt64Boundaries(t *testing.T) {
+	const maxMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)
+	tests := []struct {
+		name         string
+		milliseconds int64
+		want         time.Duration
+		wantError    bool
+	}{
+		{"negative one", -1, 0, true},
+		{"zero", 0, 0, false},
+		{"one", 1, time.Millisecond, false},
+		{"one below maximum", maxMilliseconds - 1, time.Duration(maxMilliseconds-1) * time.Millisecond, false},
+		{"maximum", maxMilliseconds, time.Duration(maxMilliseconds) * time.Millisecond, false},
+		{"one above maximum", maxMilliseconds + 1, 0, true},
+		{"maximum int64", math.MaxInt64, 0, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := millisecondsDuration(test.milliseconds)
+			if (err != nil) != test.wantError {
+				t.Fatalf("millisecondsDuration(%d) error = %v, wantError = %t", test.milliseconds, err, test.wantError)
+			}
+			if got != test.want {
+				t.Fatalf("millisecondsDuration(%d) = %s, want %s", test.milliseconds, got, test.want)
+			}
+		})
+	}
+}
+
+func TestCompilerRejectsNegativeWaitMilliseconds(t *testing.T) {
 	base := minimalCompilerPlan()
 	snapshot, err := runSnapshotForCompilerTest(base, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	draft := base
-	draft.Workflows[0].Steps = []execution.Step{{ID: "wait", DisplayName: "wait", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: math.MaxInt64}}
+	draft.Workflows[0].Steps = []execution.Step{{ID: "wait", DisplayName: "wait", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: -1}}
 	_, err = compileSnapshotDraft(draft, snapshot)
-	if err == nil || !strings.Contains(err.Error(), "duration") {
-		t.Fatalf("error = %v, want duration overflow", err)
+	if err == nil || !strings.Contains(err.Error(), "wait step wait") || !strings.Contains(err.Error(), "duration milliseconds -1") {
+		t.Fatalf("error = %v, want contextual duration validation", err)
 	}
 }

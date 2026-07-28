@@ -322,7 +322,7 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 }
 
 func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (node.Node, error) {
-	duration, err := millisecondsDuration(step.WaitMS)
+	duration, err := millisecondsDuration(int64(step.WaitMS))
 	if err != nil {
 		return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
 	}
@@ -446,8 +446,8 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec
 	return spec, nil
 }
 
-func millisecondsDuration(milliseconds int) (time.Duration, error) {
-	const maxMilliseconds = int(^uint(0)>>1) / int(time.Millisecond)
+func millisecondsDuration(milliseconds int64) (time.Duration, error) {
+	const maxMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)
 	if milliseconds < 0 || milliseconds > maxMilliseconds {
 		return 0, fmt.Errorf("duration milliseconds %d is out of range", milliseconds)
 	}
