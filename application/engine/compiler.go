@@ -113,24 +113,41 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
 	nodes := make(map[execution.NodeDependencyKey]execution.NodeSnapshot, len(draft.Nodes))
 	for _, workflow := range draft.Workflows {
+		if _, exists := versions[workflow.VersionID]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate workflow version %s", workflow.VersionID)
+		}
 		versions[workflow.VersionID] = workflow
 	}
 	for _, resolution := range draft.References {
-		resolutions[referenceKey(resolution.ParentVersionID, resolution.StepID)] = resolution
+		key := referenceKey(resolution.ParentVersionID, resolution.StepID)
+		if _, exists := resolutions[key]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate reference resolution for workflow version %s step %s", resolution.ParentVersionID, resolution.StepID)
+		}
+		resolutions[key] = resolution
 	}
 	for _, snapshot := range draft.Nodes {
-		nodes[nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)] = snapshot
+		key := nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)
+		if _, exists := nodes[key]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate node dependency %s version %s", snapshot.NodeID, snapshot.VersionID)
+		}
+		nodes[key] = snapshot
 	}
 	compiledNodes := 0
 	invocations := snapshot.Invocations()
 	invocationsByEdge := invocationIndex(invocations)
 	invocationsByPath := make(map[string]execution.InvocationScopeSnapshot, len(invocations))
 	for _, invocation := range invocations {
+		if _, exists := invocationsByPath[invocation.Path]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate invocation path %s", invocation.Path)
+		}
 		invocationsByPath[invocation.Path] = invocation
 	}
 	environment := snapshot.Environment()
 	result := CompiledRun{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
+		if _, exists := result.byID[entry.ExecutionID]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate execution %s", entry.ExecutionID)
+		}
 		compiler := executionCompiler{
 			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
 			programSpecs: make(map[string]fingerprint.NodeSpec),
@@ -305,17 +322,21 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 }
 
 func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (node.Node, error) {
+	duration, err := millisecondsDuration(step.WaitMS)
+	if err != nil {
+		return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
+	}
 	switch step.WaitKind {
 	case "", "sleep":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitSleep,
-			Duration: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Duration: duration}, nil
 	case "element":
 		target, err := c.spec(step.NodeID, step.NodeVersionID)
 		if err != nil {
 			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitElement, Target: target,
-			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Timeout: duration}, nil
 	case "element_visible", "element_invisible":
 		target, err := c.spec(step.NodeID, step.NodeVersionID)
 		if err != nil {
@@ -326,10 +347,10 @@ func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (
 			kind = node.WaitElementInvisible
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: kind, Target: target,
-			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Timeout: duration}, nil
 	case "network_idle":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitNetworkIdle,
-			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Timeout: duration}, nil
 	default:
 		return nil, fmt.Errorf("wait step %s has unsupported kind %q", step.ID, step.WaitKind)
 	}
@@ -423,6 +444,14 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec
 	c.programSpecs[versionID] = spec
 	c.runtimeNodes[versionID] = RuntimeNodeIdentity{NodeID: nodeID, NodeVersionID: versionID}
 	return spec, nil
+}
+
+func millisecondsDuration(milliseconds int) (time.Duration, error) {
+	const maxMilliseconds = int(^uint(0)>>1) / int(time.Millisecond)
+	if milliseconds < 0 || milliseconds > maxMilliseconds {
+		return 0, fmt.Errorf("duration milliseconds %d is out of range", milliseconds)
+	}
+	return time.Duration(milliseconds) * time.Millisecond, nil
 }
 
 func impossibleCompilerState(format string, args ...any) error {

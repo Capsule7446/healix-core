@@ -15,6 +15,9 @@ func NewTestTaskService(repository TestTaskRepository) TestTaskService {
 }
 
 func (s TestTaskService) Create(ctx context.Context, task domain.TestTask, initial domain.TestTaskVersion) (domain.TestTaskAggregate, error) {
+	if isNilDependency(s.repository) {
+		return domain.TestTaskAggregate{}, ErrAutomationConfiguration
+	}
 	aggregate, err := domain.NewTestTask(task, initial)
 	if err != nil {
 		return domain.TestTaskAggregate{}, fmt.Errorf("create test task: %w", err)
@@ -32,6 +35,9 @@ func (s TestTaskService) PublishVersion(
 	expected domain.Revision,
 	publication domain.TestTaskVersionPublication,
 ) (domain.TestTaskAggregate, error) {
+	if isNilDependency(s.repository) {
+		return domain.TestTaskAggregate{}, ErrAutomationConfiguration
+	}
 	if strings.TrimSpace(taskID) == "" {
 		return domain.TestTaskAggregate{}, fmt.Errorf("test task ID is required")
 	}

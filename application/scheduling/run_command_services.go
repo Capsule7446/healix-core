@@ -156,6 +156,9 @@ func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunComman
 	if err := validateCancel(command); err != nil {
 		return RunCommandResult{}, err
 	}
+	if isNilPort(s.store) {
+		return RunCommandResult{}, ErrSchedulingDependency
+	}
 	result, err := s.store.Cancel(ctx, command)
 	if err != nil {
 		return RunCommandResult{}, fmt.Errorf("cancel run transaction: %w", err)
@@ -184,6 +187,9 @@ func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) 
 	}
 	if err := command.Fence.Validate(); err != nil {
 		return RunCommandResult{}, fmt.Errorf("invalid abort run command: %w", err)
+	}
+	if isNilPort(s.store) {
+		return RunCommandResult{}, ErrSchedulingDependency
 	}
 	result, err := s.store.Abort(ctx, command)
 	if err != nil {
@@ -227,7 +233,12 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 	if err := validateReorder(command); err != nil {
 		return ReorderQueueResult{}, err
 	}
-	result, err := s.store.Reorder(ctx, command)
+	if isNilPort(s.store) {
+		return ReorderQueueResult{}, ErrSchedulingDependency
+	}
+	ownedCommand := command
+	ownedCommand.RunIDs = append([]string(nil), command.RunIDs...)
+	result, err := s.store.Reorder(ctx, ownedCommand)
 	if err != nil {
 		return ReorderQueueResult{}, fmt.Errorf("reorder queue transaction: %w", err)
 	}

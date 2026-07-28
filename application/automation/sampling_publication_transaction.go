@@ -130,6 +130,9 @@ func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (strin
 }
 
 func (s SamplingPublicationService) Publish(ctx context.Context, command SamplingPublicationCommand) (domain.SamplingPublicationResult, error) {
+	if isNilDependency(s.transaction) {
+		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+	}
 	owned := command
 	owned.Publication = command.Publication.Clone()
 	digest, err := SamplingPublicationRequestDigest(owned)

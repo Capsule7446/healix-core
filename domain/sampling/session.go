@@ -123,6 +123,16 @@ func NewSession(workflowID, startURL string) (*Session, error) {
 	if strings.TrimSpace(startURL) == "" {
 		return nil, fmt.Errorf("sampling: start URL is required")
 	}
+	parsedStartURL, err := url.Parse(startURL)
+	if err != nil {
+		return nil, fmt.Errorf("sampling: invalid start URL: %w", err)
+	}
+	if parsedStartURL.Scheme != "http" && parsedStartURL.Scheme != "https" {
+		return nil, fmt.Errorf("sampling: start URL scheme must be http or https")
+	}
+	if parsedStartURL.Host == "" {
+		return nil, fmt.Errorf("sampling: start URL host is required")
+	}
 	sessionID, err := NewUUID()
 	if err != nil {
 		return nil, err
@@ -138,7 +148,12 @@ func NewSession(workflowID, startURL string) (*Session, error) {
 	}, nil
 }
 
-func (s *Session) ID() string { return s.id }
+func (s *Session) ID() string {
+	if s == nil {
+		return ""
+	}
+	return s.id
+}
 
 func (s *Session) Start() error {
 	if s == nil {

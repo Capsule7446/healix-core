@@ -2,6 +2,7 @@ package heal
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 
@@ -38,11 +39,14 @@ type Assessment struct {
 }
 
 func Assess(target fingerprint.NodeSpec, decision Decision, current ExecutionContext, policy SafetyPolicy) (Assessment, error) {
-	if policy.MinimumMargin <= 0 {
-		policy.MinimumMargin = 0.05
-	}
 	if err := decision.Validate(); err != nil {
 		return Assessment{}, err
+	}
+	if math.IsNaN(policy.MinimumMargin) || math.IsInf(policy.MinimumMargin, 0) {
+		return Assessment{}, fmt.Errorf("heal: minimum margin must be finite, got %v", policy.MinimumMargin)
+	}
+	if policy.MinimumMargin <= 0 {
+		policy.MinimumMargin = 0.05
 	}
 	a := Assessment{Disposition: DispositionAllow}
 	add := func(code ReasonCode) { a.Reasons = append(a.Reasons, code) }

@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
@@ -15,6 +16,9 @@ func NewNodeService(repository NodeRepository) NodeService {
 }
 
 func (s NodeService) Create(ctx context.Context, node domain.Node, initial domain.NodeVersion) (domain.NodeAggregate, error) {
+	if isNilDependency(s.repository) {
+		return domain.NodeAggregate{}, ErrAutomationConfiguration
+	}
 	aggregate, err := domain.NewNode(node, initial)
 	if err != nil {
 		return domain.NodeAggregate{}, fmt.Errorf("create node: %w", err)
@@ -47,6 +51,12 @@ func (s NodeService) Restore(ctx context.Context, id string, expected domain.Rev
 }
 
 func (s NodeService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.NodeAggregate) (domain.NodeAggregate, error)) (domain.NodeAggregate, error) {
+	if isNilDependency(s.repository) {
+		return domain.NodeAggregate{}, ErrAutomationConfiguration
+	}
+	if strings.TrimSpace(id) == "" {
+		return domain.NodeAggregate{}, fmt.Errorf("node ID is required")
+	}
 	current, err := s.repository.Load(ctx, id)
 	if err != nil {
 		return domain.NodeAggregate{}, fmt.Errorf("load node %q: %w", id, err)

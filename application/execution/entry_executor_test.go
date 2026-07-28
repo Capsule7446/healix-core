@@ -111,6 +111,58 @@ func (f panicValidFactory) Create(_ context.Context, _ domainexecution.WorkerFen
 	return panicValidSession{events: f.events}, nil
 }
 
+type invalidSession struct {
+	*sessionFixture
+}
+
+func (invalidSession) Valid() bool { return false }
+
+type invalidSessionFactory struct{ session *sessionFixture }
+
+func (factory invalidSessionFactory) Create(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry) (BrowserSession, error) {
+	return invalidSession{factory.session}, nil
+}
+
+func TestEntryExecutorExecuteCollectionBranchesAndForwarding(t *testing.T) {
+	fence := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
+	for _, entries := range [][]domainexecution.WorkflowEntry{nil, {}} {
+		events := []string{}
+		executor := mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events})
+		if err := executor.Execute(context.Background(), fence, entries); err != nil || len(events) != 0 {
+			t.Fatalf("Execute(%#v) error = %v, events = %v", entries, err, events)
+		}
+	}
+
+	events := []string{}
+	factory := &sessionFactoryFixture{events: &events}
+	runner := &entryRunnerFixture{events: &events}
+	entry := domainexecution.WorkflowEntry{ExecutionID: "entry"}
+	if err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{entry}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(events, []string{"create:entry", "run:entry", "close:entry"}) || len(runner.seen) != 1 || runner.seen[0] != factory.sessions[0] {
+		t.Fatalf("events = %v, sessions = %#v", events, runner.seen)
+	}
+}
+
+func TestEntryExecutorRejectsNormalInvalidSessionAndWrapsRunnerError(t *testing.T) {
+	fence := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
+	events := []string{}
+	session := &sessionFixture{id: "entry", events: &events}
+	runner := &entryRunnerFixture{events: &events}
+	err := mustEntryExecutor(t, invalidSessionFactory{session}, runner).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{{ExecutionID: "entry"}})
+	if err == nil || !strings.Contains(err.Error(), "invalid session") || len(runner.seen) != 0 || !reflect.DeepEqual(events, []string{"close:entry"}) {
+		t.Fatalf("invalid session error = %v, events = %v", err, events)
+	}
+
+	cause := errors.New("runner failed")
+	events = []string{}
+	err = mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events, err: cause}).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{{ExecutionID: "entry"}})
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "execute entry entry") {
+		t.Fatalf("wrapped runner error = %v", err)
+	}
+}
+
 func TestEntryLifecyclePanicErrorReportsBothFailures(t *testing.T) {
 	got := (EntryLifecyclePanic{RunnerPanic: "runner failed", ClosePanic: "close failed"}).Error()
 	want := "entry runner panic: runner failed; browser close panic: close failed"
@@ -398,6 +450,26 @@ func TestEntryExecutorUsesFreshSerialBrowserSessions(t *testing.T) {
 	want := []string{"create:first", "run:first", "close:first", "create:second", "run:second", "close:second"}
 	if !reflect.DeepEqual(events, want) || len(runner.seen) != 2 || runner.seen[0] == runner.seen[1] {
 		t.Fatalf("events/sessions=%#v/%#v", events, runner.seen)
+	}
+}
+
+func TestEntryExecutorStopsAfterCancellationEvenWhenRunnerReturnsNil(t *testing.T) {
+	events := []string{}
+	factory := &sessionFactoryFixture{events: &events}
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := EntryRunnerFunc(func(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.WorkflowEntry, _ BrowserSession) error {
+		events = append(events, "run:"+entry.ExecutionID)
+		cancel()
+		return nil
+	})
+
+	err := mustEntryExecutor(t, factory, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Execute() error = %v, want context canceled", err)
+	}
+	if want := []string{"create:first", "run:first", "close:first"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %#v, want %#v", events, want)
 	}
 }
 

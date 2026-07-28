@@ -369,20 +369,18 @@ func min3(a, b, c int) int {
 
 // simIndex 是 1 - |Δsibling_index| / max(target, candidate, 1)。
 func simIndex(target, candidate int) float64 {
-	maxIdx := target
-	if candidate > maxIdx {
-		maxIdx = candidate
+	if target < 0 || candidate < 0 {
+		return 0
 	}
+	maxIdx := max(target, candidate)
 	if maxIdx == 0 {
 		return 1
 	}
-	diff := target - candidate
-	if diff < 0 {
-		diff = -diff
-	}
+	minIdx := min(target, candidate)
+	diff := maxIdx - minIdx
 	sim := 1 - float64(diff)/float64(maxIdx)
 	if sim < 0 {
-		sim = 0
+		return 0
 	}
 	return sim
 }

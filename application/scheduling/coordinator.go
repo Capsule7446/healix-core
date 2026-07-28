@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
@@ -11,7 +12,18 @@ import (
 
 const claimReleaseTimeout = 5 * time.Second
 
-var ErrInvalidClaim = errors.New("invalid scheduling claim")
+var (
+	ErrInvalidClaim         = errors.New("invalid scheduling claim")
+	ErrSchedulingDependency = errors.New("scheduling dependency is unavailable")
+)
+
+func isNilPort(port any) bool {
+	if port == nil {
+		return true
+	}
+	value := reflect.ValueOf(port)
+	return value.Kind() == reflect.Ptr && value.IsNil()
+}
 
 type Claim struct {
 	Snapshot execution.RunSnapshot
@@ -49,6 +61,9 @@ func NewCoordinator(claims ClaimSource, states EntryStateReader, writer Decision
 }
 
 func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredAt int64) (claimed bool, resultErr error) {
+	if isNilPort(c.claims) || isNilPort(c.states) || isNilPort(c.writer) {
+		return false, ErrSchedulingDependency
+	}
 	claim, found, err := c.claims.ClaimNext(ctx, workerID, occurredAt)
 	if err != nil {
 		return false, fmt.Errorf("claim next run: %w", err)

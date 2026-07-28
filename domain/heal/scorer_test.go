@@ -29,6 +29,30 @@ func TestSimTextUsesRuneLengthForUnicode(t *testing.T) {
 	}
 }
 
+func TestSimIndexStaysBoundedAtIntegerExtremes(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    int
+		candidate int
+	}{
+		{name: "max against negative one", target: math.MaxInt, candidate: -1},
+		{name: "min against max", target: math.MinInt, candidate: math.MaxInt},
+		{name: "max against min", target: math.MaxInt, candidate: math.MinInt},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := simIndex(test.target, test.candidate)
+			if math.IsNaN(got) || math.IsInf(got, 0) || got < 0 || got > 1 {
+				t.Fatalf("simIndex(%d, %d) = %v, want finite value in [0, 1]", test.target, test.candidate, got)
+			}
+			if got != 0 {
+				t.Fatalf("simIndex(%d, %d) = %v, want 0 for opposite extremes", test.target, test.candidate, got)
+			}
+		})
+	}
+}
+
 func TestWeightsValidate(t *testing.T) {
 	if err := DefaultWeights().Validate(); err != nil {
 		t.Fatalf("DefaultWeights.Validate: %v", err)

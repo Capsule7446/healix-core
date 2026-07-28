@@ -469,6 +469,16 @@ type ValidationGroupNode struct {
 func (g *ValidationGroupNode) ID() string { return g.NodeID }
 
 func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
+	for branchIndex, branch := range g.Branches {
+		if branch.ID == "" {
+			return fmt.Errorf("validation group %s: branch %d requires an ID", g.NodeID, branchIndex)
+		}
+		for memberIndex, member := range branch.Nodes {
+			if member == nil {
+				return fmt.Errorf("validation group %s: branch %s member %d is nil", g.NodeID, branch.ID, memberIndex)
+			}
+		}
+	}
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("validation group %s: wait step interval: %w", g.NodeID, err)
 	}

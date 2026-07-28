@@ -1,7 +1,9 @@
 package execution
 
 import (
+	"math"
 	"reflect"
+	"strings"
 	"testing"
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
@@ -23,6 +25,50 @@ func healGovernancePlan(runID string, sequence uint64, band evidence.DecisionBan
 			Kind: HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + runID,
 			RunID: runID, Sequence: sequence, Observation: &observation,
 		},
+	}
+}
+
+func TestDefaultHealGovernancePlannerValidatesExportedBoundaryInputs(t *testing.T) {
+	valid := healGovernancePlan("run", 1, evidence.DecisionApplied, domainautomation.HealStreak{})
+	for _, test := range []struct {
+		name   string
+		mutate func(*HealGovernancePlan)
+	}{
+		{"zero payloads", func(plan *HealGovernancePlan) { plan.Fact.Observation = nil }},
+		{"multiple payloads", func(plan *HealGovernancePlan) { plan.Fact.Reset = &evidence.HealCandidateReset{} }},
+		{"unsupported fact kind", func(plan *HealGovernancePlan) { plan.Fact.Kind = "OTHER" }},
+		{"unsupported decision band", func(plan *HealGovernancePlan) { plan.Fact.Observation.DecisionBand = "OTHER" }},
+		{"unsupported candidate status", func(plan *HealGovernancePlan) { plan.Snapshot.CandidateStatus = "OTHER" }},
+		{"whitespace node", func(plan *HealGovernancePlan) { plan.Snapshot.Key.NodeID = " \t" }},
+		{"whitespace base", func(plan *HealGovernancePlan) { plan.Snapshot.Key.BaseNodeVersionID = " \n" }},
+		{"whitespace current", func(plan *HealGovernancePlan) { plan.Snapshot.CurrentNodeVersionID = "  " }},
+		{"whitespace fact", func(plan *HealGovernancePlan) { plan.Fact.FactID = "  " }},
+		{"whitespace commit", func(plan *HealGovernancePlan) { plan.Fact.CommitID = "  " }},
+		{"whitespace run", func(plan *HealGovernancePlan) { plan.Fact.RunID = "  " }},
+		{"zero revision", func(plan *HealGovernancePlan) { plan.Snapshot.Revision = 0 }},
+		{"zero sequence", func(plan *HealGovernancePlan) { plan.Fact.Sequence = 0 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := valid
+			observation := *valid.Fact.Observation
+			plan.Fact.Observation = &observation
+			test.mutate(&plan)
+			if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestDefaultHealGovernancePlannerAcceptsRevisionAndSequenceUpperBoundary(t *testing.T) {
+	plan := healGovernancePlan("run", math.MaxUint64, evidence.DecisionApplied, domainautomation.HealStreak{})
+	plan.Snapshot.Revision = domainautomation.Revision(math.MaxUint64)
+	decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
+	if err != nil || decision.Sequence != math.MaxUint64 || decision.ExpectedRevision != domainautomation.Revision(math.MaxUint64) {
+		t.Fatalf("PlanHealGovernance() = (%#v, %v)", decision, err)
+	}
+	if strings.TrimSpace(decision.FactID) == "" {
+		t.Fatal("decision lost fact identity")
 	}
 }
 

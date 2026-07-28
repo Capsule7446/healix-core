@@ -497,7 +497,7 @@ func TestExecutionStatusTransitionMatrix(t *testing.T) {
 	statuses := []ExecutionStatus{ExecutionPending, ExecutionRunning, ExecutionSucceeded, ExecutionFailed, ExecutionCanceled, ExecutionAborted}
 	allowed := map[[2]ExecutionStatus]bool{
 		{ExecutionPending, ExecutionRunning}: true, {ExecutionPending, ExecutionFailed}: true, {ExecutionPending, ExecutionCanceled}: true,
-		{ExecutionRunning, ExecutionSucceeded}: true, {ExecutionRunning, ExecutionFailed}: true, {ExecutionRunning, ExecutionAborted}: true,
+		{ExecutionRunning, ExecutionSucceeded}: true, {ExecutionRunning, ExecutionFailed}: true, {ExecutionRunning, ExecutionCanceled}: true, {ExecutionRunning, ExecutionAborted}: true,
 	}
 	for _, from := range statuses {
 		for _, to := range statuses {
