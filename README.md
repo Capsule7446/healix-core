@@ -100,7 +100,7 @@ flowchart TB
 |---|---|---|
 | `application/automation` | 聚合命令服务、Revision 冲突、采样发布、修复审核 | Repository 事务、ID/时钟、授权、查询 API |
 | `application/scheduling` | `CreateRunService`、执行实例快照构建、`DecideAdvance`、`Coordinator` | 在同一目录/事务视图中解析 `latest`、原子创建/领取执行权、租约/栅栏校验、完整队列 |
-| `application/engine` | `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、步骤元数据映射 | 选择已调度 entry，注入并实现运行端口 |
+| `application/engine` | `CompilePlan`、`RunProgram`、私有 Program 与执行身份封印、步骤元数据映射 | 选择已调度 entry，注入并实现运行端口 |
 | `application/execution` | `EntryExecutor`、`execution.WorkerFence` 限定的 entry 执行、修复治理、进度与事实提交接口 | 进度存储和原子终态提交 |
 
 接口存在不代表生产适配器已存在。
@@ -125,9 +125,9 @@ sequenceDiagram
   Q-->>S: claim（含不可变 RunSnapshot 与 WorkerFence）及当前状态
   S->>Q: ApplyDecision（原子 fencing）
   S-->>H: claimed / error；可运行 executionID 由 claim / decision 适配器契约承接
-  H->>E: CompileRunSnapshot(snapshot)
+  H->>E: CompilePlan(snapshot)
   E-->>H: CompiledRun / 独立 CompiledEntry
-  H->>E: RunCompiledEntry(ctx, entry, Config)
+  H->>E: RunProgram(ctx, entry, Config)
   E->>B: locate / action / wait / validate
   B-->>E: observation 或分类错误
   E->>F: `node.ExecutionSink` 运行事实（若注入）
@@ -247,7 +247,7 @@ snapshot := result.Snapshot
 ### 3. 编译并运行被调度的 entry
 
 ```go
-compiled, err := engine.CompileRunSnapshot(snapshot)
+compiled, err := engine.CompilePlan(snapshot)
 if err != nil {
     return fmt.Errorf("compile run snapshot: %w", err)
 }
@@ -257,18 +257,21 @@ if !ok {
     return fmt.Errorf("compiled entry %q not found", executionID)
 }
 
-err = engine.RunCompiledEntry(ctx, entry, engine.Config{
-    RunID:        runID,
-    ClaimToken:   claimToken,
-    Driver:       driver,   // node.Driver，由宿主实现
-    Recorder:     recorder, // node.Recorder，由宿主实现
-    Facts:        facts,    // node.ExecutionSink，由宿主实现
-    Healer:       heal.NewDefaultHealer(), // nil 表示关闭自愈
-    StepInterval: 100 * time.Millisecond,
+runResult, err := engine.RunProgram(ctx, entry, engine.Config{
+    RunID:            claimedRunID,
+    SnapshotDigest:   claimedSnapshotDigest,
+    ExecutionID:      claimedExecutionID,
+    ClaimToken:       claimToken,
+    AuthorityVerifier: authorityVerifier, // engine.ExecutionAuthorityVerifier，由宿主权威适配器实现
+    Driver:           driver,             // node.Driver，由宿主实现
+    Recorder:         recorder,           // node.Recorder，由宿主实现
+    Facts:            facts,              // node.ExecutionSink，由宿主实现
+    Healer:           heal.NewDefaultHealer(), // nil 表示关闭自愈
+    StepInterval:     100 * time.Millisecond,
 })
 ```
 
-宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompileRunSnapshot` 本身不会领取任务或写数据库。运行时参数不由 `Config` 提供，而是在编译时从不可变 `RunSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.RunSnapshot`，因为除 Plan 中冻结的 workflow/node/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
+宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `RunSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.RunSnapshot`，因为除 Plan 中冻结的 workflow/node/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
 
 ## 当前生命周期约束
 

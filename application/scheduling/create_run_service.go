@@ -198,7 +198,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	if stored.Run.ID != command.RunID || stored.Run.TestTaskID != command.TestTaskID || stored.Run.TestTaskVersionID != command.TestTaskVersionID || stored.Run.EnvironmentID != command.EnvironmentID || stored.Run.CreatedAt != command.CreatedAt {
 		return invalid("stored run identity does not match command")
 	}
-	if stored.Snapshot.SchemaVersion() != execution.RunSnapshotSchemaV1 || stored.Snapshot.RunID() != command.RunID || stored.Snapshot.TestTaskID() != command.TestTaskID || stored.Snapshot.TestTaskVersionID() != command.TestTaskVersionID || stored.Snapshot.Environment().ID != command.EnvironmentID {
+	if stored.Snapshot.RunID() != command.RunID || stored.Snapshot.TestTaskID() != command.TestTaskID || stored.Snapshot.TestTaskVersionID() != command.TestTaskVersionID || stored.Snapshot.Environment().ID != command.EnvironmentID {
 		return invalid("stored snapshot identity does not match command")
 	}
 	if input.FailurePolicy != command.FailurePolicy || input.ScreenshotPolicy != command.ScreenshotPolicy || input.HealerPolicy != command.HealerPolicy {

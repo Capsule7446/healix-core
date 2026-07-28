@@ -17,17 +17,22 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+type RunSnapshotSchema int
+
 const (
-	RunSnapshotSchemaV1    = 1
-	ScreenshotPolicyV1     = 1
-	HealerPolicyV1         = 1
-	MaxSnapshotStringBytes = 64 * 1024
+	RunSnapshotSchemaV1      RunSnapshotSchema = 1
+	RunSnapshotSchemaV2      RunSnapshotSchema = 2
+	RunSnapshotSchemaCurrent                   = RunSnapshotSchemaV2
+	ScreenshotPolicyV1                         = 1
+	HealerPolicyV1                             = 1
+	MaxSnapshotStringBytes                     = 64 * 1024
 )
 
 type EnvironmentSnapshot struct {
 	ID, DisplayName, BaseURL string
 	Revision                 uint64
 	Properties               map[string]string
+	Variables                map[string]parameter.Value
 }
 type ScreenshotPolicySnapshot struct {
 	Version     int
@@ -83,7 +88,7 @@ type InvocationScopeSnapshot struct {
 }
 
 type RunSnapshotInput struct {
-	SchemaVersion                        int
+	SchemaVersion                        RunSnapshotSchema
 	RunID, TestTaskID, TestTaskVersionID string
 	TestTaskVersionNumber                int
 	TestTask                             TestTaskSnapshot
@@ -101,13 +106,13 @@ type RunSnapshot struct {
 	digest string
 }
 
-func (s RunSnapshot) Digest() string            { return s.digest }
-func (s RunSnapshot) SchemaVersion() int        { return s.input.SchemaVersion }
-func (s RunSnapshot) RunID() string             { return s.input.RunID }
-func (s RunSnapshot) TestTaskID() string        { return s.input.TestTaskID }
-func (s RunSnapshot) TestTaskVersionID() string { return s.input.TestTaskVersionID }
-func (s RunSnapshot) Input() RunSnapshotInput   { return cloneSnapshotInput(s.input) }
-func (s RunSnapshot) Plan() Draft               { return cloneDraft(s.input.Plan) }
+func (s RunSnapshot) Digest() string                   { return s.digest }
+func (s RunSnapshot) SchemaVersion() RunSnapshotSchema { return s.input.SchemaVersion }
+func (s RunSnapshot) RunID() string                    { return s.input.RunID }
+func (s RunSnapshot) TestTaskID() string               { return s.input.TestTaskID }
+func (s RunSnapshot) TestTaskVersionID() string        { return s.input.TestTaskVersionID }
+func (s RunSnapshot) Input() RunSnapshotInput          { return cloneSnapshotInput(s.input) }
+func (s RunSnapshot) Plan() Draft                      { return cloneDraft(s.input.Plan) }
 func (s RunSnapshot) Invocations() []InvocationScopeSnapshot {
 	return cloneInvocations(s.input.Invocations)
 }
@@ -119,7 +124,16 @@ func (s RunSnapshot) Invocation(path string) (InvocationScopeSnapshot, bool) {
 	}
 	return InvocationScopeSnapshot{}, false
 }
-func (s RunSnapshot) Environment() EnvironmentSnapshot { return cloneEnvironment(s.input.Environment) }
+func (s RunSnapshot) Environment() EnvironmentSnapshot {
+	result := cloneEnvironment(s.input.Environment)
+	if s.input.SchemaVersion == RunSnapshotSchemaV1 {
+		result.Variables = make(map[string]parameter.Value, len(result.Properties))
+		for name, value := range result.Properties {
+			result.Variables[name] = parameter.TextValue(value)
+		}
+	}
+	return result
+}
 
 func SealRunSnapshot(input RunSnapshotInput) (RunSnapshot, error) {
 	if err := preflightRunSnapshot(input); err != nil {
@@ -155,11 +169,16 @@ func cloneSnapshotInput(v RunSnapshotInput) RunSnapshotInput {
 	return v
 }
 func cloneEnvironment(v EnvironmentSnapshot) EnvironmentSnapshot {
-	p := make(map[string]string, len(v.Properties))
-	for k, x := range v.Properties {
-		p[k] = x
+	properties := make(map[string]string, len(v.Properties))
+	for name, value := range v.Properties {
+		properties[name] = value
 	}
-	v.Properties = p
+	variables := make(map[string]parameter.Value, len(v.Variables))
+	for name, value := range v.Variables {
+		variables[name] = value.Clone()
+	}
+	v.Properties = properties
+	v.Variables = variables
 	return v
 }
 func cloneInvocations(source []InvocationScopeSnapshot) []InvocationScopeSnapshot {
@@ -382,7 +401,7 @@ func buildSnapshotValidationIndexes(plan Draft) (snapshotValidationIndexes, erro
 }
 
 func validateSnapshot(v RunSnapshotInput) error {
-	if v.SchemaVersion != RunSnapshotSchemaV1 {
+	if v.SchemaVersion != RunSnapshotSchemaV1 && v.SchemaVersion != RunSnapshotSchemaV2 {
 		return fmt.Errorf("unsupported run snapshot schema %d", v.SchemaVersion)
 	}
 	if !validString(v.RunID, true) || !validString(v.TestTaskID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
@@ -531,7 +550,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 	if !v.FailurePolicy.IsValid() {
 		return errors.New("invalid failure policy")
 	}
-	if err := validateEnvironmentSnapshot(v.Environment); err != nil {
+	if err := validateEnvironmentSnapshot(v.SchemaVersion, v.Environment); err != nil {
 		return err
 	}
 	if err := validateScreenshot(v.ScreenshotPolicy); err != nil {
@@ -597,7 +616,7 @@ func equalValues(left, right map[string]parameter.Value) bool {
 	return true
 }
 
-func validateEnvironmentSnapshot(v EnvironmentSnapshot) error {
+func validateEnvironmentSnapshot(schemaVersion RunSnapshotSchema, v EnvironmentSnapshot) error {
 	if v.Revision == 0 {
 		return errors.New("environment revision must be positive")
 	}
@@ -610,9 +629,26 @@ func validateEnvironmentSnapshot(v EnvironmentSnapshot) error {
 			return errors.New("environment base URL must be an absolute HTTP(S) URL without credentials")
 		}
 	}
-	for k, x := range v.Properties {
-		if !validString(k, true) || !validString(x, false) {
-			return errors.New("invalid environment property")
+	if schemaVersion == RunSnapshotSchemaV1 {
+		if len(v.Variables) != 0 {
+			return errors.New("V1 environment snapshot cannot contain typed variables")
+		}
+		for name, value := range v.Properties {
+			if parameter.ValidateName(name) != nil || !validString(value, false) {
+				return errors.New("invalid environment property")
+			}
+		}
+		return nil
+	}
+	if len(v.Properties) != 0 {
+		return errors.New("V2 environment snapshot cannot contain legacy properties")
+	}
+	for name, value := range v.Variables {
+		if err := parameter.ValidateName(name); err != nil {
+			return fmt.Errorf("invalid environment variable name: %w", err)
+		}
+		if err := value.Validate(); err != nil {
+			return fmt.Errorf("environment variable %q: %w", name, err)
 		}
 	}
 	return nil
@@ -690,7 +726,11 @@ func encodeSnapshot(e *canonicalEncoder, v RunSnapshotInput) {
 	e.str(v.Environment.DisplayName)
 	e.str(v.Environment.BaseURL)
 	e.u64(v.Environment.Revision)
-	encodeStrings(e, v.Environment.Properties)
+	if v.SchemaVersion == RunSnapshotSchemaV1 {
+		encodeStrings(e, v.Environment.Properties)
+	} else {
+		encodeParameterValues(e, v.Environment.Variables)
+	}
 	e.str(string(v.FailurePolicy))
 	e.u64(uint64(v.ScreenshotPolicy.Version))
 	e.boolean(v.ScreenshotPolicy.Enabled)
@@ -786,6 +826,13 @@ func encodeStrings(e *canonicalEncoder, m map[string]string) {
 	for _, k := range sortedKeys(m) {
 		e.str(k)
 		e.str(m[k])
+	}
+}
+func encodeParameterValues(e *canonicalEncoder, values map[string]parameter.Value) {
+	e.u64(uint64(len(values)))
+	for _, name := range sortedKeys(values) {
+		e.str(name)
+		encodeValue(e, values[name])
 	}
 }
 func encodeValue(e *canonicalEncoder, v parameter.Value) {

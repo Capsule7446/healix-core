@@ -78,12 +78,35 @@ func ValidateSamples(samples []CandidateSample) error {
 		if sample.Rank != index+1 || sample.CandidateHash == "" || sample.FingerprintHash == "" || math.IsNaN(sample.Score) || math.IsInf(sample.Score, 0) || sample.Score < 0 || sample.Score > 1 {
 			return fmt.Errorf("heal: invalid candidate sample at rank %d", index+1)
 		}
+		if err := validateCandidateSampleStatus(sample); err != nil {
+			return err
+		}
 		if sample.Selected {
-			if seenSelected || !sample.Eligible {
+			if seenSelected {
 				return fmt.Errorf("heal: candidate sample selection is invalid")
 			}
 			seenSelected = true
 		}
+	}
+	return nil
+}
+
+func validateCandidateSampleStatus(sample CandidateSample) error {
+	switch sample.Status {
+	case CandidateSampleBelowCap:
+		if sample.Eligible || sample.Selected {
+			return fmt.Errorf("heal: candidate sample status is invalid")
+		}
+	case CandidateSampleEligible:
+		if !sample.Eligible || sample.Selected {
+			return fmt.Errorf("heal: candidate sample status is invalid")
+		}
+	case CandidateSampleSelected:
+		if !sample.Eligible || !sample.Selected {
+			return fmt.Errorf("heal: candidate sample status is invalid")
+		}
+	default:
+		return fmt.Errorf("heal: candidate sample status is invalid")
 	}
 	return nil
 }

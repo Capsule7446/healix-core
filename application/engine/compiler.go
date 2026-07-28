@@ -29,34 +29,79 @@ type RuntimeNodeIdentity struct {
 	NodeVersionID string
 }
 
+type compiledExecutionIdentity struct {
+	runID          string
+	snapshotDigest string
+	executionID    string
+}
+
 type CompiledEntry struct {
+	RunID             string
+	SnapshotDigest    string
 	ExecutionID       string
 	TestTaskItemID    string
 	SequenceNumber    int
 	WorkflowID        string
 	WorkflowVersionID string
-	Program           node.Program
 	Metadata          map[string]StepMetadata
 	RuntimeNodes      map[string]RuntimeNodeIdentity
+	program           node.Program
+	identity          compiledExecutionIdentity
 }
 
 type CompiledRun struct {
-	Entries []CompiledEntry
+	entries []CompiledEntry
 	byID    map[string]int
+}
+
+// Entries returns the compiled entries in execution order. The returned slice
+// and each entry's exported maps are owned by the caller.
+func (r CompiledRun) Entries() []CompiledEntry {
+	entries := make([]CompiledEntry, len(r.entries))
+	for index, entry := range r.entries {
+		entries[index] = cloneCompiledEntry(entry)
+	}
+	return entries
 }
 
 // Entry returns the compiled entry identified by executionID without exposing
 // the run's private lookup index.
 func (r CompiledRun) Entry(executionID string) (CompiledEntry, bool) {
 	index, ok := r.byID[executionID]
-	if !ok || index < 0 || index >= len(r.Entries) {
+	if !ok || index < 0 || index >= len(r.entries) {
 		return CompiledEntry{}, false
 	}
-	return r.Entries[index], true
+	entry := r.entries[index]
+	if !entry.hasIdentity(executionID) {
+		return CompiledEntry{}, false
+	}
+	return cloneCompiledEntry(entry), true
 }
 
-// CompileRunSnapshot compiles solely from the immutable run snapshot payload.
-func CompileRunSnapshot(snapshot execution.RunSnapshot) (CompiledRun, error) {
+func (entry CompiledEntry) hasIdentity(executionID string) bool {
+	return executionID != "" &&
+		entry.RunID != "" && entry.RunID == entry.identity.runID &&
+		entry.SnapshotDigest != "" && entry.SnapshotDigest == entry.identity.snapshotDigest &&
+		entry.ExecutionID == executionID && entry.ExecutionID == entry.identity.executionID
+}
+
+func cloneCompiledEntry(entry CompiledEntry) CompiledEntry {
+	metadataSource := entry.Metadata
+	entry.Metadata = make(map[string]StepMetadata, len(metadataSource))
+	for id, metadata := range metadataSource {
+		entry.Metadata[id] = metadata
+	}
+	runtimeNodesSource := entry.RuntimeNodes
+	entry.RuntimeNodes = make(map[string]RuntimeNodeIdentity, len(runtimeNodesSource))
+	for id, identity := range runtimeNodesSource {
+		entry.RuntimeNodes[id] = identity
+	}
+	return entry
+}
+
+// CompilePlan compiles solely from the immutable run snapshot payload. Every
+// returned entry is bound to the snapshot's Run, digest, and Execution ID.
+func CompilePlan(snapshot execution.RunSnapshot) (CompiledRun, error) {
 	if snapshot.Digest() == "" {
 		return CompiledRun{}, fmt.Errorf("compile run snapshot: snapshot is not sealed")
 	}
@@ -68,24 +113,41 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
 	nodes := make(map[execution.NodeDependencyKey]execution.NodeSnapshot, len(draft.Nodes))
 	for _, workflow := range draft.Workflows {
+		if _, exists := versions[workflow.VersionID]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate workflow version %s", workflow.VersionID)
+		}
 		versions[workflow.VersionID] = workflow
 	}
 	for _, resolution := range draft.References {
-		resolutions[referenceKey(resolution.ParentVersionID, resolution.StepID)] = resolution
+		key := referenceKey(resolution.ParentVersionID, resolution.StepID)
+		if _, exists := resolutions[key]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate reference resolution for workflow version %s step %s", resolution.ParentVersionID, resolution.StepID)
+		}
+		resolutions[key] = resolution
 	}
 	for _, snapshot := range draft.Nodes {
-		nodes[nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)] = snapshot
+		key := nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)
+		if _, exists := nodes[key]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate node dependency %s version %s", snapshot.NodeID, snapshot.VersionID)
+		}
+		nodes[key] = snapshot
 	}
 	compiledNodes := 0
 	invocations := snapshot.Invocations()
 	invocationsByEdge := invocationIndex(invocations)
 	invocationsByPath := make(map[string]execution.InvocationScopeSnapshot, len(invocations))
 	for _, invocation := range invocations {
+		if _, exists := invocationsByPath[invocation.Path]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate invocation path %s", invocation.Path)
+		}
 		invocationsByPath[invocation.Path] = invocation
 	}
 	environment := snapshot.Environment()
-	result := CompiledRun{Entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
+	result := CompiledRun{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
+		if _, exists := result.byID[entry.ExecutionID]; exists {
+			return CompiledRun{}, fmt.Errorf("duplicate execution %s", entry.ExecutionID)
+		}
 		compiler := executionCompiler{
 			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
 			programSpecs: make(map[string]fingerprint.NodeSpec),
@@ -103,24 +165,26 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 			return CompiledRun{}, fmt.Errorf("compile execution %s: root invocation is missing", entry.ExecutionID)
 		}
 		root.Parameters = cloneParameterValues(invocation.Values)
-		if len(environment.Properties) > 0 && root.Parameters == nil {
-			root.Parameters = make(map[string]parameter.Value, len(environment.Properties))
+		if len(environment.Variables) > 0 && root.Parameters == nil {
+			root.Parameters = make(map[string]parameter.Value, len(environment.Variables))
 		}
-		for name, value := range environment.Properties {
+		for name, value := range environment.Variables {
 			key := "env." + name
 			if _, collision := root.Parameters[key]; collision {
 				return CompiledRun{}, fmt.Errorf("compile execution %s: environment parameter %s collides with workflow scope", entry.ExecutionID, key)
 			}
-			root.Parameters[key] = parameter.TextValue(value)
+			root.Parameters[key] = value.Clone()
 		}
 		compiledEntry := CompiledEntry{
+			RunID: snapshot.RunID(), SnapshotDigest: snapshot.Digest(),
 			ExecutionID: entry.ExecutionID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
 			WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID,
-			Program:  node.Program{Root: root, Specs: compiler.programSpecs},
+			program:  node.Program{Root: root, Specs: compiler.programSpecs},
 			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
+			identity: compiledExecutionIdentity{runID: snapshot.RunID(), snapshotDigest: snapshot.Digest(), executionID: entry.ExecutionID},
 		}
-		result.byID[entry.ExecutionID] = len(result.Entries)
-		result.Entries = append(result.Entries, compiledEntry)
+		result.byID[entry.ExecutionID] = len(result.entries)
+		result.entries = append(result.entries, compiledEntry)
 	}
 	return result, nil
 }
@@ -258,17 +322,21 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 }
 
 func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (node.Node, error) {
+	duration, err := millisecondsDuration(int64(step.WaitMS))
+	if err != nil {
+		return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
+	}
 	switch step.WaitKind {
 	case "", "sleep":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitSleep,
-			Duration: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Duration: duration}, nil
 	case "element":
 		target, err := c.spec(step.NodeID, step.NodeVersionID)
 		if err != nil {
 			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitElement, Target: target,
-			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Timeout: duration}, nil
 	case "element_visible", "element_invisible":
 		target, err := c.spec(step.NodeID, step.NodeVersionID)
 		if err != nil {
@@ -279,10 +347,10 @@ func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (
 			kind = node.WaitElementInvisible
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: kind, Target: target,
-			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Timeout: duration}, nil
 	case "network_idle":
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitNetworkIdle,
-			Timeout: time.Duration(step.WaitMS) * time.Millisecond}, nil
+			Timeout: duration}, nil
 	default:
 		return nil, fmt.Errorf("wait step %s has unsupported kind %q", step.ID, step.WaitKind)
 	}
@@ -376,6 +444,14 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec
 	c.programSpecs[versionID] = spec
 	c.runtimeNodes[versionID] = RuntimeNodeIdentity{NodeID: nodeID, NodeVersionID: versionID}
 	return spec, nil
+}
+
+func millisecondsDuration(milliseconds int64) (time.Duration, error) {
+	const maxMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)
+	if milliseconds < 0 || milliseconds > maxMilliseconds {
+		return 0, fmt.Errorf("duration milliseconds %d is out of range", milliseconds)
+	}
+	return time.Duration(milliseconds) * time.Millisecond, nil
 }
 
 func impossibleCompilerState(format string, args ...any) error {

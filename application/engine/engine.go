@@ -3,17 +3,41 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
+// ErrExecutionIdentityMismatch reports that a compiled entry no longer agrees
+// with its sealed Run/snapshot/execution identity or the supplied worker Run.
+var (
+	ErrExecutionIdentityMismatch  = errors.New("engine: execution identity mismatch")
+	ErrExecutionAuthorityRequired = errors.New("engine: execution authority verifier required")
+)
+
+type ExecutionAuthority struct {
+	RunID          string
+	SnapshotDigest string
+	ExecutionID    string
+	ClaimToken     string
+}
+
+type ExecutionAuthorityVerifier interface {
+	VerifyExecutionAuthority(context.Context, ExecutionAuthority) error
+}
+
 // Config 打包了一次 Program 执行所需的领域端口与运行变量。
 type Config struct {
-	RunID      string
-	ClaimToken string
-	Driver     node.Driver
+	// RunID、SnapshotDigest、ExecutionID 与 ClaimToken 必须来自本次已领取
+	// 执行权的权威身份，不能从待执行的 CompiledEntry 反向填充。
+	RunID             string
+	SnapshotDigest    string
+	ExecutionID       string
+	ClaimToken        string
+	AuthorityVerifier ExecutionAuthorityVerifier
+	Driver            node.Driver
 	// Healer 由组合根注入；nil 表示关闭自愈。
 	Healer             heal.Healer
 	Recorder           node.Recorder
@@ -56,14 +80,31 @@ type RunResult struct {
 	TimelineOutcome  TimelineOutcome
 }
 
-// RunCompiledEntry executes an entry compiled from an immutable run snapshot.
-func RunCompiledEntry(ctx context.Context, entry CompiledEntry, cfg Config) error {
-	_, err := RunCompiledEntryWithResult(ctx, entry, cfg)
-	return err
-}
-
-func RunCompiledEntryWithResult(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult, error) {
-	return (RunCoordinator{}).Run(ctx, entry.Program, cfg)
+// RunProgram executes only an entry produced by CompilePlan. Identity is
+// validated before any runtime port can be observed.
+func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult, error) {
+	result := RunResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
+	if entry.identity.runID == "" ||
+		entry.RunID != entry.identity.runID ||
+		entry.SnapshotDigest != entry.identity.snapshotDigest ||
+		entry.ExecutionID != entry.identity.executionID ||
+		cfg.RunID != entry.identity.runID ||
+		cfg.SnapshotDigest != entry.identity.snapshotDigest ||
+		cfg.ExecutionID != entry.identity.executionID ||
+		cfg.ClaimToken == "" {
+		return result, ErrExecutionIdentityMismatch
+	}
+	if cfg.AuthorityVerifier == nil {
+		return result, ErrExecutionAuthorityRequired
+	}
+	authority := ExecutionAuthority{
+		RunID: cfg.RunID, SnapshotDigest: cfg.SnapshotDigest,
+		ExecutionID: cfg.ExecutionID, ClaimToken: cfg.ClaimToken,
+	}
+	if err := cfg.AuthorityVerifier.VerifyExecutionAuthority(ctx, authority); err != nil {
+		return result, err
+	}
+	return runProgram(ctx, entry.program, cfg)
 }
 
 func detachedTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

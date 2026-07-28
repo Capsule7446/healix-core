@@ -122,6 +122,43 @@ func TestWorkspacePackageIsRemoved(t *testing.T) {
 	}
 }
 
+func TestEngineHasSingleCanonicalExecutionAPI(t *testing.T) {
+	root := repositoryRoot(t)
+	found := make(map[string]token.Position)
+	err := walkProductionGo(filepath.Join(root, "application", "engine"), func(_ string, parsed *ast.File, fset *token.FileSet) {
+		for _, declaration := range parsed.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok || !function.Name.IsExported() {
+				continue
+			}
+			name := function.Name.Name
+			if function.Recv != nil {
+				receiver := function.Recv.List[0].Type
+				if pointer, ok := receiver.(*ast.StarExpr); ok {
+					receiver = pointer.X
+				}
+				if identifier, ok := receiver.(*ast.Ident); ok {
+					name = identifier.Name + "." + name
+				}
+			}
+			found[name] = fset.Position(function.Pos())
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"CompilePlan", "RunProgram"} {
+		if _, exists := found[required]; !exists {
+			t.Errorf("application/engine must expose canonical execution entry %s", required)
+		}
+	}
+	for _, forbidden := range []string{"CompileRunSnapshot", "RunCompiledEntry", "RunCompiledEntryWithResult", "RunCoordinator.Run"} {
+		if position, exists := found[forbidden]; exists {
+			t.Errorf("%s:%d: legacy or secondary execution entry %s must be removed", filepath.ToSlash(position.Filename), position.Line, forbidden)
+		}
+	}
+}
+
 func TestCoreOwnsNoBusinessMetricsProjection(t *testing.T) {
 	root := repositoryRoot(t)
 	matches, err := filepath.Glob(filepath.Join(root, "domain", "metrics", "*.go"))

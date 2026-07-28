@@ -1,6 +1,9 @@
 package parameter
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type BindingKind string
 
@@ -15,6 +18,14 @@ type Constraint struct {
 }
 
 func (c Constraint) Validate(value Value) error {
+	switch c.Type {
+	case Text, Number, Boolean, SingleSelect, MultiSelect:
+	default:
+		return fmt.Errorf("unsupported parameter constraint type %q", c.Type)
+	}
+	if err := value.Validate(); err != nil {
+		return err
+	}
 	if value.Type() != c.Type {
 		return fmt.Errorf("expected %s, got %s", c.Type, value.Type())
 	}
@@ -65,7 +76,7 @@ func (b Binding) Resolve(parent map[string]Value) (Value, error) {
 		}
 		return b.literal.Clone(), nil
 	case ParentReferenceBindingKind:
-		if b.parentName == "" {
+		if strings.TrimSpace(b.parentName) == "" {
 			return Value{}, fmt.Errorf("parent parameter reference name is required")
 		}
 		value, exists := parent[b.parentName]

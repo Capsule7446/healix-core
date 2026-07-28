@@ -104,12 +104,9 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	}
 	started := time.Now()
 	validationErr := v.waitStable(ctx, rt)
-	observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, ErrorKind: errorKind(validationErr)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, ErrorKind: errorKind(validationErr)})
 	if validationErr != nil {
-		return validationFail(ctx, rt, execution, v.NodeID, errors.Join(validationErr, observationErr))
-	}
-	if observationErr != nil {
-		return validationFail(ctx, rt, execution, v.NodeID, observationErr)
+		return validationFail(ctx, rt, execution, v.NodeID, errors.Join(validationErr))
 	}
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseSucceeded); err != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, err)
@@ -469,6 +466,16 @@ type ValidationGroupNode struct {
 func (g *ValidationGroupNode) ID() string { return g.NodeID }
 
 func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
+	for branchIndex, branch := range g.Branches {
+		if branch.ID == "" {
+			return fmt.Errorf("validation group %s: branch %d requires an ID", g.NodeID, branchIndex)
+		}
+		for memberIndex, member := range branch.Nodes {
+			if member == nil {
+				return fmt.Errorf("validation group %s: branch %s member %d is nil", g.NodeID, branch.ID, memberIndex)
+			}
+		}
+	}
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return fmt.Errorf("validation group %s: wait step interval: %w", g.NodeID, err)
 	}

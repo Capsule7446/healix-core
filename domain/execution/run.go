@@ -35,7 +35,7 @@ type Run struct {
 	ID                    string
 	TestTaskID            string
 	TestTaskVersionID     string
-	SnapshotSchemaVersion int
+	SnapshotSchemaVersion RunSnapshotSchema
 	SnapshotDigest        string
 	Status                RunStatus
 	EnvironmentID         string
@@ -103,18 +103,22 @@ func HydrateRun(run Run, snapshot RunSnapshot) (Run, error) {
 // ValidateRun verifies a Run returned across an application adapter boundary.
 // It is pure and validates identity, lifecycle shape, and the private snapshot
 // seal when snapshot identity is carried by the Run.
+func isSupportedRunSnapshotSchema(version RunSnapshotSchema) bool {
+	return version == RunSnapshotSchemaV1 || version == RunSnapshotSchemaV2
+}
+
 func ValidateRun(run Run) error {
 	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TestTaskID) == "" || strings.TrimSpace(run.TestTaskVersionID) == "" || strings.TrimSpace(run.EnvironmentID) == "" {
 		return errors.New("run identity is incomplete")
 	}
-	if run.SnapshotSchemaVersion != RunSnapshotSchemaV1 || len(run.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(run.SnapshotDigest, "sha256:") || run.SnapshotDigest != run.sealedSnapshotDigest {
+	if !isSupportedRunSnapshotSchema(run.SnapshotSchemaVersion) || len(run.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(run.SnapshotDigest, "sha256:") || run.SnapshotDigest != run.sealedSnapshotDigest {
 		return errors.New("run snapshot identity is invalid")
 	}
 	return validateRunLifecycleShape(run)
 }
 
 func (r Run) Transition(to RunStatus, at int64) (Run, error) {
-	if r.SnapshotSchemaVersion != RunSnapshotSchemaV1 || len(r.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(r.SnapshotDigest, "sha256:") || r.SnapshotDigest != r.sealedSnapshotDigest || strings.TrimSpace(r.TestTaskVersionID) == "" {
+	if !isSupportedRunSnapshotSchema(r.SnapshotSchemaVersion) || len(r.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(r.SnapshotDigest, "sha256:") || r.SnapshotDigest != r.sealedSnapshotDigest || strings.TrimSpace(r.TestTaskVersionID) == "" {
 		return Run{}, errors.New("run snapshot identity is invalid")
 	}
 	if err := validateRunLifecycleShape(r); err != nil {

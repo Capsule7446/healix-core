@@ -25,6 +25,17 @@ func (r consumerResolver) Variable(name string) (string, bool) {
 
 type consumerDriver struct{}
 
+type consumerAuthorityVerifier struct {
+	want coreengine.ExecutionAuthority
+}
+
+func (v consumerAuthorityVerifier) VerifyExecutionAuthority(_ context.Context, authority coreengine.ExecutionAuthority) error {
+	if authority != v.want {
+		return execution.ErrStaleWorkerFence
+	}
+	return nil
+}
+
 func (consumerDriver) Navigate(context.Context, string) error { return nil }
 func (consumerDriver) Press(context.Context, string) error    { return nil }
 func (consumerDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
@@ -74,7 +85,7 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	workflow := automation.WorkflowDependencySnapshot{Workflow: automation.Workflow{ID: "workflow", DisplayName: "Workflow", CurrentVersionID: "workflow-v1", Properties: automation.Properties{}, CreatedAt: 1, UpdatedAt: 1}, Version: automation.WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1, Definition: automation.WorkflowDefinition{Steps: []automation.WorkflowStep{{ID: "wait", DisplayName: "Wait", Kind: automation.StepWait, WaitKind: "sleep", WaitMS: 1}}}, CreatedAt: 1}, ResolvedFromLatest: true}
 	plan := automation.TestTaskVersionPlan{Task: automation.TestTask{ID: "task", DisplayName: "Task", CurrentVersionID: "task-v1", CreatedAt: 1, UpdatedAt: 1}, Version: automation.TestTaskVersion{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, FailurePolicy: automation.FailurePolicyStopOnFailure, CreatedAt: 1, Items: []automation.TestTaskItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1, WorkflowID: "workflow", VersionPolicy: automation.WorkflowVersionLatest}}}, Workflows: []automation.WorkflowDependencySnapshot{workflow}}
 	path := "3:run4:item"
-	store := &consumerCreateRunStore{resolved: scheduling.ResolvedCreateRun{Plan: plan, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Revision: 1, Properties: automation.Properties{}}, Invocations: []execution.InvocationScopeSnapshot{{Path: path, WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}}}
+	store := &consumerCreateRunStore{resolved: scheduling.ResolvedCreateRun{Plan: plan, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Revision: 1, Variables: automation.EnvironmentVariables{}}, Invocations: []execution.InvocationScopeSnapshot{{Path: path, WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}}}
 	command := scheduling.CreateRunCommand{CommandID: "command", RunID: "run", TestTaskID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item": {}}, FailurePolicy: execution.FailurePolicyStopOnFailure, CreatedAt: 1, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
 	service, err := scheduling.NewCreateRunService(store)
 	if err != nil {
@@ -84,6 +95,29 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	if err != nil || !result.WasApplied || store.digest == "" || store.input.RunID != "run" {
 		t.Fatalf("external CreateRun contract: result=%#v digest=%q err=%v", result, store.digest, err)
 	}
+	snapshot, err := execution.HydrateRunSnapshot(store.input, store.digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, err := coreengine.CompilePlan(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := compiled.Entry(path)
+	if !ok {
+		t.Fatalf("compiled execution %q is missing", path)
+	}
+	authority := coreengine.ExecutionAuthority{
+		RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim",
+	}
+	runResult, err := coreengine.RunProgram(context.Background(), entry, coreengine.Config{
+		RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+		ClaimToken: "claim", AuthorityVerifier: consumerAuthorityVerifier{want: authority},
+		Driver: consumerDriver{},
+	})
+	if err != nil || runResult.ExecutionOutcome != coreengine.ExecutionSucceeded {
+		t.Fatalf("external compile/run contract: result=%+v err=%v", runResult, err)
+	}
 }
 
 func TestPublicConsumerCanUseCoreContracts(t *testing.T) {
@@ -91,11 +125,7 @@ func TestPublicConsumerCanUseCoreContracts(t *testing.T) {
 	if err != nil || value != "north" {
 		t.Fatalf("public interpolation contract = %q, %v", value, err)
 	}
-	if err := coreengine.RunCompiledEntry(context.Background(), coreengine.CompiledEntry{Program: node.Program{}}, coreengine.Config{
-		RunID: "consumer-run", Driver: consumerDriver{}, Healer: heal.NewDefaultHealer(),
-	}); err == nil {
-		t.Fatal("public RunCompiledEntry accepted a missing root")
-	}
+	_ = coreengine.Config{Driver: consumerDriver{}, Healer: heal.NewDefaultHealer()}
 	_ = coreengine.CompiledRun{}
 	_ = sampling.MatchProfile{}
 	_ = execution.Draft{}

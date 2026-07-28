@@ -7,10 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Capsule7446/healix-core/application/engine"
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
-	"github.com/Capsule7446/healix-core/domain/node"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -30,7 +28,7 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 			execution.InvocationScopeSnapshot{Path: entry.ExecutionID + "/10:call-child", ParentPath: entry.ExecutionID, ParentVersionID: "root-v1", StepID: "call-child", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
 		)
 	}
-	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Properties: automation.Properties{"Region": "east"}, Revision: 1}, Invocations: roots}
+	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}, Invocations: roots}
 }
 
 func TestCreateRunRequestDigestMatrix(t *testing.T) {
@@ -359,8 +357,8 @@ func TestBuildRunSnapshotMapsCatalogAndDefensivelyOwnsAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved.Environment.Properties["Region"] = "west"
-	if snapshot.Environment().Properties["Region"] != "east" || snapshot.TestTaskVersionID() != "task-v1" || len(snapshot.Plan().Entries) != 2 {
+	resolved.Environment.Variables["Region"] = parameter.TextValue("west")
+	if snapshot.Environment().Variables["Region"].Text() != "east" || snapshot.TestTaskVersionID() != "task-v1" || len(snapshot.Plan().Entries) != 2 {
 		t.Fatal("snapshot did not freeze complete resolved create data")
 	}
 }
@@ -680,10 +678,49 @@ func TestCreateRunRejectsInvalidNonzeroFailurePolicy(t *testing.T) {
 	}
 }
 
+func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
+	command := validCreateRunCommand()
+	resolved := validResolvedCreateRun(t, command)
+	resolved.Environment.Variables = nil
+	currentSnapshot, err := BuildRunSnapshot(command, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := currentSnapshot.Input()
+	input.SchemaVersion = execution.RunSnapshotSchemaV1
+	input.Environment.Variables = nil
+	input.Environment.Properties = map[string]string{"Region": "east"}
+	snapshot, err := execution.SealRunSnapshot(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := execution.NewRun(execution.Run{ID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entryIDs := make([]string, len(snapshot.Plan().Entries))
+	for index, entry := range snapshot.Plan().Entries {
+		entryIDs[index] = entry.ExecutionID
+	}
+	digest, err := CreateRunRequestDigest(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &createRunFake{stored: &StoredCreateRunCommand{CommandID: command.CommandID, RequestDigest: digest, Result: StoredCreateRunResult{Run: run, Snapshot: snapshot, SnapshotDigest: snapshot.Digest(), EntryIDs: entryIDs}}}
+
+	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.WasApplied || result.Snapshot.SchemaVersion() != execution.RunSnapshotSchemaV1 || fake.resolveCalls != 0 || fake.insertCalls != 0 {
+		t.Fatalf("replayed result=%#v resolveCalls=%d insertCalls=%d", result, fake.resolveCalls, fake.insertCalls)
+	}
+}
+
 func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T) {
 	command := validCreateRunCommand()
 	winnerResolved := validResolvedCreateRun(t, command)
-	winnerResolved.Environment.Properties["Region"] = "winner"
+	winnerResolved.Environment.Variables["Region"] = parameter.TextValue("winner")
 	winnerSnapshot, err := BuildRunSnapshot(command, winnerResolved)
 	if err != nil {
 		t.Fatal(err)
@@ -706,7 +743,7 @@ func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.WasApplied || result.Snapshot.Digest() != winnerSnapshot.Digest() || result.Snapshot.Environment().Properties["Region"] != "winner" {
+	if result.WasApplied || result.Snapshot.Digest() != winnerSnapshot.Digest() || result.Snapshot.Environment().Variables["Region"].Text() != "winner" {
 		t.Fatalf("authoritative winner was not returned: %#v", result)
 	}
 }
@@ -861,14 +898,44 @@ func TestBuildRunSnapshotKeepsRepeatedConcreteBindingsPathLocal(t *testing.T) {
 	if staticBinding.Kind() != parameter.ParentReferenceBindingKind {
 		t.Fatal("concrete bindings overwrote static workflow authoring metadata")
 	}
-	compiled, err := engine.CompileRunSnapshot(snapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	first := compiled.Entries[0].Program.Root.(*node.WorkflowNode).Children[0].(*node.WorkflowCallNode)
-	second := compiled.Entries[1].Program.Root.(*node.WorkflowNode).Children[0].(*node.WorkflowCallNode)
-	if first.Bindings["region"].Kind() != parameter.ParentReferenceBindingKind || second.Bindings["region"].Kind() != parameter.LiteralBindingKind {
+	first, firstOK := snapshot.Invocation(resolved.Invocations[1].Path)
+	second, secondOK := snapshot.Invocation(resolved.Invocations[3].Path)
+	if !firstOK || !secondOK || first.Bindings["region"].Kind() != parameter.ParentReferenceBindingKind || second.Bindings["region"].Kind() != parameter.LiteralBindingKind {
 		t.Fatalf("path-local bindings lost: %#v/%#v", first.Bindings, second.Bindings)
+	}
+}
+
+func TestResolvedCreateRunPreflightValidatesEnvironmentVariableNames(t *testing.T) {
+	command := validCreateRunCommand()
+	tests := []struct {
+		name         string
+		variableName string
+		wantError    bool
+	}{
+		{name: "malformed UTF-8", variableName: string([]byte{0xff}), wantError: true},
+		{name: "Unicode control character", variableName: "region" + string(rune(0x85)) + "name", wantError: true},
+		{name: "Unicode format character", variableName: "region" + string(rune(0x202e)) + "name", wantError: true},
+		{name: "over maximum bytes", variableName: strings.Repeat("x", parameter.MaxNameBytes+1), wantError: true},
+		{name: "exact maximum bytes", variableName: strings.Repeat("x", parameter.MaxNameBytes)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := validResolvedCreateRun(t, command)
+			resolved.Environment.Variables = map[string]parameter.Value{test.variableName: parameter.TextValue("value")}
+
+			snapshot, err := BuildRunSnapshot(command, resolved)
+
+			if test.wantError {
+				var typed *CreateRunAdapterContractError
+				if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || snapshot.Digest() != "" {
+					t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
+				}
+				return
+			}
+			if err != nil || snapshot.Digest() == "" {
+				t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
+			}
+		})
 	}
 }
 

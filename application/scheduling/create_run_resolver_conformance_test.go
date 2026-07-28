@@ -59,7 +59,7 @@ func newOneViewResolverTx(view oneViewCatalog) *oneViewResolverTx {
 		copy.Fingerprint.Framework = version.Fingerprint.Framework.Clone()
 		captured.nodeVersion[id] = copy
 	}
-	captured.environment.Properties = cloneProperties(view.environment.Properties)
+	captured.environment.Variables = view.environment.Variables.Clone()
 	return &oneViewResolverTx{view: captured}
 }
 
@@ -257,7 +257,7 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 
 func catalogFromMapperSource() oneViewCatalog {
 	source := validMapperSource()
-	catalog := oneViewCatalog{task: source.Publication.Task, version: source.Publication.Version, workflows: map[string]automation.Workflow{}, versions: map[string]automation.WorkflowVersion{}, nodes: map[string]automation.Node{}, nodeVersion: map[string]automation.NodeVersion{}, environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Properties: automation.Properties{"Region": "east"}, Revision: 1}}
+	catalog := oneViewCatalog{task: source.Publication.Task, version: source.Publication.Version, workflows: map[string]automation.Workflow{}, versions: map[string]automation.WorkflowVersion{}, nodes: map[string]automation.Node{}, nodeVersion: map[string]automation.NodeVersion{}, environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}}
 	for _, item := range source.Publication.Workflows {
 		catalog.workflows[item.Workflow.ID] = item.Workflow
 		catalog.versions[item.Version.ID] = item.Version
@@ -289,12 +289,12 @@ func TestOneViewResolverCapturesCatalogAtTransactionStart(t *testing.T) {
 	workflow := source.versions["child-v1"]
 	workflow.Definition.Steps[0].DisplayName = "source mutation"
 	source.versions[workflow.ID] = workflow
-	source.environment.Properties["Region"] = "west"
+	source.environment.Variables["Region"] = parameter.TextValue("west")
 	resolved, err := tx.ResolveCreateRun(context.Background(), validCreateRunCommand())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Environment.Properties["Region"] != "east" || resolved.Plan.Workflows[1].Version.Definition.Steps[0].DisplayName == "source mutation" {
+	if resolved.Environment.Variables["Region"].Text() != "east" || resolved.Plan.Workflows[1].Version.Definition.Steps[0].DisplayName == "source mutation" {
 		t.Fatal("transaction observed mixed catalog revisions")
 	}
 }
@@ -429,22 +429,22 @@ func TestSealedResolverOutputIgnoresLaterCatalogMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := snapshot.Digest()
-	compiledBefore, err := engine.CompileRunSnapshot(snapshot)
+	compiledBefore, err := engine.CompilePlan(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx.view.environment.Properties["Region"] = "west"
+	tx.view.environment.Variables["Region"] = parameter.TextValue("west")
 	node := tx.view.nodes["660e8400-e29b-41d4-a716-446655440000"]
 	node.DisplayName = "mutated"
 	tx.view.nodes[node.ID] = node
 	workflow := tx.view.versions["child-v1"]
 	workflow.Definition.Steps[0].DisplayName = "mutated"
 	tx.view.versions[workflow.ID] = workflow
-	compiledAfter, err := engine.CompileRunSnapshot(snapshot)
+	compiledAfter, err := engine.CompilePlan(snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Digest() != digest || snapshot.Environment().Properties["Region"] != "east" || !reflect.DeepEqual(compiledBefore, compiledAfter) {
+	if snapshot.Digest() != digest || snapshot.Environment().Variables["Region"].Text() != "east" || !reflect.DeepEqual(compiledBefore, compiledAfter) {
 		t.Fatal("sealed resolver output or compilation changed after catalog mutation")
 	}
 }

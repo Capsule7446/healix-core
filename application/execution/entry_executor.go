@@ -67,6 +67,9 @@ func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.Worker
 		if err := e.executeEntry(ctx, fence, entry); err != nil {
 			return err
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -29,6 +29,8 @@ func TestSealIndependentlyRejectsInvalidParameterDefinitionsAndValues(t *testing
 		{"duplicate option", []Parameter{{Name: "x", DisplayName: "X", Type: parameter.MultiSelect, Required: true, Options: []string{"a", "a"}}}, map[string]parameter.Value{"x": parameter.MultiSelectValue([]string{"a"})}},
 		{"unknown single option", []Parameter{{Name: "x", DisplayName: "X", Type: parameter.SingleSelect, Required: true, Options: []string{"a"}}}, map[string]parameter.Value{"x": parameter.SingleSelectValue("b")}},
 		{"unknown multi option", []Parameter{{Name: "x", DisplayName: "X", Type: parameter.MultiSelect, Required: true, Options: []string{"a"}}}, map[string]parameter.Value{"x": parameter.MultiSelectValue([]string{"b"})}},
+		{"required nil multi-select", []Parameter{{Name: "x", DisplayName: "X", Type: parameter.MultiSelect, Required: true, Options: []string{"a"}}}, map[string]parameter.Value{"x": parameter.MultiSelectValue(nil)}},
+		{"required empty multi-select", []Parameter{{Name: "x", DisplayName: "X", Type: parameter.MultiSelect, Required: true, Options: []string{"a"}}}, map[string]parameter.Value{"x": parameter.MultiSelectValue([]string{})}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

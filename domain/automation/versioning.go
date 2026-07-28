@@ -301,6 +301,7 @@ func cloneNodeVersion(input NodeVersion) NodeVersion {
 func cloneFingerprint(input fingerprint.Fingerprint) fingerprint.Fingerprint {
 	result := input
 	result.Path = append([]string(nil), input.Path...)
+	result.Framework = input.Framework.Clone()
 	result.Attributes = make(map[string]string, len(input.Attributes))
 	for key, value := range input.Attributes {
 		result.Attributes[key] = value

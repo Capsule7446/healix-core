@@ -1,0 +1,61 @@
+# domain/evidence Test Case Matrix
+
+## 范围与口径
+
+本表记录 `domain/evidence` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
+
+## Public API / Use-case Inventory
+
+| 公开入口 | 定义文件 | 测试证据状态 |
+|---|---|---|
+| `StepTransitionCommit.Validate` | [`domain/evidence/commits.go`](../../domain/evidence/commits.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `StepProgressEvent.Validate` | [`domain/evidence/events.go`](../../domain/evidence/events.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Phase.IsTerminal` | [`domain/evidence/facts.go`](../../domain/evidence/facts.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `StepFact.Validate` | [`domain/evidence/facts.go`](../../domain/evidence/facts.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidateDecisionBand` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidateConfidence` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `HealObservation.Validate` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `AbsentValidationValue` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ScalarValidationValue` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `CollectionValidationValue` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `RedactedValidationValue` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationValue.Validate` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationValue.Equal` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationValue.CollectionValue` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationBranchDisposition.Validate` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `NewValidationGroupTerminalObservation` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationGroupTerminalObservation.ExpectedMembers` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationGroupTerminalObservation.Validate` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationProgressObservation.Validate` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidationObservation.Validate` | [`domain/evidence/observations.go`](../../domain/evidence/observations.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+
+## Test Case Evidence Matrix
+
+| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+|---|---|---|---|
+| `TestStepTransitionCommitValidatesGroupTerminalFactsAndFinalMemberTopology` | `Step Transition Commit Validates Group Terminal Facts And Final Member Topology`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestStepTransitionCommitValidatesGroupTerminalFactsAndFinalMemberTopology` |
+| `TestStepTransitionCommitRejectsContradictoryGroupOutcomes` | `Step Transition Commit Rejects Contradictory Group Outcomes`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestStepTransitionCommitRejectsContradictoryGroupOutcomes` |
+| `TestStepTransitionCommitValidatesAtomicFactIdentity` | `Step Transition Commit Validates Atomic Fact Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestStepTransitionCommitValidatesAtomicFactIdentity` |
+| `TestStepTransitionCommitRejectsDuplicateHealAndResetIdentities` | `Step Transition Commit Rejects Duplicate Heal And Reset Identities`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestStepTransitionCommitRejectsDuplicateHealAndResetIdentities` |
+| `TestStepProgressEventAcceptsOnlyRuntimeNonTerminalPhases` | `Step Progress Event Accepts Only Runtime Non Terminal Phases`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/events_test.go`](../../domain/evidence/events_test.go) · `TestStepProgressEventAcceptsOnlyRuntimeNonTerminalPhases` |
+| `TestStepProgressEventRejectsMissingIdentityAndRuntimeCoordinates` | `Step Progress Event Rejects Missing Identity And Runtime Coordinates`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/events_test.go`](../../domain/evidence/events_test.go) · `TestStepProgressEventRejectsMissingIdentityAndRuntimeCoordinates` |
+| `TestStepFactRequiresTerminalIdentity` | `Step Fact Requires Terminal Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/facts_test.go`](../../domain/evidence/facts_test.go) · `TestStepFactRequiresTerminalIdentity` |
+| `TestHealObservationUsesEvidenceOwnedDecisionBand` | `Heal Observation Uses Evidence Owned Decision Band`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/observations_test.go`](../../domain/evidence/observations_test.go) · `TestHealObservationUsesEvidenceOwnedDecisionBand` |
+| `TestValidationValueDistinguishesAbsentScalarCollectionAndRedacted` | `Validation Value Distinguishes Absent Scalar Collection And Redacted`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/observations_test.go`](../../domain/evidence/observations_test.go) · `TestValidationValueDistinguishesAbsentScalarCollectionAndRedacted` |
+| `TestValidationValueRejectsInvalidKindFieldCombinations` | `Validation Value Rejects Invalid Kind Field Combinations`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/observations_test.go`](../../domain/evidence/observations_test.go) · `TestValidationValueRejectsInvalidKindFieldCombinations` |
+| `TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason` | `Validation Group Terminal Observation Requires Consistent Winner And Reason`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/observations_test.go`](../../domain/evidence/observations_test.go) · `TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason` |
+| `TestValidationObservationRejectsUnknownReviewStatus` | `Validation Observation Rejects Unknown Review Status`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/observations_test.go`](../../domain/evidence/observations_test.go) · `TestValidationObservationRejectsUnknownReviewStatus` |
+| `TestExportedValidatorsStrictBoundaries` | `Exported Validators Strict Boundaries`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/strict_boundary_test.go`](../../domain/evidence/strict_boundary_test.go) · `TestExportedValidatorsStrictBoundaries` |
+| `TestValidationValuesNilEmptyDuplicatesAndImmutability` | `Validation Values Nil Empty Duplicates And Immutability`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/strict_boundary_test.go`](../../domain/evidence/strict_boundary_test.go) · `TestValidationValuesNilEmptyDuplicatesAndImmutability` |
+| `TestValidationGroupExpectedMembersImmutable` | `Validation Group Expected Members Immutable`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/strict_boundary_test.go`](../../domain/evidence/strict_boundary_test.go) · `TestValidationGroupExpectedMembersImmutable` |
+| `TestStepFactRejectsWhitespaceIdentity` | `Step Fact Rejects Whitespace Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/strict_boundary_test.go`](../../domain/evidence/strict_boundary_test.go) · `TestStepFactRejectsWhitespaceIdentity` |
+
+## Cross-cutting / Conformance Cases
+
+同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
+
+## 维护规则
+
+1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
+2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
+3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。

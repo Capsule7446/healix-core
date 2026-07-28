@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 type environmentRepositoryFake struct {
@@ -33,12 +34,12 @@ func (f *environmentRepositoryFake) Update(_ context.Context, expected domain.Re
 func TestEnvironmentServiceLifecycleUsesRevisionCAS(t *testing.T) {
 	repository := &environmentRepositoryFake{}
 	service := NewEnvironmentService(repository)
-	created, err := service.Create(context.Background(), domain.Environment{ID: "environment", DisplayName: "Local", BaseURL: "https://example.com", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1})
+	created, err := service.Create(context.Background(), domain.Environment{ID: "environment", DisplayName: "Local", BaseURL: "https://example.com", Variables: domain.EnvironmentVariables{}, CreatedAt: 1, UpdatedAt: 1})
 	if err != nil || created.Revision != 1 || repository.created.Revision != 1 {
 		t.Fatalf("created/error = %#v/%v", created, err)
 	}
 	repository.current = created
-	updated, err := service.Update(context.Background(), created.ID, "CI", "https://ci.example.com", domain.Properties{"region": "eu"}, 1, 2)
+	updated, err := service.Update(context.Background(), created.ID, "CI", "https://ci.example.com", domain.EnvironmentVariables{"region": parameter.TextValue("eu")}, 1, 2)
 	if err != nil || updated.Revision != 2 || repository.expected != 1 || repository.updated.DisplayName != "CI" {
 		t.Fatalf("updated/error/expected = %#v/%v/%d", updated, err, repository.expected)
 	}
@@ -56,7 +57,7 @@ func TestEnvironmentServiceLifecycleUsesRevisionCAS(t *testing.T) {
 
 func TestEnvironmentServiceRejectsConflictsAndPropagatesErrors(t *testing.T) {
 	failure := errors.New("failure")
-	valid := domain.Environment{ID: "environment", DisplayName: "Local", BaseURL: "https://example.com", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1, Revision: 1}
+	valid := domain.Environment{ID: "environment", DisplayName: "Local", BaseURL: "https://example.com", Variables: domain.EnvironmentVariables{}, CreatedAt: 1, UpdatedAt: 1, Revision: 1}
 	tests := []struct {
 		name       string
 		repository *environmentRepositoryFake
@@ -85,7 +86,7 @@ func TestEnvironmentServiceRejectsConflictsAndPropagatesErrors(t *testing.T) {
 				if test.name == "update persistence" {
 					expected = 1
 				}
-				_, err = service.Update(context.Background(), valid.ID, "Updated", valid.BaseURL, domain.Properties{}, expected, 2)
+				_, err = service.Update(context.Background(), valid.ID, "Updated", valid.BaseURL, domain.EnvironmentVariables{}, expected, 2)
 			}
 			if err == nil || test.want != nil && !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)

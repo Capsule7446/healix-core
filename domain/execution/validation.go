@@ -103,8 +103,12 @@ func (p Parameter) validateValue(value parameter.Value) error {
 		return errors.New("single-select value is not an option")
 	}
 	if p.Type == parameter.MultiSelect {
+		selectedValues := value.MultiSelect()
+		if p.Required && len(selectedValues) == 0 {
+			return errors.New("required multi-select value cannot be empty")
+		}
 		seen := map[string]struct{}{}
-		for _, selected := range value.MultiSelect() {
+		for _, selected := range selectedValues {
 			if !allowed(selected) {
 				return errors.New("multi-select value is not an option")
 			}

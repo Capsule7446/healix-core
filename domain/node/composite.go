@@ -108,10 +108,10 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		err = fmt.Errorf("unknown wait kind %q", w.Kind)
 	}
 
-	observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 	if err != nil {
 		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
-			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), observationErr, emitErr)
+			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), emitErr)
 		}
 		return fmt.Errorf("wait %s: %w", w.NodeID, err)
 	}
@@ -179,6 +179,14 @@ type RepeatNode struct {
 func (r *RepeatNode) ID() string { return r.NodeID }
 
 func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
+	if r.Times < 0 {
+		return fmt.Errorf("repeat %s: times cannot be negative", r.NodeID)
+	}
+	for i, child := range r.Children {
+		if child == nil {
+			return fmt.Errorf("repeat %s: child %d is nil", r.NodeID, i)
+		}
+	}
 	occurrence, err := rt.beginOccurrence(ctx, r.NodeID)
 	if err != nil {
 		return fmt.Errorf("repeat %s: enter running phase: %w", r.NodeID, err)
@@ -213,6 +221,11 @@ type WorkflowNode struct {
 func (w *WorkflowNode) ID() string { return w.NodeID }
 
 func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
+	for i, child := range w.Children {
+		if child == nil {
+			return fmt.Errorf("workflow %s: child %d is nil", w.NodeID, i)
+		}
+	}
 	previous := rt.parameterScope
 	if w.OwnsParameterScope {
 		rt.parameterScope = cloneParameterScope(w.Parameters)

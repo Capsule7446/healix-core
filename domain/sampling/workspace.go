@@ -107,20 +107,19 @@ func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	if workflow == nil {
 		return errors.New("temporary sampling workflow is required")
 	}
-	nodes := make(map[string]*TemporarySamplingNode, len(workflow.Nodes))
-	for index := range workflow.Nodes {
-		workflow.Nodes[index].StepIDs = nil
-		nodes[workflow.Nodes[index].ID] = &workflow.Nodes[index]
+	stepIDsByNode := make(map[string][]string, len(workflow.Nodes))
+	for _, node := range workflow.Nodes {
+		stepIDsByNode[node.ID] = nil
 	}
 	var walk func([]automation.WorkflowStep) error
 	walk = func(steps []automation.WorkflowStep) error {
 		for _, step := range steps {
 			if step.NodeID != "" {
-				node, ok := nodes[step.NodeID]
+				stepIDs, ok := stepIDsByNode[step.NodeID]
 				if !ok {
 					return fmt.Errorf("sampling step %s references unknown temporary node %s", step.ID, step.NodeID)
 				}
-				node.StepIDs = append(node.StepIDs, step.ID)
+				stepIDsByNode[step.NodeID] = append(stepIDs, step.ID)
 			}
 			if err := walk(step.Children); err != nil {
 				return err
@@ -135,7 +134,13 @@ func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 		}
 		return nil
 	}
-	return walk(workflow.Steps)
+	if err := walk(workflow.Steps); err != nil {
+		return err
+	}
+	for index := range workflow.Nodes {
+		workflow.Nodes[index].StepIDs = stepIDsByNode[workflow.Nodes[index].ID]
+	}
+	return nil
 }
 
 type SamplingWorkspace struct {

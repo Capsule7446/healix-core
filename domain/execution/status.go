@@ -36,7 +36,7 @@ func IsTerminalExecutionStatus(status ExecutionStatus) bool {
 
 func (from ExecutionStatus) CanTransitionTo(to ExecutionStatus) error {
 	allowed := (from == ExecutionPending && (to == ExecutionRunning || to == ExecutionFailed || to == ExecutionCanceled || to == ExecutionSkipped)) ||
-		(from == ExecutionRunning && (to == ExecutionSucceeded || to == ExecutionFailed || to == ExecutionAborted))
+		(from == ExecutionRunning && (to == ExecutionSucceeded || to == ExecutionFailed || to == ExecutionCanceled || to == ExecutionAborted))
 	if allowed {
 		return nil
 	}

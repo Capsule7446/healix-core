@@ -24,14 +24,14 @@ func NewEnvironment(value Environment) (Environment, error) {
 	if value.CreatedAt <= 0 || value.UpdatedAt != value.CreatedAt {
 		return Environment{}, errors.New("environment creation time must be positive and equal updated time")
 	}
-	value.Properties = value.Properties.Clone()
+	value.Variables = value.Variables.Clone()
 	if err := value.Validate(); err != nil {
 		return Environment{}, err
 	}
 	return value, nil
 }
 
-func (e Environment) UpdateMetadata(displayName, baseURL string, properties Properties, at int64) (Environment, error) {
+func (e Environment) UpdateMetadata(displayName, baseURL string, variables EnvironmentVariables, at int64) (Environment, error) {
 	if e.DeletedAt != 0 {
 		return Environment{}, ErrDeletedAggregate
 	}
@@ -45,7 +45,7 @@ func (e Environment) UpdateMetadata(displayName, baseURL string, properties Prop
 	next := e
 	next.DisplayName = displayName
 	next.BaseURL = baseURL
-	next.Properties = properties.Clone()
+	next.Variables = variables.Clone()
 	next.UpdatedAt = at
 	next.Revision = nextRevision
 	if err := next.Validate(); err != nil {
@@ -76,7 +76,10 @@ func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, 
 	}
 	next.UpdatedAt = at
 	next.Revision = r
-	next.Properties = e.Properties.Clone()
+	next.Variables = e.Variables.Clone()
+	if err := next.Validate(); err != nil {
+		return Environment{}, err
+	}
 	return next, nil
 }
 
@@ -138,6 +141,9 @@ func (a NodeAggregate) setDeleted(deleted bool, at int64) (NodeAggregate, error)
 	}
 	n.Node.UpdatedAt = at
 	n.Node.Revision = r
+	if err := n.ValidateLoadedHistory(); err != nil {
+		return NodeAggregate{}, err
+	}
 	return n, nil
 }
 
@@ -199,6 +205,9 @@ func (a WorkflowAggregate) setDeleted(deleted bool, at int64) (WorkflowAggregate
 	}
 	n.Workflow.UpdatedAt = at
 	n.Workflow.Revision = r
+	if err := n.ValidateLoadedHistory(); err != nil {
+		return WorkflowAggregate{}, err
+	}
 	return n, nil
 }
 
