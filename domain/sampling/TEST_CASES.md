@@ -1,0 +1,75 @@
+# domain/sampling Test Case Matrix
+
+## 范围与口径
+
+本表记录 `domain/sampling` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
+
+## Public API / Use-case Inventory
+
+| 公开入口 | 定义文件 | 测试证据状态 |
+|---|---|---|
+| `InsertDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `UpdateDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `DeleteDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `MoveDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ReorderDraftSteps` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `DeleteDraftNode` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Match` | [`domain/sampling/matching.go`](../../domain/sampling/matching.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `RewriteTemporaryNodeReferences` | [`domain/sampling/rewrite.go`](../../domain/sampling/rewrite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `NewSession` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.ID` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Start` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Record` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Complete` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Pause` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Resume` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.End` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Fail` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Interrupt` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Session.Snapshot` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `NewUUID` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `RebuildTemporaryNodeReferences` | [`domain/sampling/workspace.go`](../../domain/sampling/workspace.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+
+## Test Case Evidence Matrix
+
+| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+|---|---|---|---|
+| `TestUpdateDraftStepDirectNestedReplacementAndRejection` | `Update Draft Step Direct Nested Replacement And Rejection`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/direct_gap_test.go`](../../domain/sampling/direct_gap_test.go) · `TestUpdateDraftStepDirectNestedReplacementAndRejection` |
+| `TestRebuildTemporaryNodeReferencesDirectNestedStaleUnknownAndAtomicity` | `Rebuild Temporary Node References Direct Nested Stale Unknown And Atomicity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/direct_gap_test.go`](../../domain/sampling/direct_gap_test.go) · `TestRebuildTemporaryNodeReferencesDirectNestedStaleUnknownAndAtomicity` |
+| `TestDraftCommandsInsertMoveReorderAndDeleteImmutably` | `Draft Commands Insert Move Reorder And Delete Immutably`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/draft_test.go`](../../domain/sampling/draft_test.go) · `TestDraftCommandsInsertMoveReorderAndDeleteImmutably` |
+| `TestMoveDraftStepUsesFinalPositionWithinContainer` | `Move Draft Step Uses Final Position Within Container`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/draft_test.go`](../../domain/sampling/draft_test.go) · `TestMoveDraftStepUsesFinalPositionWithinContainer` |
+| `TestDraftCommandsRejectInvalidIdentitiesAndReferences` | `Draft Commands Reject Invalid Identities And References`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/draft_test.go`](../../domain/sampling/draft_test.go) · `TestDraftCommandsRejectInvalidIdentitiesAndReferences` |
+| `TestDeleteDraftNodeRemovesUnreferencedNode` | `Delete Draft Node Removes Unreferenced Node`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/draft_test.go`](../../domain/sampling/draft_test.go) · `TestDeleteDraftNodeRemovesUnreferencedNode` |
+| `TestMatchCombinesSelectorAndStableFingerprintSignals` | `Match Combines Selector And Stable Fingerprint Signals`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/matching_test.go`](../../domain/sampling/matching_test.go) · `TestMatchCombinesSelectorAndStableFingerprintSignals` |
+| `TestMatchDoesNotRewardMissingOptionalSignals` | `Match Does Not Reward Missing Optional Signals`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/matching_test.go`](../../domain/sampling/matching_test.go) · `TestMatchDoesNotRewardMissingOptionalSignals` |
+| `TestMatchCountsDuplicateSelectorsOnce` | `Match Counts Duplicate Selectors Once`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/matching_test.go`](../../domain/sampling/matching_test.go) · `TestMatchCountsDuplicateSelectorsOnce` |
+| `TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput` | `Rewrite Temporary Node References Recurses Without Mutating Input`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/rewrite_test.go`](../../domain/sampling/rewrite_test.go) · `TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput` |
+| `TestRewriteTemporaryNodeReferencesRequiresExactMappingSet` | `Rewrite Temporary Node References Requires Exact Mapping Set`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/rewrite_test.go`](../../domain/sampling/rewrite_test.go) · `TestRewriteTemporaryNodeReferencesRequiresExactMappingSet` |
+| `TestRewriteTemporaryNodeReferencesAllowsStepsWithoutNodes` | `Rewrite Temporary Node References Allows Steps Without Nodes`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/rewrite_test.go`](../../domain/sampling/rewrite_test.go) · `TestRewriteTemporaryNodeReferencesAllowsStepsWithoutNodes` |
+| `TestNewSessionRejectsMissingBusinessIdentity` | `New Session Rejects Missing Business Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestNewSessionRejectsMissingBusinessIdentity` |
+| `TestSessionLifecycleTransitionMatrix` | `Session Lifecycle Transition Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionLifecycleTransitionMatrix` |
+| `TestSessionPauseResumePreservesIdentityAndSequence` | `Session Pause Resume Preserves Identity And Sequence`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionPauseResumePreservesIdentityAndSequence` |
+| `TestSessionInterruptAndFailAreTerminalAndIdempotent` | `Session Interrupt And Fail Are Terminal And Idempotent`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionInterruptAndFailAreTerminalAndIdempotent` |
+| `TestSessionRecordActionContractMatrix` | `Session Record Action Contract Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionRecordActionContractMatrix` |
+| `TestSessionCaptureIDMakesRetriesIdempotentAcrossPayloadChanges` | `Session Capture IDMakes Retries Idempotent Across Payload Changes`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionCaptureIDMakesRetriesIdempotentAcrossPayloadChanges` |
+| `TestSessionRejectsInvalidNewAndUpdatedNodeSpecifications` | `Session Rejects Invalid New And Updated Node Specifications`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionRejectsInvalidNewAndUpdatedNodeSpecifications` |
+| `TestSessionIdentityAccessorsAndOriginNormalization` | `Session Identity Accessors And Origin Normalization`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionIdentityAccessorsAndOriginNormalization` |
+| `TestSessionSnapshotOwnsNestedData` | `Session Snapshot Owns Nested Data`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionSnapshotOwnsNestedData` |
+| `TestSessionAssignsStableNodeUUIDAndIdempotentCapture` | `Session Assigns Stable Node UUIDAnd Idempotent Capture`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_test.go`](../../domain/sampling/session_test.go) · `TestSessionAssignsStableNodeUUIDAndIdempotentCapture` |
+| `TestNewUUIDUsesVersion7` | `New UUIDUses Version7`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_test.go`](../../domain/sampling/session_test.go) · `TestNewUUIDUsesVersion7` |
+| `TestSessionRejectsCaptureAfterCompletion` | `Session Rejects Capture After Completion`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_test.go`](../../domain/sampling/session_test.go) · `TestSessionRejectsCaptureAfterCompletion` |
+| `TestNewUUIDFormatAndUniqueness` | `New UUIDFormat And Uniqueness`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_test.go`](../../domain/sampling/session_test.go) · `TestNewUUIDFormatAndUniqueness` |
+| `TestNewSessionURLContract` | `New Session URLContract`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/strict_contract_test.go`](../../domain/sampling/strict_contract_test.go) · `TestNewSessionURLContract` |
+| `TestSessionPublicMethodsAreNilSafe` | `Session Public Methods Are Nil Safe`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/strict_contract_test.go`](../../domain/sampling/strict_contract_test.go) · `TestSessionPublicMethodsAreNilSafe` |
+| `TestDraftIndexBoundariesDoNotAllocateFromExtremeValues` | `Draft Index Boundaries Do Not Allocate From Extreme Values`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/strict_contract_test.go`](../../domain/sampling/strict_contract_test.go) · `TestDraftIndexBoundariesDoNotAllocateFromExtremeValues` |
+| `TestTemporaryWorkflowTimestampBoundaryValuesRemainLossless` | `Temporary Workflow Timestamp Boundary Values Remain Lossless`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/strict_contract_test.go`](../../domain/sampling/strict_contract_test.go) · `TestTemporaryWorkflowTimestampBoundaryValuesRemainLossless` |
+
+## Cross-cutting / Conformance Cases
+
+同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
+
+## 维护规则
+
+1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
+2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
+3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
