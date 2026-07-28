@@ -122,17 +122,13 @@ func TestDefaultHealGovernancePlannerAcceptsEveryEvidenceDecisionBandAndOutcome(
 	}
 }
 
-func TestDefaultHealGovernancePlannerAcceptsFailedAppliedDecisionBands(t *testing.T) {
+func TestDefaultHealGovernancePlannerRejectsFailedCandidateGovernanceEvidence(t *testing.T) {
 	for _, band := range []evidence.DecisionBand{evidence.DecisionApplied, evidence.DecisionBelowCap} {
 		t.Run(string(band), func(t *testing.T) {
 			plan := healGovernancePlan("run-failed", 1, band, domainautomation.HealStreak{})
 			plan.Fact.Observation.Succeeded = false
-			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
-			if err != nil {
-				t.Fatalf("valid failed evidence was rejected: %v", err)
-			}
-			if decision.NextStreak.Disposition != "" || decision.NextStreak.Band != "" || decision.Effect != nil || decision.NextStreak.LastSequence != 1 {
-				t.Fatalf("failed evidence decision = %#v", decision)
+			if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan); err == nil || !strings.Contains(err.Error(), "non-success heal observation") {
+				t.Fatalf("failed candidate governance evidence error = %v", err)
 			}
 		})
 	}

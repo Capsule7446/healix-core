@@ -50,6 +50,7 @@ func TestExecutionStatusTransitionAndTerminalMatrices(t *testing.T) {
 		{ExecutionPending, ExecutionSkipped}:   {},
 		{ExecutionRunning, ExecutionSucceeded}: {},
 		{ExecutionRunning, ExecutionFailed}:    {},
+		{ExecutionRunning, ExecutionCanceled}:  {},
 		{ExecutionRunning, ExecutionAborted}:   {},
 	}
 	terminal := map[ExecutionStatus]bool{

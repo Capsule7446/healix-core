@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
@@ -16,6 +17,9 @@ func NewEnvironmentService(repository EnvironmentRepository) EnvironmentService 
 }
 
 func (s EnvironmentService) Create(ctx context.Context, value domain.Environment) (domain.Environment, error) {
+	if isNilDependency(s.repository) {
+		return domain.Environment{}, ErrAutomationConfiguration
+	}
 	created, err := domain.NewEnvironment(value)
 	if err != nil {
 		return domain.Environment{}, fmt.Errorf("create environment: %w", err)
@@ -42,6 +46,12 @@ func (s EnvironmentService) Restore(ctx context.Context, id string, expected dom
 }
 
 func (s EnvironmentService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.Environment) (domain.Environment, error)) (domain.Environment, error) {
+	if isNilDependency(s.repository) {
+		return domain.Environment{}, ErrAutomationConfiguration
+	}
+	if strings.TrimSpace(id) == "" {
+		return domain.Environment{}, fmt.Errorf("environment ID is required")
+	}
 	current, err := s.repository.Load(ctx, id)
 	if err != nil {
 		return domain.Environment{}, fmt.Errorf("load environment %q: %w", id, err)

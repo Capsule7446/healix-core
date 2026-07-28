@@ -4,6 +4,7 @@ package evidence
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type Phase string
@@ -29,7 +30,7 @@ type StepFact struct {
 }
 
 func (f StepFact) Validate() error {
-	if f.ID == "" || f.RunID == "" || f.ExecutionID == "" || f.StepExecution == "" {
+	if strings.TrimSpace(f.ID) == "" || strings.TrimSpace(f.RunID) == "" || strings.TrimSpace(f.ExecutionID) == "" || strings.TrimSpace(f.StepExecution) == "" {
 		return errors.New("step fact requires identity")
 	}
 	if !f.Phase.IsTerminal() {

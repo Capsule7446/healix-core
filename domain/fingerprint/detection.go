@@ -2,6 +2,8 @@ package fingerprint
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -26,7 +28,10 @@ type FrameworkDetector interface {
 // DetectFrameworks runs detectors and returns a validated, deterministic stack.
 func DetectFrameworks(ctx context.Context, observation PageObservation, detectors []FrameworkDetector) (FrameworkStack, error) {
 	stack := make(FrameworkStack, 0)
-	for _, detector := range detectors {
+	for i, detector := range detectors {
+		if isNilDetector(detector) {
+			return nil, fmt.Errorf("framework detector[%d] is required", i)
+		}
 		matches, err := detector.Detect(ctx, observation)
 		if err != nil {
 			return nil, err
@@ -38,6 +43,19 @@ func DetectFrameworks(ctx context.Context, observation PageObservation, detector
 		return nil, err
 	}
 	return stack, nil
+}
+
+func isNilDetector(detector FrameworkDetector) bool {
+	if detector == nil {
+		return true
+	}
+	value := reflect.ValueOf(detector)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func mergeFrameworkStack(stack FrameworkStack) FrameworkStack {

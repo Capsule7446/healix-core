@@ -7,6 +7,100 @@ import (
 	"testing"
 )
 
+func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
+	t.Run("environment", func(t *testing.T) {
+		base, err := NewEnvironment(Environment{ID: "env", DisplayName: "Environment", CreatedAt: 10, UpdatedAt: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		invalid := base
+		invalid.ID = ""
+		if _, err := invalid.Delete(10); err == nil || !strings.Contains(err.Error(), "environment id") {
+			t.Fatalf("invalid source Delete error = %v", err)
+		}
+		overflow := base
+		overflow.Revision = Revision(math.MaxUint64)
+		if _, err := overflow.Delete(10); err == nil {
+			t.Fatal("revision overflow accepted by Delete")
+		}
+		assertLifecycleTimeBoundaries(t, base.UpdatedAt, func(at int64) error {
+			_, err := base.Delete(at)
+			return err
+		})
+		deleted, err := base.Delete(10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deleted.ID = ""
+		if _, err := deleted.Restore(11); err == nil || !strings.Contains(err.Error(), "environment id") {
+			t.Fatalf("invalid source Restore error = %v", err)
+		}
+	})
+
+	t.Run("node", func(t *testing.T) {
+		base := versionedNodeAggregate()
+		base.Node.UpdatedAt = 10
+		base.Node.CreatedAt = 10
+		base.Current.CreatedAt = 10
+		base.Versions[0].CreatedAt = 10
+		invalid := base
+		invalid.Node.CurrentVersionID = "missing"
+		if _, err := invalid.Delete(10); err == nil {
+			t.Fatal("invalid history accepted by Delete")
+		}
+		assertLifecycleTimeBoundaries(t, base.Node.UpdatedAt, func(at int64) error {
+			_, err := base.Delete(at)
+			return err
+		})
+		deleted, err := base.Delete(10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deleted.Node.CurrentVersionID = "missing"
+		if _, err := deleted.Restore(11); err == nil {
+			t.Fatal("invalid history accepted by Restore")
+		}
+	})
+
+	t.Run("workflow", func(t *testing.T) {
+		base := versionedWorkflowAggregate()
+		base.Workflow.UpdatedAt = 10
+		base.Workflow.CreatedAt = 10
+		base.Current.CreatedAt = 10
+		base.Versions[0].CreatedAt = 10
+		invalid := base
+		invalid.Workflow.CurrentVersionID = "missing"
+		if _, err := invalid.Delete(10); err == nil {
+			t.Fatal("invalid history accepted by Delete")
+		}
+		assertLifecycleTimeBoundaries(t, base.Workflow.UpdatedAt, func(at int64) error {
+			_, err := base.Delete(at)
+			return err
+		})
+		deleted, err := base.Delete(10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deleted.Workflow.CurrentVersionID = "missing"
+		if _, err := deleted.Restore(11); err == nil {
+			t.Fatal("invalid history accepted by Restore")
+		}
+	})
+}
+
+func assertLifecycleTimeBoundaries(t *testing.T, updatedAt int64, transition func(int64) error) {
+	t.Helper()
+	for _, delta := range []int64{-1, 0, 1} {
+		err := transition(updatedAt + delta)
+		if delta < 0 && err == nil {
+			t.Errorf("transition at UpdatedAt%+d accepted", delta)
+		}
+		if delta >= 0 && err != nil {
+			t.Errorf("transition at UpdatedAt%+d rejected: %v", delta, err)
+		}
+	}
+}
+
 func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	base := versionedNodeAggregate()
 	base.Node.UpdatedAt = base.Node.CreatedAt

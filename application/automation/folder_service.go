@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
@@ -14,12 +15,18 @@ func NewFolderService(repository FolderRepository) FolderService {
 }
 
 func (s FolderService) Create(ctx context.Context, folder domain.Folder, expected domain.Revision) (FolderSnapshot, error) {
+	if strings.TrimSpace(folder.ID) == "" {
+		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
+	}
 	return s.change(ctx, folder.Kind, expected, func(folders []domain.Folder) ([]domain.Folder, error) {
 		return append(folders, folder), nil
 	})
 }
 
 func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, parentID string, expected domain.Revision, at int64) (FolderSnapshot, error) {
+	if strings.TrimSpace(id) == "" {
+		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
+	}
 	return s.change(ctx, kind, expected, func(folders []domain.Folder) ([]domain.Folder, error) {
 		for index := range folders {
 			if folders[index].ID == id {
@@ -33,6 +40,12 @@ func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, par
 }
 
 func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id string, expected domain.Revision) (FolderSnapshot, error) {
+	if isNilDependency(s.repository) {
+		return FolderSnapshot{}, ErrAutomationConfiguration
+	}
+	if strings.TrimSpace(id) == "" {
+		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
+	}
 	snapshot, err := s.repository.Load(ctx, kind)
 	if err != nil {
 		return FolderSnapshot{}, fmt.Errorf("load folder forest: %w", err)
@@ -75,6 +88,9 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 }
 
 func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expected domain.Revision, apply func([]domain.Folder) ([]domain.Folder, error)) (FolderSnapshot, error) {
+	if isNilDependency(s.repository) {
+		return FolderSnapshot{}, ErrAutomationConfiguration
+	}
 	snapshot, err := s.repository.Load(ctx, kind)
 	if err != nil {
 		return FolderSnapshot{}, fmt.Errorf("load folder forest: %w", err)

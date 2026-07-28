@@ -77,6 +77,9 @@ func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, 
 	next.UpdatedAt = at
 	next.Revision = r
 	next.Variables = e.Variables.Clone()
+	if err := next.Validate(); err != nil {
+		return Environment{}, err
+	}
 	return next, nil
 }
 
@@ -138,6 +141,9 @@ func (a NodeAggregate) setDeleted(deleted bool, at int64) (NodeAggregate, error)
 	}
 	n.Node.UpdatedAt = at
 	n.Node.Revision = r
+	if err := n.ValidateLoadedHistory(); err != nil {
+		return NodeAggregate{}, err
+	}
 	return n, nil
 }
 
@@ -199,6 +205,9 @@ func (a WorkflowAggregate) setDeleted(deleted bool, at int64) (WorkflowAggregate
 	}
 	n.Workflow.UpdatedAt = at
 	n.Workflow.Revision = r
+	if err := n.ValidateLoadedHistory(); err != nil {
+		return WorkflowAggregate{}, err
+	}
 	return n, nil
 }
 

@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
@@ -14,6 +15,9 @@ func NewWorkflowService(repository WorkflowRepository) WorkflowService {
 }
 
 func (s WorkflowService) Create(ctx context.Context, workflow domain.Workflow, initial domain.WorkflowVersion) (domain.WorkflowAggregate, error) {
+	if isNilDependency(s.repository) {
+		return domain.WorkflowAggregate{}, ErrAutomationConfiguration
+	}
 	aggregate, err := domain.NewWorkflow(workflow, initial)
 	if err != nil {
 		return domain.WorkflowAggregate{}, fmt.Errorf("create workflow: %w", err)
@@ -46,6 +50,12 @@ func (s WorkflowService) Restore(ctx context.Context, id string, expected domain
 }
 
 func (s WorkflowService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.WorkflowAggregate) (domain.WorkflowAggregate, error)) (domain.WorkflowAggregate, error) {
+	if isNilDependency(s.repository) {
+		return domain.WorkflowAggregate{}, ErrAutomationConfiguration
+	}
+	if strings.TrimSpace(id) == "" {
+		return domain.WorkflowAggregate{}, fmt.Errorf("workflow ID is required")
+	}
 	current, err := s.repository.Load(ctx, id)
 	if err != nil {
 		return domain.WorkflowAggregate{}, fmt.Errorf("load workflow %q: %w", id, err)
