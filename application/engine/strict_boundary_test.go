@@ -41,8 +41,8 @@ func TestCompileSnapshotDraftRejectsDuplicatePublicIdentities(t *testing.T) {
 	}
 }
 
-func TestRunCompiledEntryRejectsNilContextAndNegativeInterval(t *testing.T) {
-	entry := compiledEntry(node.Program{Root: &runtimeCaptureNode{}})
+func TestRunProgramRejectsNilContextAndNegativeInterval(t *testing.T) {
+	program := node.Program{Root: &runtimeCaptureNode{}}
 	tests := []struct {
 		name     string
 		ctx      context.Context
@@ -54,7 +54,7 @@ func TestRunCompiledEntryRejectsNilContextAndNegativeInterval(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := RunCompiledEntryWithResult(tt.ctx, entry, Config{RunID: "run", Driver: &engineTestDriver{}, StepInterval: tt.interval})
+			_, err := runProgram(tt.ctx, program, Config{RunID: "run", Driver: &engineTestDriver{}, StepInterval: tt.interval})
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}

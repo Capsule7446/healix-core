@@ -243,6 +243,7 @@ func TestValidateSamplesDirectMalformedAndDuplicateCollections(t *testing.T) {
 	}
 	secondSelected := duplicate
 	secondSelected.Selected = true
+	secondSelected.Status = CandidateSampleSelected
 	if err := ValidateSamples([]CandidateSample{valid, secondSelected}); err == nil {
 		t.Fatal("multiple selected samples accepted")
 	}

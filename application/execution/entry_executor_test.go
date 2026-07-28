@@ -314,19 +314,19 @@ func TestEntryExecutorPropagatesClosePanicAfterSuccessfulRunner(t *testing.T) {
 	}
 }
 
-type invalidSession struct{ events *[]string }
+type observedInvalidSession struct{ events *[]string }
 
-func (session invalidSession) Valid() bool { return false }
-func (session invalidSession) Close(context.Context) error {
+func (session observedInvalidSession) Valid() bool { return false }
+func (session observedInvalidSession) Close(context.Context) error {
 	*session.events = append(*session.events, "close")
 	return nil
 }
 
-type invalidSessionFactory struct{ events *[]string }
+type observedInvalidSessionFactory struct{ events *[]string }
 
-func (factory invalidSessionFactory) Create(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry) (BrowserSession, error) {
+func (factory observedInvalidSessionFactory) Create(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry) (BrowserSession, error) {
 	*factory.events = append(*factory.events, "create")
-	return invalidSession{events: factory.events}, nil
+	return observedInvalidSession{events: factory.events}, nil
 }
 
 func TestEntryExecutorRejectsInvalidSessionAndClosesBeforeStopping(t *testing.T) {
@@ -336,7 +336,7 @@ func TestEntryExecutorRejectsInvalidSessionAndClosesBeforeStopping(t *testing.T)
 		runnerCalled = true
 		return nil
 	})
-	err := mustEntryExecutor(t, invalidSessionFactory{events: &events}, runner).Execute(
+	err := mustEntryExecutor(t, observedInvalidSessionFactory{events: &events}, runner).Execute(
 		context.Background(),
 		domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
 		[]domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}},

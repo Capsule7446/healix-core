@@ -123,24 +123,18 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		}
 		started := time.Now()
 		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Navigate(ctx, action.Value) })
-		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+		rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 		if err != nil {
-			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: navigate failed: %w", s.NodeID, ClassifyError("navigate", err)), observationErr))
-		}
-		if observationErr != nil {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record navigate observation: %w", s.NodeID, observationErr))
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: navigate failed: %w", s.NodeID, ClassifyError("navigate", err)))
 		}
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 	if action.Kind == ActionPress {
 		started := time.Now()
 		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Press(ctx, action.Value) })
-		observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+		rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
 		if err != nil {
-			return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: press failed: %w", s.NodeID, ClassifyError("press", err)), observationErr))
-		}
-		if observationErr != nil {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record press observation: %w", s.NodeID, observationErr))
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: press failed: %w", s.NodeID, ClassifyError("press", err)))
 		}
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
@@ -189,12 +183,9 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if len(target.Selectors) > 0 {
 		selector = target.Selectors[0]
 	}
-	observationErr := rt.observeOperation(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Selector: selector, Healed: healed, Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: actionErr == nil, ErrorKind: errorKind(actionErr)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Selector: selector, Healed: healed, Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: actionErr == nil, ErrorKind: errorKind(actionErr)})
 	if actionErr != nil {
-		return s.fail(ctx, parentCtx, rt, execution, errors.Join(fmt.Errorf("node %s: action failed: %w", s.NodeID, ClassifyError(string(action.Kind), actionErr)), observationErr))
-	}
-	if observationErr != nil {
-		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: record action observation: %w", s.NodeID, observationErr))
+		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: action failed: %w", s.NodeID, ClassifyError(string(action.Kind), actionErr)))
 	}
 
 	return s.finish(ctx, parentCtx, rt, execution)

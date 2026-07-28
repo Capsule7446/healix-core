@@ -416,8 +416,8 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 	if !timeoutDeadlineObserved {
 		t.Fatal("positive step timeout was not propagated to the driver")
 	}
-	if navigateObserverCalls != 1 || pressObserverCalls != 1 || actionObserverCalls != 1 {
-		t.Fatalf("best-effort observer calls = navigate:%d press:%d action:%d, want 1 each", navigateObserverCalls, pressObserverCalls, actionObserverCalls)
+	if navigateObserverCalls != 1 || pressObserverCalls != 1 || actionObserverCalls != 2 {
+		t.Fatalf("best-effort observer calls = navigate:%d press:%d action:%d, want 1/1/2", navigateObserverCalls, pressObserverCalls, actionObserverCalls)
 	}
 }
 
