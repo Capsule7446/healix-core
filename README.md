@@ -2,7 +2,17 @@
 
 `healix-core` 是一个面向浏览器自动化产品的 Go 领域与执行内核。它把可发布的自动化资产、不可变执行计划、确定性节点运行、自愈决策和执行事实建模为与传输、数据库和浏览器实现无关的包，供 Desktop、CLI、CI Runner 或 Server 作为库嵌入。
 
-当前公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。
+当前发布版本为 **v0.5.0**。公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。
+
+### v0.5.0
+
+此版本完成了执行模型与公开契约的收敛：以 `CompilePlan` 和 `RunProgram` 作为运行入口，并要求宿主在执行前验证 Claim/调度决定提供的完整执行身份。执行边界和宿主义务见下文的[端到端执行](#端到端执行)、[适配器必须保证什么](#adapter-必须保证什么)与[公开契约](docs/integration/public-contract.md)。
+
+## 许可证
+
+本项目采用 [Apache License 2.0](LICENSE)（SPDX: `Apache-2.0`），版权所有 © 2026 Capsule7446。使用、修改和再分发须遵守该许可证，包括其专利授权与通知保留条款；完整文本见 [LICENSE](LICENSE)，归属信息见 [NOTICE](NOTICE)。
+
+欢迎贡献；提交贡献前请阅读[贡献指南](CONTRIBUTING.md)。
 
 ## 它是什么，不是什么
 
@@ -143,7 +153,7 @@ sequenceDiagram
 远端版本可用时：
 
 ```bash
-go get github.com/Capsule7446/healix-core@<version>
+go get github.com/Capsule7446/healix-core@v0.5.0
 ```
 
 在相邻目录进行本地联调时，可在宿主 `go.mod` 中使用：
