@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -21,11 +22,12 @@ func TestStepActionFailureBusinessMatrix(t *testing.T) {
 		name      string
 		action    Action
 		configure func(*matrixElement)
-		wantKind  ErrorKind
+		wantKind  fault.Kind
+		wantCode  fault.Code
 	}{
-		{name: "click action error", action: Action{Kind: ActionClick}, configure: func(e *matrixElement) { e.actionErr = errors.New("click failed") }, wantKind: ErrorUnknown},
-		{name: "stable wait error", action: Action{Kind: ActionHover}, configure: func(e *matrixElement) { e.waitStableErr = errors.New("moving") }, wantKind: ErrorUnknown},
-		{name: "select without value", action: Action{Kind: ActionSelect}, configure: func(*matrixElement) {}, wantKind: ErrorUnknown},
+		{name: "click action error", action: Action{Kind: ActionClick}, configure: func(e *matrixElement) { e.actionErr = errors.New("click failed") }, wantKind: fault.Internal, wantCode: CodeOperationFailed},
+		{name: "stable wait error", action: Action{Kind: ActionHover}, configure: func(e *matrixElement) { e.waitStableErr = errors.New("moving") }, wantKind: fault.Internal, wantCode: CodeOperationFailed},
+		{name: "select without value", action: Action{Kind: ActionSelect}, configure: func(*matrixElement) {}, wantKind: fault.Internal, wantCode: CodeOperationFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -37,7 +39,7 @@ func TestStepActionFailureBusinessMatrix(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected action failure")
 			}
-			if len(facts.observations) == 0 || facts.observations[len(facts.observations)-1].ErrorKind != tc.wantKind {
+			if len(facts.observations) == 0 || facts.observations[len(facts.observations)-1].FaultKind != tc.wantKind || facts.observations[len(facts.observations)-1].FaultCode != tc.wantCode {
 				t.Fatalf("observations=%+v", facts.observations)
 			}
 		})

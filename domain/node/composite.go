@@ -108,7 +108,7 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		err = fmt.Errorf("unknown wait kind %q", w.Kind)
 	}
 
-	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 	if err != nil {
 		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
 			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), emitErr)

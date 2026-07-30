@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -119,7 +120,8 @@ type OperationObservation struct {
 	Attempt    int
 	DurationMS int64
 	Succeeded  bool
-	ErrorKind  ErrorKind
+	FaultKind  fault.Kind
+	FaultCode  fault.Code
 }
 
 // OperationObserver can be implemented alongside ExecutionSink without changing

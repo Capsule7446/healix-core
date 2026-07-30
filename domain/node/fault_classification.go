@@ -47,6 +47,16 @@ func nodeFaultDetails(err error) (fault.Kind, fault.Code) {
 	return kind, code
 }
 
+func nodeFaultKind(err error) fault.Kind {
+	kind, _ := nodeFaultDetails(err)
+	return kind
+}
+
+func nodeFaultCode(err error) fault.Code {
+	_, code := nodeFaultDetails(err)
+	return code
+}
+
 func mustWrapNodeFault(cause error, kind fault.Kind, code fault.Code, message string) error {
 	wrapped, err := fault.Wrap(cause, kind, code, message)
 	if err != nil {
