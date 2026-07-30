@@ -125,7 +125,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Navigate(ctx, action.Value) })
 		rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 		if err != nil {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: navigate failed: %w", s.NodeID, ClassifyError("navigate", err)))
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: navigate failed: %w", s.NodeID, classifyNodeFault(err)))
 		}
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
@@ -134,7 +134,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Press(ctx, action.Value) })
 		rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 		if err != nil {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: press failed: %w", s.NodeID, ClassifyError("press", err)))
+			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: press failed: %w", s.NodeID, classifyNodeFault(err)))
 		}
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
@@ -185,7 +185,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	}
 	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Selector: selector, Healed: healed, Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: actionErr == nil, FaultKind: nodeFaultKind(actionErr), FaultCode: nodeFaultCode(actionErr)})
 	if actionErr != nil {
-		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: action failed: %w", s.NodeID, ClassifyError(string(action.Kind), actionErr)))
+		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: action failed: %w", s.NodeID, classifyNodeFault(actionErr)))
 	}
 
 	return s.finish(ctx, parentCtx, rt, execution)

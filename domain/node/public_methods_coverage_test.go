@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -295,15 +296,16 @@ func TestRuntimeParametersAndInterpolationPreserveTypedScopeThroughPublicNodes(t
 	}
 }
 
-func TestTransientErrorContract(t *testing.T) {
-	if TransientError("driver", nil) != nil {
+func TestTransientDriverFaultContract(t *testing.T) {
+	if transientDriverFault(nil) != nil {
 		t.Fatal("nil error was classified")
 	}
 	cause := errors.New("temporary")
-	err := TransientError("locate", cause)
-	var classified *ClassifiedError
-	if !errors.As(err, &classified) || !errors.Is(err, cause) || classified.Kind != ErrorTransientDriver || classified.Operation != "locate" {
-		t.Fatalf("TransientError() = %#v", err)
+	err := transientDriverFault(cause)
+	kind, hasKind := fault.KindOf(err)
+	code, hasCode := fault.CodeOf(err)
+	if !errors.Is(err, cause) || !hasKind || kind != fault.Unavailable || !hasCode || code != CodeTransientDriver {
+		t.Fatalf("transientDriverFault() = %#v", err)
 	}
 }
 

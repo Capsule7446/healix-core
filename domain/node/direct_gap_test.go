@@ -51,15 +51,21 @@ func TestLeafExecutionErrorDirect(t *testing.T) {
 	}
 }
 
-func TestIsTransientDirect(t *testing.T) {
-	transient := TransientError("click", errors.New("retry"))
+func TestExclusiveTransientDriverFaultDirect(t *testing.T) {
+	transient := transientDriverFault(errors.New("retry"))
 	for _, tt := range []struct {
 		name string
 		err  error
 		want bool
-	}{{"nil", nil, false}, {"plain", errors.New("x"), false}, {"transient", transient, true}, {"wrapped", fmt.Errorf("outer: %w", transient), true}, {"permanent", ClassifyError("click", errors.New("bad")), false}} {
+	}{
+		{"nil", nil, false},
+		{"plain", errors.New("x"), false},
+		{"transient", transient, true},
+		{"wrapped", fmt.Errorf("outer: %w", transient), true},
+		{"mixed", errors.Join(transient, errors.New("bad")), false},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsTransient(tt.err); got != tt.want {
+			if got := isExclusiveTransientDriverFault(tt.err); got != tt.want {
 				t.Fatalf("got %v", got)
 			}
 		})

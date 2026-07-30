@@ -11,6 +11,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
@@ -155,7 +156,7 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	})
 	if pollErr != nil {
 		reason := "timeout"
-		if errorKind(pollErr) != ErrorTimeout {
+		if !fault.IsCode(pollErr, CodeTimeout) {
 			reason = "system_error"
 		}
 		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, lastActualValues, reason, true); err != nil {
@@ -730,8 +731,7 @@ func validationTerminalReason(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "canceled"
 	}
-	var classified *ClassifiedError
-	if errors.As(err, &classified) && classified.Kind == ErrorTimeout {
+	if fault.IsCode(err, CodeTimeout) {
 		return "timeout"
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

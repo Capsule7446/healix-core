@@ -127,7 +127,7 @@ func TestValidationGroupDeduplicatesRepeatedMemberIdentity(t *testing.T) {
 }
 
 func TestValidationTerminalReasonClassification(t *testing.T) {
-	pollTimeout := &ClassifiedError{Kind: ErrorTimeout, Operation: "poll", Err: context.DeadlineExceeded}
+	pollTimeout := classifyNodeFault(context.DeadlineExceeded)
 	tests := []struct {
 		name string
 		err  error

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -247,13 +248,13 @@ func TestPollerDefaultBoundariesAndRetainedErrors(t *testing.T) {
 		err  error
 	}{
 		{name: "element not found", err: ErrElementNotFound},
-		{name: "transient driver", err: TransientError("locate", errors.New("temporary"))},
+		{name: "transient driver", err: transientDriverFault(errors.New("temporary"))},
 	} {
 		t.Run(test.name+" is retained in timeout", func(t *testing.T) {
 			err := (Poller{Interval: time.Millisecond}).Run(context.Background(), 3*time.Millisecond, func(context.Context) (bool, error) {
 				return false, test.err
 			})
-			if !errors.Is(err, test.err) || errorKind(err) != ErrorTimeout {
+			if !errors.Is(err, test.err) || !fault.IsCode(err, CodeTimeout) {
 				t.Fatalf("Run() error = %v, want retained %v and timeout classification", err, test.err)
 			}
 		})
