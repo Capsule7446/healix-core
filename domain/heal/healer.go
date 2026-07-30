@@ -68,7 +68,7 @@ func (h *DefaultHealer) Validate() error {
 
 var _ Healer = (*DefaultHealer)(nil)
 
-func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.NodeSpec, snapshot DOMSnapshot) (Decision, error) {
+func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.ElementTargetSpec, snapshot DOMSnapshot) (Decision, error) {
 	if err := h.Validate(); err != nil {
 		return Decision{}, err
 	}

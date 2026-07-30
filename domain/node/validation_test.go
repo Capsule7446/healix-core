@@ -33,7 +33,7 @@ func (e *scriptedValidationElement) Text(context.Context) (string, error) {
 func TestValidationGroupDoesNotLatchSeparateANDPasses(t *testing.T) {
 	a := &scriptedValidationElement{values: []string{"yes", "no", "no", "no"}}
 	b := &scriptedValidationElement{values: []string{"no", "yes", "yes", "yes"}}
-	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 		switch spec.ID {
 		case "a":
 			return a, nil
@@ -45,8 +45,8 @@ func TestValidationGroupDoesNotLatchSeparateANDPasses(t *testing.T) {
 	}}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond,
 		Branches: []ValidationBranch{{ID: "a-and-b", Nodes: []*ValidationNode{
-			{NodeID: "a", Target: fingerprint.NodeSpec{ID: "a"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
-			{NodeID: "b", Target: fingerprint.NodeSpec{ID: "b"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
+			{NodeID: "a", Target: fingerprint.ElementTargetSpec{ID: "a"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
+			{NodeID: "b", Target: fingerprint.ElementTargetSpec{ID: "b"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
 		}}}}
 	err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver})
 	if err == nil || !strings.Contains(err.Error(), "no validation branch") {
@@ -55,13 +55,13 @@ func TestValidationGroupDoesNotLatchSeparateANDPasses(t *testing.T) {
 }
 
 func TestValidationGroupPassesWhenBranchStaysTrue(t *testing.T) {
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return &scriptedValidationElement{values: []string{"yes"}}, nil
 	}}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond,
 		Branches: []ValidationBranch{{ID: "first", Nodes: []*ValidationNode{
-			{NodeID: "a", Target: fingerprint.NodeSpec{ID: "a"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
-			{NodeID: "b", Target: fingerprint.NodeSpec{ID: "b"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
+			{NodeID: "a", Target: fingerprint.ElementTargetSpec{ID: "a"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
+			{NodeID: "b", Target: fingerprint.ElementTargetSpec{ID: "b"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
 		}}}}
 	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver}); err != nil {
 		t.Fatalf("group Run: %v", err)
@@ -69,7 +69,7 @@ func TestValidationGroupPassesWhenBranchStaysTrue(t *testing.T) {
 }
 
 func TestValidationGroupRecordsWinnerAndEveryFinalMember(t *testing.T) {
-	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 		value := "no"
 		if spec.ID == "winner" {
 			value = "yes"
@@ -78,8 +78,8 @@ func TestValidationGroupRecordsWinnerAndEveryFinalMember(t *testing.T) {
 	}}
 	facts := &testFacts{}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond, Branches: []ValidationBranch{
-		{ID: "first", Nodes: []*ValidationNode{{NodeID: "winner", GroupID: "group", BranchID: "first", Target: fingerprint.NodeSpec{ID: "winner"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
-		{ID: "second", Nodes: []*ValidationNode{{NodeID: "loser", GroupID: "group", BranchID: "second", Target: fingerprint.NodeSpec{ID: "loser"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
+		{ID: "first", Nodes: []*ValidationNode{{NodeID: "winner", GroupID: "group", BranchID: "first", Target: fingerprint.ElementTargetSpec{ID: "winner"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
+		{ID: "second", Nodes: []*ValidationNode{{NodeID: "loser", GroupID: "group", BranchID: "second", Target: fingerprint.ElementTargetSpec{ID: "loser"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
 	}}
 	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Facts: facts}); err != nil {
 		t.Fatalf("group Run: %v", err)
@@ -103,10 +103,10 @@ func TestValidationGroupRecordsWinnerAndEveryFinalMember(t *testing.T) {
 }
 
 func TestValidationGroupDeduplicatesRepeatedMemberIdentity(t *testing.T) {
-	member := &ValidationNode{NodeID: "member", Target: fingerprint.NodeSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}
+	member := &ValidationNode{NodeID: "member", Target: fingerprint.ElementTargetSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}
 	facts := &testFacts{}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond, Branches: []ValidationBranch{{ID: "branch", Nodes: []*ValidationNode{member, member}}}}
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return &scriptedValidationElement{values: []string{"yes"}}, nil
 	}}
 	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Facts: facts}); err != nil {
@@ -150,8 +150,8 @@ func TestValidationTerminalReasonClassification(t *testing.T) {
 
 func TestValidationGroupRecordsCanceledTerminalReason(t *testing.T) {
 	facts := &testFacts{}
-	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: time.Second, Branches: []ValidationBranch{{ID: "branch", Nodes: []*ValidationNode{{NodeID: "member", GroupID: "group", BranchID: "branch", Target: fingerprint.NodeSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "visible"}}}}}}
-	err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: time.Second, Branches: []ValidationBranch{{ID: "branch", Nodes: []*ValidationNode{{NodeID: "member", GroupID: "group", BranchID: "branch", Target: fingerprint.ElementTargetSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "visible"}}}}}}
+	err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, context.Canceled
 	}}, Facts: facts})
 	if err == nil {
@@ -173,8 +173,8 @@ func TestValidationGroupRecordsCanceledTerminalReason(t *testing.T) {
 
 func TestValidationEvaluationErrorRecordsOneFinalObservation(t *testing.T) {
 	facts := &testFacts{}
-	validation := &ValidationNode{NodeID: "validation", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "visible"}, MaxWait: time.Second}
-	err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	validation := &ValidationNode{NodeID: "validation", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "visible"}, MaxWait: time.Second}
+	err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, errors.New("driver failure")
 	}}, Facts: facts})
 	if err == nil {
@@ -194,9 +194,9 @@ func TestValidationEvaluationErrorRecordsOneFinalObservation(t *testing.T) {
 func TestValidationObservationRecordsFirstChangeAndFinal(t *testing.T) {
 	element := &scriptedValidationElement{values: []string{"等待", "成功", "成功"}}
 	facts := &testFacts{}
-	validation := &ValidationNode{NodeID: "status", Target: fingerprint.NodeSpec{ID: "status", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#status"}}},
+	validation := &ValidationNode{NodeID: "status", Target: fingerprint.ElementTargetSpec{ID: "status", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#status"}}},
 		Assertion: ValidationAssertion{Kind: "text_equals", Expected: "成功"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
-	err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	err := validation.Run(context.Background(), &Runtime{RunID: "run", Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return element, nil
 	}}, Facts: facts})
 	if err != nil {
@@ -217,10 +217,10 @@ func TestValidationObservationRecordsFirstChangeAndFinal(t *testing.T) {
 func TestValidationExpandsRuntimeVariablesWithoutPersistingResolvedExpectation(t *testing.T) {
 	element := &scriptedValidationElement{values: []string{"READY"}}
 	facts := &testFacts{}
-	validation := &ValidationNode{NodeID: "status", Target: fingerprint.NodeSpec{ID: "status"},
+	validation := &ValidationNode{NodeID: "status", Target: fingerprint.ElementTargetSpec{ID: "status"},
 		Assertion: ValidationAssertion{Kind: "text_equals", Expected: "${expected_status}"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
 	err := validation.Run(context.Background(), &Runtime{RunID: "run", Scratchpad: map[string]any{"expected_status": "READY"}, Facts: facts,
-		Driver: &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return element, nil }}})
+		Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return element, nil }}})
 	if err != nil {
 		t.Fatalf("validation Run: %v", err)
 	}
@@ -260,11 +260,11 @@ func TestValidationExpandsExpectedValuesWithoutMutatingTemplate(t *testing.T) {
 }
 
 func TestValidationGroupExpandsRuntimeVariablesForEachBranchMember(t *testing.T) {
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return &scriptedValidationElement{values: []string{"READY"}}, nil
 	}}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond,
-		Branches: []ValidationBranch{{ID: "expected", Nodes: []*ValidationNode{{NodeID: "member", Target: fingerprint.NodeSpec{ID: "member"},
+		Branches: []ValidationBranch{{ID: "expected", Nodes: []*ValidationNode{{NodeID: "member", Target: fingerprint.ElementTargetSpec{ID: "member"},
 			Assertion: ValidationAssertion{Kind: "text_equals", Expected: "${expected_status}"}}}}}}
 	if err := group.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Scratchpad: map[string]any{"expected_status": "READY"}}); err != nil {
 		t.Fatalf("validation group Run: %v", err)
@@ -276,7 +276,7 @@ func TestValidationSetObservationPreservesTypedSourceCollection(t *testing.T) {
 	facts := &testFacts{}
 	validation := &ValidationNode{
 		NodeID: "selection",
-		Target: fingerprint.NodeSpec{ID: "selection"},
+		Target: fingerprint.ElementTargetSpec{ID: "selection"},
 		Assertion: ValidationAssertion{
 			Kind:           "selected_set_equals",
 			ExpectedValues: []string{"second", "", "first\x1fpart", "second"},
@@ -325,7 +325,7 @@ func TestSensitiveSetObservationRedactsTypedValues(t *testing.T) {
 	facts := &testFacts{}
 	validation := &ValidationNode{
 		NodeID:    "secret-selection",
-		Target:    fingerprint.NodeSpec{ID: "secret-selection", Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}},
+		Target:    fingerprint.ElementTargetSpec{ID: "secret-selection", Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}},
 		Assertion: ValidationAssertion{Kind: "selected_set_equals", ExpectedValues: []string{"secret"}},
 		MaxWait:   time.Second, Stability: time.Nanosecond,
 	}
@@ -341,11 +341,11 @@ func TestSensitiveSetObservationRedactsTypedValues(t *testing.T) {
 
 func TestValidationDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 	systemErr := errors.New("browser disconnected")
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, errors.Join(ErrElementNotFound, systemErr)
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
-	validation := &ValidationNode{NodeID: "field", Target: fingerprint.NodeSpec{ID: "field"}}
+	validation := &ValidationNode{NodeID: "field", Target: fingerprint.ElementTargetSpec{ID: "field"}}
 	_, _, err := validation.locate(context.Background(), &Runtime{Driver: driver, Healer: healer})
 	if !errors.Is(err, systemErr) || healer.calls != 0 {
 		t.Fatalf("locate error = %v, healer calls = %d", err, healer.calls)
@@ -355,14 +355,14 @@ func TestValidationDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 func TestNotExistsRequiresNoApplicableHealCandidate(t *testing.T) {
 	old := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#old", Priority: 0}
 	newSelector := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new", Priority: 0}
-	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 		if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 			return testElement{}, nil
 		}
 		return nil, fmt.Errorf("%w: old selector", ErrElementNotFound)
 	}}
 	healer := &testHealer{decision: validDecision(newSelector)}
-	node := &ValidationNode{NodeID: "missing", Target: fingerprint.NodeSpec{ID: "missing", Selectors: []fingerprint.Selector{old}},
+	node := &ValidationNode{NodeID: "missing", Target: fingerprint.ElementTargetSpec{ID: "missing", Selectors: []fingerprint.Selector{old}},
 		Assertion: ValidationAssertion{Kind: "not_exists"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
 	err := node.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Healer: healer})
 	if err == nil || !strings.Contains(err.Error(), "not continuously satisfied") {
@@ -374,10 +374,10 @@ func TestNotExistsRequiresNoApplicableHealCandidate(t *testing.T) {
 }
 
 func TestNotExistsPassesOnlyAfterNoCandidate(t *testing.T) {
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, fmt.Errorf("%w: absent", ErrElementNotFound)
 	}}
-	node := &ValidationNode{NodeID: "missing", Target: fingerprint.NodeSpec{ID: "missing", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#missing"}}},
+	node := &ValidationNode{NodeID: "missing", Target: fingerprint.ElementTargetSpec{ID: "missing", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#missing"}}},
 		Assertion: ValidationAssertion{Kind: "not_exists"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
 	if err := node.Run(context.Background(), &Runtime{RunID: "run", Driver: driver, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}}); err != nil {
 		t.Fatalf("not_exists Run: %v", err)

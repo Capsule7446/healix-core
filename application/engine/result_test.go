@@ -239,6 +239,6 @@ func (readOnlyBrowserNoop) CaptureScreenshot(context.Context, node.ScreenshotOpt
 	return node.ScreenshotArtifact{}, nil
 }
 func (readOnlyBrowserNoop) SnapshotDOM(context.Context) (heal.DOMSnapshot, error) { return nil, nil }
-func (readOnlyBrowserNoop) ObserveElement(context.Context, fingerprint.NodeSpec, []string) (node.ElementObservation, error) {
+func (readOnlyBrowserNoop) ObserveElement(context.Context, fingerprint.ElementTargetSpec, []string) (node.ElementObservation, error) {
 	return node.ElementObservation{}, nil
 }

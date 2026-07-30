@@ -38,7 +38,7 @@ func (v consumerAuthorityVerifier) VerifyExecutionAuthority(_ context.Context, a
 
 func (consumerDriver) Navigate(context.Context, string) error { return nil }
 func (consumerDriver) Press(context.Context, string) error    { return nil }
-func (consumerDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
+func (consumerDriver) Locate(context.Context, fingerprint.ElementTargetSpec) (node.Element, error) {
 	return nil, node.ErrElementNotFound
 }
 func (consumerDriver) Snapshot(context.Context) (heal.DOMSnapshot, error) {

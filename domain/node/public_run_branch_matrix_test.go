@@ -131,7 +131,7 @@ func TestWaitNodeRunCancellationDuringPublicStepInterval(t *testing.T) {
 
 func TestWaitNodeRunPropagatesVisibilityReadFailure(t *testing.T) {
 	readErr := errors.New("visibility read failed")
-	wait := &WaitNode{NodeID: "wait", Kind: WaitElementVisible, Target: fingerprint.NodeSpec{ID: "target"}, Timeout: time.Second}
+	wait := &WaitNode{NodeID: "wait", Kind: WaitElementVisible, Target: fingerprint.ElementTargetSpec{ID: "target"}, Timeout: time.Second}
 	runtime := &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true, visibleErr: readErr}}}
 	if err := wait.Run(context.Background(), runtime); !errors.Is(err, readErr) {
 		t.Fatalf("Run() error = %v, want visibility read failure", err)
@@ -282,8 +282,8 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 	}{
 		{
 			name: "positive timeout bounds execution",
-			step: &StepNode{NodeID: "step", Timeout: time.Second, Target: fingerprint.NodeSpec{ID: "target"}},
-			runtime: &Runtime{Driver: &matrixDriver{locate: func(ctx context.Context, _ fingerprint.NodeSpec) (Element, error) {
+			step: &StepNode{NodeID: "step", Timeout: time.Second, Target: fingerprint.ElementTargetSpec{ID: "target"}},
+			runtime: &Runtime{Driver: &matrixDriver{locate: func(ctx context.Context, _ fingerprint.ElementTargetSpec) (Element, error) {
 				deadline, ok := ctx.Deadline()
 				if !ok {
 					return nil, errors.New("step context has no deadline")
@@ -298,7 +298,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 		},
 		{
 			name: "running event rejected",
-			step: &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
+			step: &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}, Facts: &nodePhaseFailingFacts{
 				nodeID: "step", phase: PhaseRunning, err: persistenceErr,
 			}},
@@ -306,19 +306,19 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 		},
 		{
 			name:     "inconsistent timeline configuration rejects before action",
-			step:     &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
+			step:     &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime:  missingTimelineRuntime(),
 			wantText: "recording timeline is required",
 		},
 		{
 			name:     "action value interpolation failure",
-			step:     &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${missing}"}},
+			step:     &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${missing}"}},
 			runtime:  &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}},
 			wantText: "missing",
 		},
 		{
 			name:     "select value interpolation failure",
-			step:     &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: Action{Kind: ActionSelect, Values: []string{"${missing}"}}},
+			step:     &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionSelect, Values: []string{"${missing}"}}},
 			runtime:  &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}},
 			wantText: "missing",
 		},
@@ -352,18 +352,18 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 		},
 		{
 			name: "optional skip succeeded event rejected",
-			step: &StepNode{NodeID: "step", Optional: true, Target: fingerprint.NodeSpec{ID: "target"}},
+			step: &StepNode{NodeID: "step", Optional: true, Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{
-				Driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }},
+				Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }},
 				Facts:  &nodePhaseFailingFacts{nodeID: "step", phase: PhaseSucceeded, err: persistenceErr},
 			},
 			want: persistenceErr,
 		},
 		{
 			name: "healing event rejected",
-			step: &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
+			step: &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{
-				Driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }},
+				Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }},
 				Healer: &testHealer{},
 				Facts:  &nodePhaseFailingFacts{nodeID: "step", phase: PhaseHealing, err: persistenceErr},
 			},
@@ -371,7 +371,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 		},
 		{
 			name: "transitioning event rejected",
-			step: &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
+			step: &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{
 				Driver: &matrixDriver{element: &matrixElement{exists: true}},
 				Facts:  &nodePhaseFailingFacts{nodeID: "step", phase: PhaseTransitioning, err: persistenceErr},
@@ -380,7 +380,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 		},
 		{
 			name: "action observation is best effort",
-			step: &StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}},
+			step: &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{
 				Driver: &matrixDriver{element: &matrixElement{exists: true}},
 				OperationObserver: operationObserverFunc(func(context.Context, OperationObservation) error {
@@ -425,7 +425,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 func validValidationNode(id string) *ValidationNode {
 	return &ValidationNode{
 		NodeID:    id,
-		Target:    fingerprint.NodeSpec{ID: "target"},
+		Target:    fingerprint.ElementTargetSpec{ID: "target"},
 		Assertion: ValidationAssertion{Kind: "exists"},
 		MaxWait:   500 * time.Millisecond,
 		Stability: time.Nanosecond,

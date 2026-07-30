@@ -52,7 +52,7 @@ type Action struct {
 // ActionNavigate 会完全跳过 Target/定位——它作用于整个页面，而非某个元素。
 type StepNode struct {
 	NodeID   string
-	Target   fingerprint.NodeSpec
+	Target   fingerprint.ElementTargetSpec
 	Action   Action
 	Timeout  time.Duration
 	Optional bool
@@ -195,7 +195,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 // 请求一个 Decision，无论结果如何都会把这次尝试记录为执行事实，并在出现可用候选时，
 // 把它提到 Target 选择器列表最前面，再通过 Driver 重新定位——
 // 这样调用方拿到的始终是一个普通的 Element。
-func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.NodeSpec) (Element, error) {
+func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.ElementTargetSpec) (Element, error) {
 	snap, err := rt.Driver.Snapshot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot for healing: %w", err)
@@ -263,7 +263,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Nod
 	return el, nil
 }
 
-func firstSelector(spec fingerprint.NodeSpec) fingerprint.Selector {
+func firstSelector(spec fingerprint.ElementTargetSpec) fingerprint.Selector {
 	if len(spec.Selectors) == 0 {
 		return fingerprint.Selector{}
 	}

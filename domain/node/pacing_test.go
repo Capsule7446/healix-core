@@ -20,7 +20,7 @@ func (d *pacingDriver) Navigate(context.Context, string) error {
 }
 
 func (d *pacingDriver) Press(context.Context, string) error { return nil }
-func (d *pacingDriver) Locate(context.Context, fingerprint.NodeSpec) (Element, error) {
+func (d *pacingDriver) Locate(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 	return testElement{}, nil
 }
 func (d *pacingDriver) Snapshot(context.Context) (heal.DOMSnapshot, error) {

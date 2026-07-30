@@ -20,7 +20,7 @@ const (
 	SelectorText   SelectorType = "text"
 )
 
-// Selector 是 NodeSpec 的一个候选定位策略，按 Priority 升序依次尝试，
+// Selector 是 ElementTargetSpec 的一个候选定位策略，按 Priority 升序依次尝试，
 // 直到其中一个成功解析为止。
 type Selector struct {
 	Type     SelectorType
@@ -100,7 +100,7 @@ func (f Fingerprint) Validate() error {
 }
 
 // 优先尝试选择器，只有全部选择器失败后才会用到指纹。
-type NodeSpec struct {
+type ElementTargetSpec struct {
 	UUID        string
 	ID          string
 	PageURL     string
@@ -111,7 +111,7 @@ type NodeSpec struct {
 }
 
 // Validate 验证保护所有配置源和 Driver 实现共享的最小身份和定位器不变量。
-func (s NodeSpec) Validate() error {
+func (s ElementTargetSpec) Validate() error {
 	var problems []string
 	if s.UUID != "" && !validUUID(s.UUID) {
 		problems = append(problems, "uuid must be a canonical UUID")

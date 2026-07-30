@@ -133,7 +133,7 @@ func (screenshotBrowserStub) SnapshotDOM(context.Context) (heal.DOMSnapshot, err
 	return testSnapshot{}, nil
 }
 
-func (screenshotBrowserStub) ObserveElement(context.Context, fingerprint.NodeSpec, []string) (ElementObservation, error) {
+func (screenshotBrowserStub) ObserveElement(context.Context, fingerprint.ElementTargetSpec, []string) (ElementObservation, error) {
 	return ElementObservation{}, nil
 }
 
@@ -173,7 +173,7 @@ func TestCompletionBrowserCopiesScreenshotAndObservesElementThroughPublicLeafRun
 		}
 		observation, err = browser.ObserveElement(
 			context.Background(),
-			fingerprint.NodeSpec{ID: "node"},
+			fingerprint.ElementTargetSpec{ID: "node"},
 			[]string{"role", "missing"},
 		)
 		if err != nil {
@@ -259,7 +259,7 @@ func TestRuntimeParametersAndInterpolationPreserveTypedScopeThroughPublicNodes(t
 	}}
 	step := &StepNode{
 		NodeID: "interpolate",
-		Target: fingerprint.NodeSpec{ID: "input"},
+		Target: fingerprint.ElementTargetSpec{ID: "input"},
 		Action: Action{Kind: ActionInput, Value: "${text}|${params.text}|${number}|${boolean}|${choice}|${scratch}"},
 	}
 	workflow := &WorkflowNode{NodeID: "root", OwnsParameterScope: true, Parameters: values, Children: []Node{probe, step}}
@@ -287,7 +287,7 @@ func TestRuntimeParametersAndInterpolationPreserveTypedScopeThroughPublicNodes(t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			step := &StepNode{NodeID: "reject non-scalar", Target: fingerprint.NodeSpec{ID: "input"}, Action: Action{Kind: ActionInput, Value: "${" + test.key + "}"}}
+			step := &StepNode{NodeID: "reject non-scalar", Target: fingerprint.ElementTargetSpec{ID: "input"}, Action: Action{Kind: ActionInput, Value: "${" + test.key + "}"}}
 			workflow := &WorkflowNode{NodeID: "root", OwnsParameterScope: true, Parameters: values, Children: []Node{step}}
 			if err := workflow.Run(context.Background(), runtime); err == nil {
 				t.Fatalf("interpolation unexpectedly accepted %q", test.key)
@@ -412,7 +412,7 @@ func TestCompletionBrowserPropagatesEveryDependencyFailureThroughPublicLeafRun(t
 		configure func(*matrixDriver, *matrixElement)
 	}{
 		{name: "locate", configure: func(driver *matrixDriver, _ *matrixElement) {
-			driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, sentinel }
+			driver.locate = func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, sentinel }
 		}},
 		{name: "exists", configure: func(_ *matrixDriver, element *matrixElement) { element.existsErr = sentinel }},
 		{name: "visible", configure: func(_ *matrixDriver, element *matrixElement) { element.visibleErr = sentinel }},
@@ -426,7 +426,7 @@ func TestCompletionBrowserPropagatesEveryDependencyFailureThroughPublicLeafRun(t
 			test.configure(driver, element)
 			runtime := &Runtime{Driver: driver, ReadOnlyBrowser: screenshotBrowserStub{}}
 			runWithCompletionBrowser(t, runtime, func(browser ReadOnlyBrowser) {
-				if _, err := browser.ObserveElement(context.Background(), fingerprint.NodeSpec{ID: "node"}, []string{"role"}); !errors.Is(err, sentinel) {
+				if _, err := browser.ObserveElement(context.Background(), fingerprint.ElementTargetSpec{ID: "node"}, []string{"role"}); !errors.Is(err, sentinel) {
 					t.Fatalf("ObserveElement() error = %v", err)
 				}
 			})

@@ -67,7 +67,7 @@ func (e *matrixElement) ValidationState(context.Context) (ValidationState, error
 
 type matrixDriver struct {
 	element          Element
-	locate           func(context.Context, fingerprint.NodeSpec) (Element, error)
+	locate           func(context.Context, fingerprint.ElementTargetSpec) (Element, error)
 	snapshot         func(context.Context) (heal.DOMSnapshot, error)
 	navigateErr      error
 	pressErr         error
@@ -102,9 +102,9 @@ func TestStepPhaseTransitionCompleteMatrix(t *testing.T) {
 }
 
 func TestRuntimeSpecLookupAppliesCanonicalSpecAndOverlay(t *testing.T) {
-	base := fingerprint.NodeSpec{ID: "version", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#inline"}}}
-	canonical := fingerprint.NodeSpec{ID: "version", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#canonical"}}}
-	runtime := &Runtime{Specs: map[string]fingerprint.NodeSpec{"version": canonical}, SelectorOverlay: map[string][]fingerprint.Selector{
+	base := fingerprint.ElementTargetSpec{ID: "version", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#inline"}}}
+	canonical := fingerprint.ElementTargetSpec{ID: "version", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#canonical"}}}
+	runtime := &Runtime{Specs: map[string]fingerprint.ElementTargetSpec{"version": canonical}, SelectorOverlay: map[string][]fingerprint.Selector{
 		"version": {{Type: fingerprint.SelectorTestID, Value: "healed"}},
 	}}
 	got := runtime.effectiveSpec(base)
@@ -132,7 +132,7 @@ func (d *matrixDriver) Press(_ context.Context, value string) error {
 	d.presses = append(d.presses, value)
 	return d.pressErr
 }
-func (d *matrixDriver) Locate(ctx context.Context, spec fingerprint.NodeSpec) (Element, error) {
+func (d *matrixDriver) Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 	d.locateCalls++
 	if d.locate != nil {
 		return d.locate(ctx, spec)
@@ -151,7 +151,7 @@ func (d *matrixDriver) WaitNetworkIdle(context.Context) error {
 }
 
 func TestStepActionBusinessMatrix(t *testing.T) {
-	target := fingerprint.NodeSpec{ID: "target"}
+	target := fingerprint.ElementTargetSpec{ID: "target"}
 	tests := []struct {
 		name   string
 		action Action
@@ -257,7 +257,7 @@ func TestTypedEnvironmentStringInterpolation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			element := &matrixElement{exists: true, visible: true}
 			runtime := &Runtime{RunID: "run", Driver: &matrixDriver{element: element}, Facts: &testFacts{}, parameterScope: values}
-			err := (&StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: test.expression}}).Run(context.Background(), runtime)
+			err := (&StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: test.expression}}).Run(context.Background(), runtime)
 			if test.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantError) {
 					t.Fatalf("Run() error = %v, want containing %q", err, test.wantError)
@@ -277,7 +277,7 @@ func TestTypedEnvironmentStringInterpolation(t *testing.T) {
 func TestNestedWorkflowExecutesWithNamespacedChildParameterAndEnvironment(t *testing.T) {
 	element := &matrixElement{exists: true, visible: true}
 	driver := &matrixDriver{element: element}
-	step := &StepNode{NodeID: "child-step", Target: fingerprint.NodeSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${params.User}@${env.Region}"}}
+	step := &StepNode{NodeID: "child-step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${params.User}@${env.Region}"}}
 	call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "child", Children: []Node{step}}, Bindings: map[string]parameter.Binding{"User": parameter.LiteralBinding(parameter.TextValue("Child Alice"))}, Values: map[string]parameter.Value{"User": parameter.TextValue("Child Alice")}, Constraints: map[string]parameter.Constraint{"User": {Type: parameter.Text}}}
 	runtime := &Runtime{RunID: "run", Driver: driver, Facts: &testFacts{}, Scratchpad: map[string]any{"params.User": "contamination", "env.Region": "contamination"}, parameterScope: map[string]parameter.Value{"User": parameter.TextValue("Parent Alice"), "env.Region": parameter.TextValue("east")}}
 	if err := call.Run(context.Background(), runtime); err != nil {
@@ -317,7 +317,7 @@ func TestStepActionFailureMatrix(t *testing.T) {
 			if test.setup != nil {
 				test.setup(element, driver, runtime)
 			}
-			err := (&StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: test.action}).Run(context.Background(), runtime)
+			err := (&StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: test.action}).Run(context.Background(), runtime)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}
@@ -329,7 +329,7 @@ func TestStepActionFailureMatrix(t *testing.T) {
 }
 
 func TestStepHealingFailureMatrix(t *testing.T) {
-	target := fingerprint.NodeSpec{ID: "target", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
+	target := fingerprint.ElementTargetSpec{ID: "target", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
 	sentinel := errors.New("sentinel")
 	tests := []struct {
 		name   string
@@ -337,11 +337,11 @@ func TestStepHealingFailureMatrix(t *testing.T) {
 		healer heal.Healer
 		want   string
 	}{
-		{name: "healing disabled", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, want: "healing disabled"},
-		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
-		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{err: sentinel}, want: "heal failed"},
-		{name: "no candidate", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, want: "no heal candidate"},
-		{name: "relocate failure", driver: &matrixDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+		{name: "healing disabled", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, want: "healing disabled"},
+		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
+		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{err: sentinel}, want: "heal failed"},
+		{name: "no candidate", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, want: "no heal candidate"},
+		{name: "relocate failure", driver: &matrixDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 			if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 				return nil, sentinel
 			}
@@ -411,7 +411,7 @@ func TestValidationAssertionExecutionMatrix(t *testing.T) {
 				t.Run(state.name, func(t *testing.T) {
 					element := base()
 					state.configure(element)
-					validation := &ValidationNode{NodeID: "validation", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: test.assertion}
+					validation := &ValidationNode{NodeID: "validation", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: test.assertion}
 					got, _, err := validation.evaluate(context.Background(), &Runtime{Driver: &matrixDriver{element: element}})
 					if err != nil || got != state.want {
 						t.Fatalf("evaluate = %v, err=%v, want %v", got, err, state.want)
@@ -424,21 +424,21 @@ func TestValidationAssertionExecutionMatrix(t *testing.T) {
 
 func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 	t.Run("state capability required", func(t *testing.T) {
-		validation := &ValidationNode{NodeID: "value", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "x"}}
+		validation := &ValidationNode{NodeID: "value", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "x"}}
 		_, _, err := validation.evaluate(context.Background(), &Runtime{Driver: &matrixDriver{element: testElement{}}})
 		if err == nil || !strings.Contains(err.Error(), "validation state") {
 			t.Fatalf("error = %v", err)
 		}
 	})
 	t.Run("invalid expanded regex", func(t *testing.T) {
-		validation := &ValidationNode{NodeID: "regex", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "text_matches", Expected: "${pattern}"}}
+		validation := &ValidationNode{NodeID: "regex", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "text_matches", Expected: "${pattern}"}}
 		_, _, err := validation.evaluate(context.Background(), &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true, visible: true, text: "x"}}, Scratchpad: map[string]any{"pattern": "["}})
 		if err == nil {
 			t.Fatal("invalid expanded regex was accepted")
 		}
 	})
 	t.Run("missing attribute is unsatisfied", func(t *testing.T) {
-		validation := &ValidationNode{NodeID: "attr", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "attribute_equals", Attribute: "data-state", Expected: "ready"}}
+		validation := &ValidationNode{NodeID: "attr", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "attribute_equals", Attribute: "data-state", Expected: "ready"}}
 		passed, actual, err := validation.evaluate(context.Background(), &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true, visible: true}}})
 		if err != nil || passed || actual != "<undefined>" {
 			t.Fatalf("passed=%v actual=%q err=%v", passed, actual, err)
@@ -461,7 +461,7 @@ func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 			t.Run(test.name, func(t *testing.T) {
 				element := &matrixElement{exists: true, visible: true, attributes: map[string]string{"name": "x"}}
 				test.configure(element)
-				validation := &ValidationNode{NodeID: "validation", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: test.assertion}
+				validation := &ValidationNode{NodeID: "validation", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: test.assertion}
 				_, _, err := validation.evaluate(context.Background(), &Runtime{Driver: &matrixDriver{element: element}})
 				if !errors.Is(err, sentinel) {
 					t.Fatalf("error = %v, want sentinel", err)
@@ -471,7 +471,7 @@ func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 	})
 	t.Run("sensitive evidence is redacted", func(t *testing.T) {
 		facts := &testFacts{}
-		validation := &ValidationNode{NodeID: "secret", Target: fingerprint.NodeSpec{ID: "secret", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#secret"}}, Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "top-secret", ExpectedValues: []string{"must-not-leak"}}}
+		validation := &ValidationNode{NodeID: "secret", Target: fingerprint.ElementTargetSpec{ID: "secret", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#secret"}}, Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "top-secret", ExpectedValues: []string{"must-not-leak"}}}
 		recorder := newValidationObservationRecorder()
 		if err := recorder.record(context.Background(), &Runtime{RunID: "run", Facts: facts}, validation, false, "top-secret", nil, "normal_unsatisfied", true); err != nil {
 			t.Fatal(err)
@@ -484,13 +484,13 @@ func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 }
 
 func TestValidationHealingMatrix(t *testing.T) {
-	target := fingerprint.NodeSpec{ID: "target", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
+	target := fingerprint.ElementTargetSpec{ID: "target", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
 	newSelector := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"}
 	sentinel := errors.New("sentinel")
 
 	t.Run("system locate error is not absence", func(t *testing.T) {
 		validation := &ValidationNode{NodeID: "validation", Target: target}
-		_, absent, err := validation.locate(context.Background(), &Runtime{Driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, sentinel }}})
+		_, absent, err := validation.locate(context.Background(), &Runtime{Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, sentinel }}})
 		if !errors.Is(err, sentinel) || absent {
 			t.Fatalf("absent=%v err=%v", absent, err)
 		}
@@ -498,7 +498,7 @@ func TestValidationHealingMatrix(t *testing.T) {
 
 	t.Run("not found without healer is absence", func(t *testing.T) {
 		validation := &ValidationNode{NodeID: "validation", Target: target}
-		_, absent, err := validation.locate(context.Background(), &Runtime{Driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}})
+		_, absent, err := validation.locate(context.Background(), &Runtime{Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}})
 		if err != nil || !absent {
 			t.Fatalf("absent=%v err=%v", absent, err)
 		}
@@ -511,11 +511,11 @@ func TestValidationHealingMatrix(t *testing.T) {
 		facts  *testFacts
 		want   string
 	}{
-		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
-		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{err: sentinel}, want: "sentinel"},
-		{name: "invalid decision", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}, want: "invalid heal decision"},
-		{name: "fact failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: validDecision(newSelector)}, facts: &testFacts{healDecisionErr: sentinel}, want: "re-locate after heal"},
-		{name: "relocate failure", driver: &matrixDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
+		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{err: sentinel}, want: "sentinel"},
+		{name: "invalid decision", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}, want: "invalid heal decision"},
+		{name: "fact failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, healer: &testHealer{decision: validDecision(newSelector)}, facts: &testFacts{healDecisionErr: sentinel}, want: "re-locate after heal"},
+		{name: "relocate failure", driver: &matrixDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 			if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 				return nil, sentinel
 			}
@@ -539,14 +539,14 @@ func TestValidationHealingMatrix(t *testing.T) {
 	t.Run("no candidate is absence and is recorded", func(t *testing.T) {
 		facts := &testFacts{}
 		validation := &ValidationNode{NodeID: "validation", Target: target}
-		_, absent, err := validation.locate(context.Background(), &Runtime{RunID: "run", Driver: &matrixDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, ErrElementNotFound }}, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, Facts: facts})
+		_, absent, err := validation.locate(context.Background(), &Runtime{RunID: "run", Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }}, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, Facts: facts})
 		if err != nil || !absent || !reflect.DeepEqual(facts.healSpecIDs, []string{"target"}) {
 			t.Fatalf("absent=%v facts=%v err=%v", absent, facts.healSpecIDs, err)
 		}
 	})
 
 	t.Run("candidate relocates and installs overlay", func(t *testing.T) {
-		driver := &matrixDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+		driver := &matrixDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 			if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 				return &matrixElement{exists: true}, nil
 			}
@@ -624,13 +624,13 @@ func TestCompositeNodeExecutionMatrix(t *testing.T) {
 func TestWaitNodeExecutionMatrix(t *testing.T) {
 	t.Run("element retries until present", func(t *testing.T) {
 		driver := &matrixDriver{}
-		driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		driver.locate = func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			if driver.locateCalls < 2 {
 				return nil, fmt.Errorf("%w: absent", ErrElementNotFound)
 			}
 			return &matrixElement{exists: true}, nil
 		}
-		if err := (&WaitNode{NodeID: "wait", Kind: WaitElement, Target: fingerprint.NodeSpec{ID: "target"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver}); err != nil {
+		if err := (&WaitNode{NodeID: "wait", Kind: WaitElement, Target: fingerprint.ElementTargetSpec{ID: "target"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver}); err != nil {
 			t.Fatal(err)
 		}
 		if driver.locateCalls != 2 {
@@ -639,10 +639,10 @@ func TestWaitNodeExecutionMatrix(t *testing.T) {
 	})
 	t.Run("invisible succeeds when element is removed", func(t *testing.T) {
 		driver := &matrixDriver{}
-		driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		driver.locate = func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, ErrElementNotFound
 		}
-		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
+		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.ElementTargetSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
 		if err != nil {
 			t.Fatalf("removed element should satisfy invisible wait: %v", err)
 		}
@@ -652,13 +652,13 @@ func TestWaitNodeExecutionMatrix(t *testing.T) {
 	})
 	t.Run("invisible retries while element remains visible", func(t *testing.T) {
 		driver := &matrixDriver{}
-		driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) {
+		driver.locate = func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			if driver.locateCalls < 2 {
 				return &matrixElement{visible: true}, nil
 			}
 			return nil, ErrElementNotFound
 		}
-		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.NodeSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
+		err := (&WaitNode{NodeID: "dismissed", Kind: WaitElementInvisible, Target: fingerprint.ElementTargetSpec{ID: "dialog"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: driver})
 		if err != nil {
 			t.Fatalf("invisible wait should succeed after removal: %v", err)
 		}

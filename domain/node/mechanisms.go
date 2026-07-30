@@ -12,7 +12,7 @@ import (
 
 // Locator centralizes single-page resolution and the runtime selector overlay.
 type Locator interface {
-	Locate(context.Context, fingerprint.NodeSpec) (Element, error)
+	Locate(context.Context, fingerprint.ElementTargetSpec) (Element, error)
 }
 
 // Reader centralizes browser-neutral element reads used by waits and assertions.
@@ -102,7 +102,7 @@ func (rt *Runtime) operationRunner() OperationRunner { return OperationRunner{Po
 
 type runtimeLocator struct{ runtime *Runtime }
 
-func (l runtimeLocator) Locate(ctx context.Context, spec fingerprint.NodeSpec) (Element, error) {
+func (l runtimeLocator) Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 	if l.runtime == nil || l.runtime.Driver == nil {
 		return nil, errors.New("node: locator driver is required")
 	}

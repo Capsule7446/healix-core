@@ -22,7 +22,7 @@ type StepMetadata struct {
 	CaptureScreenshot bool
 }
 
-// RuntimeNodeIdentity 将运行时 NodeSpec ID（即精确的 NodeVersion ID）映射到
+// RuntimeNodeIdentity 将运行时 ElementTargetSpec ID（即精确的 NodeVersion ID）映射到
 // 其稳定的工作区 Node 标识。
 type RuntimeNodeIdentity struct {
 	NodeID        string
@@ -150,7 +150,7 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		}
 		compiler := executionCompiler{
 			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
-			programSpecs: make(map[string]fingerprint.NodeSpec),
+			programSpecs: make(map[string]fingerprint.ElementTargetSpec),
 			metadata:     make(map[string]StepMetadata), runtimeNodes: make(map[string]RuntimeNodeIdentity),
 			compiledNodes: &compiledNodes,
 		}
@@ -193,7 +193,7 @@ type executionCompiler struct {
 	versions      map[string]execution.WorkflowSnapshot
 	resolutions   map[execution.WorkflowReferenceKey]execution.ReferenceResolution
 	nodes         map[execution.NodeDependencyKey]execution.NodeSnapshot
-	programSpecs  map[string]fingerprint.NodeSpec
+	programSpecs  map[string]fingerprint.ElementTargetSpec
 	metadata      map[string]StepMetadata
 	runtimeNodes  map[string]RuntimeNodeIdentity
 	invocations   map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot
@@ -235,7 +235,7 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath, scopeP
 		var err error
 		switch step.Kind {
 		case execution.ActionStep:
-			var target fingerprint.NodeSpec
+			var target fingerprint.ElementTargetSpec
 			if step.NodeID != "" {
 				target, err = c.spec(step.NodeID, step.NodeVersionID)
 				if err != nil {
@@ -417,29 +417,29 @@ func cloneParameterValues(source map[string]parameter.Value) map[string]paramete
 	return result
 }
 
-func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.NodeSpec, error) {
+func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementTargetSpec, error) {
 	identity := nodeDependencyIdentity(nodeID, versionID)
 	dependency, ok := c.nodes[identity]
 	if !ok {
-		return fingerprint.NodeSpec{}, fmt.Errorf("node %s version %s is missing from the run snapshot", nodeID, versionID)
+		return fingerprint.ElementTargetSpec{}, fmt.Errorf("node %s version %s is missing from the run snapshot", nodeID, versionID)
 	}
 	if existing, ok := c.programSpecs[versionID]; ok {
 		mapped := c.runtimeNodes[versionID]
 		if mapped.NodeID != nodeID {
-			return fingerprint.NodeSpec{}, fmt.Errorf("node version %s is shared by different stable nodes", versionID)
+			return fingerprint.ElementTargetSpec{}, fmt.Errorf("node version %s is shared by different stable nodes", versionID)
 		}
 		return existing, nil
 	}
 	version := dependency
 	fp := version.Fingerprint
-	spec := fingerprint.NodeSpec{UUID: dependency.NodeID, ID: version.VersionID,
+	spec := fingerprint.ElementTargetSpec{UUID: dependency.NodeID, ID: version.VersionID,
 		PageURL: version.PageURL, Origin: version.Origin, Role: fp.ARIA.Role,
 		Selectors: append([]fingerprint.Selector(nil), version.Selectors...),
 		Fingerprint: fingerprint.Fingerprint{Tag: fp.Tag, Attributes: cloneStrings(fp.Attributes), Text: fp.Text,
 			ARIA: fp.ARIA, Path: append([]string(nil), fp.Path...), SiblingIndex: fp.SiblingIndex,
 			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID, Framework: fp.Framework.Clone()}}
 	if err := spec.Validate(); err != nil {
-		return fingerprint.NodeSpec{}, fmt.Errorf("node %s version %s: %w", nodeID, versionID, err)
+		return fingerprint.ElementTargetSpec{}, fmt.Errorf("node %s version %s: %w", nodeID, versionID, err)
 	}
 	c.programSpecs[versionID] = spec
 	c.runtimeNodes[versionID] = RuntimeNodeIdentity{NodeID: nodeID, NodeVersionID: versionID}

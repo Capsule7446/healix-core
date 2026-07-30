@@ -39,9 +39,9 @@ const waitPollInterval = 100 * time.Millisecond
 type WaitNode struct {
 	NodeID   string
 	Kind     WaitKind
-	Duration time.Duration        // WaitSleep：等待时长
-	Target   fingerprint.NodeSpec // WaitElement：要等的元素
-	Timeout  time.Duration        // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
+	Duration time.Duration                 // WaitSleep：等待时长
+	Target   fingerprint.ElementTargetSpec // WaitElement：要等的元素
+	Timeout  time.Duration                 // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
 }
 
 func (w *WaitNode) ID() string { return w.NodeID }

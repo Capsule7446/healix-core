@@ -18,13 +18,13 @@ const terminalEventTimeout = 5 * time.Second
 
 const operationObservationTimeout = 5 * time.Second
 
-// ErrElementNotFound 是 Driver 合约的显式业务信号，表明 NodeSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
+// ErrElementNotFound 是 Driver 合约的显式业务信号，表明 ElementTargetSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
 var ErrElementNotFound = errors.New("node: element not found")
 
-// Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 NodeSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
+// Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 ElementTargetSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
 type Program struct {
 	Root  Node
-	Specs map[string]fingerprint.NodeSpec
+	Specs map[string]fingerprint.ElementTargetSpec
 }
 
 // Phase 是某个 step 在 RUNNING -> [HEALING] -> TRANSITIONING ->
@@ -148,12 +148,12 @@ type Element interface {
 	WaitStable(ctx context.Context) error
 }
 
-// Driver 按优先级顺序将 NodeSpec 的选择器与实时页面比对解析、
+// Driver 按优先级顺序将 ElementTargetSpec 的选择器与实时页面比对解析、
 // 执行导航，并为自愈提供 DOMSnapshot。
 type Driver interface {
 	Navigate(ctx context.Context, url string) error
 	Press(ctx context.Context, key string) error
-	Locate(ctx context.Context, spec fingerprint.NodeSpec) (Element, error)
+	Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error)
 	Snapshot(ctx context.Context) (heal.DOMSnapshot, error)
 	// WaitNetworkIdle 阻塞到页面网络空闲；超时通过 ctx 控制
 	// （WaitNode 的条件超时）。
@@ -205,10 +205,10 @@ type Runtime struct {
 	Origin     string
 	// StepInterval 控制可执行叶步骤之间的最小暂停时间。第一个叶子步骤立即开始；容器节点和验证组成员不消耗额外的时间间隔。
 	StepInterval time.Duration
-	// Specs 按 ID 索引每个 StepNode 的 NodeSpec，使断言可以引用
+	// Specs 按 ID 索引每个 StepNode 的 ElementTargetSpec，使断言可以引用
 	// 该 step 自身目标以外的其他元素。
-	Specs map[string]fingerprint.NodeSpec
-	// SelectorOverlay 是本次 run 内按 NodeSpec ID 保存的 healed selector 列表。
+	Specs map[string]fingerprint.ElementTargetSpec
+	// SelectorOverlay 是本次 run 内按 ElementTargetSpec ID 保存的 healed selector 列表。
 	// 编译出的 Specs/StepNode 保持不变，同一 spec 的后续 step、repeat 和断言
 	// 都通过 effectiveSpec 读取该 overlay。
 	SelectorOverlay      map[string][]fingerprint.Selector
@@ -387,7 +387,7 @@ func failurePhase(ctx context.Context) Phase {
 	return PhaseFailed
 }
 
-func (rt *Runtime) effectiveSpec(base fingerprint.NodeSpec) fingerprint.NodeSpec {
+func (rt *Runtime) effectiveSpec(base fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
 	spec := base
 	if canonical, ok := rt.Specs[base.ID]; ok {
 		spec = canonical
@@ -398,15 +398,15 @@ func (rt *Runtime) effectiveSpec(base fingerprint.NodeSpec) fingerprint.NodeSpec
 	return spec
 }
 
-func (rt *Runtime) specByID(id string) (fingerprint.NodeSpec, bool) {
+func (rt *Runtime) specByID(id string) (fingerprint.ElementTargetSpec, bool) {
 	spec, ok := rt.Specs[id]
 	if !ok {
-		return fingerprint.NodeSpec{}, false
+		return fingerprint.ElementTargetSpec{}, false
 	}
 	return rt.effectiveSpec(spec), true
 }
 
-func (rt *Runtime) setSelectorOverlay(spec fingerprint.NodeSpec) {
+func (rt *Runtime) setSelectorOverlay(spec fingerprint.ElementTargetSpec) {
 	if rt.SelectorOverlay == nil {
 		rt.SelectorOverlay = make(map[string][]fingerprint.Selector)
 	}

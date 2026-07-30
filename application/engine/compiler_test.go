@@ -148,7 +148,7 @@ func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
 	compiler := executionCompiler{
 		versions:    map[string]execution.WorkflowSnapshot{"root-v1": root, "child-v1": child},
 		resolutions: map[execution.WorkflowReferenceKey]execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call"}: {ParentVersionID: "root-v1", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}},
-		invocations: map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot{}, metadata: map[string]StepMetadata{}, programSpecs: map[string]fingerprint.NodeSpec{}, runtimeNodes: map[string]RuntimeNodeIdentity{},
+		invocations: map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot{}, metadata: map[string]StepMetadata{}, programSpecs: map[string]fingerprint.ElementTargetSpec{}, runtimeNodes: map[string]RuntimeNodeIdentity{},
 	}
 	count := 0
 	compiler.compiledNodes = &count

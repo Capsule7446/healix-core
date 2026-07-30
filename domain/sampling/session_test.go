@@ -10,7 +10,7 @@ func validCapture(id, identity, value string) Capture {
 	return Capture{
 		CaptureID: id, IdentityKey: identity, PageURL: "https://example.test/login",
 		Kind: ActionClick, Value: value,
-		Spec: fingerprint.NodeSpec{
+		Spec: fingerprint.ElementTargetSpec{
 			Role:        "button",
 			Selectors:   []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#submit"}},
 			Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}},

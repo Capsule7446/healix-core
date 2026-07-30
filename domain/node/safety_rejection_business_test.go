@@ -11,10 +11,10 @@ import (
 )
 
 func TestStepSafetyRejectionIsRecordedBeforeFailure(t *testing.T) {
-	target := fingerprint.NodeSpec{ID: "submit", Origin: "https://shop.test", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
+	target := fingerprint.ElementTargetSpec{ID: "submit", Origin: "https://shop.test", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
 	candidate := heal.Candidate{Selector: fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"}, Score: 0.99}
 	facts := &testFacts{}
-	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 		if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#old" {
 			return nil, fmt.Errorf("missing: %w", ErrElementNotFound)
 		}

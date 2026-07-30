@@ -67,7 +67,7 @@ func (d *engineTestDriver) Navigate(_ context.Context, url string) error {
 	return nil
 }
 func (*engineTestDriver) Press(context.Context, string) error { return nil }
-func (*engineTestDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
+func (*engineTestDriver) Locate(context.Context, fingerprint.ElementTargetSpec) (node.Element, error) {
 	return nil, errors.New("unexpected Locate")
 }
 func (*engineTestDriver) Snapshot(context.Context) (heal.DOMSnapshot, error) {

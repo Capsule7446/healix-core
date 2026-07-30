@@ -53,7 +53,7 @@ func (d executionIdentityProbeDriver) Navigate(context.Context, string) error {
 	return nil
 }
 func (executionIdentityProbeDriver) Press(context.Context, string) error { return nil }
-func (executionIdentityProbeDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
+func (executionIdentityProbeDriver) Locate(context.Context, fingerprint.ElementTargetSpec) (node.Element, error) {
 	return nil, node.ErrElementNotFound
 }
 func (executionIdentityProbeDriver) Snapshot(context.Context) (heal.DOMSnapshot, error) {

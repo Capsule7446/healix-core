@@ -35,7 +35,7 @@ func TestStepActionFailureBusinessMatrix(t *testing.T) {
 			tc.configure(e)
 			d := &matrixDriver{element: e}
 			facts := &operationFacts{}
-			err := (&StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: tc.action}).Run(context.Background(), &Runtime{Driver: d, OperationObserver: facts})
+			err := (&StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: tc.action}).Run(context.Background(), &Runtime{Driver: d, OperationObserver: facts})
 			if err == nil {
 				t.Fatal("expected action failure")
 			}
@@ -62,8 +62,8 @@ func TestWaitControlBusinessMatrix(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &matrixDriver{element: tc.element, locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return tc.element, tc.locateErr }}
-			err := (&WaitNode{NodeID: "wait", Kind: tc.kind, Target: fingerprint.NodeSpec{ID: "target"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: d})
+			d := &matrixDriver{element: tc.element, locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return tc.element, tc.locateErr }}
+			err := (&WaitNode{NodeID: "wait", Kind: tc.kind, Target: fingerprint.ElementTargetSpec{ID: "target"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: d})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v", err)
 			}

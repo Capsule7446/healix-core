@@ -285,7 +285,7 @@ func (p Draft) Validate() error {
 		if strings.TrimSpace(snapshot.NodeID) == "" || strings.TrimSpace(snapshot.VersionID) == "" {
 			return errors.New("node dependency requires node and version identities")
 		}
-		spec := fingerprint.NodeSpec{
+		spec := fingerprint.ElementTargetSpec{
 			UUID: snapshot.NodeID, ID: snapshot.VersionID, PageURL: snapshot.PageURL,
 			Origin: snapshot.Origin, Role: snapshot.Fingerprint.ARIA.Role,
 			Selectors: snapshot.Selectors, Fingerprint: snapshot.Fingerprint,

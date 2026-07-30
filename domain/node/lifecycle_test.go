@@ -169,7 +169,7 @@ type snapshotDriverStub struct {
 
 func (d snapshotDriverStub) Navigate(context.Context, string) error { return nil }
 func (d snapshotDriverStub) Press(context.Context, string) error    { return nil }
-func (d snapshotDriverStub) Locate(context.Context, fingerprint.NodeSpec) (Element, error) {
+func (d snapshotDriverStub) Locate(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 	return nil, nil
 }
 func (d snapshotDriverStub) Snapshot(context.Context) (heal.DOMSnapshot, error) {

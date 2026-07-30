@@ -78,7 +78,7 @@ type ValidationNode struct {
 	// 对于独立验证，GroupID 和 BranchID 为空。它们是执行身份，而不是持久的表达式模型，并让证据适配器将成员观察结果附加到其组 StepExecution。
 	GroupID   string
 	BranchID  string
-	Target    fingerprint.NodeSpec
+	Target    fingerprint.ElementTargetSpec
 	Assertion ValidationAssertion
 	MaxWait   time.Duration
 	Stability time.Duration
@@ -740,7 +740,7 @@ func validationTerminalReason(err error) string {
 	return "system_error"
 }
 
-func validationEvidenceIsSensitive(target fingerprint.NodeSpec, assertion ValidationAssertion) bool {
+func validationEvidenceIsSensitive(target fingerprint.ElementTargetSpec, assertion ValidationAssertion) bool {
 	if !strings.HasPrefix(assertion.Kind, "value_") && !strings.HasPrefix(assertion.Kind, "selected_set_") && assertion.Kind != "attribute_equals" && assertion.Kind != "attribute_contains" {
 		return false
 	}

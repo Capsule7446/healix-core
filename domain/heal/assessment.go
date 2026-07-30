@@ -38,7 +38,7 @@ type Assessment struct {
 	Explanation string
 }
 
-func Assess(target fingerprint.NodeSpec, decision Decision, current ExecutionContext, policy SafetyPolicy) (Assessment, error) {
+func Assess(target fingerprint.ElementTargetSpec, decision Decision, current ExecutionContext, policy SafetyPolicy) (Assessment, error) {
 	if err := decision.Validate(); err != nil {
 		return Assessment{}, err
 	}

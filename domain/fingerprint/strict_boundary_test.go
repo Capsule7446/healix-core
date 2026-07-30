@@ -79,7 +79,7 @@ func TestFingerprintValidateStrictBoundaries(t *testing.T) {
 }
 
 func TestNodeSpecValidateAggregatesAllFailuresWithoutMutation(t *testing.T) {
-	spec := NodeSpec{
+	spec := ElementTargetSpec{
 		UUID:      "not-a-uuid",
 		Selectors: []Selector{{Type: "bad", Priority: -1}, {Type: SelectorCSS}},
 		Fingerprint: Fingerprint{
@@ -102,7 +102,7 @@ func TestNodeSpecValidateAggregatesAllFailuresWithoutMutation(t *testing.T) {
 }
 
 func TestNodeSpecValidateUUIDAndCollectionBoundaries(t *testing.T) {
-	base := NodeSpec{ID: "node", Selectors: []Selector{{Type: SelectorCSS, Value: "#x"}}, Fingerprint: validStrictFingerprint()}
+	base := ElementTargetSpec{ID: "node", Selectors: []Selector{{Type: SelectorCSS, Value: "#x"}}, Fingerprint: validStrictFingerprint()}
 	for _, uuid := range []string{"", "550E8400-E29B-41D4-A716-446655440000", "550e8400-e29b-41d4-a716-446655440000"} {
 		spec := base
 		spec.UUID = uuid

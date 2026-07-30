@@ -58,7 +58,7 @@ type Capture struct {
 	Value       string
 	Values      []string
 	Hints       ActionHints
-	Spec        fingerprint.NodeSpec
+	Spec        fingerprint.ElementTargetSpec
 	Validation  *ValidationSample
 }
 
@@ -69,7 +69,7 @@ type ActionHints struct {
 
 type CapturedNode struct {
 	UUID string
-	Spec fingerprint.NodeSpec
+	Spec fingerprint.ElementTargetSpec
 }
 
 type RecordedAction struct {
@@ -367,7 +367,7 @@ func originOf(value string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func cloneSpec(spec fingerprint.NodeSpec) fingerprint.NodeSpec {
+func cloneSpec(spec fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
 	copy := spec
 	copy.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
 	copy.Fingerprint.Attributes = make(map[string]string, len(spec.Fingerprint.Attributes))

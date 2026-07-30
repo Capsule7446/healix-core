@@ -131,7 +131,7 @@ type ElementObservation struct {
 type ReadOnlyBrowser interface {
 	CaptureScreenshot(context.Context, ScreenshotOptions) (ScreenshotArtifact, error)
 	SnapshotDOM(context.Context) (heal.DOMSnapshot, error)
-	ObserveElement(context.Context, fingerprint.NodeSpec, []string) (ElementObservation, error)
+	ObserveElement(context.Context, fingerprint.ElementTargetSpec, []string) (ElementObservation, error)
 }
 
 type runtimeReadOnlyBrowser struct {
@@ -190,7 +190,7 @@ func (b runtimeReadOnlyBrowser) SnapshotDOM(ctx context.Context) (heal.DOMSnapsh
 	return copiedDOMSnapshot{candidates: cloneSnapshotCandidates(candidates)}, nil
 }
 
-func (b runtimeReadOnlyBrowser) ObserveElement(ctx context.Context, spec fingerprint.NodeSpec, attributes []string) (ElementObservation, error) {
+func (b runtimeReadOnlyBrowser) ObserveElement(ctx context.Context, spec fingerprint.ElementTargetSpec, attributes []string) (ElementObservation, error) {
 	element, err := b.runtime.locator().Locate(ctx, spec)
 	if err != nil {
 		return ElementObservation{}, err
