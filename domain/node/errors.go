@@ -42,6 +42,12 @@ func isExclusiveTransientDriverFault(err error) bool {
 		}
 		return true
 	}
+	if nodeFault, ok := err.(*fault.Error); ok {
+		return nodeFault.Code() == CodeTransientDriver
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return isExclusiveTransientDriverFault(wrapped.Unwrap())
+	}
 	return fault.IsCode(err, CodeTransientDriver)
 }
 

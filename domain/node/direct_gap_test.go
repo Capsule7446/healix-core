@@ -63,6 +63,7 @@ func TestExclusiveTransientDriverFaultDirect(t *testing.T) {
 		{"transient", transient, true},
 		{"wrapped", fmt.Errorf("outer: %w", transient), true},
 		{"mixed", errors.Join(transient, errors.New("bad")), false},
+		{"nested mixed", fmt.Errorf("outer: %w", errors.Join(transient, errors.New("bad"))), false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := isExclusiveTransientDriverFault(tt.err); got != tt.want {
