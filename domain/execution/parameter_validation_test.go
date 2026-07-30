@@ -10,8 +10,8 @@ import (
 
 func directParameterDraft(definitions []Parameter, values map[string]parameter.Value) Draft {
 	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure,
-		Entries:   []WorkflowEntry{{ExecutionID: "entry", TestTaskItemID: "item", SequenceNumber: 1, WorkflowID: "workflow", WorkflowVersionID: "v1", Parameters: ParameterSnapshot{ID: "snapshot", SchemaVersion: 1, WorkflowVersionID: "v1", Values: values}}},
-		Workflows: []WorkflowSnapshot{{ID: "workflow", WorkflowID: "workflow", VersionID: "v1", DisplayName: "Workflow", VersionNumber: 1, Parameters: definitions, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
+		Entries:   []WorkflowEntry{{ExecutionID: "entry", TestTaskItemID: "item", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "v1", Parameters: ParameterSnapshot{ID: "snapshot", SchemaVersion: 1, WorkflowVersionID: "v1", Values: values}}},
+		Workflows: []WorkflowSnapshot{{ID: "workflow", FlowFragmentID: "workflow", VersionID: "v1", DisplayName: "FlowFragment", VersionNumber: 1, Parameters: definitions, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 	}
 }
 

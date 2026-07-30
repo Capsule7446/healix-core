@@ -20,7 +20,7 @@ func validCommandRun(t *testing.T, status domainexecution.RunStatus) domainexecu
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := domainexecution.NewRun(domainexecution.Run{ID: "run", TestTaskID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Status: domainexecution.Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	run, err := domainexecution.NewRun(domainexecution.Run{ID: "run", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Status: domainexecution.Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,13 +74,13 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 		name   string
 		mutate func(*domainexecution.Run, *int64)
 	}{
-		{"missing task", func(run *domainexecution.Run, _ *int64) { run.TestTaskID = "" }},
+		{"missing task", func(run *domainexecution.Run, _ *int64) { run.ExecutionFlowID = "" }},
 		{"missing version", func(run *domainexecution.Run, _ *int64) { run.TestTaskVersionID = "" }},
 		{"missing environment", func(run *domainexecution.Run, _ *int64) { run.EnvironmentID = "" }},
 		{"invalid finished timestamp", func(run *domainexecution.Run, _ *int64) { run.FinishedAt = 0 }},
 		{"invalid started timestamp", func(run *domainexecution.Run, _ *int64) { run.StartedAt = 3 }},
 		{"missing snapshot seal", func(run *domainexecution.Run, _ *int64) {
-			*run = domainexecution.Run{ID: run.ID, TestTaskID: run.TestTaskID, TestTaskVersionID: run.TestTaskVersionID, EnvironmentID: run.EnvironmentID, Status: run.Status, CreatedAt: run.CreatedAt, QueuedAt: run.QueuedAt, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt}
+			*run = domainexecution.Run{ID: run.ID, ExecutionFlowID: run.ExecutionFlowID, TestTaskVersionID: run.TestTaskVersionID, EnvironmentID: run.EnvironmentID, Status: run.Status, CreatedAt: run.CreatedAt, QueuedAt: run.QueuedAt, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt}
 		}},
 		{"invalid snapshot seal", func(run *domainexecution.Run, _ *int64) {
 			run.SnapshotSchemaVersion = domainexecution.RunSnapshotSchemaV1

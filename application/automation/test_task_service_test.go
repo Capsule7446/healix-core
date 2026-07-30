@@ -10,31 +10,31 @@ import (
 )
 
 type testTaskRepositoryFake struct {
-	current   domain.TestTaskAggregate
+	current   domain.ExecutionFlowAggregate
 	loadErr   error
 	createErr error
 	saveErr   error
 	expected  domain.Revision
 }
 
-func (fake *testTaskRepositoryFake) Load(context.Context, string) (domain.TestTaskAggregate, error) {
+func (fake *testTaskRepositoryFake) Load(context.Context, string) (domain.ExecutionFlowAggregate, error) {
 	return fake.current, fake.loadErr
 }
-func (fake *testTaskRepositoryFake) Create(_ context.Context, aggregate domain.TestTaskAggregate) (domain.TestTaskAggregate, error) {
+func (fake *testTaskRepositoryFake) Create(_ context.Context, aggregate domain.ExecutionFlowAggregate) (domain.ExecutionFlowAggregate, error) {
 	fake.current = aggregate
 	return aggregate, fake.createErr
 }
-func (fake *testTaskRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, aggregate domain.TestTaskAggregate) (domain.TestTaskAggregate, error) {
+func (fake *testTaskRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, aggregate domain.ExecutionFlowAggregate) (domain.ExecutionFlowAggregate, error) {
 	fake.expected = expected
 	fake.current = aggregate
 	return aggregate, fake.saveErr
 }
 
-func testTaskFixture() (domain.TestTask, domain.TestTaskVersion) {
-	task := domain.TestTask{ID: "task", DisplayName: "Task", CreatedAt: 1, UpdatedAt: 1}
-	version := domain.TestTaskVersion{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, CreatedAt: 1,
+func testTaskFixture() (domain.ExecutionFlow, domain.ExecutionFlowVersion) {
+	task := domain.ExecutionFlow{ID: "task", DisplayName: "Task", CreatedAt: 1, UpdatedAt: 1}
+	version := domain.ExecutionFlowVersion{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, CreatedAt: 1,
 		FailurePolicy: domain.FailurePolicyStopOnFailure,
-		Items:         []domain.TestTaskItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1, WorkflowID: "workflow", VersionPolicy: domain.WorkflowVersionLatest}}}
+		Items:         []domain.ExecutionFlowItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1, FlowFragmentID: "workflow", VersionPolicy: domain.FlowFragmentVersionLatest}}}
 	return task, version
 }
 
@@ -46,14 +46,14 @@ func TestTestTaskServiceCreateAndPublishVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nextVersion := domain.TestTaskVersionPublication{
+	nextVersion := domain.ExecutionFlowVersionPublication{
 		ID:            "task-v2",
 		CreatedAt:     2,
 		FailurePolicy: domain.FailurePolicyStopOnFailure,
-		Items: []domain.TestTaskItem{{
-			ID:            "item-2",
-			WorkflowID:    "workflow",
-			VersionPolicy: domain.WorkflowVersionLatest,
+		Items: []domain.ExecutionFlowItem{{
+			ID:             "item-2",
+			FlowFragmentID: "workflow",
+			VersionPolicy:  domain.FlowFragmentVersionLatest,
 		}},
 	}
 	result, err := service.PublishVersion(context.Background(), "task", 1, nextVersion)
@@ -76,20 +76,20 @@ func TestTestTaskServiceRejectsInvalidAndStaleWrites(t *testing.T) {
 	repository := &testTaskRepositoryFake{}
 	service := NewTestTaskService(repository)
 	task, version := testTaskFixture()
-	if _, err := service.Create(context.Background(), domain.TestTask{}, version); err == nil {
+	if _, err := service.Create(context.Background(), domain.ExecutionFlow{}, version); err == nil {
 		t.Fatal("invalid task accepted")
 	}
 	if _, err := service.Create(context.Background(), task, version); err != nil {
 		t.Fatal(err)
 	}
-	candidate := domain.TestTaskVersionPublication{
+	candidate := domain.ExecutionFlowVersionPublication{
 		ID:            "task-v2",
 		CreatedAt:     2,
 		FailurePolicy: domain.FailurePolicyStopOnFailure,
-		Items: []domain.TestTaskItem{{
-			ID:            "item-2",
-			WorkflowID:    "workflow",
-			VersionPolicy: domain.WorkflowVersionLatest,
+		Items: []domain.ExecutionFlowItem{{
+			ID:             "item-2",
+			FlowFragmentID: "workflow",
+			VersionPolicy:  domain.FlowFragmentVersionLatest,
 		}},
 	}
 	if _, err := service.PublishVersion(context.Background(), "task", 2, candidate); err == nil {
@@ -134,14 +134,14 @@ func (fake *samplingRepositoryFake) PublishSampling(_ context.Context, intent Pu
 
 func samplingPublicationFixture(t *testing.T) domain.SamplingPublication {
 	t.Helper()
-	workflow := domain.Workflow{ID: "workflow", DisplayName: "Workflow", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1, CreatedAt: 1,
-		Definition: domain.WorkflowDefinition{Steps: []domain.WorkflowStep{{ID: "wait", DisplayName: "Wait", Kind: domain.StepWait, WaitKind: "sleep", WaitMS: 1}}}}
-	aggregate, err := domain.NewWorkflow(workflow, version)
+	workflow := domain.FlowFragment{ID: "workflow", DisplayName: "FlowFragment", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1, CreatedAt: 1,
+		Definition: domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "wait", DisplayName: "Wait", Kind: domain.StepWait, WaitKind: "sleep", WaitMS: 1}}}}
+	aggregate, err := domain.NewFlowFragment(workflow, version)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return domain.SamplingPublication{Workflow: aggregate}
+	return domain.SamplingPublication{FlowFragment: aggregate}
 }
 
 func TestPublishSamplingIntentDigestValidation(t *testing.T) {
@@ -196,10 +196,10 @@ func TestSamplingPublicationServiceRejectsInvalidAdapterOutcome(t *testing.T) {
 }
 
 func TestSamplingPublicationServiceValidatesAndPublishes(t *testing.T) {
-	repository := &samplingRepositoryFake{outcome: PublishSamplingOutcome{Status: PublishSamplingApplied, Result: domain.SamplingPublicationResult{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", VersionNumber: 1}}}
+	repository := &samplingRepositoryFake{outcome: PublishSamplingOutcome{Status: PublishSamplingApplied, Result: domain.SamplingPublicationResult{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", VersionNumber: 1}}}
 	service := NewSamplingPublicationService(repository, nil)
 	result, err := service.Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
-	if err != nil || result.WorkflowID != "workflow" || !repository.called {
+	if err != nil || result.FlowFragmentID != "workflow" || !repository.called {
 		t.Fatalf("publish = %#v, %v", result, err)
 	}
 }

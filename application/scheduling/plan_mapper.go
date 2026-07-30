@@ -12,14 +12,14 @@ import (
 
 type buildExecutionPlanInput struct {
 	RunID       string
-	Publication automation.TestTaskVersionPlan
+	Publication automation.ResolvedExecutionFlow
 	Entries     []executionEntryInput
 }
 type executionEntryInput struct {
-	ExecutionID, TestTaskItemID   string
-	SequenceNumber                int
-	WorkflowID, WorkflowVersionID string
-	ParameterSnapshot             parameterSnapshotInput
+	ExecutionID, TestTaskItemID       string
+	SequenceNumber                    int
+	FlowFragmentID, WorkflowVersionID string
+	ParameterSnapshot                 parameterSnapshotInput
 }
 type parameterSnapshotInput struct {
 	IsPresent     bool
@@ -55,7 +55,7 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.Draft, error)
 	}
 	entries := make([]execution.WorkflowEntry, len(input.Entries))
 	for i, item := range input.Entries {
-		entry := execution.WorkflowEntry{ExecutionID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, WorkflowID: item.WorkflowID, WorkflowVersionID: item.WorkflowVersionID}
+		entry := execution.WorkflowEntry{ExecutionID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
 		if item.ParameterSnapshot.IsPresent {
 			entry.Parameters = execution.ParameterSnapshot{ID: item.ParameterSnapshot.ID, SchemaVersion: item.ParameterSnapshot.SchemaVersion, WorkflowVersionID: item.WorkflowVersionID, Values: cloneParameterValues(item.ParameterSnapshot.Values)}
 		}
@@ -76,28 +76,28 @@ func validateEntries(input buildExecutionPlanInput) error {
 		workflowID string
 		versionID  string
 	}
-	deps := make(map[dependencyKey]automation.WorkflowDependencySnapshot, len(input.Publication.Workflows))
+	deps := make(map[dependencyKey]automation.FlowFragmentDependencySnapshot, len(input.Publication.Workflows))
 	for _, dependency := range input.Publication.Workflows {
-		deps[dependencyKey{workflowID: dependency.Workflow.ID, versionID: dependency.Version.ID}] = dependency
+		deps[dependencyKey{workflowID: dependency.FlowFragment.ID, versionID: dependency.Version.ID}] = dependency
 	}
 	seen := map[string]bool{}
 	for i, e := range input.Entries {
 		item := items[i]
-		if e.TestTaskItemID != item.ID || e.SequenceNumber != item.SequenceNumber || e.WorkflowID != item.WorkflowID {
+		if e.TestTaskItemID != item.ID || e.SequenceNumber != item.SequenceNumber || e.FlowFragmentID != item.FlowFragmentID {
 			return fmt.Errorf("entry %q does not match task item %q", e.ExecutionID, item.ID)
 		}
 		if seen[e.ExecutionID] {
 			return fmt.Errorf("duplicate execution id %q", e.ExecutionID)
 		}
 		seen[e.ExecutionID] = true
-		dependency, ok := deps[dependencyKey{workflowID: e.WorkflowID, versionID: e.WorkflowVersionID}]
+		dependency, ok := deps[dependencyKey{workflowID: e.FlowFragmentID, versionID: e.WorkflowVersionID}]
 		if !ok {
 			return fmt.Errorf("entry %q workflow version is unresolved", e.ExecutionID)
 		}
-		if item.VersionPolicy == automation.WorkflowVersionFixed && item.WorkflowVersionID != e.WorkflowVersionID {
+		if item.VersionPolicy == automation.FlowFragmentVersionFixed && item.WorkflowVersionID != e.WorkflowVersionID {
 			return fmt.Errorf("entry %q fixed version mismatch", e.ExecutionID)
 		}
-		if item.VersionPolicy == automation.WorkflowVersionLatest && (!dependency.ResolvedFromLatest || dependency.Workflow.CurrentVersionID != e.WorkflowVersionID) {
+		if item.VersionPolicy == automation.FlowFragmentVersionLatest && (!dependency.ResolvedFromLatest || dependency.FlowFragment.CurrentVersionID != e.WorkflowVersionID) {
 			return fmt.Errorf("entry %q latest version mismatch", e.ExecutionID)
 		}
 	}
@@ -144,14 +144,14 @@ func mapFailurePolicy(p automation.FailurePolicy) (execution.FailurePolicy, erro
 		return "", fmt.Errorf("unsupported failure policy %q", p)
 	}
 }
-func mapWorkflows(items []automation.WorkflowDependencySnapshot) ([]execution.WorkflowSnapshot, error) {
+func mapWorkflows(items []automation.FlowFragmentDependencySnapshot) ([]execution.WorkflowSnapshot, error) {
 	r := make([]execution.WorkflowSnapshot, len(items))
 	for i, item := range items {
 		p, err := mapParameters(item.Version.Definition.Parameters)
 		if err != nil {
 			return nil, fmt.Errorf("workflow %q parameters: %w", item.Version.ID, err)
 		}
-		r[i] = execution.WorkflowSnapshot{ID: item.Workflow.ID, VersionID: item.Version.ID, WorkflowID: item.Version.WorkflowID, DisplayName: item.Workflow.DisplayName, VersionNumber: item.Version.VersionNumber, Parameters: p, Steps: mapSteps(item.Version.Definition.Steps)}
+		r[i] = execution.WorkflowSnapshot{ID: item.FlowFragment.ID, VersionID: item.Version.ID, FlowFragmentID: item.Version.FlowFragmentID, DisplayName: item.FlowFragment.DisplayName, VersionNumber: item.Version.VersionNumber, Parameters: p, Steps: mapSteps(item.Version.Definition.Steps)}
 	}
 	return r, nil
 }
@@ -165,12 +165,12 @@ func mapParameters(items []automation.ParameterDefinition) ([]execution.Paramete
 	}
 	return r, nil
 }
-func mapSteps(items []automation.WorkflowStep) []execution.Step {
+func mapSteps(items []automation.FlowFragmentStep) []execution.Step {
 	r := make([]execution.Step, len(items))
 	for i, item := range items {
 		s := execution.Step{ID: item.ID, DisplayName: item.DisplayName, Kind: execution.StepKind(item.Kind), CaptureScreenshot: item.CaptureScreenshot, Action: item.Action, NodeID: item.NodeID, NodeVersionID: item.NodeVersionID, Value: item.Value, Values: append([]string(nil), item.Values...), WaitKind: item.WaitKind, WaitMS: item.WaitMS, RepeatCount: item.RepeatCount, Optional: item.Optional, Children: mapSteps(item.Children)}
 		if item.Reference != nil {
-			s.Reference = &execution.Reference{WorkflowID: item.Reference.WorkflowID, WorkflowVersionID: item.Reference.WorkflowVersionID, ParameterBindings: cloneParameterBindings(item.Reference.ParameterBindings)}
+			s.Reference = &execution.Reference{FlowFragmentID: item.Reference.FlowFragmentID, WorkflowVersionID: item.Reference.WorkflowVersionID, ParameterBindings: cloneParameterBindings(item.Reference.ParameterBindings)}
 		}
 		if item.Validation != nil {
 			s.Validation = &execution.Validation{Kind: string(item.Validation.Assertion.Kind), Expected: item.Validation.Assertion.Expected, ExpectedValues: append([]string(nil), item.Validation.Assertion.ExpectedValues...), Attribute: item.Validation.Assertion.Attribute, IgnoreCase: item.Validation.Assertion.IgnoreCase, MaxWaitMS: item.Validation.Wait.MaxWaitMS, StabilityMS: item.Validation.Wait.StabilityMS}
@@ -193,10 +193,10 @@ func mapNodes(items []automation.NodeDependencySnapshot) []execution.NodeSnapsho
 	}
 	return r
 }
-func mapReferences(items []automation.WorkflowReferenceResolution) []execution.ReferenceResolution {
+func mapReferences(items []automation.FlowFragmentReferenceResolution) []execution.ReferenceResolution {
 	r := make([]execution.ReferenceResolution, len(items))
 	for i, item := range items {
-		r[i] = execution.ReferenceResolution{ParentVersionID: item.ParentWorkflowVersionID, StepID: item.StepID, WorkflowID: item.WorkflowID, WorkflowVersionID: item.WorkflowVersionID, ResolvedFromLatest: item.ResolvedFromLatest}
+		r[i] = execution.ReferenceResolution{ParentVersionID: item.ParentFlowFragmentVersionID, StepID: item.StepID, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID, ResolvedFromLatest: item.ResolvedFromLatest}
 	}
 	return r
 }

@@ -33,7 +33,7 @@ func ValidateRunStatusTransition(from, to RunStatus) error {
 
 type Run struct {
 	ID                    string
-	TestTaskID            string
+	ExecutionFlowID       string
 	TestTaskVersionID     string
 	SnapshotSchemaVersion RunSnapshotSchema
 	SnapshotDigest        string
@@ -48,7 +48,7 @@ type Run struct {
 }
 
 func NewRun(run Run, snapshot RunSnapshot) (Run, error) {
-	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.TestTaskID != snapshot.TestTaskID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() {
+	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.ExecutionFlowID != snapshot.ExecutionFlowID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() {
 		return Run{}, errors.New("run identity must match sealed snapshot")
 	}
 	if run.Status != Queued || run.CreatedAt <= 0 || run.QueuedAt != run.CreatedAt || run.StartedAt != 0 || run.FinishedAt != 0 || run.QueuePosition < 0 {
@@ -87,7 +87,7 @@ func validateRunLifecycleShape(run Run) error {
 
 // HydrateRun restores the private snapshot identity seal after durable storage.
 func HydrateRun(run Run, snapshot RunSnapshot) (Run, error) {
-	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.TestTaskID != snapshot.TestTaskID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() || run.SnapshotSchemaVersion != snapshot.SchemaVersion() || run.SnapshotDigest != snapshot.Digest() {
+	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.ExecutionFlowID != snapshot.ExecutionFlowID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() || run.SnapshotSchemaVersion != snapshot.SchemaVersion() || run.SnapshotDigest != snapshot.Digest() {
 		return Run{}, errors.New("persisted run identity must match hydrated snapshot")
 	}
 	if strings.TrimSpace(run.TestTaskVersionID) == "" {
@@ -108,7 +108,7 @@ func isSupportedRunSnapshotSchema(version RunSnapshotSchema) bool {
 }
 
 func ValidateRun(run Run) error {
-	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TestTaskID) == "" || strings.TrimSpace(run.TestTaskVersionID) == "" || strings.TrimSpace(run.EnvironmentID) == "" {
+	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.ExecutionFlowID) == "" || strings.TrimSpace(run.TestTaskVersionID) == "" || strings.TrimSpace(run.EnvironmentID) == "" {
 		return errors.New("run identity is incomplete")
 	}
 	if !isSupportedRunSnapshotSchema(run.SnapshotSchemaVersion) || len(run.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(run.SnapshotDigest, "sha256:") || run.SnapshotDigest != run.sealedSnapshotDigest {

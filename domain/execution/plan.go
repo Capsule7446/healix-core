@@ -20,12 +20,12 @@ var sealedPlanToken = &planSeal{marker: 1}
 type StepKind string
 
 const (
-	ActionStep          StepKind = "ACTION"
-	WaitStep            StepKind = "WAIT"
-	RepeatStep          StepKind = "REPEAT"
-	WorkflowReference   StepKind = "WORKFLOW_REF"
-	ValidationStep      StepKind = "VALIDATION"
-	ValidationGroupStep StepKind = "VALIDATION_GROUP"
+	ActionStep            StepKind = "ACTION"
+	WaitStep              StepKind = "WAIT"
+	RepeatStep            StepKind = "REPEAT"
+	FlowFragmentReference StepKind = "WORKFLOW_REF"
+	ValidationStep        StepKind = "VALIDATION"
+	ValidationGroupStep   StepKind = "VALIDATION_GROUP"
 )
 
 type Step struct {
@@ -49,7 +49,7 @@ type Step struct {
 }
 
 type Reference struct {
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	ParameterBindings map[string]parameter.Binding
 }
@@ -94,13 +94,13 @@ type ParameterSnapshot struct {
 }
 
 type WorkflowSnapshot struct {
-	ID            string
-	VersionID     string
-	WorkflowID    string
-	DisplayName   string
-	VersionNumber int
-	Parameters    []Parameter
-	Steps         []Step
+	ID             string
+	VersionID      string
+	FlowFragmentID string
+	DisplayName    string
+	VersionNumber  int
+	Parameters     []Parameter
+	Steps          []Step
 }
 
 type NodeSnapshot struct {
@@ -126,7 +126,7 @@ type WorkflowReferenceKey struct {
 type ReferenceResolution struct {
 	ParentVersionID    string
 	StepID             string
-	WorkflowID         string
+	FlowFragmentID     string
 	WorkflowVersionID  string
 	ResolvedFromLatest bool
 }
@@ -146,7 +146,7 @@ type WorkflowEntry struct {
 	ExecutionID       string
 	TestTaskItemID    string
 	SequenceNumber    int
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	Parameters        ParameterSnapshot
 }

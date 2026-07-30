@@ -13,7 +13,7 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 		mutate func(*SamplingPublication)
 		want   string
 	}{
-		{name: "invalid workflow", mutate: func(p *SamplingPublication) { p.Workflow.Workflow.ID = " " }, want: "sampled workflow"},
+		{name: "invalid workflow", mutate: func(p *SamplingPublication) { p.FlowFragment.FlowFragment.ID = " " }, want: "sampled workflow"},
 		{name: "merge invalid expected revision", mutate: func(p *SamplingPublication) {
 			p.Nodes[0].ResolutionMode = "MERGE"
 			p.Nodes[0].Aggregate = versionedNodeAggregate()
@@ -47,13 +47,13 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 			p.Nodes = append(p.Nodes, second)
 		}, want: "duplicate formal sampled node version"},
 		{name: "root reference lacks decision", mutate: func(p *SamplingPublication) {
-			p.Workflow = workflowWithSteps(WorkflowStep{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", NodeID: "missing", NodeVersionID: "missing-v1"})
+			p.FlowFragment = workflowWithSteps(FlowFragmentStep{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", NodeID: "missing", NodeVersionID: "missing-v1"})
 		}, want: "no matching node decision"},
 		{name: "child reference lacks decision", mutate: func(p *SamplingPublication) {
-			p.Workflow = workflowWithSteps(WorkflowStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []WorkflowStep{{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", NodeID: "missing", NodeVersionID: "missing-v1"}}})
+			p.FlowFragment = workflowWithSteps(FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", NodeID: "missing", NodeVersionID: "missing-v1"}}})
 		}, want: "no matching node decision"},
 		{name: "validation branch reference lacks decision", mutate: func(p *SamplingPublication) {
-			p.Workflow = validationWorkflow(WorkflowStep{ID: "group", DisplayName: "Group", Kind: StepValidationGroup, ValidationGroup: &ValidationGroup{Wait: ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500}, Branches: []ValidationBranch{{ID: "branch", Name: "Branch", Steps: []WorkflowStep{validationMember("member", "Member")}}}}})
+			p.FlowFragment = validationWorkflow(FlowFragmentStep{ID: "group", DisplayName: "Group", Kind: StepValidationGroup, ValidationGroup: &ValidationGroup{Wait: ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500}, Branches: []ValidationBranch{{ID: "branch", Name: "Branch", Steps: []FlowFragmentStep{validationMember("member", "Member")}}}}})
 		}, want: "no matching node decision"},
 	}
 	for _, test := range tests {
@@ -71,12 +71,12 @@ func TestTestTaskValidateSingleFactorRuleMatrix(t *testing.T) {
 	base := validTestTaskVersionPlan().Task
 	tests := []struct {
 		name   string
-		mutate func(*TestTask)
+		mutate func(*ExecutionFlow)
 		want   string
 	}{
-		{name: "missing display name", mutate: func(value *TestTask) { value.DisplayName = " " }, want: "display name"},
-		{name: "missing current version", mutate: func(value *TestTask) { value.CurrentVersionID = "" }, want: "current version"},
-		{name: "missing timestamp", mutate: func(value *TestTask) { value.CreatedAt = 0 }, want: "timestamps"},
+		{name: "missing display name", mutate: func(value *ExecutionFlow) { value.DisplayName = " " }, want: "display name"},
+		{name: "missing current version", mutate: func(value *ExecutionFlow) { value.CurrentVersionID = "" }, want: "current version"},
+		{name: "missing timestamp", mutate: func(value *ExecutionFlow) { value.CreatedAt = 0 }, want: "timestamps"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -93,26 +93,26 @@ func TestTestTaskVersionValidateSingleFactorRuleMatrix(t *testing.T) {
 	base := validTestTaskVersionPlan().Version
 	tests := []struct {
 		name   string
-		mutate func(*TestTaskVersion)
+		mutate func(*ExecutionFlowVersion)
 		want   string
 	}{
-		{name: "missing identity", mutate: func(value *TestTaskVersion) { value.ID = " " }, want: "id and owner"},
-		{name: "version below boundary", mutate: func(value *TestTaskVersion) { value.VersionNumber = 0 }, want: "version number"},
-		{name: "missing created timestamp", mutate: func(value *TestTaskVersion) { value.CreatedAt = 0 }, want: "created timestamp"},
-		{name: "missing items", mutate: func(value *TestTaskVersion) { value.Items = nil }, want: "at least one item"},
-		{name: "invalid environment key", mutate: func(value *TestTaskVersion) { value.RequiredEnvironmentKeys = []string{" "} }, want: "environment keys"},
-		{name: "missing item id", mutate: func(value *TestTaskVersion) { value.Items[0].ID = " " }, want: "item 1 id"},
-		{name: "duplicate item id", mutate: func(value *TestTaskVersion) {
+		{name: "missing identity", mutate: func(value *ExecutionFlowVersion) { value.ID = " " }, want: "id and owner"},
+		{name: "version below boundary", mutate: func(value *ExecutionFlowVersion) { value.VersionNumber = 0 }, want: "version number"},
+		{name: "missing created timestamp", mutate: func(value *ExecutionFlowVersion) { value.CreatedAt = 0 }, want: "created timestamp"},
+		{name: "missing items", mutate: func(value *ExecutionFlowVersion) { value.Items = nil }, want: "at least one item"},
+		{name: "invalid environment key", mutate: func(value *ExecutionFlowVersion) { value.RequiredEnvironmentKeys = []string{" "} }, want: "environment keys"},
+		{name: "missing item id", mutate: func(value *ExecutionFlowVersion) { value.Items[0].ID = " " }, want: "item 1 id"},
+		{name: "duplicate item id", mutate: func(value *ExecutionFlowVersion) {
 			second := value.Items[0]
 			second.SequenceNumber = 2
 			value.Items = append(value.Items, second)
 		}, want: "duplicate item id"},
-		{name: "wrong item owner", mutate: func(value *TestTaskVersion) { value.Items[0].TestTaskVersionID = "other" }, want: "another version"},
-		{name: "noncontiguous sequence", mutate: func(value *TestTaskVersion) { value.Items[0].SequenceNumber = 2 }, want: "contiguous"},
-		{name: "missing workflow id", mutate: func(value *TestTaskVersion) { value.Items[0].WorkflowID = " " }, want: "workflow id"},
-		{name: "invalid workflow policy", mutate: func(value *TestTaskVersion) { value.Items[0].VersionPolicy = "UNKNOWN" }, want: "unsupported workflow version policy"},
-		{name: "fixed policy missing version", mutate: func(value *TestTaskVersion) { value.Items[0].VersionPolicy = WorkflowVersionFixed }, want: "fixed version id"},
-		{name: "latest policy persists version", mutate: func(value *TestTaskVersion) { value.Items[0].WorkflowVersionID = "workflow-v1" }, want: "latest policy"},
+		{name: "wrong item owner", mutate: func(value *ExecutionFlowVersion) { value.Items[0].TestTaskVersionID = "other" }, want: "another version"},
+		{name: "noncontiguous sequence", mutate: func(value *ExecutionFlowVersion) { value.Items[0].SequenceNumber = 2 }, want: "contiguous"},
+		{name: "missing workflow id", mutate: func(value *ExecutionFlowVersion) { value.Items[0].FlowFragmentID = " " }, want: "workflow id"},
+		{name: "invalid workflow policy", mutate: func(value *ExecutionFlowVersion) { value.Items[0].VersionPolicy = "UNKNOWN" }, want: "unsupported workflow version policy"},
+		{name: "fixed policy missing version", mutate: func(value *ExecutionFlowVersion) { value.Items[0].VersionPolicy = FlowFragmentVersionFixed }, want: "fixed version id"},
+		{name: "latest policy persists version", mutate: func(value *ExecutionFlowVersion) { value.Items[0].WorkflowVersionID = "workflow-v1" }, want: "latest policy"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -127,7 +127,7 @@ func TestTestTaskVersionValidateSingleFactorRuleMatrix(t *testing.T) {
 
 func TestTestTaskAggregateValidateHistoryRuleMatrix(t *testing.T) {
 	plan := validTestTaskVersionPlan()
-	base, err := NewTestTask(plan.Task, plan.Version)
+	base, err := NewExecutionFlow(plan.Task, plan.Version)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,25 +141,25 @@ func TestTestTaskAggregateValidateHistoryRuleMatrix(t *testing.T) {
 	twoVersions.Task.CurrentVersionID = versionTwo.ID
 	twoVersions.Task.UpdatedAt = 2
 	twoVersions.Current = cloneTestTaskVersion(versionTwo)
-	twoVersions.Versions = []TestTaskVersion{cloneTestTaskVersion(base.Current), cloneTestTaskVersion(versionTwo)}
+	twoVersions.Versions = []ExecutionFlowVersion{cloneTestTaskVersion(base.Current), cloneTestTaskVersion(versionTwo)}
 
 	tests := []struct {
 		name   string
-		mutate func(*TestTaskAggregate)
+		mutate func(*ExecutionFlowAggregate)
 		want   string
 	}{
-		{name: "missing history", mutate: func(value *TestTaskAggregate) { value.Versions = nil }, want: "requires version history"},
-		{name: "version belongs elsewhere", mutate: func(value *TestTaskAggregate) { value.Versions[0].TestTaskID = "other" }, want: "another task"},
-		{name: "duplicate identity", mutate: func(value *TestTaskAggregate) {
+		{name: "missing history", mutate: func(value *ExecutionFlowAggregate) { value.Versions = nil }, want: "requires version history"},
+		{name: "version belongs elsewhere", mutate: func(value *ExecutionFlowAggregate) { value.Versions[0].ExecutionFlowID = "other" }, want: "another task"},
+		{name: "duplicate identity", mutate: func(value *ExecutionFlowAggregate) {
 			value.Versions = append(value.Versions, cloneTestTaskVersion(value.Versions[0]))
 		}, want: "duplicate version identity"},
-		{name: "noncontiguous versions", mutate: func(value *TestTaskAggregate) {
+		{name: "noncontiguous versions", mutate: func(value *ExecutionFlowAggregate) {
 			value.Versions[1].VersionNumber = 3
 			value.Current.VersionNumber = 3
 		}, want: "contiguous"},
-		{name: "version one has source", mutate: func(value *TestTaskAggregate) { value.Versions[0].SourceVersionID = "source" }, want: "version 1"},
-		{name: "later version has missing source", mutate: func(value *TestTaskAggregate) { value.Versions[1].SourceVersionID = "missing" }, want: "source must be an earlier version"},
-		{name: "current content mismatch", mutate: func(value *TestTaskAggregate) { value.Current.Items[0].WorkflowID = "changed" }, want: "content must match history"},
+		{name: "version one has source", mutate: func(value *ExecutionFlowAggregate) { value.Versions[0].SourceVersionID = "source" }, want: "version 1"},
+		{name: "later version has missing source", mutate: func(value *ExecutionFlowAggregate) { value.Versions[1].SourceVersionID = "missing" }, want: "source must be an earlier version"},
+		{name: "current content mismatch", mutate: func(value *ExecutionFlowAggregate) { value.Current.Items[0].FlowFragmentID = "changed" }, want: "content must match history"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -190,22 +190,22 @@ func TestResolveParameterValuesRejectsInvalidAndDuplicateDefinitions(t *testing.
 func TestTestTaskVersionPlanValidateDependencyBoundaryMatrix(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*TestTaskVersionPlan)
+		mutate func(*ResolvedExecutionFlow)
 		want   string
 	}{
-		{name: "invalid task", mutate: func(plan *TestTaskVersionPlan) { plan.Task.ID = " " }, want: "test task id"},
-		{name: "invalid version", mutate: func(plan *TestTaskVersionPlan) { plan.Version.ID = " " }, want: "version id"},
-		{name: "inconsistent candidate identity", mutate: func(plan *TestTaskVersionPlan) { plan.Task.ID = "other" }, want: "candidate identity"},
-		{name: "version one carries expected revision", mutate: func(plan *TestTaskVersionPlan) { plan.ExpectedTaskRevision = 1 }, want: "without a source version"},
-		{name: "invalid workflow dependency", mutate: func(plan *TestTaskVersionPlan) { plan.Workflows[0].Version.WorkflowID = "other" }, want: "workflow dependency snapshot identity"},
-		{name: "duplicate workflow dependency", mutate: func(plan *TestTaskVersionPlan) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, want: "duplicate workflow dependency"},
-		{name: "invalid node dependency", mutate: func(plan *TestTaskVersionPlan) { plan.Nodes = []NodeDependencySnapshot{{}} }, want: "node dependency snapshot identity"},
-		{name: "duplicate node dependency", mutate: func(plan *TestTaskVersionPlan) {
+		{name: "invalid task", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = " " }, want: "test task id"},
+		{name: "invalid version", mutate: func(plan *ResolvedExecutionFlow) { plan.Version.ID = " " }, want: "version id"},
+		{name: "inconsistent candidate identity", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = "other" }, want: "candidate identity"},
+		{name: "version one carries expected revision", mutate: func(plan *ResolvedExecutionFlow) { plan.ExpectedExecutionFlowRevision = 1 }, want: "without a source version"},
+		{name: "invalid workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows[0].Version.FlowFragmentID = "other" }, want: "workflow dependency snapshot identity"},
+		{name: "duplicate workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, want: "duplicate workflow dependency"},
+		{name: "invalid node dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Nodes = []NodeDependencySnapshot{{}} }, want: "node dependency snapshot identity"},
+		{name: "duplicate node dependency", mutate: func(plan *ResolvedExecutionFlow) {
 			node := versionedNodeAggregate()
 			dependency := NodeDependencySnapshot{Node: node.Node, Version: node.Current}
 			plan.Nodes = []NodeDependencySnapshot{dependency, dependency}
 		}, want: "duplicate node dependency"},
-		{name: "invalid item parameter", mutate: func(plan *TestTaskVersionPlan) {
+		{name: "invalid item parameter", mutate: func(plan *ResolvedExecutionFlow) {
 			plan.Workflows[0].Version.Definition.Parameters = []ParameterDefinition{{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true}}
 			plan.Version.Items[0].Parameters = map[string]parameter.Value{"value": parameter.BooleanValue(true)}
 		}, want: "parameters"},
@@ -224,19 +224,19 @@ func TestTestTaskVersionPlanValidateDependencyBoundaryMatrix(t *testing.T) {
 func TestTestTaskVersionPlanAcceptsFixedDependencyAfterUnrelatedSnapshot(t *testing.T) {
 	plan := validTestTaskVersionPlan()
 	matching := plan.Workflows[0]
-	plan.Version.Items[0].VersionPolicy = WorkflowVersionFixed
+	plan.Version.Items[0].VersionPolicy = FlowFragmentVersionFixed
 	plan.Version.Items[0].WorkflowVersionID = matching.Version.ID
 	matching.ResolvedFromLatest = false
 	unrelated := matching
-	unrelated.Workflow.ID = "unrelated"
-	unrelated.Workflow.CurrentVersionID = "unrelated-v1"
+	unrelated.FlowFragment.ID = "unrelated"
+	unrelated.FlowFragment.CurrentVersionID = "unrelated-v1"
 	unrelated.Version.ID = "unrelated-v1"
-	unrelated.Version.WorkflowID = unrelated.Workflow.ID
-	plan.Workflows = []WorkflowDependencySnapshot{unrelated, matching}
+	unrelated.Version.FlowFragmentID = unrelated.FlowFragment.ID
+	plan.Workflows = []FlowFragmentDependencySnapshot{unrelated, matching}
 	second := plan.Version.Items[0]
 	second.ID = "item-two"
 	second.SequenceNumber = 2
-	second.WorkflowID = unrelated.Workflow.ID
+	second.FlowFragmentID = unrelated.FlowFragment.ID
 	second.WorkflowVersionID = unrelated.Version.ID
 	second.Parameters = map[string]parameter.Value{}
 	plan.Version.Items = append(plan.Version.Items, second)

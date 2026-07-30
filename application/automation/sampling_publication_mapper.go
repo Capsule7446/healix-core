@@ -18,7 +18,7 @@ type SamplingNodeAuthority struct {
 }
 
 type SamplingPublicationRequest struct {
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	PublishedAt       int64
 	Workspace         sampling.TemporarySamplingWorkflow
@@ -26,7 +26,7 @@ type SamplingPublicationRequest struct {
 }
 
 func MapSamplingPublication(request SamplingPublicationRequest) (domainautomation.SamplingPublication, error) {
-	if request.PublishedAt <= 0 || request.WorkflowID == "" || request.WorkflowVersionID == "" {
+	if request.PublishedAt <= 0 || request.FlowFragmentID == "" || request.WorkflowVersionID == "" {
 		return domainautomation.SamplingPublication{}, fmt.Errorf("sampling publication requires workflow identity and publication time")
 	}
 	authorityByTemporaryID := make(map[string]SamplingNodeAuthority, len(request.Nodes))
@@ -71,14 +71,14 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	if err != nil {
 		return domainautomation.SamplingPublication{}, fmt.Errorf("rewrite sampled workflow references: %w", err)
 	}
-	workflow, err := domainautomation.NewWorkflow(
-		domainautomation.Workflow{ID: request.WorkflowID, DisplayName: request.Workspace.DisplayName, Properties: request.Workspace.Properties.Clone(), CreatedAt: request.PublishedAt, UpdatedAt: request.PublishedAt},
-		domainautomation.WorkflowVersion{ID: request.WorkflowVersionID, Definition: domainautomation.WorkflowDefinition{Steps: steps, Parameters: append([]domainautomation.ParameterDefinition(nil), request.Workspace.Parameters...)}, CreatedAt: request.PublishedAt},
+	workflow, err := domainautomation.NewFlowFragment(
+		domainautomation.FlowFragment{ID: request.FlowFragmentID, DisplayName: request.Workspace.DisplayName, Properties: request.Workspace.Properties.Clone(), CreatedAt: request.PublishedAt, UpdatedAt: request.PublishedAt},
+		domainautomation.FlowFragmentVersion{ID: request.WorkflowVersionID, Definition: domainautomation.FlowFragmentContent{Steps: steps, Parameters: append([]domainautomation.ParameterDefinition(nil), request.Workspace.Parameters...)}, CreatedAt: request.PublishedAt},
 	)
 	if err != nil {
 		return domainautomation.SamplingPublication{}, fmt.Errorf("build sampled workflow: %w", err)
 	}
-	result := domainautomation.SamplingPublication{Nodes: publications, Workflow: workflow}
+	result := domainautomation.SamplingPublication{Nodes: publications, FlowFragment: workflow}
 	if err := result.Validate(); err != nil {
 		return domainautomation.SamplingPublication{}, err
 	}

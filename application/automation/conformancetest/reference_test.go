@@ -63,9 +63,9 @@ func newReferenceFixture(t *testing.T) conformancetest.Fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	workflow, err := domain.NewWorkflow(
-		domain.Workflow{ID: "workflow", DisplayName: "workflow", Properties: domain.Properties{}, CreatedAt: 2, UpdatedAt: 2},
-		domain.WorkflowVersion{ID: "workflow-v1", Definition: domain.WorkflowDefinition{Steps: []domain.WorkflowStep{{ID: "merge", DisplayName: "merge", Kind: domain.StepAction, Action: "click", NodeID: "existing", NodeVersionID: "existing-v2"}, {ID: "create", DisplayName: "create", Kind: domain.StepAction, Action: "click", NodeID: "created", NodeVersionID: "created-v1"}, {ID: "reuse", DisplayName: "reuse", Kind: domain.StepAction, Action: "click", NodeID: "reused", NodeVersionID: "reused-v1"}}}, CreatedAt: 2},
+	workflow, err := domain.NewFlowFragment(
+		domain.FlowFragment{ID: "workflow", DisplayName: "workflow", Properties: domain.Properties{}, CreatedAt: 2, UpdatedAt: 2},
+		domain.FlowFragmentVersion{ID: "workflow-v1", Definition: domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "merge", DisplayName: "merge", Kind: domain.StepAction, Action: "click", NodeID: "existing", NodeVersionID: "existing-v2"}, {ID: "create", DisplayName: "create", Kind: domain.StepAction, Action: "click", NodeID: "created", NodeVersionID: "created-v1"}, {ID: "reuse", DisplayName: "reuse", Kind: domain.StepAction, Action: "click", NodeID: "reused", NodeVersionID: "reused-v1"}}}, CreatedAt: 2},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func newReferenceFixture(t *testing.T) conformancetest.Fixture {
 		{TemporaryNodeID: "temporary-existing", ResolutionMode: "MERGE", Aggregate: merged, ExpectedRevision: base.Node.Revision, ExpectedCurrentVersionID: base.Current.ID, PublishVersion: true},
 		{TemporaryNodeID: "temporary-created", ResolutionMode: "CREATE", Aggregate: created, PublishVersion: true},
 		{TemporaryNodeID: "temporary-reused", ResolutionMode: "REUSE", Aggregate: reused, ExpectedRevision: reused.Node.Revision, ExpectedCurrentVersionID: reused.Current.ID},
-	}, Workflow: workflow}
+	}, FlowFragment: workflow}
 	command := application.SamplingPublicationCommand{PublicationID: "publication", Publication: publication}
 	digest, err := application.SamplingPublicationRequestDigest(command)
 	if err != nil {
@@ -127,10 +127,10 @@ func (f *referenceFixture) CompetingIntents() (application.PublishSamplingIntent
 
 func competingIntent(base application.PublishSamplingIntent, suffix string) application.PublishSamplingIntent {
 	publication := base.Publication.Clone()
-	publication.Workflow.Workflow.ID += "-" + suffix
-	publication.Workflow.Current.ID += "-" + suffix
-	publication.Workflow.Workflow.CurrentVersionID = publication.Workflow.Current.ID
-	publication.Workflow.Current.WorkflowID = publication.Workflow.Workflow.ID
+	publication.FlowFragment.FlowFragment.ID += "-" + suffix
+	publication.FlowFragment.Current.ID += "-" + suffix
+	publication.FlowFragment.FlowFragment.CurrentVersionID = publication.FlowFragment.Current.ID
+	publication.FlowFragment.Current.FlowFragmentID = publication.FlowFragment.FlowFragment.ID
 	for index := range publication.Nodes {
 		node := &publication.Nodes[index]
 		switch node.ResolutionMode {
@@ -144,8 +144,8 @@ func competingIntent(base application.PublishSamplingIntent, suffix string) appl
 			node.Aggregate.Current.NodeID = node.Aggregate.Node.ID
 		}
 	}
-	for index := range publication.Workflow.Current.Definition.Steps {
-		step := &publication.Workflow.Current.Definition.Steps[index]
+	for index := range publication.FlowFragment.Current.Definition.Steps {
+		step := &publication.FlowFragment.Current.Definition.Steps[index]
 		for _, node := range publication.Nodes {
 			if step.ID == "merge" && node.ResolutionMode == "MERGE" || step.ID == "create" && node.ResolutionMode == "CREATE" {
 				step.NodeID = node.Aggregate.Node.ID
@@ -173,7 +173,7 @@ func (f *referenceFixture) AssertOnlyApplied(winner, loser application.PublishSa
 	if _, exists := f.state.digests[loser.PublicationID]; exists {
 		return errors.New("loser digest exists")
 	}
-	if _, exists := f.state.workflows[loser.Publication.Workflow.Workflow.ID]; exists {
+	if _, exists := f.state.workflows[loser.Publication.FlowFragment.FlowFragment.ID]; exists {
 		return errors.New("loser workflow exists")
 	}
 	loserResult := conformancetest.Result(loser.Publication)
@@ -209,7 +209,7 @@ func (f *referenceFixture) AssertApplied(intent application.PublishSamplingInten
 			return errors.New("node version was not materialized")
 		}
 	}
-	if _, exists := f.state.workflows[intent.Publication.Workflow.Workflow.ID]; !exists {
+	if _, exists := f.state.workflows[intent.Publication.FlowFragment.FlowFragment.ID]; !exists {
 		return errors.New("workflow was not materialized")
 	}
 	return nil
@@ -267,7 +267,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 	if err := f.fail(conformancetest.FaultAfterNodes); err != nil {
 		return application.PublishSamplingOutcome{}, err
 	}
-	workflowID := intent.Publication.Workflow.Workflow.ID
+	workflowID := intent.Publication.FlowFragment.FlowFragment.ID
 	if _, exists := next.workflows[workflowID]; exists {
 		return application.PublishSamplingOutcome{}, errors.New("workflow identity conflict")
 	}

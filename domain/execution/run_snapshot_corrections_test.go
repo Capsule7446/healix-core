@@ -62,10 +62,10 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 	for _, mutate := range []func(*RunSnapshotInput){
 		func(v *RunSnapshotInput) { v.Environment.Revision++ },
 		func(v *RunSnapshotInput) {
-			v.Plan.References = []ReferenceResolution{{ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true}}
-			v.Plan.Workflows[0].Steps = []Step{{ID: "call", DisplayName: "Call", Kind: WorkflowReference, Reference: &Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}
-			v.Plan.Workflows = append(v.Plan.Workflows, WorkflowSnapshot{ID: "child", WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Steps: []Step{{ID: "wait-child", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}})
-			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
+			v.Plan.References = []ReferenceResolution{{ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true}}
+			v.Plan.Workflows[0].Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}}
+			v.Plan.Workflows = append(v.Plan.Workflows, WorkflowSnapshot{ID: "child", FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Steps: []Step{{ID: "wait-child", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}})
+			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
 		},
 	} {
 		input := validRunSnapshotInput(t)
@@ -175,7 +175,7 @@ func TestNewRunRejectsInvalidInitialLifecycleShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests := []Run{{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Running, CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Succeeded, CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: "UNKNOWN", CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 0, QueuedAt: 0}, {ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 2, QueuedAt: 1}}
+	tests := []Run{{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Running, CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Succeeded, CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: "UNKNOWN", CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 0, QueuedAt: 0}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 2, QueuedAt: 1}}
 	for _, run := range tests {
 		if _, err := NewRun(run, snapshot); err == nil {
 			t.Fatalf("accepted %#v", run)

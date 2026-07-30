@@ -50,11 +50,11 @@ func TestNodeAggregateValidateLoadedHistoryRejectsMissingCurrent(t *testing.T) {
 }
 
 func TestWorkflowAggregateValidateLoadedHistoryAllowsAllVersionsDeleted(t *testing.T) {
-	deleted := WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1,
-		Definition: WorkflowDefinition{Steps: []WorkflowStep{{ID: "wait", DisplayName: "等待", Kind: StepWait,
+	deleted := FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1,
+		Definition: FlowFragmentContent{Steps: []FlowFragmentStep{{ID: "wait", DisplayName: "等待", Kind: StepWait,
 			WaitKind: "sleep", WaitMS: 1}}}, DeletedAt: 2}
-	aggregate := WorkflowAggregate{Workflow: Workflow{ID: "workflow", DisplayName: "流程", Properties: Properties{}},
-		Versions: []WorkflowVersion{deleted}}
+	aggregate := FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow", DisplayName: "流程", Properties: Properties{}},
+		Versions: []FlowFragmentVersion{deleted}}
 	if err := aggregate.ValidateLoadedHistory(); err != nil {
 		t.Fatalf("all-deleted history: %v", err)
 	}
@@ -71,11 +71,11 @@ func TestNodeAggregatePublishVersionRejectsInconsistentCurrentPointer(t *testing
 }
 
 func TestWorkflowAggregatePublishVersionDeepCopiesDefinition(t *testing.T) {
-	baseDefinition := WorkflowDefinition{Steps: []WorkflowStep{{ID: "step-v1", DisplayName: "等待", Kind: StepWait, WaitKind: "sleep", WaitMS: 1}}}
-	base := WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1, Definition: baseDefinition, CreatedAt: 1}
-	aggregate := WorkflowAggregate{Workflow: Workflow{ID: "workflow", DisplayName: "结账", Properties: Properties{},
-		CurrentVersionID: base.ID, CreatedAt: 1, UpdatedAt: 1, Revision: 1}, Current: base, Versions: []WorkflowVersion{base}}
-	definition := WorkflowDefinition{Steps: []WorkflowStep{{ID: "step-v2", DisplayName: "输入", Kind: StepAction,
+	baseDefinition := FlowFragmentContent{Steps: []FlowFragmentStep{{ID: "step-v1", DisplayName: "等待", Kind: StepWait, WaitKind: "sleep", WaitMS: 1}}}
+	base := FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1, Definition: baseDefinition, CreatedAt: 1}
+	aggregate := FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow", DisplayName: "结账", Properties: Properties{},
+		CurrentVersionID: base.ID, CreatedAt: 1, UpdatedAt: 1, Revision: 1}, Current: base, Versions: []FlowFragmentVersion{base}}
+	definition := FlowFragmentContent{Steps: []FlowFragmentStep{{ID: "step-v2", DisplayName: "输入", Kind: StepAction,
 		Action: "input", NodeID: "node", NodeVersionID: "node-v1", Values: []string{"one"}}}}
 
 	published, err := aggregate.PublishVersion("workflow-v2", definition, 2)

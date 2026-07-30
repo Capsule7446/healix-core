@@ -12,10 +12,10 @@ import (
 func draftFixture() TemporarySamplingWorkflow {
 	return TemporarySamplingWorkflow{
 		ID: "workflow", DisplayName: "workflow", Properties: automation.Properties{},
-		Steps: []automation.WorkflowStep{
+		Steps: []automation.FlowFragmentStep{
 			{ID: "a", DisplayName: "a", Kind: automation.StepAction, NodeID: "node-a"},
-			{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.WorkflowStep{{ID: "b", DisplayName: "b", Kind: automation.StepAction, NodeID: "node-b"}}},
-			{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.WorkflowStep{{ID: "c", DisplayName: "c", Kind: automation.StepValidation, NodeID: "node-c"}}}}}},
+			{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "b", DisplayName: "b", Kind: automation.StepAction, NodeID: "node-b"}}},
+			{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.FlowFragmentStep{{ID: "c", DisplayName: "c", Kind: automation.StepValidation, NodeID: "node-c"}}}}}},
 		},
 		Nodes: []TemporarySamplingNode{
 			{ID: "node-a", Properties: automation.Properties{}, Selectors: []fingerprint.Selector{}, StepIDs: []string{"a"}},
@@ -30,7 +30,7 @@ func draftFixture() TemporarySamplingWorkflow {
 func TestDraftCommandsInsertMoveReorderAndDeleteImmutably(t *testing.T) {
 	original := draftFixture()
 	before := draftFixture()
-	inserted, err := InsertDraftStep(original, StepContainer{ParentStepID: "repeat"}, 1, automation.WorkflowStep{ID: "d", DisplayName: "d", Kind: automation.StepAction, NodeID: "node-a"})
+	inserted, err := InsertDraftStep(original, StepContainer{ParentStepID: "repeat"}, 1, automation.FlowFragmentStep{ID: "d", DisplayName: "d", Kind: automation.StepAction, NodeID: "node-a"})
 	if err != nil || len(inserted.Steps[1].Children) != 2 || inserted.Nodes[0].StepIDs[1] != "d" {
 		t.Fatalf("insert = %#v, %v", inserted, err)
 	}
@@ -53,7 +53,7 @@ func TestDraftCommandsInsertMoveReorderAndDeleteImmutably(t *testing.T) {
 
 func TestMoveDraftStepUsesFinalPositionWithinContainer(t *testing.T) {
 	workflow := draftFixture()
-	workflow.Steps = []automation.WorkflowStep{
+	workflow.Steps = []automation.FlowFragmentStep{
 		{ID: "a", DisplayName: "a", Kind: automation.StepAction, NodeID: "node-a"},
 		{ID: "b", DisplayName: "b", Kind: automation.StepAction, NodeID: "node-b"},
 		{ID: "c", DisplayName: "c", Kind: automation.StepValidation, NodeID: "node-c"},
@@ -88,24 +88,24 @@ func TestUpdateDraftStepCoversEveryNestedContainerAndRebuildsReferences(t *testi
 	tests := []struct {
 		name   string
 		stepID string
-		got    func(TemporarySamplingWorkflow) automation.WorkflowStep
+		got    func(TemporarySamplingWorkflow) automation.FlowFragmentStep
 	}{
 		{
 			name:   "root step",
 			stepID: "a",
-			got:    func(workflow TemporarySamplingWorkflow) automation.WorkflowStep { return workflow.Steps[0] },
+			got:    func(workflow TemporarySamplingWorkflow) automation.FlowFragmentStep { return workflow.Steps[0] },
 		},
 		{
 			name:   "repeat child",
 			stepID: "b",
-			got: func(workflow TemporarySamplingWorkflow) automation.WorkflowStep {
+			got: func(workflow TemporarySamplingWorkflow) automation.FlowFragmentStep {
 				return workflow.Steps[1].Children[0]
 			},
 		},
 		{
 			name:   "validation branch member",
 			stepID: "c",
-			got: func(workflow TemporarySamplingWorkflow) automation.WorkflowStep {
+			got: func(workflow TemporarySamplingWorkflow) automation.FlowFragmentStep {
 				return workflow.Steps[2].ValidationGroup.Branches[0].Steps[0]
 			},
 		},
@@ -161,22 +161,22 @@ func TestUpdateDraftStepCoversEveryNestedContainerAndRebuildsReferences(t *testi
 func TestUpdateDraftStepRejectsInvalidIdentityAndReferenceWithoutMutation(t *testing.T) {
 	tests := []struct {
 		name        string
-		replacement automation.WorkflowStep
+		replacement automation.FlowFragmentStep
 		wantError   string
 	}{
 		{
 			name:        "blank id",
-			replacement: automation.WorkflowStep{ID: " \t\n", DisplayName: "blank", Kind: automation.StepAction},
+			replacement: automation.FlowFragmentStep{ID: " \t\n", DisplayName: "blank", Kind: automation.StepAction},
 			wantError:   "id is required",
 		},
 		{
 			name:        "unknown id",
-			replacement: automation.WorkflowStep{ID: "missing", DisplayName: "missing", Kind: automation.StepAction},
+			replacement: automation.FlowFragmentStep{ID: "missing", DisplayName: "missing", Kind: automation.StepAction},
 			wantError:   "was not found",
 		},
 		{
 			name:        "unknown node",
-			replacement: automation.WorkflowStep{ID: "a", DisplayName: "invalid", Kind: automation.StepAction, NodeID: "missing"},
+			replacement: automation.FlowFragmentStep{ID: "a", DisplayName: "invalid", Kind: automation.StepAction, NodeID: "missing"},
 			wantError:   "unknown temporary node",
 		},
 	}
@@ -272,10 +272,10 @@ func permutations(values []string) [][]string {
 
 func TestDraftCommandsRejectInvalidIdentitiesAndReferences(t *testing.T) {
 	workflow := draftFixture()
-	if _, err := InsertDraftStep(workflow, StepContainer{}, 0, automation.WorkflowStep{ID: "a", DisplayName: "duplicate", Kind: automation.StepAction, NodeID: "node-a"}); err == nil {
+	if _, err := InsertDraftStep(workflow, StepContainer{}, 0, automation.FlowFragmentStep{ID: "a", DisplayName: "duplicate", Kind: automation.StepAction, NodeID: "node-a"}); err == nil {
 		t.Fatal("duplicate step was accepted")
 	}
-	if _, err := InsertDraftStep(workflow, StepContainer{}, 0, automation.WorkflowStep{ID: "unknown", DisplayName: "unknown", Kind: automation.StepAction, NodeID: "missing"}); err == nil {
+	if _, err := InsertDraftStep(workflow, StepContainer{}, 0, automation.FlowFragmentStep{ID: "unknown", DisplayName: "unknown", Kind: automation.StepAction, NodeID: "missing"}); err == nil {
 		t.Fatal("unknown node reference was accepted")
 	}
 	if _, err := DeleteDraftNode(workflow, "node-a"); err == nil {
@@ -284,7 +284,7 @@ func TestDraftCommandsRejectInvalidIdentitiesAndReferences(t *testing.T) {
 	if _, err := ReorderDraftSteps(workflow, StepContainer{}, []string{"a", "repeat"}); err == nil {
 		t.Fatal("partial reorder was accepted")
 	}
-	if _, err := InsertDraftStep(workflow, StepContainer{ParentStepID: "a"}, 0, automation.WorkflowStep{ID: "child", DisplayName: "child", Kind: automation.StepAction, NodeID: "node-a"}); err == nil {
+	if _, err := InsertDraftStep(workflow, StepContainer{ParentStepID: "a"}, 0, automation.FlowFragmentStep{ID: "child", DisplayName: "child", Kind: automation.StepAction, NodeID: "node-a"}); err == nil {
 		t.Fatal("action child container was accepted")
 	}
 }

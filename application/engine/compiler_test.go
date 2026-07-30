@@ -28,7 +28,7 @@ func TestCompilePlanIndexesInvocationsOnceAcrossEntries(t *testing.T) {
 				ExecutionID:       fmt.Sprintf("execution-%03d", index),
 				TestTaskItemID:    fmt.Sprintf("item-%03d", index),
 				SequenceNumber:    index + 1,
-				WorkflowID:        "root",
+				FlowFragmentID:    "root",
 				WorkflowVersionID: "root-v1",
 				Parameters: execution.ParameterSnapshot{ID: fmt.Sprintf("parameters-%03d", index), SchemaVersion: 1, WorkflowVersionID: "root-v1", Values: map[string]parameter.Value{
 					"payload": parameter.TextValue("value"),
@@ -143,11 +143,11 @@ func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
 	if _, err := compileSnapshotDraft(plan.Snapshot(), execution.RunSnapshot{}); err == nil {
 		t.Fatal("missing root invocation was accepted")
 	}
-	root := execution.WorkflowSnapshot{WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", Steps: []execution.Step{{ID: "call", DisplayName: "Call", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}}}
-	child := execution.WorkflowSnapshot{WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child"}
+	root := execution.WorkflowSnapshot{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "Root", Steps: []execution.Step{{ID: "call", DisplayName: "Call", Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}}}
+	child := execution.WorkflowSnapshot{FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child"}
 	compiler := executionCompiler{
 		versions:    map[string]execution.WorkflowSnapshot{"root-v1": root, "child-v1": child},
-		resolutions: map[execution.WorkflowReferenceKey]execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call"}: {ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}},
+		resolutions: map[execution.WorkflowReferenceKey]execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call"}: {ParentVersionID: "root-v1", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}},
 		invocations: map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot{}, metadata: map[string]StepMetadata{}, programSpecs: map[string]fingerprint.NodeSpec{}, runtimeNodes: map[string]RuntimeNodeIdentity{},
 	}
 	count := 0
@@ -178,15 +178,15 @@ func TestRuntimeWorkflowStepIDIsCollisionFree(t *testing.T) {
 func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) {
 
 	plan := execution.Draft{
-		RunID: "exec", Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", WorkflowID: "root", WorkflowVersionID: "root-v1"}},
+		RunID: "exec", Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
-			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "call", DisplayName: "调用子流程", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}}},
-			{WorkflowID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1,
+			{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "call", DisplayName: "调用子流程", Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}}},
+			{FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1,
 				Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Default: parameter.PresentValue(parameter.TextValue("east"))}},
 				Steps:      []execution.Step{{ID: "click", DisplayName: "点击", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}},
 		},
 		Nodes:      []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "submit-v1")},
-		References: []execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}},
+		References: []execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}},
 	}
 
 	compiled, err := compileDraft(plan)
@@ -208,17 +208,17 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 }
 
 func TestCompilePlanCreatesDistinctRuntimeIdentitiesForSharedChildInvocations(t *testing.T) {
-	child := execution.WorkflowSnapshot{WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1,
+	child := execution.WorkflowSnapshot{FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1,
 		Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Required: true}},
 		Steps:      []execution.Step{{ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}
 	call := func(id string) execution.Step {
-		return execution.Step{ID: id, DisplayName: id, Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}
+		return execution.Step{ID: id, DisplayName: id, Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("east"))}}}
 	}
-	plan := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{
-		{WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", VersionNumber: 1, Steps: []execution.Step{call("first"), call("second")}}, child},
+	plan := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{
+		{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "Root", VersionNumber: 1, Steps: []execution.Step{call("first"), call("second")}}, child},
 		Nodes: []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "submit")}, References: []execution.ReferenceResolution{
-			{ParentVersionID: "root-v1", StepID: "first", WorkflowID: "child", WorkflowVersionID: "child-v1"},
-			{ParentVersionID: "root-v1", StepID: "second", WorkflowID: "child", WorkflowVersionID: "child-v1"},
+			{ParentVersionID: "root-v1", StepID: "first", FlowFragmentID: "child", WorkflowVersionID: "child-v1"},
+			{ParentVersionID: "root-v1", StepID: "second", FlowFragmentID: "child", WorkflowVersionID: "child-v1"},
 		}}
 
 	compiled, err := compileDraft(plan)
@@ -237,8 +237,8 @@ func TestCompilePlanCreatesDistinctRuntimeIdentitiesForSharedChildInvocations(t 
 }
 
 func TestCompilePlanKeepsTwoVersionsOfSameNodeExact(t *testing.T) {
-	plan := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "checkout", WorkflowVersionID: "checkout-v1"}},
-		Workflows: []execution.WorkflowSnapshot{{WorkflowID: "checkout", VersionID: "checkout-v1", DisplayName: "结账", VersionNumber: 1, Steps: []execution.Step{
+	plan := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "checkout", WorkflowVersionID: "checkout-v1"}},
+		Workflows: []execution.WorkflowSnapshot{{FlowFragmentID: "checkout", VersionID: "checkout-v1", DisplayName: "结账", VersionNumber: 1, Steps: []execution.Step{
 			{ID: "old", DisplayName: "旧版", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1},
 			{ID: "new", DisplayName: "新版", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV2},
 		}}}, Nodes: []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "checkout-old"), compilerNodeSnapshot(compilerNodeV2, "checkout-new")}}
@@ -260,9 +260,9 @@ func TestCompilePlanKeepsTwoVersionsOfSameNodeExact(t *testing.T) {
 func TestCompilePlanBuildsValidationGroup(t *testing.T) {
 	member := execution.Step{ID: "member", DisplayName: "状态成功", Kind: execution.ValidationStep, NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Validation: &execution.Validation{Kind: "text_equals", Expected: "成功"}}
 	plan := execution.Draft{
-		RunID: "exec", Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", WorkflowID: "validation", WorkflowVersionID: "validation-v1"}},
+		RunID: "exec", Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", FlowFragmentID: "validation", WorkflowVersionID: "validation-v1"}},
 		Workflows: []execution.WorkflowSnapshot{{
-			WorkflowID: "validation", VersionID: "validation-v1", DisplayName: "验证", VersionNumber: 1,
+			FlowFragmentID: "validation", VersionID: "validation-v1", DisplayName: "验证", VersionNumber: 1,
 			Steps: []execution.Step{{
 				ID: "group", DisplayName: "结果", Kind: execution.ValidationGroupStep, CaptureScreenshot: true,
 				ValidationGroup: &execution.ValidationGroup{
@@ -289,14 +289,14 @@ func TestCompilePlanBuildsValidationGroup(t *testing.T) {
 }
 
 func TestCompilePlanRejectsMissingSnapshotAndCycles(t *testing.T) {
-	missing := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{WorkflowID: "root", VersionID: "root-v1", DisplayName: "root", VersionNumber: 1, Steps: []execution.Step{{ID: "click", DisplayName: "click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}}}
+	missing := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "root", VersionNumber: 1, Steps: []execution.Step{{ID: "click", DisplayName: "click", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}}}}
 	if _, err := compileDraft(missing); err == nil {
 		t.Fatal("missing node snapshot was accepted")
 	}
-	cycle := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "a", WorkflowVersionID: "a-v1"}}, Workflows: []execution.WorkflowSnapshot{
-		{WorkflowID: "a", VersionID: "a-v1", DisplayName: "a", VersionNumber: 1, Steps: []execution.Step{{ID: "to-b", DisplayName: "b", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "b"}}}},
-		{WorkflowID: "b", VersionID: "b-v1", DisplayName: "b", VersionNumber: 1, Steps: []execution.Step{{ID: "to-a", DisplayName: "a", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "a"}}}},
-	}, References: []execution.ReferenceResolution{{ParentVersionID: "a-v1", StepID: "to-b", WorkflowID: "b", WorkflowVersionID: "b-v1"}, {ParentVersionID: "b-v1", StepID: "to-a", WorkflowID: "a", WorkflowVersionID: "a-v1"}}}
+	cycle := execution.Draft{RunID: "exec", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "a", WorkflowVersionID: "a-v1"}}, Workflows: []execution.WorkflowSnapshot{
+		{FlowFragmentID: "a", VersionID: "a-v1", DisplayName: "a", VersionNumber: 1, Steps: []execution.Step{{ID: "to-b", DisplayName: "b", Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "b"}}}},
+		{FlowFragmentID: "b", VersionID: "b-v1", DisplayName: "b", VersionNumber: 1, Steps: []execution.Step{{ID: "to-a", DisplayName: "a", Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "a"}}}},
+	}, References: []execution.ReferenceResolution{{ParentVersionID: "a-v1", StepID: "to-b", FlowFragmentID: "b", WorkflowVersionID: "b-v1"}, {ParentVersionID: "b-v1", StepID: "to-a", FlowFragmentID: "a", WorkflowVersionID: "a-v1"}}}
 	if _, err := compileDraft(cycle); err == nil {
 		t.Fatal("workflow reference cycle was accepted")
 	}
@@ -333,8 +333,8 @@ func compileDraft(draft execution.Draft) (CompiledEntry, error) {
 func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Entries = []execution.WorkflowEntry{
-		{ExecutionID: "execution-a", TestTaskItemID: "item-a", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"},
-		{ExecutionID: "execution-b", TestTaskItemID: "item-b", SequenceNumber: 2, WorkflowID: "root", WorkflowVersionID: "root-v1"},
+		{ExecutionID: "execution-a", TestTaskItemID: "item-a", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"},
+		{ExecutionID: "execution-b", TestTaskItemID: "item-b", SequenceNumber: 2, FlowFragmentID: "root", WorkflowVersionID: "root-v1"},
 	}
 	plan, err := execution.Seal(draft)
 	if err != nil {

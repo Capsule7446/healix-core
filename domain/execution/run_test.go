@@ -7,7 +7,7 @@ func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
+	queued, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
+	queued, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
+	base, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestRunTransitionAcceptsLifecycleProgression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	initial, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

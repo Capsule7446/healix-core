@@ -13,8 +13,8 @@ func (p FailurePolicy) IsValid() bool {
 	return p == FailurePolicyStopOnFailure || p == FailurePolicyContinueOnFailure
 }
 
-// TestTask 是稳定的、名称可变的资产。可执行配置仅存在于不可变的 TestTaskVersion 值中。
-type TestTask struct {
+// ExecutionFlow 是稳定的、名称可变的资产。可执行配置仅存在于不可变的 ExecutionFlowVersion 值中。
+type ExecutionFlow struct {
 	ID               string
 	DisplayName      string
 	FolderID         string
@@ -25,64 +25,64 @@ type TestTask struct {
 	Revision         Revision
 }
 
-type TestTaskItem struct {
+type ExecutionFlowItem struct {
 	ID                string
 	TestTaskVersionID string
 	SequenceNumber    int
-	WorkflowID        string
-	VersionPolicy     WorkflowVersionPolicy
+	FlowFragmentID    string
+	VersionPolicy     FlowFragmentVersionPolicy
 	WorkflowVersionID string
 	Parameters        map[string]parameter.Value
 }
 
-type TestTaskVersion struct {
+type ExecutionFlowVersion struct {
 	ID                      string
-	TestTaskID              string
+	ExecutionFlowID         string
 	VersionNumber           int
 	SourceVersionID         string
-	Items                   []TestTaskItem
+	Items                   []ExecutionFlowItem
 	FailurePolicy           FailurePolicy
 	RequiredEnvironmentKeys []string
 	CreatedAt               int64
 }
 
-type TestTaskVersionPublication struct {
+type ExecutionFlowVersionPublication struct {
 	ID                      string
-	Items                   []TestTaskItem
+	Items                   []ExecutionFlowItem
 	FailurePolicy           FailurePolicy
 	RequiredEnvironmentKeys []string
 	CreatedAt               int64
 }
 
-type TestTaskAggregate struct {
-	Task     TestTask
-	Current  TestTaskVersion
-	Versions []TestTaskVersion
+type ExecutionFlowAggregate struct {
+	Task     ExecutionFlow
+	Current  ExecutionFlowVersion
+	Versions []ExecutionFlowVersion
 }
 
-// TestTaskVersionPlan 带有候选出版物以及用于其无环境验证的精确图表。适配器在发布版本的同一事务内重新检查该图。
-type TestTaskVersionPlan struct {
-	Task                 TestTask
-	ExpectedTaskRevision Revision
-	Version              TestTaskVersion
-	Workflows            []WorkflowDependencySnapshot
-	Nodes                []NodeDependencySnapshot
-	References           []WorkflowReferenceResolution
+// ResolvedExecutionFlow 带有候选出版物以及用于其无环境验证的精确图表。适配器在发布版本的同一事务内重新检查该图。
+type ResolvedExecutionFlow struct {
+	Task                          ExecutionFlow
+	ExpectedExecutionFlowRevision Revision
+	Version                       ExecutionFlowVersion
+	Workflows                     []FlowFragmentDependencySnapshot
+	Nodes                         []NodeDependencySnapshot
+	References                    []FlowFragmentReferenceResolution
 }
 
 type NodeDependencySnapshot struct {
 	Node    Node
 	Version NodeVersion
 }
-type WorkflowDependencySnapshot struct {
-	Workflow           Workflow
-	Version            WorkflowVersion
+type FlowFragmentDependencySnapshot struct {
+	FlowFragment       FlowFragment
+	Version            FlowFragmentVersion
 	ResolvedFromLatest bool
 }
-type WorkflowReferenceResolution struct {
-	ParentWorkflowVersionID string
-	StepID                  string
-	WorkflowID              string
-	WorkflowVersionID       string
-	ResolvedFromLatest      bool
+type FlowFragmentReferenceResolution struct {
+	ParentFlowFragmentVersionID string
+	StepID                      string
+	FlowFragmentID              string
+	WorkflowVersionID           string
+	ResolvedFromLatest          bool
 }

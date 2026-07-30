@@ -22,18 +22,18 @@ func TestInvocationEdgeKeyDoesNotCollideLikeDelimitedStrings(t *testing.T) {
 func snapshotWithTwoConcreteReferenceEdges(t *testing.T) RunSnapshotInput {
 	input := validRunSnapshotInput(t)
 	root := &input.Plan.Workflows[0]
-	root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: WorkflowReference, Reference: &Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("count")}}}}
-	child := WorkflowSnapshot{ID: "child", WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Parameters: []Parameter{{Name: "value", DisplayName: "Value", Type: parameter.Number, Required: true}}, Steps: []Step{{ID: "call-grandchild", DisplayName: "Call grandchild", Kind: WorkflowReference, Reference: &Reference{WorkflowID: "grandchild", WorkflowVersionID: "grandchild-v1"}}}}
-	grandchild := WorkflowSnapshot{ID: "grandchild", WorkflowID: "grandchild", VersionID: "grandchild-v1", DisplayName: "Grandchild", VersionNumber: 1, Steps: []Step{{ID: "wait-grandchild", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}
+	root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("count")}}}}
+	child := WorkflowSnapshot{ID: "child", FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Parameters: []Parameter{{Name: "value", DisplayName: "Value", Type: parameter.Number, Required: true}}, Steps: []Step{{ID: "call-grandchild", DisplayName: "Call grandchild", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1"}}}}
+	grandchild := WorkflowSnapshot{ID: "grandchild", FlowFragmentID: "grandchild", VersionID: "grandchild-v1", DisplayName: "Grandchild", VersionNumber: 1, Steps: []Step{{ID: "wait-grandchild", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}
 	input.Plan.Workflows = append(input.Plan.Workflows, child, grandchild)
 	input.Plan.References = []ReferenceResolution{
-		{ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"},
-		{ParentVersionID: "child-v1", StepID: "call-grandchild", WorkflowID: "grandchild", WorkflowVersionID: "grandchild-v1"},
+		{ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"},
+		{ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1"},
 	}
-	item := input.TestTaskVersion.Items[0]
+	item := input.ExecutionFlowVersion.Items[0]
 	item.ID = "item-2"
 	item.SequenceNumber = 2
-	input.TestTaskVersion.Items = append(input.TestTaskVersion.Items, item)
+	input.ExecutionFlowVersion.Items = append(input.ExecutionFlowVersion.Items, item)
 	entry := input.Plan.Entries[0]
 	entry.ExecutionID = "entry-2"
 	entry.TestTaskItemID = "item-2"
@@ -44,11 +44,11 @@ func snapshotWithTwoConcreteReferenceEdges(t *testing.T) RunSnapshotInput {
 	entry.Parameters.Values["count"] = number
 	input.Plan.Entries = append(input.Plan.Entries, entry)
 	input.Invocations[0].Bindings = map[string]parameter.Binding{}
-	root2 := InvocationScopeSnapshot{Path: "entry-2", WorkflowID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: cloneParameterValues(entry.Parameters.Values), Bindings: map[string]parameter.Binding{}}
-	child1 := InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": input.Invocations[0].Values["count"]}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
-	child2 := InvocationScopeSnapshot{Path: "entry-2/4:call", ParentPath: "entry-2", ParentVersionID: "workflow-v2", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": number}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
-	grandchild1 := InvocationScopeSnapshot{Path: "entry-1/4:call/15:call-grandchild", ParentPath: child1.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", WorkflowID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
-	grandchild2 := InvocationScopeSnapshot{Path: "entry-2/4:call/15:call-grandchild", ParentPath: child2.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", WorkflowID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
+	root2 := InvocationScopeSnapshot{Path: "entry-2", FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: cloneParameterValues(entry.Parameters.Values), Bindings: map[string]parameter.Binding{}}
+	child1 := InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": input.Invocations[0].Values["count"]}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
+	child2 := InvocationScopeSnapshot{Path: "entry-2/4:call", ParentPath: "entry-2", ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": number}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
+	grandchild1 := InvocationScopeSnapshot{Path: "entry-1/4:call/15:call-grandchild", ParentPath: child1.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
+	grandchild2 := InvocationScopeSnapshot{Path: "entry-2/4:call/15:call-grandchild", ParentPath: child2.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
 	input.Invocations = append(input.Invocations, root2, child1, child2, grandchild1, grandchild2)
 	return input
 }

@@ -18,7 +18,7 @@ func TestPrimitiveAssetValidatorsRejectBusinessBoundaries(t *testing.T) {
 	}{
 		{name: "blank property key", run: func() error { return Properties{" \t": "value"}.Validate() }, want: "property key"},
 		{name: "unknown version source", run: func() error { return VersionSource("UNKNOWN").Validate() }, want: "unsupported version source"},
-		{name: "unknown workflow version policy", run: func() error { return WorkflowVersionPolicy("UNKNOWN").Validate() }, want: "unsupported workflow version policy"},
+		{name: "unknown workflow version policy", run: func() error { return FlowFragmentVersionPolicy("UNKNOWN").Validate() }, want: "unsupported workflow version policy"},
 		{name: "non select options", run: func() error {
 			return (ParameterDefinition{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true, Options: []string{"forbidden"}}).Validate()
 		}, want: "cannot declare options"},
@@ -92,26 +92,26 @@ func TestEnvironmentValidateSingleFactorRuleMatrix(t *testing.T) {
 func TestWorkflowAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*WorkflowAggregate)
+		mutate func(*FlowFragmentAggregate)
 		want   string
 	}{
-		{name: "missing workflow id", mutate: func(a *WorkflowAggregate) { a.Workflow.ID = " " }, want: "workflow id"},
-		{name: "missing display name", mutate: func(a *WorkflowAggregate) { a.Workflow.DisplayName = "\t" }, want: "display name"},
-		{name: "invalid properties", mutate: func(a *WorkflowAggregate) { a.Workflow.Properties = Properties{" ": "value"} }, want: "property key"},
-		{name: "version number below boundary", mutate: func(a *WorkflowAggregate) { a.Current.VersionNumber = 0 }, want: "version number"},
-		{name: "missing step identity", mutate: func(a *WorkflowAggregate) { a.Current.Definition.Steps[0].ID = " " }, want: "step id and display name"},
-		{name: "action carries validation", mutate: func(a *WorkflowAggregate) {
-			a.Current.Definition.Steps[0] = WorkflowStep{ID: "action", DisplayName: "Action", Kind: StepAction, Action: "navigate", Value: "https://example.test", Validation: &ValidationConfig{}}
+		{name: "missing workflow id", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.ID = " " }, want: "workflow id"},
+		{name: "missing display name", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.DisplayName = "\t" }, want: "display name"},
+		{name: "invalid properties", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.Properties = Properties{" ": "value"} }, want: "property key"},
+		{name: "version number below boundary", mutate: func(a *FlowFragmentAggregate) { a.Current.VersionNumber = 0 }, want: "version number"},
+		{name: "missing step identity", mutate: func(a *FlowFragmentAggregate) { a.Current.Definition.Steps[0].ID = " " }, want: "step id and display name"},
+		{name: "action carries validation", mutate: func(a *FlowFragmentAggregate) {
+			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "action", DisplayName: "Action", Kind: StepAction, Action: "navigate", Value: "https://example.test", Validation: &ValidationConfig{}}
 		}, want: "ACTION cannot carry validation"},
-		{name: "wait carries validation", mutate: func(a *WorkflowAggregate) { a.Current.Definition.Steps[0].Validation = &ValidationConfig{} }, want: "WAIT cannot carry validation"},
-		{name: "repeat carries validation", mutate: func(a *WorkflowAggregate) {
-			a.Current.Definition.Steps[0] = WorkflowStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Validation: &ValidationConfig{}, Children: []WorkflowStep{{ID: "child", DisplayName: "Child", Kind: StepAction, Action: "navigate", Value: "https://example.test"}}}
+		{name: "wait carries validation", mutate: func(a *FlowFragmentAggregate) { a.Current.Definition.Steps[0].Validation = &ValidationConfig{} }, want: "WAIT cannot carry validation"},
+		{name: "repeat carries validation", mutate: func(a *FlowFragmentAggregate) {
+			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Validation: &ValidationConfig{}, Children: []FlowFragmentStep{{ID: "child", DisplayName: "Child", Kind: StepAction, Action: "navigate", Value: "https://example.test"}}}
 		}, want: "REPEAT cannot carry validation"},
-		{name: "reference carries validation", mutate: func(a *WorkflowAggregate) {
-			a.Current.Definition.Steps[0] = WorkflowStep{ID: "reference", DisplayName: "Reference", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", LatestPublished: true}, Validation: &ValidationConfig{}}
+		{name: "reference carries validation", mutate: func(a *FlowFragmentAggregate) {
+			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "reference", DisplayName: "Reference", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", LatestPublished: true}, Validation: &ValidationConfig{}}
 		}, want: "WORKFLOW_REF cannot carry validation"},
-		{name: "nested validation group", mutate: func(a *WorkflowAggregate) {
-			a.Current.Definition.Steps[0] = WorkflowStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []WorkflowStep{{ID: "group", DisplayName: "Group", Kind: StepValidationGroup}}}
+		{name: "nested validation group", mutate: func(a *FlowFragmentAggregate) {
+			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "group", DisplayName: "Group", Kind: StepValidationGroup}}}
 		}, want: "must be a root step"},
 	}
 	for _, test := range tests {
@@ -288,32 +288,32 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 	}
 
 	workflow := versionedWorkflowAggregate()
-	if _, err := NewWorkflow(func() Workflow { value := workflow.Workflow; value.UpdatedAt = 0; return value }(), workflow.Current); err == nil {
-		t.Fatal("NewWorkflow accepted invalid timestamps")
+	if _, err := NewFlowFragment(func() FlowFragment { value := workflow.FlowFragment; value.UpdatedAt = 0; return value }(), workflow.Current); err == nil {
+		t.Fatal("NewFlowFragment accepted invalid timestamps")
 	}
-	invalidWorkflow := workflow.Workflow
+	invalidWorkflow := workflow.FlowFragment
 	invalidWorkflow.UpdatedAt = invalidWorkflow.CreatedAt
 	invalidWorkflowVersion := workflow.Current
 	invalidWorkflowVersion.CreatedAt = invalidWorkflow.CreatedAt
 	invalidWorkflowVersion.Definition.Steps = nil
-	if _, err := NewWorkflow(invalidWorkflow, invalidWorkflowVersion); err == nil {
-		t.Fatal("NewWorkflow accepted invalid aggregate")
+	if _, err := NewFlowFragment(invalidWorkflow, invalidWorkflowVersion); err == nil {
+		t.Fatal("NewFlowFragment accepted invalid aggregate")
 	}
 	deletedWorkflow := workflow
-	deletedWorkflow.Workflow.DeletedAt = 2
-	if _, err := deletedWorkflow.UpdateMetadata("Workflow", "", Properties{}, 3); !errors.Is(err, ErrDeletedAggregate) {
+	deletedWorkflow.FlowFragment.DeletedAt = 2
+	if _, err := deletedWorkflow.UpdateMetadata("FlowFragment", "", Properties{}, 3); !errors.Is(err, ErrDeletedAggregate) {
 		t.Fatalf("deleted workflow update error = %v", err)
 	}
 	for _, test := range []struct {
 		name  string
-		value WorkflowAggregate
+		value FlowFragmentAggregate
 		label string
 	}{
-		{name: "revision overflow", value: func() WorkflowAggregate {
+		{name: "revision overflow", value: func() FlowFragmentAggregate {
 			value := workflow
-			value.Workflow.Revision = Revision(math.MaxUint64)
+			value.FlowFragment.Revision = Revision(math.MaxUint64)
 			return value
-		}(), label: "Workflow"},
+		}(), label: "FlowFragment"},
 		{name: "invalid result", value: workflow, label: " "},
 	} {
 		t.Run("workflow "+test.name, func(t *testing.T) {
@@ -326,26 +326,34 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 
 func TestTestTaskLifecyclePublicFailureMatrix(t *testing.T) {
 	plan := validTestTaskVersionPlan()
-	created, err := NewTestTask(plan.Task, plan.Version)
+	created, err := NewExecutionFlow(plan.Task, plan.Version)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publication := TestTaskVersionPublication{ID: "task-v2", Items: cloneTestTaskVersion(plan.Version).Items, FailurePolicy: plan.Version.FailurePolicy, CreatedAt: 2}
+	publication := ExecutionFlowVersionPublication{ID: "task-v2", Items: cloneTestTaskVersion(plan.Version).Items, FailurePolicy: plan.Version.FailurePolicy, CreatedAt: 2}
 	tests := []struct {
 		name        string
-		aggregate   TestTaskAggregate
-		publication TestTaskVersionPublication
+		aggregate   ExecutionFlowAggregate
+		publication ExecutionFlowVersionPublication
 	}{
-		{name: "invalid aggregate", aggregate: func() TestTaskAggregate { value := created; value.Task.ID = " "; return value }(), publication: publication},
-		{name: "deleted aggregate", aggregate: func() TestTaskAggregate { value := created; value.Task.DeletedAt = 1; return value }(), publication: publication},
-		{name: "blank publication id", aggregate: created, publication: func() TestTaskVersionPublication { value := publication; value.ID = " "; return value }()},
-		{name: "duplicate publication id", aggregate: created, publication: func() TestTaskVersionPublication { value := publication; value.ID = created.Current.ID; return value }()},
-		{name: "revision overflow", aggregate: func() TestTaskAggregate {
+		{name: "invalid aggregate", aggregate: func() ExecutionFlowAggregate { value := created; value.Task.ID = " "; return value }(), publication: publication},
+		{name: "deleted aggregate", aggregate: func() ExecutionFlowAggregate { value := created; value.Task.DeletedAt = 1; return value }(), publication: publication},
+		{name: "blank publication id", aggregate: created, publication: func() ExecutionFlowVersionPublication { value := publication; value.ID = " "; return value }()},
+		{name: "duplicate publication id", aggregate: created, publication: func() ExecutionFlowVersionPublication {
+			value := publication
+			value.ID = created.Current.ID
+			return value
+		}()},
+		{name: "revision overflow", aggregate: func() ExecutionFlowAggregate {
 			value := created
 			value.Task.Revision = Revision(math.MaxUint64)
 			return value
 		}(), publication: publication},
-		{name: "invalid published version", aggregate: created, publication: func() TestTaskVersionPublication { value := publication; value.FailurePolicy = "UNKNOWN"; return value }()},
+		{name: "invalid published version", aggregate: created, publication: func() ExecutionFlowVersionPublication {
+			value := publication
+			value.FailurePolicy = "UNKNOWN"
+			return value
+		}()},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -356,8 +364,8 @@ func TestTestTaskLifecyclePublicFailureMatrix(t *testing.T) {
 	}
 	invalidInitial := plan.Version
 	invalidInitial.FailurePolicy = "UNKNOWN"
-	if _, err := NewTestTask(plan.Task, invalidInitial); err == nil {
-		t.Fatal("NewTestTask accepted invalid initial version")
+	if _, err := NewExecutionFlow(plan.Task, invalidInitial); err == nil {
+		t.Fatal("NewExecutionFlow accepted invalid initial version")
 	}
 }
 
@@ -376,13 +384,13 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 	}
 
 	workflowWithoutCurrent := versionedWorkflowAggregate()
-	workflowWithoutCurrent.Workflow.CurrentVersionID = ""
-	workflowWithoutCurrent.Current = WorkflowVersion{}
-	workflowWithoutCurrent.Versions = []WorkflowVersion{{ID: "v1", WorkflowID: "other", VersionNumber: 1, DeletedAt: 1}}
+	workflowWithoutCurrent.FlowFragment.CurrentVersionID = ""
+	workflowWithoutCurrent.Current = FlowFragmentVersion{}
+	workflowWithoutCurrent.Versions = []FlowFragmentVersion{{ID: "v1", FlowFragmentID: "other", VersionNumber: 1, DeletedAt: 1}}
 	if err := workflowWithoutCurrent.ValidateLoadedHistory(); err == nil {
 		t.Fatal("cross-workflow history accepted")
 	}
-	workflowWithoutCurrent.Versions[0].WorkflowID = workflowWithoutCurrent.Workflow.ID
+	workflowWithoutCurrent.Versions[0].FlowFragmentID = workflowWithoutCurrent.FlowFragment.ID
 	workflowWithoutCurrent.Versions[0].DeletedAt = 0
 	if err := workflowWithoutCurrent.ValidateLoadedHistory(); err == nil {
 		t.Fatal("available workflow version without current pointer accepted")
@@ -402,12 +410,12 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 
 	workflow := versionedWorkflowAggregate()
 	overflowRevisionWorkflow := workflow
-	overflowRevisionWorkflow.Workflow.Revision = Revision(math.MaxUint64)
+	overflowRevisionWorkflow.FlowFragment.Revision = Revision(math.MaxUint64)
 	if _, err := overflowRevisionWorkflow.PublishVersion("workflow-v3", workflow.Current.Definition, 3); err == nil {
 		t.Fatal("workflow publication revision overflow accepted")
 	}
 	overflowVersionWorkflow := workflow
-	overflowVersionWorkflow.Versions = append([]WorkflowVersion(nil), workflow.Versions...)
+	overflowVersionWorkflow.Versions = append([]FlowFragmentVersion(nil), workflow.Versions...)
 	overflowVersionWorkflow.Versions[0].VersionNumber = math.MaxInt
 	if _, err := overflowVersionWorkflow.PublishVersion("workflow-v3", workflow.Current.Definition, 3); !errors.Is(err, ErrVersionNumberOverflow) {
 		t.Fatalf("workflow publication version overflow error = %v", err)

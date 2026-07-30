@@ -69,7 +69,7 @@ func samplingCreatePublication() SamplingPublication {
 	node.Current = versionedNodeVersion("node-v1", "node", 1, 0)
 	node.Versions = []NodeVersion{node.Current}
 	return SamplingPublication{
-		Workflow: versionedWorkflowAggregate(),
+		FlowFragment: versionedWorkflowAggregate(),
 		Nodes: []SamplingNodePublication{{
 			TemporaryNodeID: "temporary",
 			ResolutionMode:  "CREATE",
@@ -163,14 +163,14 @@ func TestNodeDependencyIdentitySeparatesAmbiguousPairs(t *testing.T) {
 }
 
 func TestSamplingPublicationCloneOwnsNestedAggregates(t *testing.T) {
-	publication := SamplingPublication{Workflow: versionedWorkflowAggregate(), Nodes: []SamplingNodePublication{{TemporaryNodeID: "temporary", Aggregate: versionedNodeAggregate()}}}
+	publication := SamplingPublication{FlowFragment: versionedWorkflowAggregate(), Nodes: []SamplingNodePublication{{TemporaryNodeID: "temporary", Aggregate: versionedNodeAggregate()}}}
 	clone := publication.Clone()
 
-	clone.Workflow.Current.Definition.Steps[0].DisplayName = "changed"
+	clone.FlowFragment.Current.Definition.Steps[0].DisplayName = "changed"
 	clone.Nodes[0].Aggregate.Current.Selectors[0].Value = "changed"
 	clone.Nodes[0].Aggregate.Current.Fingerprint.Attributes["role"] = "changed"
 
-	if publication.Workflow.Current.Definition.Steps[0].DisplayName == "changed" || publication.Nodes[0].Aggregate.Current.Selectors[0].Value == "changed" || publication.Nodes[0].Aggregate.Current.Fingerprint.Attributes["role"] == "changed" {
+	if publication.FlowFragment.Current.Definition.Steps[0].DisplayName == "changed" || publication.Nodes[0].Aggregate.Current.Selectors[0].Value == "changed" || publication.Nodes[0].Aggregate.Current.Fingerprint.Attributes["role"] == "changed" {
 		t.Fatal("Clone() shares nested publication state")
 	}
 }

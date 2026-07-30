@@ -101,7 +101,7 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testing.T) {
 	newRequest := func() SamplingPublicationRequest {
 		return SamplingPublicationRequest{
-			WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
+			FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
 			Workspace: sampledWorkflow(sampling.SamplingResolutionCreate),
 			Nodes:     []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "node", NodeVersionID: "node-v1"}},
 		}
@@ -111,7 +111,7 @@ func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testi
 		mutate func(*SamplingPublicationRequest)
 		want   string
 	}{
-		{name: "missing request identity", mutate: func(request *SamplingPublicationRequest) { request.WorkflowID = "" }, want: "requires workflow identity"},
+		{name: "missing request identity", mutate: func(request *SamplingPublicationRequest) { request.FlowFragmentID = "" }, want: "requires workflow identity"},
 		{name: "incomplete authority", mutate: func(request *SamplingPublicationRequest) { request.Nodes[0].NodeID = "" }, want: "requires temporary and formal identity"},
 		{name: "duplicate temporary authority", mutate: func(request *SamplingPublicationRequest) {
 			request.Nodes = append(request.Nodes, SamplingNodeAuthority{TemporaryNodeID: "temporary-node", NodeID: "other", NodeVersionID: "other-v1"})

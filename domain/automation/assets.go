@@ -291,27 +291,27 @@ const (
 	StepAction          StepKind = "ACTION"
 	StepWait            StepKind = "WAIT"
 	StepRepeat          StepKind = "REPEAT"
-	StepWorkflowRef     StepKind = "WORKFLOW_REF"
+	StepFlowFragmentRef StepKind = "WORKFLOW_REF"
 	StepValidation      StepKind = "VALIDATION"
 	StepValidationGroup StepKind = "VALIDATION_GROUP"
 )
 
-type WorkflowReference struct {
-	WorkflowID        string
+type FlowFragmentReference struct {
+	FlowFragmentID    string
 	WorkflowVersionID string
 	LatestPublished   bool
 	ParameterBindings map[string]parameter.Binding
 }
 
-type WorkflowStep struct {
+type FlowFragmentStep struct {
 	ID          string
 	DisplayName string
 	Kind        StepKind
-	// CaptureScreenshot 属于不可变的 WorkflowVersion 定义。它仅表达用户的意图；浏览器捕获和文件输出保留在主机执行基础设施中。
+	// CaptureScreenshot 属于不可变的 FlowFragmentVersion 定义。它仅表达用户的意图；浏览器捕获和文件输出保留在主机执行基础设施中。
 	CaptureScreenshot bool
 	Action            string
 	NodeID            string
-	// NodeVersionID 是不可变的 WorkflowVersion 定义的一部分。  它故意位于 NodeID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
+	// NodeVersionID 是不可变的 FlowFragmentVersion 定义的一部分。  它故意位于 NodeID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
 	NodeVersionID string
 	// Value and Values are ordinary literal/interpolated workflow input.
 	Value       string
@@ -324,16 +324,16 @@ type WorkflowStep struct {
 	Validation *ValidationConfig
 	// 仅当 Kind 为 StepValidationGroup 时才会填充 ValidationGroup。其分支是一级OR；每个分支都包含与 AND 组合的验证步骤。
 	ValidationGroup *ValidationGroup
-	Reference       *WorkflowReference
-	Children        []WorkflowStep
+	Reference       *FlowFragmentReference
+	Children        []FlowFragmentStep
 }
 
-type WorkflowDefinition struct {
-	Steps      []WorkflowStep
+type FlowFragmentContent struct {
+	Steps      []FlowFragmentStep
 	Parameters []ParameterDefinition
 }
 
-type Workflow struct {
+type FlowFragment struct {
 	ID               string
 	DisplayName      string
 	Properties       Properties
@@ -345,27 +345,27 @@ type Workflow struct {
 	Revision         Revision
 }
 
-type WorkflowVersion struct {
-	ID            string
-	WorkflowID    string
-	VersionNumber int
-	Definition    WorkflowDefinition
-	CreatedAt     int64
-	DeletedAt     int64
-	RunUsageCount int
+type FlowFragmentVersion struct {
+	ID             string
+	FlowFragmentID string
+	VersionNumber  int
+	Definition     FlowFragmentContent
+	CreatedAt      int64
+	DeletedAt      int64
+	RunUsageCount  int
 }
 
-type WorkflowAggregate struct {
-	Workflow Workflow
-	Current  WorkflowVersion
-	Versions []WorkflowVersion
+type FlowFragmentAggregate struct {
+	FlowFragment FlowFragment
+	Current      FlowFragmentVersion
+	Versions     []FlowFragmentVersion
 }
 
 // ValidateFor 验证从运行快照中选择的确切不可变版本。它故意不声明所选的历史版本仍然是稳定资产的当前版本。
-func (v WorkflowVersion) ValidateFor(workflow Workflow) error {
+func (v FlowFragmentVersion) ValidateFor(workflow FlowFragment) error {
 	selected := workflow
 	selected.CurrentVersionID = v.ID
-	return (WorkflowAggregate{Workflow: selected, Current: v}).Validate()
+	return (FlowFragmentAggregate{FlowFragment: selected, Current: v}).Validate()
 }
 
 const (
@@ -374,11 +374,11 @@ const (
 )
 
 type workflowStepFrame struct {
-	steps []WorkflowStep
+	steps []FlowFragmentStep
 	depth int
 }
 
-func validateWorkflowStepBounds(steps []WorkflowStep) error {
+func validateWorkflowStepBounds(steps []FlowFragmentStep) error {
 	stack := []workflowStepFrame{{steps: steps, depth: 1}}
 	count := 0
 	for len(stack) > 0 {
@@ -400,24 +400,24 @@ func validateWorkflowStepBounds(steps []WorkflowStep) error {
 	return nil
 }
 
-func (a WorkflowAggregate) Validate() error {
+func (a FlowFragmentAggregate) Validate() error {
 	var problems []string
 	if err := validateWorkflowStepBounds(a.Current.Definition.Steps); err != nil {
 		return err
 	}
-	if strings.TrimSpace(a.Workflow.ID) == "" {
+	if strings.TrimSpace(a.FlowFragment.ID) == "" {
 		problems = append(problems, "workflow id is required")
 	}
-	if strings.TrimSpace(a.Workflow.DisplayName) == "" {
+	if strings.TrimSpace(a.FlowFragment.DisplayName) == "" {
 		problems = append(problems, "display name is required")
 	}
-	if err := a.Workflow.Properties.Validate(); err != nil {
+	if err := a.FlowFragment.Properties.Validate(); err != nil {
 		problems = append(problems, err.Error())
 	}
-	if a.Current.WorkflowID != a.Workflow.ID || strings.TrimSpace(a.Current.ID) == "" {
+	if a.Current.FlowFragmentID != a.FlowFragment.ID || strings.TrimSpace(a.Current.ID) == "" {
 		problems = append(problems, "workflow version must belong to workflow")
 	}
-	if a.Workflow.CurrentVersionID != a.Current.ID {
+	if a.FlowFragment.CurrentVersionID != a.Current.ID {
 		problems = append(problems, "workflow current version pointer must match current version")
 	}
 	if a.Current.VersionNumber < 1 {
@@ -427,8 +427,8 @@ func (a WorkflowAggregate) Validate() error {
 	if len(a.Current.Definition.Steps) == 0 {
 		problems = append(problems, "workflow requires at least one step")
 	}
-	var validateSteps func([]WorkflowStep, bool)
-	validateSteps = func(steps []WorkflowStep, root bool) {
+	var validateSteps func([]FlowFragmentStep, bool)
+	validateSteps = func(steps []FlowFragmentStep, root bool) {
 		for _, step := range steps {
 			if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.DisplayName) == "" {
 				problems = append(problems, "step id and display name are required")
@@ -507,7 +507,7 @@ func (a WorkflowAggregate) Validate() error {
 					problems = append(problems, fmt.Sprintf("step %q repeat requires count and children", step.DisplayName))
 				}
 				validateSteps(step.Children, false)
-			case StepWorkflowRef:
+			case StepFlowFragmentRef:
 				if step.Validation != nil || step.ValidationGroup != nil {
 					problems = append(problems, fmt.Sprintf("step %q WORKFLOW_REF cannot carry validation configuration", step.DisplayName))
 				}
@@ -516,7 +516,7 @@ func (a WorkflowAggregate) Validate() error {
 					step.RepeatCount != 0 || len(step.Children) != 0 {
 					problems = append(problems, fmt.Sprintf("step %q WORKFLOW_REF contains unsupported step configuration", step.DisplayName))
 				}
-				if step.Reference == nil || strings.TrimSpace(step.Reference.WorkflowID) == "" {
+				if step.Reference == nil || strings.TrimSpace(step.Reference.FlowFragmentID) == "" {
 					problems = append(problems, fmt.Sprintf("step %q requires a workflow reference", step.DisplayName))
 				} else if step.Reference.LatestPublished && strings.TrimSpace(step.Reference.WorkflowVersionID) != "" {
 					problems = append(problems, fmt.Sprintf("step %q latest workflow reference cannot persist a version", step.DisplayName))
@@ -567,16 +567,16 @@ func supportedAction(action string) bool {
 	}
 }
 
-type WorkflowVersionPolicy string
+type FlowFragmentVersionPolicy string
 
 const (
-	WorkflowVersionFixed  WorkflowVersionPolicy = "FIXED"
-	WorkflowVersionLatest WorkflowVersionPolicy = "LATEST"
+	FlowFragmentVersionFixed  FlowFragmentVersionPolicy = "FIXED"
+	FlowFragmentVersionLatest FlowFragmentVersionPolicy = "LATEST"
 )
 
-func (p WorkflowVersionPolicy) Validate() error {
+func (p FlowFragmentVersionPolicy) Validate() error {
 	switch p {
-	case WorkflowVersionFixed, WorkflowVersionLatest:
+	case FlowFragmentVersionFixed, FlowFragmentVersionLatest:
 		return nil
 	default:
 		return fmt.Errorf("unsupported workflow version policy %q", p)

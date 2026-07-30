@@ -55,13 +55,13 @@ func TestReferenceValidateConfigurationMatrix(t *testing.T) {
 		step      Step
 		want      string
 	}{
-		{name: "minimal reference", reference: &Reference{WorkflowID: "workflow"}, step: Step{DisplayName: "call"}},
-		{name: "parent binding is resolved later", reference: &Reference{WorkflowID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("parent")}}, step: Step{DisplayName: "call"}},
+		{name: "minimal reference", reference: &Reference{FlowFragmentID: "workflow"}, step: Step{DisplayName: "call"}},
+		{name: "parent binding is resolved later", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("parent")}}, step: Step{DisplayName: "call"}},
 		{name: "nil reference", step: Step{DisplayName: "call"}, want: "requires a workflow reference"},
 		{name: "blank workflow", reference: &Reference{}, step: Step{DisplayName: "call"}, want: "requires a workflow reference"},
-		{name: "unsupported residual configuration", reference: &Reference{WorkflowID: "workflow"}, step: Step{DisplayName: "call", Action: "click"}, want: "unsupported step configuration"},
-		{name: "blank binding name", reference: &Reference{WorkflowID: "workflow", ParameterBindings: map[string]parameter.Binding{" ": literal}}, step: Step{DisplayName: "call"}, want: "empty parameter binding"},
-		{name: "invalid binding kind", reference: &Reference{WorkflowID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": {}}}, step: Step{DisplayName: "call"}, want: "unsupported parameter binding kind"},
+		{name: "unsupported residual configuration", reference: &Reference{FlowFragmentID: "workflow"}, step: Step{DisplayName: "call", Action: "click"}, want: "unsupported step configuration"},
+		{name: "blank binding name", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{" ": literal}}, step: Step{DisplayName: "call"}, want: "empty parameter binding"},
+		{name: "invalid binding kind", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": {}}}, step: Step{DisplayName: "call"}, want: "unsupported parameter binding kind"},
 	}
 
 	for _, test := range tests {

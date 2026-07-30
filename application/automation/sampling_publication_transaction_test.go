@@ -28,8 +28,8 @@ func samplingOutcomeFor(t testing.TB, command SamplingPublicationCommand, status
 	return PublishSamplingOutcome{
 		Status: status, PublicationID: command.PublicationID, RequestDigest: digest,
 		Result: domain.SamplingPublicationResult{
-			WorkflowID: publication.Workflow.Workflow.ID, WorkflowVersionID: publication.Workflow.Current.ID,
-			VersionNumber: publication.Workflow.Current.VersionNumber, Nodes: mappings,
+			FlowFragmentID: publication.FlowFragment.FlowFragment.ID, WorkflowVersionID: publication.FlowFragment.Current.ID,
+			VersionNumber: publication.FlowFragment.Current.VersionNumber, Nodes: mappings,
 		},
 	}
 }
@@ -42,7 +42,7 @@ func TestSamplingPublicationRequestDigestIsDeterministicAndBoundarySensitive(t *
 		t.Fatalf("digests = %q %q, %v %v", first, second, err, secondErr)
 	}
 	changed := command
-	changed.Publication.Workflow.Workflow.DisplayName = "changed"
+	changed.Publication.FlowFragment.FlowFragment.DisplayName = "changed"
 	other, err := SamplingPublicationRequestDigest(changed)
 	if err != nil || other == first {
 		t.Fatalf("changed digest = %q, %v", other, err)
@@ -66,12 +66,12 @@ func TestSamplingPublicationServiceKeepsPrivateValidationSnapshot(t *testing.T) 
 	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 	outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
 	transaction := &samplingRepositoryFake{outcome: outcome, mutate: func(intent *PublishSamplingIntent) {
-		intent.Publication.Workflow.Workflow.ID = "mutated"
-		intent.Publication.Workflow.Workflow.Properties["mutated"] = "yes"
+		intent.Publication.FlowFragment.FlowFragment.ID = "mutated"
+		intent.Publication.FlowFragment.FlowFragment.Properties["mutated"] = "yes"
 	}}
 	result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
-	if err != nil || result.WorkflowID != "workflow" || command.Publication.Workflow.Workflow.ID != "workflow" {
-		t.Fatalf("publish = %#v, %v; command=%#v", result, err, command.Publication.Workflow.Workflow)
+	if err != nil || result.FlowFragmentID != "workflow" || command.Publication.FlowFragment.FlowFragment.ID != "workflow" {
+		t.Fatalf("publish = %#v, %v; command=%#v", result, err, command.Publication.FlowFragment.FlowFragment)
 	}
 }
 
@@ -84,7 +84,7 @@ func TestSamplingPublicationServiceRejectsMalformedOutcome(t *testing.T) {
 		{name: "status", mutate: func(outcome *PublishSamplingOutcome) { outcome.Status = "UNKNOWN" }},
 		{name: "publication", mutate: func(outcome *PublishSamplingOutcome) { outcome.PublicationID = "other" }},
 		{name: "digest", mutate: func(outcome *PublishSamplingOutcome) { outcome.RequestDigest = "sha256:" + strings.Repeat("0", 64) }},
-		{name: "workflow", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.WorkflowID = "other" }},
+		{name: "workflow", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.FlowFragmentID = "other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -121,7 +121,7 @@ func TestSamplingPublicationServiceReturnsOwnedMappings(t *testing.T) {
 }
 
 func TestSamplingPublicationServiceReplaysForceCreateBeforeAuthorization(t *testing.T) {
-	publication, err := MapSamplingPublication(SamplingPublicationRequest{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
+	publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestSamplingPublicationServiceReplaysForceCreateBeforeAuthorization(t *test
 }
 
 func TestSamplingPublicationServiceRequiresVerifiedForceCreateAuthorization(t *testing.T) {
-	publication, err := MapSamplingPublication(SamplingPublicationRequest{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
+	publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}

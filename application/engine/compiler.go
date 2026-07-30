@@ -41,7 +41,7 @@ type CompiledEntry struct {
 	ExecutionID       string
 	TestTaskItemID    string
 	SequenceNumber    int
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	Metadata          map[string]StepMetadata
 	RuntimeNodes      map[string]RuntimeNodeIdentity
@@ -178,7 +178,7 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		compiledEntry := CompiledEntry{
 			RunID: snapshot.RunID(), SnapshotDigest: snapshot.Digest(),
 			ExecutionID: entry.ExecutionID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
-			WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID,
+			FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID,
 			program:  node.Program{Root: root, Specs: compiler.programSpecs},
 			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
 			identity: compiledExecutionIdentity{runID: snapshot.RunID(), snapshotDigest: snapshot.Digest(), executionID: entry.ExecutionID},
@@ -255,7 +255,7 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath, scopeP
 			var children []node.Node
 			children, err = c.compileSteps(parentVersionID, invocationPath, scopePath, step.Children, path, depth)
 			compiled = &node.RepeatNode{NodeID: runtimeID, Times: step.RepeatCount, Children: children}
-		case execution.WorkflowReference:
+		case execution.FlowFragmentReference:
 			compiled, err = c.compileWorkflowCall(parentVersionID, invocationPath, scopePath, runtimeID, step, depth)
 		default:
 			err = fmt.Errorf("step %s has unsupported kind %q", step.ID, step.Kind)
@@ -368,12 +368,12 @@ func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath,
 	if !ok {
 		return nil, fmt.Errorf("workflow reference step %s resolved version %s is missing", step.ID, resolution.WorkflowVersionID)
 	}
-	childWorkflowID := childDependency.WorkflowID
+	childWorkflowID := childDependency.FlowFragmentID
 	if childDependency.ID != "" {
 		childWorkflowID = childDependency.ID
 	}
-	if childWorkflowID != step.Reference.WorkflowID || resolution.WorkflowID != step.Reference.WorkflowID {
-		return nil, fmt.Errorf("workflow reference step %s resolution does not match workflow %s", step.ID, step.Reference.WorkflowID)
+	if childWorkflowID != step.Reference.FlowFragmentID || resolution.FlowFragmentID != step.Reference.FlowFragmentID {
+		return nil, fmt.Errorf("workflow reference step %s resolution does not match workflow %s", step.ID, step.Reference.FlowFragmentID)
 	}
 	childPath := invocationPath + encodeRuntimeComponent(step.ID) + encodeRuntimeComponent(resolution.WorkflowVersionID)
 	concrete, exists := c.invocations[execution.InvocationEdgeKey{ParentPath: scopePath, StepID: step.ID}]

@@ -64,16 +64,16 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 
 	t.Run("workflow", func(t *testing.T) {
 		base := versionedWorkflowAggregate()
-		base.Workflow.UpdatedAt = 10
-		base.Workflow.CreatedAt = 10
+		base.FlowFragment.UpdatedAt = 10
+		base.FlowFragment.CreatedAt = 10
 		base.Current.CreatedAt = 10
 		base.Versions[0].CreatedAt = 10
 		invalid := base
-		invalid.Workflow.CurrentVersionID = "missing"
+		invalid.FlowFragment.CurrentVersionID = "missing"
 		if _, err := invalid.Delete(10); err == nil {
 			t.Fatal("invalid history accepted by Delete")
 		}
-		assertLifecycleTimeBoundaries(t, base.Workflow.UpdatedAt, func(at int64) error {
+		assertLifecycleTimeBoundaries(t, base.FlowFragment.UpdatedAt, func(at int64) error {
 			_, err := base.Delete(at)
 			return err
 		})
@@ -81,7 +81,7 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		deleted.Workflow.CurrentVersionID = "missing"
+		deleted.FlowFragment.CurrentVersionID = "missing"
 		if _, err := deleted.Restore(11); err == nil {
 			t.Fatal("invalid history accepted by Restore")
 		}
@@ -170,11 +170,11 @@ func TestNodeLifecycleRejectsInvalidTransitions(t *testing.T) {
 
 func TestWorkflowLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	base := versionedWorkflowAggregate()
-	base.Workflow.UpdatedAt = base.Workflow.CreatedAt
-	base.Current.CreatedAt = base.Workflow.CreatedAt
-	created, err := NewWorkflow(base.Workflow, base.Current)
+	base.FlowFragment.UpdatedAt = base.FlowFragment.CreatedAt
+	base.Current.CreatedAt = base.FlowFragment.CreatedAt
+	created, err := NewFlowFragment(base.FlowFragment, base.Current)
 	if err != nil {
-		t.Fatalf("NewWorkflow: %v", err)
+		t.Fatalf("NewFlowFragment: %v", err)
 	}
 	updated, err := created.UpdateMetadata("新流程", "folder", Properties{"owner": "team"}, 2)
 	if err != nil {
@@ -188,10 +188,10 @@ func TestWorkflowLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if created.Workflow.Revision != 1 || updated.Workflow.Revision != 2 || deleted.Workflow.Revision != 3 || restored.Workflow.Revision != 4 {
+	if created.FlowFragment.Revision != 1 || updated.FlowFragment.Revision != 2 || deleted.FlowFragment.Revision != 3 || restored.FlowFragment.Revision != 4 {
 		t.Fatalf("unexpected workflow revisions")
 	}
-	if created.Workflow.DisplayName == updated.Workflow.DisplayName || restored.Workflow.DeletedAt != 0 {
+	if created.FlowFragment.DisplayName == updated.FlowFragment.DisplayName || restored.FlowFragment.DeletedAt != 0 {
 		t.Fatalf("workflow lifecycle mutated receiver or failed restore")
 	}
 }
@@ -204,7 +204,7 @@ func TestWorkflowLifecycleRejectsInvalidTransitions(t *testing.T) {
 	if _, err := base.Restore(2); err == nil {
 		t.Fatal("active workflow restore accepted")
 	}
-	base.Workflow.Revision = Revision(math.MaxUint64)
+	base.FlowFragment.Revision = Revision(math.MaxUint64)
 	if _, err := base.Delete(3); err == nil {
 		t.Fatal("revision overflow accepted")
 	}
@@ -214,9 +214,9 @@ func TestNewTestTaskCreatesValidImmutableAggregate(t *testing.T) {
 	plan := validTestTaskVersionPlan()
 	plan.Task.CurrentVersionID = "ignored"
 	plan.Task.Revision = 99
-	created, err := NewTestTask(plan.Task, plan.Version)
+	created, err := NewExecutionFlow(plan.Task, plan.Version)
 	if err != nil {
-		t.Fatalf("NewTestTask: %v", err)
+		t.Fatalf("NewExecutionFlow: %v", err)
 	}
 	if err := created.Validate(); err != nil {
 		t.Fatalf("created aggregate invalid: %v", err)
@@ -232,11 +232,11 @@ func TestNewTestTaskCreatesValidImmutableAggregate(t *testing.T) {
 
 func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.T) {
 	plan := validTestTaskVersionPlan()
-	created, err := NewTestTask(plan.Task, plan.Version)
+	created, err := NewExecutionFlow(plan.Task, plan.Version)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publication := TestTaskVersionPublication{
+	publication := ExecutionFlowVersionPublication{
 		ID:                      "task-v2",
 		Items:                   cloneTestTaskVersion(plan.Version).Items,
 		FailurePolicy:           plan.Version.FailurePolicy,
@@ -250,7 +250,7 @@ func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.
 	}
 	publication.Items[0].Parameters["key"] = parameter.TextValue("mutated")
 	if published.Task.Revision != 2 || published.Task.CurrentVersionID != "task-v2" ||
-		published.Current.TestTaskID != "task" || published.Current.VersionNumber != 2 ||
+		published.Current.ExecutionFlowID != "task" || published.Current.VersionNumber != 2 ||
 		published.Current.SourceVersionID != "task-v1" ||
 		published.Current.Items[0].TestTaskVersionID != "task-v2" ||
 		published.Current.Items[0].SequenceNumber != 1 {
@@ -267,7 +267,7 @@ func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.
 func TestNewTestTaskRejectsInvalidCreation(t *testing.T) {
 	plan := validTestTaskVersionPlan()
 	plan.Version.CreatedAt = 2
-	if _, err := NewTestTask(plan.Task, plan.Version); err == nil || !strings.Contains(err.Error(), "timestamps") {
+	if _, err := NewExecutionFlow(plan.Task, plan.Version); err == nil || !strings.Contains(err.Error(), "timestamps") {
 		t.Fatalf("creation error = %v", err)
 	}
 }
@@ -354,7 +354,7 @@ func TestTestTaskVersionPlanUsesRevisionForPublicationConcurrency(t *testing.T) 
 	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "expected revision") {
 		t.Fatalf("missing expected revision error = %v", err)
 	}
-	plan.ExpectedTaskRevision = 1
+	plan.ExpectedExecutionFlowRevision = 1
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("revision-backed publication rejected: %v", err)
 	}

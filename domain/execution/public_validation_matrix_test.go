@@ -60,7 +60,7 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		{name: "workflow version identity missing", build: base, mutate: func(value *Draft) { value.Workflows[0].VersionID = " " }, want: "empty version id"},
 		{name: "duplicate workflow version", build: base, mutate: func(value *Draft) { value.Workflows = append(value.Workflows, value.Workflows[0]) }, want: "duplicate workflow version"},
 		{name: "entry workflow missing", build: base, mutate: func(value *Draft) { value.Entries[0].WorkflowVersionID = "missing" }, want: "entry workflow version"},
-		{name: "entry workflow owner mismatch", build: base, mutate: func(value *Draft) { value.Entries[0].WorkflowID = "other" }, want: "belongs to workflow"},
+		{name: "entry workflow owner mismatch", build: base, mutate: func(value *Draft) { value.Entries[0].FlowFragmentID = "other" }, want: "belongs to workflow"},
 		{name: "parameterless workflow carries snapshot", build: base, mutate: func(value *Draft) { value.Entries[0].Parameters.ID = "scope" }, want: "requires an empty parameter snapshot"},
 		{name: "parameter snapshot identity invalid", build: func() Draft { return validRunSnapshotInput(t).Plan }, mutate: func(value *Draft) { value.Entries[0].Parameters.ID = " " }, want: "parameter snapshot identity"},
 		{name: "node identity missing", build: base, mutate: func(value *Draft) { value.Nodes[0].NodeID = " " }, want: "node dependency requires"},
@@ -69,13 +69,13 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		}, want: "owned by different nodes"},
 		{name: "duplicate node dependency", build: base, mutate: func(value *Draft) { value.Nodes = append(value.Nodes, value.Nodes[0]) }, want: "duplicate node dependency"},
 		{name: "duplicate workflow resolution", build: base, mutate: func(value *Draft) {
-			resolution := ReferenceResolution{ParentVersionID: "workflow-v1", StepID: "unused", WorkflowID: "child", WorkflowVersionID: "child-v1"}
+			resolution := ReferenceResolution{ParentVersionID: "workflow-v1", StepID: "unused", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}
 			value.References = []ReferenceResolution{resolution, resolution}
 		}, want: "duplicate workflow resolution"},
 		{name: "unowned workflow resolutions are sorted", build: base, mutate: func(value *Draft) {
 			value.References = []ReferenceResolution{
-				{ParentVersionID: "workflow-v1", StepID: "z", WorkflowID: "child", WorkflowVersionID: "child-v1"},
-				{ParentVersionID: "workflow-v1", StepID: "a", WorkflowID: "child", WorkflowVersionID: "child-v1"},
+				{ParentVersionID: "workflow-v1", StepID: "z", FlowFragmentID: "child", WorkflowVersionID: "child-v1"},
+				{ParentVersionID: "workflow-v1", StepID: "a", FlowFragmentID: "child", WorkflowVersionID: "child-v1"},
 			}
 		}, want: "does not belong to a reference step"},
 	}
@@ -121,7 +121,7 @@ func TestRunConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
+	base := Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
 	mismatch := base
 	mismatch.ID = "other"
 	if _, err := NewRun(mismatch, snapshot); err == nil || !strings.Contains(err.Error(), "identity must match") {

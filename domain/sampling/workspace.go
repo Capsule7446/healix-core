@@ -94,7 +94,7 @@ type TemporarySamplingWorkflow struct {
 	ValidationCapturedActionIDs []string
 	Status                      SamplingWorkflowStatus
 	ErrorMessage                string
-	Steps                       []automation.WorkflowStep
+	Steps                       []automation.FlowFragmentStep
 	Parameters                  []automation.ParameterDefinition
 	Nodes                       []TemporarySamplingNode
 	SavedWorkflowID             string
@@ -111,8 +111,8 @@ func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	for _, node := range workflow.Nodes {
 		stepIDsByNode[node.ID] = nil
 	}
-	var walk func([]automation.WorkflowStep) error
-	walk = func(steps []automation.WorkflowStep) error {
+	var walk func([]automation.FlowFragmentStep) error
+	walk = func(steps []automation.FlowFragmentStep) error {
 		for _, step := range steps {
 			if step.NodeID != "" {
 				stepIDs, ok := stepIDsByNode[step.NodeID]

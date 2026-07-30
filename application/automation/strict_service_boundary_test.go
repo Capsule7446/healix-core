@@ -23,7 +23,7 @@ func TestAggregateServicesRejectMissingRepositoriesWithoutPanicking(t *testing.T
 			return err
 		}},
 		{"test task", func() error {
-			_, err := NewTestTaskService(nil).PublishVersion(context.Background(), "task", 1, domain.TestTaskVersionPublication{ID: "v2"})
+			_, err := NewTestTaskService(nil).PublishVersion(context.Background(), "task", 1, domain.ExecutionFlowVersionPublication{ID: "v2"})
 			return err
 		}},
 	}

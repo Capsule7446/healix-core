@@ -147,89 +147,91 @@ func (a NodeAggregate) setDeleted(deleted bool, at int64) (NodeAggregate, error)
 	return n, nil
 }
 
-func NewWorkflow(workflow Workflow, initial WorkflowVersion) (WorkflowAggregate, error) {
+func NewFlowFragment(workflow FlowFragment, initial FlowFragmentVersion) (FlowFragmentAggregate, error) {
 	workflow.Revision = 1
 	workflow.CurrentVersionID = initial.ID
-	initial.WorkflowID = workflow.ID
+	initial.FlowFragmentID = workflow.ID
 	initial.VersionNumber = 1
 	if workflow.CreatedAt <= 0 || workflow.UpdatedAt != workflow.CreatedAt || initial.CreatedAt != workflow.CreatedAt {
-		return WorkflowAggregate{}, errors.New("workflow creation timestamps must be positive and equal")
+		return FlowFragmentAggregate{}, errors.New("workflow creation timestamps must be positive and equal")
 	}
-	a := cloneWorkflowAggregate(WorkflowAggregate{Workflow: workflow, Current: initial, Versions: []WorkflowVersion{initial}})
+	a := cloneWorkflowAggregate(FlowFragmentAggregate{FlowFragment: workflow, Current: initial, Versions: []FlowFragmentVersion{initial}})
 	if err := a.ValidateLoadedHistory(); err != nil {
-		return WorkflowAggregate{}, err
+		return FlowFragmentAggregate{}, err
 	}
 	return a, nil
 }
-func (a WorkflowAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (WorkflowAggregate, error) {
-	if a.Workflow.DeletedAt != 0 {
-		return WorkflowAggregate{}, ErrDeletedAggregate
+func (a FlowFragmentAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (FlowFragmentAggregate, error) {
+	if a.FlowFragment.DeletedAt != 0 {
+		return FlowFragmentAggregate{}, ErrDeletedAggregate
 	}
-	if err := validateTransitionTime(at, a.Workflow.UpdatedAt); err != nil {
-		return WorkflowAggregate{}, err
+	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
+		return FlowFragmentAggregate{}, err
 	}
-	r, err := a.Workflow.Revision.Next()
+	r, err := a.FlowFragment.Revision.Next()
 	if err != nil {
-		return WorkflowAggregate{}, err
+		return FlowFragmentAggregate{}, err
 	}
 	n := cloneWorkflowAggregate(a)
-	n.Workflow.DisplayName = displayName
-	n.Workflow.FolderID = folderID
-	n.Workflow.Properties = properties.Clone()
-	n.Workflow.UpdatedAt = at
-	n.Workflow.Revision = r
+	n.FlowFragment.DisplayName = displayName
+	n.FlowFragment.FolderID = folderID
+	n.FlowFragment.Properties = properties.Clone()
+	n.FlowFragment.UpdatedAt = at
+	n.FlowFragment.Revision = r
 	if err := n.ValidateLoadedHistory(); err != nil {
-		return WorkflowAggregate{}, err
+		return FlowFragmentAggregate{}, err
 	}
 	return n, nil
 }
-func (a WorkflowAggregate) Delete(at int64) (WorkflowAggregate, error) { return a.setDeleted(true, at) }
-func (a WorkflowAggregate) Restore(at int64) (WorkflowAggregate, error) {
+func (a FlowFragmentAggregate) Delete(at int64) (FlowFragmentAggregate, error) {
+	return a.setDeleted(true, at)
+}
+func (a FlowFragmentAggregate) Restore(at int64) (FlowFragmentAggregate, error) {
 	return a.setDeleted(false, at)
 }
-func (a WorkflowAggregate) setDeleted(deleted bool, at int64) (WorkflowAggregate, error) {
-	if (a.Workflow.DeletedAt != 0) == deleted {
-		return WorkflowAggregate{}, errors.New("workflow lifecycle transition is a no-op")
+func (a FlowFragmentAggregate) setDeleted(deleted bool, at int64) (FlowFragmentAggregate, error) {
+	if (a.FlowFragment.DeletedAt != 0) == deleted {
+		return FlowFragmentAggregate{}, errors.New("workflow lifecycle transition is a no-op")
 	}
-	if err := validateTransitionTime(at, a.Workflow.UpdatedAt); err != nil {
-		return WorkflowAggregate{}, err
+	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
+		return FlowFragmentAggregate{}, err
 	}
-	r, err := a.Workflow.Revision.Next()
+	r, err := a.FlowFragment.Revision.Next()
 	if err != nil {
-		return WorkflowAggregate{}, err
+		return FlowFragmentAggregate{}, err
 	}
 	n := cloneWorkflowAggregate(a)
-	n.Workflow.DeletedAt = 0
+	n.FlowFragment.DeletedAt = 0
 	if deleted {
-		n.Workflow.DeletedAt = at
+		n.FlowFragment.DeletedAt = at
 	}
-	n.Workflow.UpdatedAt = at
-	n.Workflow.Revision = r
+	n.FlowFragment.UpdatedAt = at
+	n.FlowFragment.Revision = r
 	if err := n.ValidateLoadedHistory(); err != nil {
-		return WorkflowAggregate{}, err
+		return FlowFragmentAggregate{}, err
 	}
 	return n, nil
 }
 
-func (a TestTaskAggregate) PublishVersion(publication TestTaskVersionPublication) (TestTaskAggregate, error) {
+func (a ExecutionFlowAggregate) PublishVersion(publication ExecutionFlowVersionPublication) (ExecutionFlowAggregate, error) {
 	if err := a.Validate(); err != nil {
-		return TestTaskAggregate{}, err
+		return ExecutionFlowAggregate{}, err
 	}
 	if a.Task.DeletedAt != 0 {
-		return TestTaskAggregate{}, ErrDeletedAggregate
+		return ExecutionFlowAggregate{}, ErrDeletedAggregate
 	}
 	if strings.TrimSpace(publication.ID) == "" || publication.CreatedAt <= 0 || publication.CreatedAt < a.Task.UpdatedAt {
-		return TestTaskAggregate{}, errors.New("test task publication requires a new version identity and monotonic timestamp")
+		return ExecutionFlowAggregate{}, errors.New("test task publication requires a new version identity and monotonic timestamp")
 	}
 	for _, existing := range a.Versions {
 		if existing.ID == publication.ID {
-			return TestTaskAggregate{}, errors.New("test task version id already exists")
+			return ExecutionFlowAggregate{}, errors.New("test task version id already exists")
 		}
 	}
 	next := cloneTestTaskAggregate(a)
-	version := cloneTestTaskVersion(TestTaskVersion{
+	version := cloneTestTaskVersion(ExecutionFlowVersion{
 		ID:                      publication.ID,
-		TestTaskID:              a.Task.ID,
+		ExecutionFlowID:         a.Task.ID,
 		VersionNumber:           len(a.Versions) + 1,
 		SourceVersionID:         a.Current.ID,
 		Items:                   publication.Items,
@@ -243,7 +245,7 @@ func (a TestTaskAggregate) PublishVersion(publication TestTaskVersionPublication
 	}
 	nextRevision, err := a.Task.Revision.Next()
 	if err != nil {
-		return TestTaskAggregate{}, err
+		return ExecutionFlowAggregate{}, err
 	}
 	next.Task.CurrentVersionID = version.ID
 	next.Task.UpdatedAt = version.CreatedAt
@@ -251,23 +253,23 @@ func (a TestTaskAggregate) PublishVersion(publication TestTaskVersionPublication
 	next.Current = cloneTestTaskVersion(version)
 	next.Versions = append(next.Versions, cloneTestTaskVersion(version))
 	if err := next.Validate(); err != nil {
-		return TestTaskAggregate{}, err
+		return ExecutionFlowAggregate{}, err
 	}
 	return next, nil
 }
 
-func NewTestTask(task TestTask, initial TestTaskVersion) (TestTaskAggregate, error) {
+func NewExecutionFlow(task ExecutionFlow, initial ExecutionFlowVersion) (ExecutionFlowAggregate, error) {
 	task.Revision = 1
 	task.CurrentVersionID = initial.ID
-	initial.TestTaskID = task.ID
+	initial.ExecutionFlowID = task.ID
 	initial.VersionNumber = 1
 	initial.SourceVersionID = ""
 	if task.CreatedAt <= 0 || task.UpdatedAt != task.CreatedAt || initial.CreatedAt != task.CreatedAt {
-		return TestTaskAggregate{}, errors.New("test task creation timestamps must be positive and equal")
+		return ExecutionFlowAggregate{}, errors.New("test task creation timestamps must be positive and equal")
 	}
-	aggregate := cloneTestTaskAggregate(TestTaskAggregate{Task: task, Current: initial, Versions: []TestTaskVersion{initial}})
+	aggregate := cloneTestTaskAggregate(ExecutionFlowAggregate{Task: task, Current: initial, Versions: []ExecutionFlowVersion{initial}})
 	if err := aggregate.Validate(); err != nil {
-		return TestTaskAggregate{}, err
+		return ExecutionFlowAggregate{}, err
 	}
 	return aggregate, nil
 }
@@ -276,20 +278,20 @@ func revisionError(kind, id string, err error) error {
 	return fmt.Errorf("%s %s revision: %w", kind, id, err)
 }
 
-func cloneTestTaskAggregate(aggregate TestTaskAggregate) TestTaskAggregate {
+func cloneTestTaskAggregate(aggregate ExecutionFlowAggregate) ExecutionFlowAggregate {
 	cloned := aggregate
 	cloned.Current = cloneTestTaskVersion(aggregate.Current)
-	cloned.Versions = make([]TestTaskVersion, len(aggregate.Versions))
+	cloned.Versions = make([]ExecutionFlowVersion, len(aggregate.Versions))
 	for index, version := range aggregate.Versions {
 		cloned.Versions[index] = cloneTestTaskVersion(version)
 	}
 	return cloned
 }
 
-func cloneTestTaskVersion(version TestTaskVersion) TestTaskVersion {
+func cloneTestTaskVersion(version ExecutionFlowVersion) ExecutionFlowVersion {
 	cloned := version
 	cloned.RequiredEnvironmentKeys = append([]string(nil), version.RequiredEnvironmentKeys...)
-	cloned.Items = make([]TestTaskItem, len(version.Items))
+	cloned.Items = make([]ExecutionFlowItem, len(version.Items))
 	for index, item := range version.Items {
 		cloned.Items[index] = item
 		cloned.Items[index].Parameters = cloneParameterValues(item.Parameters)

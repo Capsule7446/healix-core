@@ -224,8 +224,8 @@ func validatePublishSamplingOutcome(command SamplingPublicationCommand, digest s
 	if outcome.PublicationID != command.PublicationID || outcome.RequestDigest != digest {
 		return errors.New("outcome identity does not match request")
 	}
-	workflow := command.Publication.Workflow
-	if outcome.Result.WorkflowID != workflow.Workflow.ID || outcome.Result.WorkflowVersionID != workflow.Current.ID || outcome.Result.VersionNumber != workflow.Current.VersionNumber {
+	workflow := command.Publication.FlowFragment
+	if outcome.Result.FlowFragmentID != workflow.FlowFragment.ID || outcome.Result.WorkflowVersionID != workflow.Current.ID || outcome.Result.VersionNumber != workflow.Current.VersionNumber {
 		return errors.New("outcome workflow does not match publication")
 	}
 	if len(outcome.Result.Nodes) != len(command.Publication.Nodes) {

@@ -13,7 +13,7 @@ import (
 type CreateRunCommand struct {
 	CommandID         string
 	RunID             string
-	TestTaskID        string
+	ExecutionFlowID   string
 	TestTaskVersionID string
 	EnvironmentID     string
 	Entries           map[string]map[string]parameter.Value
@@ -25,7 +25,7 @@ type CreateRunCommand struct {
 
 // ResolvedCreateRun contains only assets read from one consistent catalog view.
 type ResolvedCreateRun struct {
-	Plan        automation.TestTaskVersionPlan
+	Plan        automation.ResolvedExecutionFlow
 	Environment automation.Environment
 	Invocations []execution.InvocationScopeSnapshot
 }

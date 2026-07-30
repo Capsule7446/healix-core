@@ -55,19 +55,19 @@ type TestTaskSnapshot struct {
 	CurrentVersionID string
 }
 
-type TestTaskVersionItemSnapshot struct {
+type ExecutionFlowVersionItemSnapshot struct {
 	ID                string
 	TestTaskVersionID string
 	SequenceNumber    int
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 }
 
-type TestTaskVersionSnapshot struct {
-	ID            string
-	TestTaskID    string
-	VersionNumber int
-	Items         []TestTaskVersionItemSnapshot
+type ExecutionFlowVersionSnapshot struct {
+	ID              string
+	ExecutionFlowID string
+	VersionNumber   int
+	Items           []ExecutionFlowVersionItemSnapshot
 }
 
 type InvocationEdgeKey struct {
@@ -80,7 +80,7 @@ type InvocationScopeSnapshot struct {
 	ParentPath         string
 	ParentVersionID    string
 	StepID             string
-	WorkflowID         string
+	FlowFragmentID     string
 	WorkflowVersionID  string
 	ResolvedFromLatest bool
 	Values             map[string]parameter.Value
@@ -88,17 +88,17 @@ type InvocationScopeSnapshot struct {
 }
 
 type RunSnapshotInput struct {
-	SchemaVersion                        RunSnapshotSchema
-	RunID, TestTaskID, TestTaskVersionID string
-	TestTaskVersionNumber                int
-	TestTask                             TestTaskSnapshot
-	TestTaskVersion                      TestTaskVersionSnapshot
-	Plan                                 Draft
-	Invocations                          []InvocationScopeSnapshot
-	Environment                          EnvironmentSnapshot
-	FailurePolicy                        FailurePolicy
-	ScreenshotPolicy                     ScreenshotPolicySnapshot
-	HealerPolicy                         HealerPolicySnapshot
+	SchemaVersion                             RunSnapshotSchema
+	RunID, ExecutionFlowID, TestTaskVersionID string
+	TestTaskVersionNumber                     int
+	ExecutionFlow                             TestTaskSnapshot
+	ExecutionFlowVersion                      ExecutionFlowVersionSnapshot
+	Plan                                      Draft
+	Invocations                               []InvocationScopeSnapshot
+	Environment                               EnvironmentSnapshot
+	FailurePolicy                             FailurePolicy
+	ScreenshotPolicy                          ScreenshotPolicySnapshot
+	HealerPolicy                              HealerPolicySnapshot
 }
 
 type RunSnapshot struct {
@@ -109,7 +109,7 @@ type RunSnapshot struct {
 func (s RunSnapshot) Digest() string                   { return s.digest }
 func (s RunSnapshot) SchemaVersion() RunSnapshotSchema { return s.input.SchemaVersion }
 func (s RunSnapshot) RunID() string                    { return s.input.RunID }
-func (s RunSnapshot) TestTaskID() string               { return s.input.TestTaskID }
+func (s RunSnapshot) ExecutionFlowID() string          { return s.input.ExecutionFlowID }
 func (s RunSnapshot) TestTaskVersionID() string        { return s.input.TestTaskVersionID }
 func (s RunSnapshot) Input() RunSnapshotInput          { return cloneSnapshotInput(s.input) }
 func (s RunSnapshot) Plan() Draft                      { return cloneDraft(s.input.Plan) }
@@ -165,7 +165,7 @@ func cloneSnapshotInput(v RunSnapshotInput) RunSnapshotInput {
 	v.Plan = cloneDraft(v.Plan)
 	v.Invocations = cloneInvocations(v.Invocations)
 	v.Environment = cloneEnvironment(v.Environment)
-	v.TestTaskVersion.Items = append([]TestTaskVersionItemSnapshot(nil), v.TestTaskVersion.Items...)
+	v.ExecutionFlowVersion.Items = append([]ExecutionFlowVersionItemSnapshot(nil), v.ExecutionFlowVersion.Items...)
 	return v
 }
 func cloneEnvironment(v EnvironmentSnapshot) EnvironmentSnapshot {
@@ -317,10 +317,10 @@ func validString(v string, required bool) bool {
 	return (!required || strings.TrimSpace(v) != "") && len(v) <= MaxSnapshotStringBytes
 }
 
-func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersionItemSnapshot, entries []WorkflowEntry) error {
-	itemsByID := make(map[string]TestTaskVersionItemSnapshot, len(items))
+func validateTestTaskVersionItemEntries(versionID string, items []ExecutionFlowVersionItemSnapshot, entries []WorkflowEntry) error {
+	itemsByID := make(map[string]ExecutionFlowVersionItemSnapshot, len(items))
 	for index, item := range items {
-		if !validString(item.ID, true) || item.TestTaskVersionID != versionID || item.SequenceNumber != index+1 || !validString(item.WorkflowID, true) || !validString(item.WorkflowVersionID, true) {
+		if !validString(item.ID, true) || item.TestTaskVersionID != versionID || item.SequenceNumber != index+1 || !validString(item.FlowFragmentID, true) || !validString(item.WorkflowVersionID, true) {
 			return errors.New("test-task version item graph is inconsistent")
 		}
 		if _, exists := itemsByID[item.ID]; exists {
@@ -341,7 +341,7 @@ func validateTestTaskVersionItemEntries(versionID string, items []TestTaskVersio
 		if !found {
 			return errors.New("test-task item execution entry is missing")
 		}
-		if entry.SequenceNumber != item.SequenceNumber || entry.WorkflowID != item.WorkflowID || entry.WorkflowVersionID != item.WorkflowVersionID {
+		if entry.SequenceNumber != item.SequenceNumber || entry.FlowFragmentID != item.FlowFragmentID || entry.WorkflowVersionID != item.WorkflowVersionID {
 			return errors.New("test-task item and execution entry identity mismatch")
 		}
 	}
@@ -404,15 +404,15 @@ func validateSnapshot(v RunSnapshotInput) error {
 	if v.SchemaVersion != RunSnapshotSchemaV1 && v.SchemaVersion != RunSnapshotSchemaV2 {
 		return fmt.Errorf("unsupported run snapshot schema %d", v.SchemaVersion)
 	}
-	if !validString(v.RunID, true) || !validString(v.TestTaskID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
+	if !validString(v.RunID, true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
 		return errors.New("run and test-task version identity is required")
 	}
-	if v.TestTask.ID != v.TestTaskID || v.TestTask.CurrentVersionID != v.TestTaskVersionID ||
-		v.TestTaskVersion.ID != v.TestTaskVersionID || v.TestTaskVersion.TestTaskID != v.TestTaskID ||
-		v.TestTaskVersion.VersionNumber != v.TestTaskVersionNumber {
+	if v.ExecutionFlow.ID != v.ExecutionFlowID || v.ExecutionFlow.CurrentVersionID != v.TestTaskVersionID ||
+		v.ExecutionFlowVersion.ID != v.TestTaskVersionID || v.ExecutionFlowVersion.ExecutionFlowID != v.ExecutionFlowID ||
+		v.ExecutionFlowVersion.VersionNumber != v.TestTaskVersionNumber {
 		return errors.New("test-task snapshot graph identity is inconsistent")
 	}
-	if err := validateTestTaskVersionItemEntries(v.TestTaskVersionID, v.TestTaskVersion.Items, v.Plan.Entries); err != nil {
+	if err := validateTestTaskVersionItemEntries(v.TestTaskVersionID, v.ExecutionFlowVersion.Items, v.Plan.Entries); err != nil {
 		return err
 	}
 	if v.Plan.RunID != v.RunID || v.Plan.FailurePolicy != v.FailurePolicy {
@@ -427,7 +427,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 	}
 	paths := make(map[string]InvocationScopeSnapshot, len(v.Invocations))
 	for _, invocation := range v.Invocations {
-		if !validString(invocation.Path, true) || !validString(invocation.WorkflowID, true) || !validString(invocation.WorkflowVersionID, true) {
+		if !validString(invocation.Path, true) || !validString(invocation.FlowFragmentID, true) || !validString(invocation.WorkflowVersionID, true) {
 			return errors.New("invocation identity is invalid")
 		}
 		if _, exists := paths[invocation.Path]; exists {
@@ -471,7 +471,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 				return errors.New("root invocation cannot identify a reference edge")
 			}
 			entry, exists := indexes.entriesByID[invocation.Path]
-			if !exists || entry.WorkflowID != invocation.WorkflowID || entry.WorkflowVersionID != invocation.WorkflowVersionID || !equalValues(entry.Parameters.Values, invocation.Values) {
+			if !exists || entry.FlowFragmentID != invocation.FlowFragmentID || entry.WorkflowVersionID != invocation.WorkflowVersionID || !equalValues(entry.Parameters.Values, invocation.Values) {
 				return errors.New("root invocation and execution entry scope diverge")
 			}
 		} else {
@@ -486,7 +486,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 			key := referenceEdgeKey{ParentVersionID: invocation.ParentVersionID, StepID: invocation.StepID}
 			resolution, exists := indexes.referenceByEdge[key]
 			step, stepExists := indexes.referenceSteps[key]
-			if !exists || !stepExists || step.Reference == nil || parent.WorkflowVersionID != invocation.ParentVersionID || resolution.WorkflowID != invocation.WorkflowID || resolution.WorkflowVersionID != invocation.WorkflowVersionID || resolution.ResolvedFromLatest != invocation.ResolvedFromLatest {
+			if !exists || !stepExists || step.Reference == nil || parent.WorkflowVersionID != invocation.ParentVersionID || resolution.FlowFragmentID != invocation.FlowFragmentID || resolution.WorkflowVersionID != invocation.WorkflowVersionID || resolution.ResolvedFromLatest != invocation.ResolvedFromLatest {
 				return errors.New("invocation reference edge is inconsistent")
 			}
 			resolvedValues := make(map[string]parameter.Value, len(invocation.Bindings))
@@ -590,7 +590,7 @@ func equalBindings(left, right map[string]parameter.Binding) bool {
 func workflowReferenceSteps(steps []Step) []Step {
 	var result []Step
 	for _, step := range steps {
-		if step.Kind == WorkflowReference {
+		if step.Kind == FlowFragmentReference {
 			result = append(result, step)
 		}
 		result = append(result, workflowReferenceSteps(step.Children)...)
@@ -704,20 +704,20 @@ func encodeSnapshot(e *canonicalEncoder, v RunSnapshotInput) {
 	e.str("healix.run-snapshot")
 	e.u64(uint64(v.SchemaVersion))
 	e.str(v.RunID)
-	e.str(v.TestTaskID)
+	e.str(v.ExecutionFlowID)
 	e.str(v.TestTaskVersionID)
 	e.u64(uint64(v.TestTaskVersionNumber))
-	e.str(v.TestTask.ID)
-	e.str(v.TestTask.CurrentVersionID)
-	e.str(v.TestTaskVersion.ID)
-	e.str(v.TestTaskVersion.TestTaskID)
-	e.u64(uint64(v.TestTaskVersion.VersionNumber))
-	e.u64(uint64(len(v.TestTaskVersion.Items)))
-	for _, item := range v.TestTaskVersion.Items {
+	e.str(v.ExecutionFlow.ID)
+	e.str(v.ExecutionFlow.CurrentVersionID)
+	e.str(v.ExecutionFlowVersion.ID)
+	e.str(v.ExecutionFlowVersion.ExecutionFlowID)
+	e.u64(uint64(v.ExecutionFlowVersion.VersionNumber))
+	e.u64(uint64(len(v.ExecutionFlowVersion.Items)))
+	for _, item := range v.ExecutionFlowVersion.Items {
 		e.str(item.ID)
 		e.str(item.TestTaskVersionID)
 		e.u64(uint64(item.SequenceNumber))
-		e.str(item.WorkflowID)
+		e.str(item.FlowFragmentID)
 		e.str(item.WorkflowVersionID)
 	}
 	encodeCanonical(e, reflect.ValueOf(v.Plan))

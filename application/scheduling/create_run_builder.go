@@ -19,11 +19,11 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 	if err := validateCreateRunCommand(command); err != nil {
 		return execution.RunSnapshot{}, err
 	}
-	if resolved.Plan.Task.ID != command.TestTaskID || resolved.Plan.Version.ID != command.TestTaskVersionID || resolved.Environment.ID != command.EnvironmentID {
+	if resolved.Plan.Task.ID != command.ExecutionFlowID || resolved.Plan.Version.ID != command.TestTaskVersionID || resolved.Environment.ID != command.EnvironmentID {
 		return execution.RunSnapshot{}, errors.New("resolved catalog assets do not match command selectors")
 	}
 	entries := make([]executionEntryInput, len(resolved.Plan.Version.Items))
-	items := make([]execution.TestTaskVersionItemSnapshot, len(resolved.Plan.Version.Items))
+	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(resolved.Plan.Version.Items))
 	for index, item := range resolved.Plan.Version.Items {
 		values, exists := command.Entries[item.ID]
 		if !exists {
@@ -44,8 +44,8 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		if len(resolvedRoot.Values) > 0 {
 			parameterSnapshot = parameterSnapshotInput{IsPresent: true, ID: executionID + "/scope", SchemaVersion: 1, Values: cloneParameterValues(resolvedRoot.Values)}
 		}
-		entries[index] = executionEntryInput{ExecutionID: executionID, TestTaskItemID: item.ID, SequenceNumber: item.SequenceNumber, WorkflowID: item.WorkflowID, WorkflowVersionID: resolvedWorkflowVersion(item, resolved.Plan), ParameterSnapshot: parameterSnapshot}
-		items[index] = execution.TestTaskVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, WorkflowID: item.WorkflowID, WorkflowVersionID: entries[index].WorkflowVersionID}
+		entries[index] = executionEntryInput{ExecutionID: executionID, TestTaskItemID: item.ID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: resolvedWorkflowVersion(item, resolved.Plan), ParameterSnapshot: parameterSnapshot}
+		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: entries[index].WorkflowVersionID}
 	}
 	if len(command.Entries) != len(entries) {
 		return execution.RunSnapshot{}, errors.New("command contains unknown test-task item values")
@@ -56,7 +56,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 	}
 	draft.FailurePolicy = command.FailurePolicy
 	invocations := cloneInvocationScopes(resolved.Invocations)
-	input := execution.RunSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, RunID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, TestTask: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID, CurrentVersionID: resolved.Plan.Task.CurrentVersionID}, TestTaskVersion: execution.TestTaskVersionSnapshot{ID: resolved.Plan.Version.ID, TestTaskID: resolved.Plan.Version.TestTaskID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
+	input := execution.RunSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, RunID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID, CurrentVersionID: resolved.Plan.Task.CurrentVersionID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
 	return execution.SealRunSnapshot(input)
 }
 
@@ -141,11 +141,11 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 	if err := budget.addElements(len(resolved.Plan.Workflows) + len(resolved.Plan.Nodes) + len(resolved.Plan.References) + len(resolved.Invocations) + len(resolved.Environment.Variables)); err != nil {
 		return invalid(err.Error())
 	}
-	if err := addStrings(resolved.Plan.Task.ID, resolved.Plan.Task.DisplayName, resolved.Plan.Task.CurrentVersionID, resolved.Plan.Version.ID, resolved.Plan.Version.TestTaskID, resolved.Environment.ID, resolved.Environment.DisplayName, resolved.Environment.BaseURL); err != nil {
+	if err := addStrings(resolved.Plan.Task.ID, resolved.Plan.Task.DisplayName, resolved.Plan.Task.CurrentVersionID, resolved.Plan.Version.ID, resolved.Plan.Version.ExecutionFlowID, resolved.Environment.ID, resolved.Environment.DisplayName, resolved.Environment.BaseURL); err != nil {
 		return err
 	}
 	for _, item := range resolved.Plan.Version.Items {
-		if err := addStrings(item.ID, item.TestTaskVersionID, item.WorkflowID, item.WorkflowVersionID); err != nil {
+		if err := addStrings(item.ID, item.TestTaskVersionID, item.FlowFragmentID, item.WorkflowVersionID); err != nil {
 			return err
 		}
 		if err := addResolvedValuesBudget(&budget, item.Parameters); err != nil {
@@ -153,8 +153,8 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 		}
 	}
 	steps := 0
-	var walk func([]automation.WorkflowStep, int) error
-	walk = func(items []automation.WorkflowStep, depth int) error {
+	var walk func([]automation.FlowFragmentStep, int) error
+	walk = func(items []automation.FlowFragmentStep, depth int) error {
 		if depth > execution.MaxStepNestingDepth {
 			return invalid("step depth exceeded")
 		}
@@ -176,7 +176,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 				return err
 			}
 			if step.Reference != nil {
-				if err := addStrings(step.Reference.WorkflowID, step.Reference.WorkflowVersionID); err != nil {
+				if err := addStrings(step.Reference.FlowFragmentID, step.Reference.WorkflowVersionID); err != nil {
 					return err
 				}
 				if err := addResolvedBindingsBudget(&budget, step.Reference.ParameterBindings); err != nil {
@@ -220,13 +220,13 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 		return nil
 	}
 	for _, workflow := range resolved.Plan.Workflows {
-		if err := addStrings(workflow.Workflow.ID, workflow.Workflow.DisplayName, workflow.Workflow.FolderID, workflow.Workflow.CurrentVersionID, workflow.Version.ID, workflow.Version.WorkflowID); err != nil {
+		if err := addStrings(workflow.FlowFragment.ID, workflow.FlowFragment.DisplayName, workflow.FlowFragment.FolderID, workflow.FlowFragment.CurrentVersionID, workflow.Version.ID, workflow.Version.FlowFragmentID); err != nil {
 			return err
 		}
-		if err := budget.addElements(len(workflow.Workflow.Properties)); err != nil {
+		if err := budget.addElements(len(workflow.FlowFragment.Properties)); err != nil {
 			return invalid(err.Error())
 		}
-		for key, value := range workflow.Workflow.Properties {
+		for key, value := range workflow.FlowFragment.Properties {
 			if err := addStrings(key, value); err != nil {
 				return err
 			}
@@ -282,7 +282,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 		}
 	}
 	for _, reference := range resolved.Plan.References {
-		if err := addStrings(reference.ParentWorkflowVersionID, reference.StepID, reference.WorkflowID, reference.WorkflowVersionID); err != nil {
+		if err := addStrings(reference.ParentFlowFragmentVersionID, reference.StepID, reference.FlowFragmentID, reference.WorkflowVersionID); err != nil {
 			return err
 		}
 	}
@@ -301,7 +301,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 		}
 	}
 	for _, invocation := range resolved.Invocations {
-		if err := addStrings(invocation.Path, invocation.ParentPath, invocation.ParentVersionID, invocation.StepID, invocation.WorkflowID, invocation.WorkflowVersionID); err != nil {
+		if err := addStrings(invocation.Path, invocation.ParentPath, invocation.ParentVersionID, invocation.StepID, invocation.FlowFragmentID, invocation.WorkflowVersionID); err != nil {
 			return err
 		}
 		if err := addResolvedValuesBudget(&budget, invocation.Values); err != nil {
@@ -318,12 +318,12 @@ func concreteRootPath(runID, itemID string) string {
 	return fmt.Sprintf("%d:%s%d:%s", len(runID), runID, len(itemID), itemID)
 }
 
-func resolvedWorkflowVersion(item automation.TestTaskItem, plan automation.TestTaskVersionPlan) string {
-	if item.VersionPolicy == automation.WorkflowVersionFixed {
+func resolvedWorkflowVersion(item automation.ExecutionFlowItem, plan automation.ResolvedExecutionFlow) string {
+	if item.VersionPolicy == automation.FlowFragmentVersionFixed {
 		return item.WorkflowVersionID
 	}
 	for _, dependency := range plan.Workflows {
-		if dependency.Workflow.ID == item.WorkflowID && dependency.ResolvedFromLatest {
+		if dependency.FlowFragment.ID == item.FlowFragmentID && dependency.ResolvedFromLatest {
 			return dependency.Version.ID
 		}
 	}
@@ -358,7 +358,7 @@ func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
 			resultErr = errors.Join(ErrInvalidCreateRunCommand, resultErr)
 		}
 	}()
-	for name, value := range map[string]string{"command id": command.CommandID, "run id": command.RunID, "test-task id": command.TestTaskID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {
+	for name, value := range map[string]string{"command id": command.CommandID, "run id": command.RunID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {
 		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
 			return fmt.Errorf("%s is required and must be normalized", name)
 		}
@@ -387,7 +387,7 @@ func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
 	return nil
 }
 
-func validateSuppliedRootValues(values map[string]parameter.Value, versionID string, plan automation.TestTaskVersionPlan) error {
+func validateSuppliedRootValues(values map[string]parameter.Value, versionID string, plan automation.ResolvedExecutionFlow) error {
 	definitions := map[string]automation.ParameterDefinition{}
 	for _, workflow := range plan.Workflows {
 		if workflow.Version.ID == versionID {
@@ -409,7 +409,7 @@ func validateSuppliedRootValues(values map[string]parameter.Value, versionID str
 	return nil
 }
 
-func validateResolvedRootValues(values map[string]parameter.Value, invocation execution.InvocationScopeSnapshot, plan automation.TestTaskVersionPlan) error {
+func validateResolvedRootValues(values map[string]parameter.Value, invocation execution.InvocationScopeSnapshot, plan automation.ResolvedExecutionFlow) error {
 	for _, workflow := range plan.Workflows {
 		if workflow.Version.ID != invocation.WorkflowVersionID {
 			continue

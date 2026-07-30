@@ -68,13 +68,13 @@ func Run(t *testing.T, factory Factory) {
 		}
 		changed = intent
 		changed.Publication = intent.Publication.Clone()
-		changed.Publication.Workflow.Workflow.DisplayName = "changed payload"
+		changed.Publication.FlowFragment.FlowFragment.DisplayName = "changed payload"
 		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
 			t.Fatalf("payload digest mismatch error = %v", err)
 		}
 		changed = intent
 		changed.Publication = intent.Publication.Clone()
-		changed.Publication.Workflow.Workflow.DisplayName = "different valid payload"
+		changed.Publication.FlowFragment.FlowFragment.DisplayName = "different valid payload"
 		command := application.SamplingPublicationCommand{PublicationID: changed.PublicationID, ForceCreateAuthorization: changed.ForceCreateAuthorization, Publication: changed.Publication}
 		changed.RequestDigest, err = application.SamplingPublicationRequestDigest(command)
 		if err != nil {
@@ -251,5 +251,5 @@ func Result(publication domain.SamplingPublication) domain.SamplingPublicationRe
 	for index, node := range publication.Nodes {
 		mappings[index] = domain.SamplingNodeMapping{TemporaryNodeID: node.TemporaryNodeID, NodeID: node.Aggregate.Node.ID, NodeVersionID: node.Aggregate.Current.ID, ResolutionMode: node.ResolutionMode}
 	}
-	return domain.SamplingPublicationResult{WorkflowID: publication.Workflow.Workflow.ID, WorkflowVersionID: publication.Workflow.Current.ID, VersionNumber: publication.Workflow.Current.VersionNumber, Nodes: mappings}
+	return domain.SamplingPublicationResult{FlowFragmentID: publication.FlowFragment.FlowFragment.ID, WorkflowVersionID: publication.FlowFragment.Current.ID, VersionNumber: publication.FlowFragment.Current.VersionNumber, Nodes: mappings}
 }

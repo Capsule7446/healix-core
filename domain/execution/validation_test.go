@@ -37,7 +37,7 @@ func TestWorkflowSnapshotValidateRejectsMalformedExecutionContracts(t *testing.T
 			w.Steps[0] = Step{ID: "wait", DisplayName: "wait", Kind: WaitStep, WaitMS: 1, Optional: true}
 		}, "only ACTION can be optional"},
 		{"reference shape", func(w *WorkflowSnapshot) {
-			w.Steps[0] = Step{ID: "ref", DisplayName: "ref", Kind: WorkflowReference, Reference: &Reference{}}
+			w.Steps[0] = Step{ID: "ref", DisplayName: "ref", Kind: FlowFragmentReference, Reference: &Reference{}}
 		}, "requires a workflow reference"},
 		{"validation assertion", func(w *WorkflowSnapshot) { w.Steps[0] = standaloneValidation("unknown", 1000, 200) }, "unsupported validation kind"},
 		{"validation wait bound", func(w *WorkflowSnapshot) { w.Steps[0] = standaloneValidation("visible", 999, 200) }, "maximum wait"},
@@ -151,15 +151,15 @@ func TestPlanSealState(t *testing.T) {
 
 func TestSealRejectsBlankAndMismatchedFixedWorkflowVersions(t *testing.T) {
 	child := validWorkflowSnapshot()
-	child.WorkflowID, child.ID, child.VersionID = "child", "child", "child-v1"
+	child.FlowFragmentID, child.ID, child.VersionID = "child", "child", "child-v1"
 	for _, test := range []struct{ name, fixed, resolved, want string }{
 		{"blank", "", "child-v1", "exact workflow version"},
 		{"mismatch", "child-v2", "child-v1", "disagrees"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := validWorkflowSnapshot()
-			root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: WorkflowReference, Reference: &Reference{WorkflowID: "child", WorkflowVersionID: test.fixed}}}
-			_, err := Seal(Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: root.WorkflowID, WorkflowVersionID: root.VersionID}}, Workflows: []WorkflowSnapshot{root, child}, References: []ReferenceResolution{{ParentVersionID: root.VersionID, StepID: "call", WorkflowID: "child", WorkflowVersionID: test.resolved}}})
+			root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: test.fixed}}}
+			_, err := Seal(Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: root.FlowFragmentID, WorkflowVersionID: root.VersionID}}, Workflows: []WorkflowSnapshot{root, child}, References: []ReferenceResolution{{ParentVersionID: root.VersionID, StepID: "call", FlowFragmentID: "child", WorkflowVersionID: test.resolved}}})
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("Seal() error = %v, want %q", err, test.want)
 			}
@@ -216,7 +216,7 @@ func TestSealedPlanAccessorsAndNestedCopies(t *testing.T) {
 		{ID: "repeat", DisplayName: "Repeat", Kind: RepeatStep, RepeatCount: 1, Children: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitMS: 1}}, Values: nil},
 		{ID: "group", DisplayName: "Group", Kind: ValidationGroupStep, ValidationGroup: &ValidationGroup{MaxWaitMS: 1000, StabilityMS: 200, Branches: []ValidationBranch{{ID: "ok", Name: "OK", Steps: []Step{member}}}}},
 	}
-	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: workflow.WorkflowID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: []NodeSnapshot{node}}
+	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: []NodeSnapshot{node}}
 	plan, err := Seal(draft)
 	if err != nil {
 		t.Fatal(err)
@@ -260,18 +260,18 @@ func TestValidationValidateBranches(t *testing.T) {
 }
 
 func TestDraftValidateAggregatesReferencedWorkflowBudgetAcrossCallsAndRepeats(t *testing.T) {
-	child := WorkflowSnapshot{ID: "child", WorkflowID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1,
+	child := WorkflowSnapshot{ID: "child", FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1,
 		Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: MaxWaitMS}}}
 	ref := func(id string) Step {
-		return Step{ID: id, DisplayName: id, Kind: WorkflowReference, Reference: &Reference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}
+		return Step{ID: id, DisplayName: id, Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}
 	}
-	root := WorkflowSnapshot{ID: "root", WorkflowID: "root", VersionID: "root-v1", DisplayName: "Root", VersionNumber: 1,
+	root := WorkflowSnapshot{ID: "root", FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "Root", VersionNumber: 1,
 		Steps: []Step{{ID: "outer", DisplayName: "Outer", Kind: RepeatStep, RepeatCount: 1000, Children: []Step{
 			{ID: "inner", DisplayName: "Inner", Kind: RepeatStep, RepeatCount: 2, Children: []Step{ref("first"), ref("second")}},
 		}}}}
-	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: root.WorkflowID, WorkflowVersionID: root.VersionID}}, Workflows: []WorkflowSnapshot{root, child}, References: []ReferenceResolution{
-		{ParentVersionID: root.VersionID, StepID: "first", WorkflowID: "child", WorkflowVersionID: child.VersionID},
-		{ParentVersionID: root.VersionID, StepID: "second", WorkflowID: "child", WorkflowVersionID: child.VersionID},
+	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: root.FlowFragmentID, WorkflowVersionID: root.VersionID}}, Workflows: []WorkflowSnapshot{root, child}, References: []ReferenceResolution{
+		{ParentVersionID: root.VersionID, StepID: "first", FlowFragmentID: "child", WorkflowVersionID: child.VersionID},
+		{ParentVersionID: root.VersionID, StepID: "second", FlowFragmentID: "child", WorkflowVersionID: child.VersionID},
 	}}
 	if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), "cumulative wait") {
 		t.Fatalf("Validate() error = %v, want aggregate wait budget error", err)
@@ -296,12 +296,12 @@ func TestExecutionBudgetCountsValidationBranchWork(t *testing.T) {
 
 func TestExecutionBudgetMemoizesSharedDiamondAndChargesEveryCallSite(t *testing.T) {
 	ref := func(id, workflowID, versionID string) Step {
-		return Step{ID: id, DisplayName: id, Kind: WorkflowReference, Reference: &Reference{WorkflowID: workflowID, WorkflowVersionID: versionID}}
+		return Step{ID: id, DisplayName: id, Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: workflowID, WorkflowVersionID: versionID}}
 	}
-	leaf := WorkflowSnapshot{WorkflowID: "leaf", VersionID: "leaf-v1", Steps: []Step{{ID: "wait", Kind: WaitStep, WaitMS: 10}}}
-	left := WorkflowSnapshot{WorkflowID: "left", VersionID: "left-v1", Steps: []Step{ref("left-leaf", "leaf", leaf.VersionID)}}
-	right := WorkflowSnapshot{WorkflowID: "right", VersionID: "right-v1", Steps: []Step{ref("right-leaf", "leaf", leaf.VersionID)}}
-	root := WorkflowSnapshot{WorkflowID: "root", VersionID: "root-v1", Steps: []Step{ref("root-left", "left", left.VersionID), ref("root-right", "right", right.VersionID)}}
+	leaf := WorkflowSnapshot{FlowFragmentID: "leaf", VersionID: "leaf-v1", Steps: []Step{{ID: "wait", Kind: WaitStep, WaitMS: 10}}}
+	left := WorkflowSnapshot{FlowFragmentID: "left", VersionID: "left-v1", Steps: []Step{ref("left-leaf", "leaf", leaf.VersionID)}}
+	right := WorkflowSnapshot{FlowFragmentID: "right", VersionID: "right-v1", Steps: []Step{ref("right-leaf", "leaf", leaf.VersionID)}}
+	root := WorkflowSnapshot{FlowFragmentID: "root", VersionID: "root-v1", Steps: []Step{ref("root-left", "left", left.VersionID), ref("root-right", "right", right.VersionID)}}
 	workflows := map[string]WorkflowSnapshot{root.VersionID: root, left.VersionID: left, right.VersionID: right, leaf.VersionID: leaf}
 	resolutions := map[WorkflowReferenceKey]ReferenceResolution{
 		{ParentVersionID: root.VersionID, StepID: "root-left"}:   {WorkflowVersionID: left.VersionID},
@@ -330,12 +330,12 @@ func TestExecutionBudgetSharedDiamondGrowthIsLinear(t *testing.T) {
 	workflows := make(map[string]WorkflowSnapshot, levels+1)
 	resolutions := make(map[WorkflowReferenceKey]ReferenceResolution, levels*2)
 	leafVersion := "v30"
-	workflows[leafVersion] = WorkflowSnapshot{WorkflowID: "leaf", VersionID: leafVersion, Steps: []Step{{ID: "leaf", Kind: ActionStep}}}
+	workflows[leafVersion] = WorkflowSnapshot{FlowFragmentID: "leaf", VersionID: leafVersion, Steps: []Step{{ID: "leaf", Kind: ActionStep}}}
 	for level := levels - 1; level >= 0; level-- {
 		versionID := fmt.Sprintf("v%d", level)
 		childVersionID := fmt.Sprintf("v%d", level+1)
 		firstID, secondID := fmt.Sprintf("a%d", level), fmt.Sprintf("b%d", level)
-		workflows[versionID] = WorkflowSnapshot{WorkflowID: versionID, VersionID: versionID, Steps: []Step{{ID: firstID, Kind: WorkflowReference}, {ID: secondID, Kind: WorkflowReference}}}
+		workflows[versionID] = WorkflowSnapshot{FlowFragmentID: versionID, VersionID: versionID, Steps: []Step{{ID: firstID, Kind: FlowFragmentReference}, {ID: secondID, Kind: FlowFragmentReference}}}
 		resolutions[WorkflowReferenceKey{ParentVersionID: versionID, StepID: firstID}] = ReferenceResolution{WorkflowVersionID: childVersionID}
 		resolutions[WorkflowReferenceKey{ParentVersionID: versionID, StepID: secondID}] = ReferenceResolution{WorkflowVersionID: childVersionID}
 	}
@@ -362,9 +362,9 @@ func TestDraftValidateReportsOrphanResolutionDeterministically(t *testing.T) {
 	workflow := validWorkflowSnapshot()
 	workflow.Steps[0].NodeID = "00000000-0000-7000-8000-000000000001"
 	workflow.Steps[0].NodeVersionID = "00000000-0000-7000-8000-000000000002"
-	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: workflow.WorkflowID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: []NodeSnapshot{validNodeSnapshot(workflow.Steps[0].NodeID, workflow.Steps[0].NodeVersionID)}, References: []ReferenceResolution{
-		{ParentVersionID: "z", StepID: "z", WorkflowID: "unused", WorkflowVersionID: "unused-v1"},
-		{ParentVersionID: "a", StepID: "a", WorkflowID: "unused", WorkflowVersionID: "unused-v1"},
+	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: []NodeSnapshot{validNodeSnapshot(workflow.Steps[0].NodeID, workflow.Steps[0].NodeVersionID)}, References: []ReferenceResolution{
+		{ParentVersionID: "z", StepID: "z", FlowFragmentID: "unused", WorkflowVersionID: "unused-v1"},
+		{ParentVersionID: "a", StepID: "a", FlowFragmentID: "unused", WorkflowVersionID: "unused-v1"},
 	}}
 	for i := 0; i < 20; i++ {
 		err := draft.Validate()
@@ -391,7 +391,7 @@ func TestNavigateSealValidation(t *testing.T) {
 		t.Run(test.value, func(t *testing.T) {
 			workflow := validWorkflowSnapshot()
 			workflow.Steps[0] = Step{ID: "navigate", DisplayName: "Navigate", Kind: ActionStep, Action: "navigate", Value: test.value}
-			draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: workflow.WorkflowID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}}
+			draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}}
 			err := draft.Validate()
 			if (err == nil) != test.valid {
 				t.Fatalf("Validate() error = %v, valid = %v", err, test.valid)
@@ -543,7 +543,7 @@ func validDraftWithNodes(nodes ...NodeSnapshot) Draft {
 	workflow := validWorkflowSnapshot()
 	workflow.Steps[0].NodeID = nodes[0].NodeID
 	workflow.Steps[0].NodeVersionID = nodes[0].VersionID
-	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: workflow.WorkflowID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: nodes}
+	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: nodes}
 }
 
 func workflowReferenceDraft(edges map[string]string) Draft {
@@ -552,14 +552,14 @@ func workflowReferenceDraft(edges map[string]string) Draft {
 	for parent, child := range edges {
 		parentVersion, childVersion := parent+"-v1", child+"-v1"
 		stepID := "to-" + child
-		workflows = append(workflows, WorkflowSnapshot{ID: parent, WorkflowID: parent, VersionID: parentVersion, DisplayName: parent, VersionNumber: 1, Steps: []Step{{ID: stepID, DisplayName: stepID, Kind: WorkflowReference, Reference: &Reference{WorkflowID: child, WorkflowVersionID: childVersion}}}})
-		resolutions = append(resolutions, ReferenceResolution{ParentVersionID: parentVersion, StepID: stepID, WorkflowID: child, WorkflowVersionID: childVersion})
+		workflows = append(workflows, WorkflowSnapshot{ID: parent, FlowFragmentID: parent, VersionID: parentVersion, DisplayName: parent, VersionNumber: 1, Steps: []Step{{ID: stepID, DisplayName: stepID, Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: child, WorkflowVersionID: childVersion}}}})
+		resolutions = append(resolutions, ReferenceResolution{ParentVersionID: parentVersion, StepID: stepID, FlowFragmentID: child, WorkflowVersionID: childVersion})
 	}
-	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "a", WorkflowVersionID: "a-v1"}}, Workflows: workflows, References: resolutions}
+	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "a", WorkflowVersionID: "a-v1"}}, Workflows: workflows, References: resolutions}
 }
 
 func validWorkflowSnapshot() WorkflowSnapshot {
-	return WorkflowSnapshot{ID: "workflow", WorkflowID: "workflow", VersionID: "workflow-v1", DisplayName: "Workflow", VersionNumber: 1, Steps: []Step{{ID: "click", DisplayName: "Click", Kind: ActionStep, Action: "click", NodeID: "node", NodeVersionID: "v1"}}}
+	return WorkflowSnapshot{ID: "workflow", FlowFragmentID: "workflow", VersionID: "workflow-v1", DisplayName: "FlowFragment", VersionNumber: 1, Steps: []Step{{ID: "click", DisplayName: "Click", Kind: ActionStep, Action: "click", NodeID: "node", NodeVersionID: "v1"}}}
 }
 
 func standaloneValidation(kind string, maxWait, stability int) Step {

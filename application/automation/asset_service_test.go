@@ -44,18 +44,18 @@ func (f *nodeRepositoryFake) SaveAggregate(_ context.Context, expected domain.Re
 }
 
 type workflowRepositoryFake struct {
-	current  domain.WorkflowAggregate
+	current  domain.FlowFragmentAggregate
 	expected domain.Revision
 }
 
-func (f *workflowRepositoryFake) Load(context.Context, string) (domain.WorkflowAggregate, error) {
+func (f *workflowRepositoryFake) Load(context.Context, string) (domain.FlowFragmentAggregate, error) {
 	return f.current, nil
 }
-func (f *workflowRepositoryFake) Create(_ context.Context, value domain.WorkflowAggregate) (domain.WorkflowAggregate, error) {
+func (f *workflowRepositoryFake) Create(_ context.Context, value domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) {
 	f.current = value
 	return value, nil
 }
-func (f *workflowRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.WorkflowAggregate) (domain.WorkflowAggregate, error) {
+func (f *workflowRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) {
 	f.expected, f.current = expected, value
 	return value, nil
 }
@@ -173,9 +173,9 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 func TestWorkflowServiceLifecycleAndPublication(t *testing.T) {
 	repository := &workflowRepositoryFake{}
 	service := NewWorkflowService(repository)
-	definition := domain.WorkflowDefinition{Steps: []domain.WorkflowStep{{ID: "press", DisplayName: "Press", Kind: domain.StepAction, Action: "press", Value: "Enter"}}}
-	workflow := domain.Workflow{ID: "workflow", DisplayName: "Workflow", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1, Definition: definition, CreatedAt: 1}
+	definition := domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "press", DisplayName: "Press", Kind: domain.StepAction, Action: "press", Value: "Enter"}}}
+	workflow := domain.FlowFragment{ID: "workflow", DisplayName: "FlowFragment", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1, Definition: definition, CreatedAt: 1}
 	if _, err := service.Create(context.Background(), workflow, version); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestWorkflowServiceLifecycleAndPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), "workflow", deleted.Workflow.Revision, 5); err != nil {
+	if _, err := service.Restore(context.Background(), "workflow", deleted.FlowFragment.Revision, 5); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Delete(context.Background(), "workflow", 99, 6); err == nil {

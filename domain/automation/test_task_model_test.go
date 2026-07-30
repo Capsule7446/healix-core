@@ -6,18 +6,18 @@ import (
 	"testing"
 )
 
-func validTestTaskVersionPlan() TestTaskVersionPlan {
-	workflow := Workflow{ID: "workflow", DisplayName: "流程", Properties: Properties{},
+func validTestTaskVersionPlan() ResolvedExecutionFlow {
+	workflow := FlowFragment{ID: "workflow", DisplayName: "流程", Properties: Properties{},
 		CurrentVersionID: "workflow-v1", CreatedAt: 1, UpdatedAt: 1}
-	workflowVersion := WorkflowVersion{ID: "workflow-v1", WorkflowID: workflow.ID, VersionNumber: 1,
-		Definition: WorkflowDefinition{Steps: []WorkflowStep{{ID: "wait", DisplayName: "等待",
+	workflowVersion := FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: workflow.ID, VersionNumber: 1,
+		Definition: FlowFragmentContent{Steps: []FlowFragmentStep{{ID: "wait", DisplayName: "等待",
 			Kind: StepWait, WaitKind: "sleep", WaitMS: 1}}}, CreatedAt: 1}
-	task := TestTask{ID: "task", DisplayName: "任务", CurrentVersionID: "task-v1", CreatedAt: 1, UpdatedAt: 1}
-	version := TestTaskVersion{ID: "task-v1", TestTaskID: task.ID, VersionNumber: 1, CreatedAt: 1, FailurePolicy: FailurePolicyStopOnFailure,
-		Items: []TestTaskItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1,
-			WorkflowID: workflow.ID, VersionPolicy: WorkflowVersionLatest, Parameters: map[string]parameter.Value{}}}}
-	return TestTaskVersionPlan{Task: task, Version: version, Workflows: []WorkflowDependencySnapshot{{
-		Workflow: workflow, Version: workflowVersion, ResolvedFromLatest: true}}}
+	task := ExecutionFlow{ID: "task", DisplayName: "任务", CurrentVersionID: "task-v1", CreatedAt: 1, UpdatedAt: 1}
+	version := ExecutionFlowVersion{ID: "task-v1", ExecutionFlowID: task.ID, VersionNumber: 1, CreatedAt: 1, FailurePolicy: FailurePolicyStopOnFailure,
+		Items: []ExecutionFlowItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1,
+			FlowFragmentID: workflow.ID, VersionPolicy: FlowFragmentVersionLatest, Parameters: map[string]parameter.Value{}}}}
+	return ResolvedExecutionFlow{Task: task, Version: version, Workflows: []FlowFragmentDependencySnapshot{{
+		FlowFragment: workflow, Version: workflowVersion, ResolvedFromLatest: true}}}
 }
 
 func TestTestTaskAggregateOwnsCurrentAndHistoryConsistency(t *testing.T) {
@@ -28,13 +28,13 @@ func TestTestTaskAggregateOwnsCurrentAndHistoryConsistency(t *testing.T) {
 	v2.VersionNumber = 2
 	v2.SourceVersionID = v1.ID
 	v2.CreatedAt = 2
-	v2.Items = append([]TestTaskItem(nil), v1.Items...)
+	v2.Items = append([]ExecutionFlowItem(nil), v1.Items...)
 	v2.Items[0].ID = "item-v2"
 	v2.Items[0].TestTaskVersionID = v2.ID
 	task := plan.Task
 	task.CurrentVersionID = v2.ID
 	task.UpdatedAt = 2
-	aggregate := TestTaskAggregate{Task: task, Current: v2, Versions: []TestTaskVersion{v2, v1}}
+	aggregate := ExecutionFlowAggregate{Task: task, Current: v2, Versions: []ExecutionFlowVersion{v2, v1}}
 	if err := aggregate.Validate(); err != nil {
 		t.Fatalf("valid aggregate: %v", err)
 	}

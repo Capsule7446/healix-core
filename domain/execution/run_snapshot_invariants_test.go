@@ -78,9 +78,9 @@ func TestRunSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
 			entry.SequenceNumber = 2
 			v.Plan.Entries = append(v.Plan.Entries, entry)
 		}},
-		{"sequence mismatch", func(v *RunSnapshotInput) { v.TestTaskVersion.Items[0].SequenceNumber = 2 }},
-		{"workflow mismatch", func(v *RunSnapshotInput) { v.TestTaskVersion.Items[0].WorkflowID = "other" }},
-		{"workflow version mismatch", func(v *RunSnapshotInput) { v.TestTaskVersion.Items[0].WorkflowVersionID = "other-v1" }},
+		{"sequence mismatch", func(v *RunSnapshotInput) { v.ExecutionFlowVersion.Items[0].SequenceNumber = 2 }},
+		{"workflow mismatch", func(v *RunSnapshotInput) { v.ExecutionFlowVersion.Items[0].FlowFragmentID = "other" }},
+		{"workflow version mismatch", func(v *RunSnapshotInput) { v.ExecutionFlowVersion.Items[0].WorkflowVersionID = "other-v1" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

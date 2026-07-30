@@ -89,15 +89,15 @@ func validRunSnapshotInput(t *testing.T) RunSnapshotInput {
 	}
 	return RunSnapshotInput{
 		SchemaVersion: RunSnapshotSchemaV1,
-		RunID:         "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3",
+		RunID:         "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3",
 		TestTaskVersionNumber: 3,
-		TestTask:              TestTaskSnapshot{ID: "task-1", CurrentVersionID: "task-v3"},
-		TestTaskVersion:       TestTaskVersionSnapshot{ID: "task-v3", TestTaskID: "task-1", VersionNumber: 3, Items: []TestTaskVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v3", SequenceNumber: 1, WorkflowID: "workflow-1", WorkflowVersionID: "workflow-v2"}}},
+		ExecutionFlow:         TestTaskSnapshot{ID: "task-1", CurrentVersionID: "task-v3"},
+		ExecutionFlowVersion:  ExecutionFlowVersionSnapshot{ID: "task-v3", ExecutionFlowID: "task-1", VersionNumber: 3, Items: []ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v3", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}}},
 		Plan: Draft{RunID: "run-1", FailurePolicy: FailurePolicyStopOnFailure,
-			Entries:   []WorkflowEntry{{ExecutionID: "entry-1", TestTaskItemID: "item-1", SequenceNumber: 1, WorkflowID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
-			Workflows: []WorkflowSnapshot{{ID: "workflow-1", WorkflowID: "workflow-1", VersionID: "workflow-v2", DisplayName: "Flow", VersionNumber: 2, Parameters: []Parameter{{Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
+			Entries:   []WorkflowEntry{{ExecutionID: "entry-1", TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
+			Workflows: []WorkflowSnapshot{{ID: "workflow-1", FlowFragmentID: "workflow-1", VersionID: "workflow-v2", DisplayName: "Flow", VersionNumber: 2, Parameters: []Parameter{{Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 		},
-		Invocations:      []InvocationScopeSnapshot{{Path: "entry-1", ParentPath: "", WorkflowID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}},
+		Invocations:      []InvocationScopeSnapshot{{Path: "entry-1", ParentPath: "", FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}},
 		Environment:      EnvironmentSnapshot{ID: "env-1", Revision: 7, DisplayName: "CI", BaseURL: "https://example.test", Properties: map[string]string{"password": "ordinary-property", "region": "east"}},
 		FailurePolicy:    FailurePolicyStopOnFailure,
 		ScreenshotPolicy: ScreenshotPolicySnapshot{Version: ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"},
@@ -224,10 +224,10 @@ func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
 		{"task version", func(v *RunSnapshotInput) {
 			v.TestTaskVersionID = "task-v4"
 			v.TestTaskVersionNumber = 4
-			v.TestTask.CurrentVersionID = "task-v4"
-			v.TestTaskVersion.ID = "task-v4"
-			v.TestTaskVersion.VersionNumber = 4
-			v.TestTaskVersion.Items[0].TestTaskVersionID = "task-v4"
+			v.ExecutionFlow.CurrentVersionID = "task-v4"
+			v.ExecutionFlowVersion.ID = "task-v4"
+			v.ExecutionFlowVersion.VersionNumber = 4
+			v.ExecutionFlowVersion.Items[0].TestTaskVersionID = "task-v4"
 		}},
 		{"scope", func(v *RunSnapshotInput) {
 			number, _ := parameter.NewNumberValue("2")
@@ -269,7 +269,7 @@ func TestSealRunSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.
 		mutate func(*RunSnapshotInput)
 	}{
 		{"schema", func(v *RunSnapshotInput) { v.SchemaVersion = 0 }}, {"run", func(v *RunSnapshotInput) { v.RunID = "" }},
-		{"task", func(v *RunSnapshotInput) { v.TestTaskID = "" }}, {"task version", func(v *RunSnapshotInput) { v.TestTaskVersionID = "" }},
+		{"task", func(v *RunSnapshotInput) { v.ExecutionFlowID = "" }}, {"task version", func(v *RunSnapshotInput) { v.TestTaskVersionID = "" }},
 		{"task version number", func(v *RunSnapshotInput) { v.TestTaskVersionNumber = 0 }}, {"environment URL", func(v *RunSnapshotInput) { v.Environment.BaseURL = "ftp://example.test" }},
 		{"property key", func(v *RunSnapshotInput) { v.Environment.Properties[" "] = "x" }}, {"property value", func(v *RunSnapshotInput) {
 			v.Environment.Properties["x"] = strings.Repeat("x", MaxSnapshotStringBytes+1)
@@ -313,7 +313,7 @@ func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	created, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestRunTransitionPreservesSnapshotIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	run, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

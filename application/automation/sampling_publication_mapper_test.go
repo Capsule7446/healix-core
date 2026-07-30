@@ -32,7 +32,7 @@ func sampledCurrentNode(t *testing.T) domainautomation.NodeAggregate {
 func sampledWorkflow(mode sampling.SamplingResolutionMode) sampling.TemporarySamplingWorkflow {
 	return sampling.TemporarySamplingWorkflow{
 		ID: "temporary-workflow", DisplayName: "sampled", Properties: domainautomation.Properties{"kind": "sampled"},
-		Steps: []domainautomation.WorkflowStep{{ID: "repeat", DisplayName: "repeat", Kind: domainautomation.StepRepeat, RepeatCount: 1, Children: []domainautomation.WorkflowStep{{ID: "action", DisplayName: "action", Kind: domainautomation.StepAction, Action: "click", NodeID: "temporary-node"}}}},
+		Steps: []domainautomation.FlowFragmentStep{{ID: "repeat", DisplayName: "repeat", Kind: domainautomation.StepRepeat, RepeatCount: 1, Children: []domainautomation.FlowFragmentStep{{ID: "action", DisplayName: "action", Kind: domainautomation.StepAction, Action: "click", NodeID: "temporary-node"}}}},
 		Nodes: []sampling.TemporarySamplingNode{{ID: "temporary-node", DisplayName: "sampled-node", Properties: domainautomation.Properties{"sampled": "yes"}, PageURL: "/new", Origin: "new", Selectors: sampledSelector("#new"), Fingerprint: sampledFingerprint("new"), ResolutionMode: mode}},
 	}
 }
@@ -56,7 +56,7 @@ func TestMapSamplingPublicationModes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			workspace := sampledWorkflow(test.mode)
 			before := sampledWorkflow(test.mode)
-			publication, err := MapSamplingPublication(SamplingPublicationRequest{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: workspace, Nodes: []SamplingNodeAuthority{test.authority}})
+			publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: workspace, Nodes: []SamplingNodeAuthority{test.authority}})
 			if err != nil {
 				t.Fatalf("MapSamplingPublication: %v", err)
 			}
@@ -64,7 +64,7 @@ func TestMapSamplingPublicationModes(t *testing.T) {
 			if node.Aggregate.Node.ID != test.wantID || node.Aggregate.Current.ID != test.wantVer || node.PublishVersion != test.publish {
 				t.Fatalf("node decision = %#v", node)
 			}
-			step := publication.Workflow.Current.Definition.Steps[0].Children[0]
+			step := publication.FlowFragment.Current.Definition.Steps[0].Children[0]
 			if step.NodeID != test.wantID || step.NodeVersionID != test.wantVer {
 				t.Fatalf("rewritten step = %#v", step)
 			}
@@ -104,7 +104,7 @@ func TestMapSamplingPublicationRejectsInvalidAuthority(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := MapSamplingPublication(SamplingPublicationRequest{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow(test.mode), Nodes: test.authority})
+			_, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow(test.mode), Nodes: test.authority})
 			if err == nil {
 				t.Fatal("invalid authority was accepted")
 			}

@@ -16,8 +16,8 @@ type SamplingNodePublication struct {
 }
 
 type SamplingPublication struct {
-	Nodes    []SamplingNodePublication
-	Workflow WorkflowAggregate
+	Nodes        []SamplingNodePublication
+	FlowFragment FlowFragmentAggregate
 }
 
 type SamplingNodeMapping struct {
@@ -28,14 +28,14 @@ type SamplingNodeMapping struct {
 }
 
 type SamplingPublicationResult struct {
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	VersionNumber     int
 	Nodes             []SamplingNodeMapping
 }
 
 func (p SamplingPublication) Clone() SamplingPublication {
-	cloned := SamplingPublication{Workflow: cloneWorkflowAggregate(p.Workflow)}
+	cloned := SamplingPublication{FlowFragment: cloneWorkflowAggregate(p.FlowFragment)}
 	cloned.Nodes = make([]SamplingNodePublication, len(p.Nodes))
 	for index, node := range p.Nodes {
 		cloned.Nodes[index] = node
@@ -45,7 +45,7 @@ func (p SamplingPublication) Clone() SamplingPublication {
 }
 
 func (p SamplingPublication) Validate() error {
-	if err := p.Workflow.Validate(); err != nil {
+	if err := p.FlowFragment.Validate(); err != nil {
 		return fmt.Errorf("sampled workflow: %w", err)
 	}
 	seen := make(map[string]struct{}, len(p.Nodes))
@@ -102,8 +102,8 @@ func (p SamplingPublication) Validate() error {
 		formalVersions[node.Aggregate.Current.ID] = struct{}{}
 		decisions[node.Aggregate.Node.ID+"\x00"+node.Aggregate.Current.ID] = struct{}{}
 	}
-	var validateReferences func([]WorkflowStep) error
-	validateReferences = func(steps []WorkflowStep) error {
+	var validateReferences func([]FlowFragmentStep) error
+	validateReferences = func(steps []FlowFragmentStep) error {
 		for _, step := range steps {
 			if step.NodeID != "" {
 				if _, exists := decisions[step.NodeID+"\x00"+step.NodeVersionID]; !exists {
@@ -124,7 +124,7 @@ func (p SamplingPublication) Validate() error {
 		}
 		return nil
 	}
-	if err := validateReferences(p.Workflow.Current.Definition.Steps); err != nil {
+	if err := validateReferences(p.FlowFragment.Current.Definition.Steps); err != nil {
 		return err
 	}
 	return nil

@@ -7,7 +7,7 @@ import (
 )
 
 type WorkflowRepository interface {
-	Load(context.Context, string) (domain.WorkflowAggregate, error)
-	Create(context.Context, domain.WorkflowAggregate) (domain.WorkflowAggregate, error)
-	SaveAggregate(context.Context, domain.Revision, domain.WorkflowAggregate) (domain.WorkflowAggregate, error)
+	Load(context.Context, string) (domain.FlowFragmentAggregate, error)
+	Create(context.Context, domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error)
+	SaveAggregate(context.Context, domain.Revision, domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error)
 }

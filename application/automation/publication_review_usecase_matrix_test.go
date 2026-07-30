@@ -36,7 +36,7 @@ func (transaction *samplingTransactionProbe) PublishSampling(_ context.Context, 
 func forceCreateSamplingCommand(t testing.TB) SamplingPublicationCommand {
 	t.Helper()
 	publication, err := MapSamplingPublication(SamplingPublicationRequest{
-		WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
+		FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
 		Workspace: sampledWorkflow(sampling.SamplingResolutionForceCreate),
 		Nodes:     []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}},
 	})
@@ -61,7 +61,7 @@ func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 1 {
 		t.Fatalf("publish failure/result/error/calls = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
-	if transaction.intent.PublicationID != command.PublicationID || transaction.intent.RequestDigest == "" || transaction.intent.Publication.Workflow.Workflow.ID != command.Publication.Workflow.Workflow.ID || transaction.intent.Publication.Workflow.Current.ID != command.Publication.Workflow.Current.ID {
+	if transaction.intent.PublicationID != command.PublicationID || transaction.intent.RequestDigest == "" || transaction.intent.Publication.FlowFragment.FlowFragment.ID != command.Publication.FlowFragment.FlowFragment.ID || transaction.intent.Publication.FlowFragment.Current.ID != command.Publication.FlowFragment.Current.ID {
 		t.Fatalf("publish intent = %#v", transaction.intent)
 	}
 }

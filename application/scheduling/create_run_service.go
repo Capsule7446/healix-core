@@ -27,7 +27,7 @@ func CreateRunRequestDigest(owned CreateRunCommand) (string, error) {
 	}
 	h := sha256.New()
 	writeDigestString(h, createRunRequestDigestV1)
-	for _, value := range []string{owned.RunID, owned.TestTaskID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
+	for _, value := range []string{owned.RunID, owned.ExecutionFlowID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
 		writeDigestString(h, value)
 	}
 	writeDigestUint64(h, uint64(owned.CreatedAt))
@@ -161,7 +161,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		if err != nil {
 			return fmt.Errorf("build run snapshot: %w", err)
 		}
-		run, err := execution.NewRun(execution.Run{ID: owned.RunID, TestTaskID: owned.TestTaskID, TestTaskVersionID: owned.TestTaskVersionID, Status: execution.Queued, EnvironmentID: owned.EnvironmentID, CreatedAt: owned.CreatedAt, QueuedAt: owned.CreatedAt}, snapshot)
+		run, err := execution.NewRun(execution.Run{ID: owned.RunID, ExecutionFlowID: owned.ExecutionFlowID, TestTaskVersionID: owned.TestTaskVersionID, Status: execution.Queued, EnvironmentID: owned.EnvironmentID, CreatedAt: owned.CreatedAt, QueuedAt: owned.CreatedAt}, snapshot)
 		if err != nil {
 			return fmt.Errorf("create queued run: %w", err)
 		}
@@ -195,10 +195,10 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	if stored.SnapshotDigest == "" || stored.SnapshotDigest != stored.Snapshot.Digest() || stored.Run.SnapshotDigest != stored.SnapshotDigest {
 		return invalid("stored snapshot digest identity is inconsistent")
 	}
-	if stored.Run.ID != command.RunID || stored.Run.TestTaskID != command.TestTaskID || stored.Run.TestTaskVersionID != command.TestTaskVersionID || stored.Run.EnvironmentID != command.EnvironmentID || stored.Run.CreatedAt != command.CreatedAt {
+	if stored.Run.ID != command.RunID || stored.Run.ExecutionFlowID != command.ExecutionFlowID || stored.Run.TestTaskVersionID != command.TestTaskVersionID || stored.Run.EnvironmentID != command.EnvironmentID || stored.Run.CreatedAt != command.CreatedAt {
 		return invalid("stored run identity does not match command")
 	}
-	if stored.Snapshot.RunID() != command.RunID || stored.Snapshot.TestTaskID() != command.TestTaskID || stored.Snapshot.TestTaskVersionID() != command.TestTaskVersionID || stored.Snapshot.Environment().ID != command.EnvironmentID {
+	if stored.Snapshot.RunID() != command.RunID || stored.Snapshot.ExecutionFlowID() != command.ExecutionFlowID || stored.Snapshot.TestTaskVersionID() != command.TestTaskVersionID || stored.Snapshot.Environment().ID != command.EnvironmentID {
 		return invalid("stored snapshot identity does not match command")
 	}
 	if input.FailurePolicy != command.FailurePolicy || input.ScreenshotPolicy != command.ScreenshotPolicy || input.HealerPolicy != command.HealerPolicy {
@@ -301,7 +301,7 @@ func (b *createRunRequestBudget) addElements(count int) error {
 
 func preflightCreateRunCommand(command CreateRunCommand) error {
 	budget := newCreateRunRequestBudget()
-	for _, value := range []string{command.CommandID, command.RunID, command.TestTaskID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
+	for _, value := range []string{command.CommandID, command.RunID, command.ExecutionFlowID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
 		if err := budget.addString(value); err != nil {
 			return err
 		}

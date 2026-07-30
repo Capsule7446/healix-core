@@ -13,7 +13,7 @@ import (
 )
 
 func validCreateRunCommand() CreateRunCommand {
-	return CreateRunCommand{CommandID: "command-1", RunID: "run-1", TestTaskID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item-1": {}, "item-2": {}}, FailurePolicy: execution.FailurePolicyContinueOnFailure, CreatedAt: 10, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
+	return CreateRunCommand{CommandID: "command-1", RunID: "run-1", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item-1": {}, "item-2": {}}, FailurePolicy: execution.FailurePolicyContinueOnFailure, CreatedAt: 10, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
 }
 
 func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCreateRun {
@@ -24,8 +24,8 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 	for _, entry := range source.Entries {
 		entry.ExecutionID = concreteRootPath(command.RunID, entry.TestTaskItemID)
 		roots = append(roots,
-			execution.InvocationScopeSnapshot{Path: entry.ExecutionID, WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
-			execution.InvocationScopeSnapshot{Path: entry.ExecutionID + "/10:call-child", ParentPath: entry.ExecutionID, ParentVersionID: "root-v1", StepID: "call-child", WorkflowID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
+			execution.InvocationScopeSnapshot{Path: entry.ExecutionID, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
+			execution.InvocationScopeSnapshot{Path: entry.ExecutionID + "/10:call-child", ParentPath: entry.ExecutionID, ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
 		)
 	}
 	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}, Invocations: roots}
@@ -58,7 +58,7 @@ func TestCreateRunRequestDigestMatrix(t *testing.T) {
 		variants = append(variants, changed)
 	}
 	add(func(v *CreateRunCommand) { v.RunID = "other" })
-	add(func(v *CreateRunCommand) { v.TestTaskID = "other" })
+	add(func(v *CreateRunCommand) { v.ExecutionFlowID = "other" })
 	add(func(v *CreateRunCommand) { v.TestTaskVersionID = "other" })
 	add(func(v *CreateRunCommand) { v.EnvironmentID = "other" })
 	add(func(v *CreateRunCommand) { v.CreatedAt++ })
@@ -694,7 +694,7 @@ func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := execution.NewRun(execution.Run{ID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
+	run, err := execution.NewRun(execution.Run{ID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,7 +725,7 @@ func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	winnerRun, err := execution.NewRun(execution.Run{ID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, Status: execution.Queued, EnvironmentID: command.EnvironmentID, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, winnerSnapshot)
+	winnerRun, err := execution.NewRun(execution.Run{ID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, Status: execution.Queued, EnvironmentID: command.EnvironmentID, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, winnerSnapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +755,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := execution.NewRun(execution.Run{ID: command.RunID, TestTaskID: command.TestTaskID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
+	run, err := execution.NewRun(execution.Run{ID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -828,7 +828,7 @@ func TestCreateRunServiceRejectsMalformedFindCommandReplay(t *testing.T) {
 	}{
 		{"command identity", func(v *StoredCreateRunCommand) { v.CommandID = "other" }},
 		{"run identity", func(v *StoredCreateRunCommand) { v.Result.Run.ID = "other" }},
-		{"task identity", func(v *StoredCreateRunCommand) { v.Result.Run.TestTaskID = "other" }},
+		{"task identity", func(v *StoredCreateRunCommand) { v.Result.Run.ExecutionFlowID = "other" }},
 		{"snapshot seal", func(v *StoredCreateRunCommand) { v.Result.Run.SnapshotDigest = "sha256:" + strings.Repeat("0", 64) }},
 		{"entry order", func(v *StoredCreateRunCommand) {
 			v.Result.EntryIDs[0], v.Result.EntryIDs[1] = v.Result.EntryIDs[1], v.Result.EntryIDs[0]
@@ -854,7 +854,7 @@ func TestCreateRunServiceRejectsAppliedRunFieldDrift(t *testing.T) {
 		name   string
 		mutate func(*execution.Run)
 	}{
-		{"task", func(v *execution.Run) { v.TestTaskID = "other" }}, {"version", func(v *execution.Run) { v.TestTaskVersionID = "other" }}, {"environment", func(v *execution.Run) { v.EnvironmentID = "other" }}, {"status", func(v *execution.Run) { v.Status = execution.Running }}, {"created", func(v *execution.Run) { v.CreatedAt++ }}, {"queued", func(v *execution.Run) { v.QueuedAt++ }},
+		{"task", func(v *execution.Run) { v.ExecutionFlowID = "other" }}, {"version", func(v *execution.Run) { v.TestTaskVersionID = "other" }}, {"environment", func(v *execution.Run) { v.EnvironmentID = "other" }}, {"status", func(v *execution.Run) { v.Status = execution.Running }}, {"created", func(v *execution.Run) { v.CreatedAt++ }}, {"queued", func(v *execution.Run) { v.QueuedAt++ }},
 	}
 	for _, test := range mutations {
 		t.Run(test.name, func(t *testing.T) {
@@ -946,24 +946,24 @@ func TestResolvedCreateRunPreflightRejectsAdapterCollectionsBeforeBuild(t *testi
 		mutate func(*ResolvedCreateRun)
 	}{
 		{"items", func(v *ResolvedCreateRun) {
-			v.Plan.Version.Items = make([]automation.TestTaskItem, execution.MaxAggregateCollectionElements+1)
+			v.Plan.Version.Items = make([]automation.ExecutionFlowItem, execution.MaxAggregateCollectionElements+1)
 		}},
 		{"workflows", func(v *ResolvedCreateRun) {
-			v.Plan.Workflows = make([]automation.WorkflowDependencySnapshot, execution.MaxDraftWorkflows+1)
+			v.Plan.Workflows = make([]automation.FlowFragmentDependencySnapshot, execution.MaxDraftWorkflows+1)
 		}},
 		{"nodes", func(v *ResolvedCreateRun) {
 			v.Plan.Nodes = make([]automation.NodeDependencySnapshot, execution.MaxDraftNodes+1)
 		}},
 		{"references", func(v *ResolvedCreateRun) {
-			v.Plan.References = make([]automation.WorkflowReferenceResolution, execution.MaxDraftReferences+1)
+			v.Plan.References = make([]automation.FlowFragmentReferenceResolution, execution.MaxDraftReferences+1)
 		}},
 		{"string", func(v *ResolvedCreateRun) {
 			v.Environment.DisplayName = strings.Repeat("x", execution.MaxStringBytes+1)
 		}},
 		{"step depth", func(v *ResolvedCreateRun) {
-			steps := []automation.WorkflowStep{{ID: "leaf", DisplayName: "Leaf", Kind: automation.StepWait, WaitMS: 1}}
+			steps := []automation.FlowFragmentStep{{ID: "leaf", DisplayName: "Leaf", Kind: automation.StepWait, WaitMS: 1}}
 			for index := 0; index <= execution.MaxStepNestingDepth; index++ {
-				steps = []automation.WorkflowStep{{ID: "repeat", DisplayName: "Repeat", Kind: automation.StepRepeat, RepeatCount: 1, Children: steps}}
+				steps = []automation.FlowFragmentStep{{ID: "repeat", DisplayName: "Repeat", Kind: automation.StepRepeat, RepeatCount: 1, Children: steps}}
 			}
 			v.Plan.Workflows[0].Version.Definition.Steps = steps
 		}},
@@ -987,12 +987,12 @@ func TestResolvedCreateRunPreflightRejectsNestedAdapterPayloads(t *testing.T) {
 		name   string
 		mutate func(*ResolvedCreateRun)
 	}{
-		{"item identity", func(v *ResolvedCreateRun) { v.Plan.Version.Items[0].WorkflowID = over }},
+		{"item identity", func(v *ResolvedCreateRun) { v.Plan.Version.Items[0].FlowFragmentID = over }},
 		{"item value", func(v *ResolvedCreateRun) {
 			v.Plan.Version.Items[0].Parameters = map[string]parameter.Value{"value": parameter.TextValue(over)}
 		}},
 		{"workflow property", func(v *ResolvedCreateRun) {
-			v.Plan.Workflows[0].Workflow.Properties = automation.Properties{over: "value"}
+			v.Plan.Workflows[0].FlowFragment.Properties = automation.Properties{over: "value"}
 		}},
 		{"parameter definition", func(v *ResolvedCreateRun) {
 			v.Plan.Workflows[0].Version.Definition.Parameters = []automation.ParameterDefinition{{Name: "value", DisplayName: over, Type: parameter.Text, Required: true}}

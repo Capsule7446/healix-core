@@ -96,12 +96,12 @@ type CaptureResult struct {
 }
 
 type Snapshot struct {
-	ID         string
-	WorkflowID string
-	StartURL   string
-	Status     Status
-	Nodes      []CapturedNode
-	Actions    []RecordedAction
+	ID             string
+	FlowFragmentID string
+	StartURL       string
+	Status         Status
+	Nodes          []CapturedNode
+	Actions        []RecordedAction
 }
 
 type Session struct {
@@ -325,7 +325,7 @@ func (s *Session) Snapshot() Snapshot {
 		actions[i].Validation = cloneValidation(actions[i].Validation)
 	}
 	return Snapshot{
-		ID: s.id, WorkflowID: s.workflowID, StartURL: s.startURL,
+		ID: s.id, FlowFragmentID: s.workflowID, StartURL: s.startURL,
 		Status: s.status, Nodes: nodes, Actions: actions,
 	}
 }

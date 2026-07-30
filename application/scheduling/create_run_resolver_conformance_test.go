@@ -15,10 +15,10 @@ import (
 )
 
 type oneViewCatalog struct {
-	task        automation.TestTask
-	version     automation.TestTaskVersion
-	workflows   map[string]automation.Workflow
-	versions    map[string]automation.WorkflowVersion
+	task        automation.ExecutionFlow
+	version     automation.ExecutionFlowVersion
+	workflows   map[string]automation.FlowFragment
+	versions    map[string]automation.FlowFragmentVersion
 	nodes       map[string]automation.Node
 	nodeVersion map[string]automation.NodeVersion
 	environment automation.Environment
@@ -26,18 +26,18 @@ type oneViewCatalog struct {
 
 func newOneViewResolverTx(view oneViewCatalog) *oneViewResolverTx {
 	captured := view
-	captured.version.Items = append([]automation.TestTaskItem(nil), view.version.Items...)
+	captured.version.Items = append([]automation.ExecutionFlowItem(nil), view.version.Items...)
 	for index := range captured.version.Items {
 		captured.version.Items[index].Parameters = cloneParameterValues(view.version.Items[index].Parameters)
 	}
 	captured.version.RequiredEnvironmentKeys = append([]string(nil), view.version.RequiredEnvironmentKeys...)
-	captured.workflows = make(map[string]automation.Workflow, len(view.workflows))
+	captured.workflows = make(map[string]automation.FlowFragment, len(view.workflows))
 	for id, workflow := range view.workflows {
 		copy := workflow
 		copy.Properties = cloneProperties(workflow.Properties)
 		captured.workflows[id] = copy
 	}
-	captured.versions = make(map[string]automation.WorkflowVersion, len(view.versions))
+	captured.versions = make(map[string]automation.FlowFragmentVersion, len(view.versions))
 	for id, version := range view.versions {
 		copy := version
 		copy.Definition.Parameters = append([]automation.ParameterDefinition(nil), version.Definition.Parameters...)
@@ -63,8 +63,8 @@ func newOneViewResolverTx(view oneViewCatalog) *oneViewResolverTx {
 	return &oneViewResolverTx{view: captured}
 }
 
-func cloneCatalogSteps(source []automation.WorkflowStep) []automation.WorkflowStep {
-	result := make([]automation.WorkflowStep, len(source))
+func cloneCatalogSteps(source []automation.FlowFragmentStep) []automation.FlowFragmentStep {
+	result := make([]automation.FlowFragmentStep, len(source))
 	for index, step := range source {
 		result[index] = step
 		result[index].Values = append([]string(nil), step.Values...)
@@ -100,13 +100,13 @@ func (tx *oneViewResolverTx) InsertCreateRun(context.Context, CreateRunIntent) (
 }
 func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateRunCommand) (ResolvedCreateRun, error) {
 	tx.reads = append(tx.reads, tx.readToken)
-	if tx.view.task.ID != command.TestTaskID || tx.view.version.ID != command.TestTaskVersionID {
+	if tx.view.task.ID != command.ExecutionFlowID || tx.view.version.ID != command.TestTaskVersionID {
 		return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve task version", Cause: errors.New("missing task/version")}
 	}
-	plan := automation.TestTaskVersionPlan{Task: tx.view.task, Version: tx.view.version}
+	plan := automation.ResolvedExecutionFlow{Task: tx.view.task, Version: tx.view.version}
 	invocations := []execution.InvocationScopeSnapshot{}
 	seenDependencies := map[string]bool{}
-	seenEdges := map[string]automation.WorkflowReferenceResolution{}
+	seenEdges := map[string]automation.FlowFragmentReferenceResolution{}
 	maxDepth, maxInvocations, maxEdges, maxValues := tx.maxDepth, tx.maxInvocations, tx.maxReferenceEdges, tx.maxResolvedValueCount
 	if maxDepth == 0 {
 		maxDepth = execution.MaxWorkflowReferenceDepth
@@ -141,18 +141,18 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 		if !ok {
 			return &CreateRunCatalogGraphError{Operation: "resolve workflow version", Cause: fmt.Errorf("missing %s", versionID)}
 		}
-		workflow, ok := tx.view.workflows[version.WorkflowID]
+		workflow, ok := tx.view.workflows[version.FlowFragmentID]
 		if !ok {
-			return &CreateRunCatalogGraphError{Operation: "resolve workflow", Cause: fmt.Errorf("missing %s", version.WorkflowID)}
+			return &CreateRunCatalogGraphError{Operation: "resolve workflow", Cause: fmt.Errorf("missing %s", version.FlowFragmentID)}
 		}
 		if latest && workflow.CurrentVersionID != version.ID {
 			return &CreateRunCatalogGraphError{Operation: "resolve current workflow", Cause: errors.New("current pointer mismatch")}
 		}
 		if !seenDependencies[version.ID] {
 			seenDependencies[version.ID] = true
-			plan.Workflows = append(plan.Workflows, automation.WorkflowDependencySnapshot{Workflow: workflow, Version: version, ResolvedFromLatest: latest})
+			plan.Workflows = append(plan.Workflows, automation.FlowFragmentDependencySnapshot{FlowFragment: workflow, Version: version, ResolvedFromLatest: latest})
 		}
-		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, StepID: stepID, WorkflowID: workflow.ID, WorkflowVersionID: version.ID, ResolvedFromLatest: latest, Values: cloneParameterValues(values), Bindings: cloneParameterBindings(bindings)}
+		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, StepID: stepID, FlowFragmentID: workflow.ID, WorkflowVersionID: version.ID, ResolvedFromLatest: latest, Values: cloneParameterValues(values), Bindings: cloneParameterBindings(bindings)}
 		if parentPath != "" {
 			parentVersion := ""
 			for _, candidate := range invocations {
@@ -190,14 +190,14 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 			targetID := step.Reference.WorkflowVersionID
 			fromLatest := step.Reference.LatestPublished
 			if fromLatest {
-				target, ok := tx.view.workflows[step.Reference.WorkflowID]
+				target, ok := tx.view.workflows[step.Reference.FlowFragmentID]
 				if !ok || target.CurrentVersionID == "" {
 					return &CreateRunCatalogGraphError{Operation: "resolve nested current workflow", Cause: errors.New("missing current pointer")}
 				}
 				targetID = target.CurrentVersionID
 			}
 			key := version.ID + "\x00" + step.ID
-			resolution := automation.WorkflowReferenceResolution{ParentWorkflowVersionID: version.ID, StepID: step.ID, WorkflowID: step.Reference.WorkflowID, WorkflowVersionID: targetID, ResolvedFromLatest: fromLatest}
+			resolution := automation.FlowFragmentReferenceResolution{ParentFlowFragmentVersionID: version.ID, StepID: step.ID, FlowFragmentID: step.Reference.FlowFragmentID, WorkflowVersionID: targetID, ResolvedFromLatest: fromLatest}
 			if existing, exists := seenEdges[key]; exists && existing != resolution {
 				return &CreateRunCatalogGraphError{Operation: "resolve edge", Cause: errors.New("conflicting duplicate edge")}
 			}
@@ -232,11 +232,11 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 		return nil
 	}
 	for _, item := range tx.view.version.Items {
-		workflow, ok := tx.view.workflows[item.WorkflowID]
+		workflow, ok := tx.view.workflows[item.FlowFragmentID]
 		if !ok {
 			return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve root", Cause: errors.New("missing root")}
 		}
-		versionID, latest := item.WorkflowVersionID, item.VersionPolicy == automation.WorkflowVersionLatest
+		versionID, latest := item.WorkflowVersionID, item.VersionPolicy == automation.FlowFragmentVersionLatest
 		if latest {
 			if workflow.CurrentVersionID == "" {
 				return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve root current", Cause: errors.New("missing current pointer")}
@@ -257,9 +257,9 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 
 func catalogFromMapperSource() oneViewCatalog {
 	source := validMapperSource()
-	catalog := oneViewCatalog{task: source.Publication.Task, version: source.Publication.Version, workflows: map[string]automation.Workflow{}, versions: map[string]automation.WorkflowVersion{}, nodes: map[string]automation.Node{}, nodeVersion: map[string]automation.NodeVersion{}, environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}}
+	catalog := oneViewCatalog{task: source.Publication.Task, version: source.Publication.Version, workflows: map[string]automation.FlowFragment{}, versions: map[string]automation.FlowFragmentVersion{}, nodes: map[string]automation.Node{}, nodeVersion: map[string]automation.NodeVersion{}, environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}}
 	for _, item := range source.Publication.Workflows {
-		catalog.workflows[item.Workflow.ID] = item.Workflow
+		catalog.workflows[item.FlowFragment.ID] = item.FlowFragment
 		catalog.versions[item.Version.ID] = item.Version
 	}
 	for _, item := range source.Publication.Nodes {
@@ -361,7 +361,7 @@ func TestOneViewResolverRejectsConflictingDuplicateEdgeResolution(t *testing.T) 
 	view := catalogFromMapperSource()
 	root := view.versions["root-v1"]
 	duplicate := root.Definition.Steps[0]
-	duplicate.Reference = &automation.WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}
+	duplicate.Reference = &automation.FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}
 	root.Definition.Steps = append(root.Definition.Steps, duplicate)
 	view.versions[root.ID] = root
 	_, err := newOneViewResolverTx(view).ResolveCreateRun(context.Background(), validCreateRunCommand())
@@ -378,7 +378,7 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 	}{
 		{"cycle", func(tx *oneViewResolverTx) {
 			child := tx.view.versions["child-v1"]
-			child.Definition.Steps = []automation.WorkflowStep{{ID: "back", DisplayName: "Back", Kind: automation.StepWorkflowRef, Reference: &automation.WorkflowReference{WorkflowID: "root", LatestPublished: true}}}
+			child.Definition.Steps = []automation.FlowFragmentStep{{ID: "back", DisplayName: "Back", Kind: automation.StepFlowFragmentRef, Reference: &automation.FlowFragmentReference{FlowFragmentID: "root", LatestPublished: true}}}
 			tx.view.versions[child.ID] = child
 		}},
 		{"depth", func(tx *oneViewResolverTx) { tx.maxDepth = -1 }},
@@ -386,7 +386,7 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 		{"reference edge", func(tx *oneViewResolverTx) {
 			tx.maxReferenceEdges = 1
 			root := tx.view.versions["root-v1"]
-			root.Definition.Steps = append(root.Definition.Steps, automation.WorkflowStep{ID: "call-child-2", DisplayName: "Call child 2", Kind: automation.StepWorkflowRef, Reference: &automation.WorkflowReference{WorkflowID: "child", LatestPublished: true}})
+			root.Definition.Steps = append(root.Definition.Steps, automation.FlowFragmentStep{ID: "call-child-2", DisplayName: "Call child 2", Kind: automation.StepFlowFragmentRef, Reference: &automation.FlowFragmentReference{FlowFragmentID: "child", LatestPublished: true}})
 			tx.view.versions[root.ID] = root
 		}},
 		{"resolved values", func(tx *oneViewResolverTx) {

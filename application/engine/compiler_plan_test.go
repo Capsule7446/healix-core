@@ -32,7 +32,7 @@ func runSnapshotForCompilerTypedEnvironmentTest(draft execution.Draft, environme
 }
 
 func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion execution.RunSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
-	items := make([]execution.TestTaskVersionItemSnapshot, len(draft.Entries))
+	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
 	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
@@ -51,10 +51,10 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion 
 		if !exists {
 			return fmt.Errorf("workflow version %s is missing", versionID)
 		}
-		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, ParentVersionID: parentVersionID, StepID: stepID, WorkflowID: workflow.WorkflowID, WorkflowVersionID: versionID, Values: values}
+		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, ParentVersionID: parentVersionID, StepID: stepID, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: versionID, Values: values}
 		invocations = append(invocations, invocation)
 		for _, step := range workflow.Steps {
-			if step.Kind != execution.WorkflowReference || step.Reference == nil {
+			if step.Kind != execution.FlowFragmentReference || step.Reference == nil {
 				continue
 			}
 			resolution, ok := resolutions[execution.WorkflowReferenceKey{ParentVersionID: versionID, StepID: step.ID}]
@@ -88,17 +88,17 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion 
 		return nil
 	}
 	for index, entry := range draft.Entries {
-		items[index] = execution.TestTaskVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID}
+		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
 		if err := addInvocation(entry.ExecutionID, "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
 			return execution.RunSnapshot{}, err
 		}
 	}
 	input := execution.RunSnapshotInput{
 		SchemaVersion: schemaVersion,
-		RunID:         draft.RunID, TestTaskID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
-		TestTask:        execution.TestTaskSnapshot{ID: "task", CurrentVersionID: "task-v1"},
-		TestTaskVersion: execution.TestTaskVersionSnapshot{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, Items: items},
-		Plan:            draft, Invocations: invocations,
+		RunID:         draft.RunID, ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
+		ExecutionFlow:        execution.TestTaskSnapshot{ID: "task", CurrentVersionID: "task-v1"},
+		ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: items},
+		Plan:                 draft, Invocations: invocations,
 		Environment:      execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: environmentProperties, Variables: environmentVariables},
 		FailurePolicy:    draft.FailurePolicy,
 		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1},

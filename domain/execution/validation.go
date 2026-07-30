@@ -233,7 +233,7 @@ func (p Draft) Validate() error {
 			return fmt.Errorf("duplicate execution entry sequence %d", entry.SequenceNumber)
 		}
 		entrySequences[entry.SequenceNumber] = struct{}{}
-		if strings.TrimSpace(entry.ExecutionID) == "" || strings.TrimSpace(entry.TestTaskItemID) == "" || strings.TrimSpace(entry.WorkflowID) == "" || strings.TrimSpace(entry.WorkflowVersionID) == "" {
+		if strings.TrimSpace(entry.ExecutionID) == "" || strings.TrimSpace(entry.TestTaskItemID) == "" || strings.TrimSpace(entry.FlowFragmentID) == "" || strings.TrimSpace(entry.WorkflowVersionID) == "" {
 			return errors.New("execution entry requires execution, test task item, workflow, and workflow version identities")
 		}
 		if _, exists := entryExecutionIDs[entry.ExecutionID]; exists {
@@ -263,8 +263,8 @@ func (p Draft) Validate() error {
 		if !exists {
 			return fmt.Errorf("entry workflow version %q is missing", entry.WorkflowVersionID)
 		}
-		if workflow.WorkflowID != entry.WorkflowID {
-			return fmt.Errorf("entry workflow version %q belongs to workflow %q, not %q", entry.WorkflowVersionID, workflow.WorkflowID, entry.WorkflowID)
+		if workflow.FlowFragmentID != entry.FlowFragmentID {
+			return fmt.Errorf("entry workflow version %q belongs to workflow %q, not %q", entry.WorkflowVersionID, workflow.FlowFragmentID, entry.FlowFragmentID)
 		}
 		if len(workflow.Parameters) == 0 {
 			if entry.Parameters.ID != "" || entry.Parameters.SchemaVersion != 0 || entry.Parameters.WorkflowVersionID != "" || len(entry.Parameters.Values) != 0 {
@@ -412,7 +412,7 @@ func validateAggregateInputBounds(p Draft) error {
 		return err
 	}
 	for _, entry := range p.Entries {
-		if err := addStrings(entry.ExecutionID, entry.TestTaskItemID, entry.WorkflowID, entry.WorkflowVersionID, entry.Parameters.ID, entry.Parameters.WorkflowVersionID); err != nil {
+		if err := addStrings(entry.ExecutionID, entry.TestTaskItemID, entry.FlowFragmentID, entry.WorkflowVersionID, entry.Parameters.ID, entry.Parameters.WorkflowVersionID); err != nil {
 			return err
 		}
 		if err := addCollectionElements(len(entry.Parameters.Values)); err != nil {
@@ -436,7 +436,7 @@ func validateAggregateInputBounds(p Draft) error {
 		if parameters > MaxAggregateParameters {
 			return fmt.Errorf("aggregate parameters exceed maximum %d", MaxAggregateParameters)
 		}
-		if err := addStrings(workflow.ID, workflow.VersionID, workflow.WorkflowID, workflow.DisplayName); err != nil {
+		if err := addStrings(workflow.ID, workflow.VersionID, workflow.FlowFragmentID, workflow.DisplayName); err != nil {
 			return err
 		}
 		for _, parameter := range workflow.Parameters {
@@ -486,7 +486,7 @@ func validateAggregateInputBounds(p Draft) error {
 				if err := addCollectionElements(len(step.Reference.ParameterBindings)); err != nil {
 					return err
 				}
-				if err := addStrings(step.Reference.WorkflowID, step.Reference.WorkflowVersionID); err != nil {
+				if err := addStrings(step.Reference.FlowFragmentID, step.Reference.WorkflowVersionID); err != nil {
 					return err
 				}
 				if len(step.Reference.ParameterBindings) > MaxAggregateBindings-bindings {
@@ -580,7 +580,7 @@ func validateAggregateInputBounds(p Draft) error {
 		}
 	}
 	for _, resolution := range p.References {
-		if err := addStrings(resolution.ParentVersionID, resolution.StepID, resolution.WorkflowID, resolution.WorkflowVersionID); err != nil {
+		if err := addStrings(resolution.ParentVersionID, resolution.StepID, resolution.FlowFragmentID, resolution.WorkflowVersionID); err != nil {
 			return err
 		}
 	}
@@ -589,7 +589,7 @@ func validateAggregateInputBounds(p Draft) error {
 
 func (w WorkflowSnapshot) Validate() error {
 	var problems []string
-	if strings.TrimSpace(w.WorkflowID) == "" || strings.TrimSpace(w.VersionID) == "" || (w.ID != "" && w.ID != w.WorkflowID) {
+	if strings.TrimSpace(w.FlowFragmentID) == "" || strings.TrimSpace(w.VersionID) == "" || (w.ID != "" && w.ID != w.FlowFragmentID) {
 		problems = append(problems, "workflow version does not belong to workflow")
 	}
 	if strings.TrimSpace(w.DisplayName) == "" {
@@ -704,7 +704,7 @@ func validateReachableWorkflowReferences(rootVersionIDs []string, workflows map[
 						steps = append(steps, branch.Steps...)
 					}
 				}
-				if step.Kind != WorkflowReference {
+				if step.Kind != FlowFragmentReference {
 					continue
 				}
 				edges++
@@ -737,7 +737,7 @@ func validateDependencies(workflow WorkflowSnapshot, workflows map[string]Workfl
 				return fmt.Errorf("step %q targets missing node version", step.ID)
 			}
 		}
-		if step.Kind != WorkflowReference {
+		if step.Kind != FlowFragmentReference {
 			continue
 		}
 		if step.Reference == nil || strings.TrimSpace(step.Reference.WorkflowVersionID) == "" {
@@ -748,12 +748,12 @@ func validateDependencies(workflow WorkflowSnapshot, workflows map[string]Workfl
 		if !exists {
 			return fmt.Errorf("workflow reference step %q has no resolution", step.ID)
 		}
-		if resolution.ParentVersionID != workflow.VersionID || resolution.StepID != step.ID || resolution.WorkflowID != step.Reference.WorkflowID || resolution.WorkflowVersionID != step.Reference.WorkflowVersionID {
+		if resolution.ParentVersionID != workflow.VersionID || resolution.StepID != step.ID || resolution.FlowFragmentID != step.Reference.FlowFragmentID || resolution.WorkflowVersionID != step.Reference.WorkflowVersionID {
 			return fmt.Errorf("workflow reference step %q resolution disagrees with fixed reference", step.ID)
 		}
 		delete(resolutions, key)
 		target, exists := workflows[resolution.WorkflowVersionID]
-		if !exists || target.WorkflowID != resolution.WorkflowID {
+		if !exists || target.FlowFragmentID != resolution.FlowFragmentID {
 			return fmt.Errorf("workflow reference step %q targets missing workflow version", step.ID)
 		}
 		if err := validateBindings(workflow.Parameters, target.Parameters, step.Reference.ParameterBindings); err != nil {
@@ -784,7 +784,7 @@ func validateSteps(steps []Step, root bool, seen map[string]struct{}) []string {
 		case RepeatStep:
 			problems = append(problems, validateRepeat(step)...)
 			problems = append(problems, validateSteps(step.Children, false, seen)...)
-		case WorkflowReference:
+		case FlowFragmentReference:
 			problems = append(problems, step.Reference.Validate(step)...)
 		case ValidationStep:
 			if !root {
@@ -927,7 +927,7 @@ func (r *Reference) Validate(s Step) []string {
 	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.NodeID != "" || s.NodeVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
 		p = append(p, fmt.Sprintf("step %q WORKFLOW_REF contains unsupported step configuration", s.DisplayName))
 	}
-	if r == nil || strings.TrimSpace(r.WorkflowID) == "" {
+	if r == nil || strings.TrimSpace(r.FlowFragmentID) == "" {
 		p = append(p, fmt.Sprintf("step %q requires a workflow reference", s.DisplayName))
 	}
 	if r != nil {

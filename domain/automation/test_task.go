@@ -52,7 +52,7 @@ func (issues ValidationIssues) Error() string {
 	return strings.Join(parts, "; ")
 }
 
-func (t TestTask) Validate() error {
+func (t ExecutionFlow) Validate() error {
 	var problems []string
 	if strings.TrimSpace(t.ID) == "" {
 		problems = append(problems, "test task id is required")
@@ -72,9 +72,9 @@ func (t TestTask) Validate() error {
 	return nil
 }
 
-func (v TestTaskVersion) Validate() error {
+func (v ExecutionFlowVersion) Validate() error {
 	var problems []string
-	if strings.TrimSpace(v.ID) == "" || strings.TrimSpace(v.TestTaskID) == "" {
+	if strings.TrimSpace(v.ID) == "" || strings.TrimSpace(v.ExecutionFlowID) == "" {
 		problems = append(problems, "test task version id and owner are required")
 	}
 	if v.VersionNumber < 1 {
@@ -112,18 +112,18 @@ func (v TestTaskVersion) Validate() error {
 			problems = append(problems, "item sequence numbers must be unique and contiguous from 1")
 		}
 		seenSequences[item.SequenceNumber] = true
-		if strings.TrimSpace(item.WorkflowID) == "" {
+		if strings.TrimSpace(item.FlowFragmentID) == "" {
 			problems = append(problems, fmt.Sprintf("item %d workflow id is required", index+1))
 		}
 		if err := item.VersionPolicy.Validate(); err != nil {
 			problems = append(problems, fmt.Sprintf("item %d: %v", index+1, err))
 		}
 		switch item.VersionPolicy {
-		case WorkflowVersionFixed:
+		case FlowFragmentVersionFixed:
 			if strings.TrimSpace(item.WorkflowVersionID) == "" {
 				problems = append(problems, fmt.Sprintf("item %d fixed version id is required", index+1))
 			}
-		case WorkflowVersionLatest:
+		case FlowFragmentVersionLatest:
 			if strings.TrimSpace(item.WorkflowVersionID) != "" {
 				problems = append(problems, fmt.Sprintf("item %d latest policy cannot persist a version id", index+1))
 			}
@@ -135,7 +135,7 @@ func (v TestTaskVersion) Validate() error {
 	return nil
 }
 
-func (a TestTaskAggregate) Validate() error {
+func (a ExecutionFlowAggregate) Validate() error {
 	if err := a.Task.Validate(); err != nil {
 		return err
 	}
@@ -144,13 +144,13 @@ func (a TestTaskAggregate) Validate() error {
 	}
 	seenIDs := map[string]bool{}
 	seenNumbers := map[int]bool{}
-	byID := map[string]TestTaskVersion{}
-	highest := TestTaskVersion{}
+	byID := map[string]ExecutionFlowVersion{}
+	highest := ExecutionFlowVersion{}
 	for _, version := range a.Versions {
 		if err := version.Validate(); err != nil {
 			return fmt.Errorf("test task version %s: %w", version.ID, err)
 		}
-		if version.TestTaskID != a.Task.ID {
+		if version.ExecutionFlowID != a.Task.ID {
 			return errors.New("test task version belongs to another task")
 		}
 		if seenIDs[version.ID] || seenNumbers[version.VersionNumber] {
@@ -269,30 +269,30 @@ func validateReferenceBindings(parent, child []ParameterDefinition, bindings map
 	return nil
 }
 
-func (p TestTaskVersionPlan) Validate() error {
+func (p ResolvedExecutionFlow) Validate() error {
 	if err := p.Task.Validate(); err != nil {
 		return err
 	}
 	if err := p.Version.Validate(); err != nil {
 		return err
 	}
-	if p.Version.TestTaskID != p.Task.ID || p.Task.CurrentVersionID != p.Version.ID {
+	if p.Version.ExecutionFlowID != p.Task.ID || p.Task.CurrentVersionID != p.Version.ID {
 		return errors.New("test task publication candidate identity is inconsistent")
 	}
 	if p.Version.VersionNumber == 1 {
-		if p.ExpectedTaskRevision != 0 || p.Version.SourceVersionID != "" {
+		if p.ExpectedExecutionFlowRevision != 0 || p.Version.SourceVersionID != "" {
 			return errors.New("new test task must publish version 1 without a source version")
 		}
-	} else if err := p.ExpectedTaskRevision.ValidatePersisted(); err != nil || strings.TrimSpace(p.Version.SourceVersionID) == "" {
+	} else if err := p.ExpectedExecutionFlowRevision.ValidatePersisted(); err != nil || strings.TrimSpace(p.Version.SourceVersionID) == "" {
 		return errors.New("subsequent test task version requires source and expected revision")
 	}
-	workflows := map[string]WorkflowDependencySnapshot{}
+	workflows := map[string]FlowFragmentDependencySnapshot{}
 	for _, dependency := range p.Workflows {
-		if dependency.Workflow.ID == "" || dependency.Version.ID == "" ||
-			dependency.Version.WorkflowID != dependency.Workflow.ID || dependency.Version.VersionNumber < 1 {
+		if dependency.FlowFragment.ID == "" || dependency.Version.ID == "" ||
+			dependency.Version.FlowFragmentID != dependency.FlowFragment.ID || dependency.Version.VersionNumber < 1 {
 			return errors.New("workflow dependency snapshot identity is invalid")
 		}
-		key := dependency.Workflow.ID + "\x00" + dependency.Version.ID
+		key := dependency.FlowFragment.ID + "\x00" + dependency.Version.ID
 		if _, exists := workflows[key]; exists {
 			return errors.New("duplicate workflow dependency snapshot")
 		}
@@ -313,14 +313,14 @@ func (p TestTaskVersionPlan) Validate() error {
 	for _, item := range p.Version.Items {
 		matched := false
 		for _, dependency := range p.Workflows {
-			if dependency.Workflow.ID != item.WorkflowID {
+			if dependency.FlowFragment.ID != item.FlowFragmentID {
 				continue
 			}
 			switch item.VersionPolicy {
-			case WorkflowVersionFixed:
+			case FlowFragmentVersionFixed:
 				matched = dependency.Version.ID == item.WorkflowVersionID
-			case WorkflowVersionLatest:
-				matched = dependency.ResolvedFromLatest && dependency.Workflow.CurrentVersionID == dependency.Version.ID
+			case FlowFragmentVersionLatest:
+				matched = dependency.ResolvedFromLatest && dependency.FlowFragment.CurrentVersionID == dependency.Version.ID
 			}
 			if matched {
 				break
@@ -330,7 +330,7 @@ func (p TestTaskVersionPlan) Validate() error {
 			return fmt.Errorf("test task item %d has no matching workflow dependency", item.SequenceNumber)
 		}
 		for _, dependency := range p.Workflows {
-			if dependency.Workflow.ID == item.WorkflowID && (item.VersionPolicy == WorkflowVersionLatest && dependency.ResolvedFromLatest || item.VersionPolicy == WorkflowVersionFixed && dependency.Version.ID == item.WorkflowVersionID) {
+			if dependency.FlowFragment.ID == item.FlowFragmentID && (item.VersionPolicy == FlowFragmentVersionLatest && dependency.ResolvedFromLatest || item.VersionPolicy == FlowFragmentVersionFixed && dependency.Version.ID == item.WorkflowVersionID) {
 				if _, err := ResolveParameterValues(dependency.Version.Definition.Parameters, item.Parameters); err != nil {
 					return fmt.Errorf("test task item %d parameters: %w", item.SequenceNumber, err)
 				}
@@ -341,19 +341,19 @@ func (p TestTaskVersionPlan) Validate() error {
 	return p.validateDependencyGraph(nodes)
 }
 
-func (p TestTaskVersionPlan) validateDependencyGraph(nodes map[string]bool) error {
-	byVersion := map[string]WorkflowDependencySnapshot{}
+func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) error {
+	byVersion := map[string]FlowFragmentDependencySnapshot{}
 	for _, dependency := range p.Workflows {
 		if _, duplicate := byVersion[dependency.Version.ID]; duplicate {
 			return errors.New("duplicate workflow version dependency")
 		}
 		byVersion[dependency.Version.ID] = dependency
 	}
-	references := map[string]WorkflowReferenceResolution{}
+	references := map[string]FlowFragmentReferenceResolution{}
 	for _, resolution := range p.References {
-		key := resolution.ParentWorkflowVersionID + "\x00" + resolution.StepID
-		if resolution.ParentWorkflowVersionID == "" || resolution.StepID == "" ||
-			resolution.WorkflowID == "" || resolution.WorkflowVersionID == "" {
+		key := resolution.ParentFlowFragmentVersionID + "\x00" + resolution.StepID
+		if resolution.ParentFlowFragmentVersionID == "" || resolution.StepID == "" ||
+			resolution.FlowFragmentID == "" || resolution.WorkflowVersionID == "" {
 			return errors.New("workflow reference resolution identity is incomplete")
 		}
 		if _, duplicate := references[key]; duplicate {
@@ -379,8 +379,8 @@ func (p TestTaskVersionPlan) validateDependencyGraph(nodes map[string]bool) erro
 		}
 		visiting[versionID] = true
 		defer delete(visiting, versionID)
-		var walk func([]WorkflowStep) error
-		walk = func(steps []WorkflowStep) error {
+		var walk func([]FlowFragmentStep) error
+		walk = func(steps []FlowFragmentStep) error {
 			for _, step := range steps {
 				if step.NodeID != "" {
 					key := NodeDependencyIdentity(step.NodeID, step.NodeVersionID)
@@ -396,11 +396,11 @@ func (p TestTaskVersionPlan) validateDependencyGraph(nodes map[string]bool) erro
 						return fmt.Errorf("step %s has no workflow reference resolution", step.ID)
 					}
 					target, ok := byVersion[resolution.WorkflowVersionID]
-					if !ok || target.Workflow.ID != resolution.WorkflowID || resolution.WorkflowID != step.Reference.WorkflowID {
+					if !ok || target.FlowFragment.ID != resolution.FlowFragmentID || resolution.FlowFragmentID != step.Reference.FlowFragmentID {
 						return fmt.Errorf("step %s workflow reference target is inconsistent", step.ID)
 					}
 					if step.Reference.LatestPublished {
-						if !resolution.ResolvedFromLatest || target.Workflow.CurrentVersionID != target.Version.ID {
+						if !resolution.ResolvedFromLatest || target.FlowFragment.CurrentVersionID != target.Version.ID {
 							return fmt.Errorf("step %s latest workflow reference was not resolved from current", step.ID)
 						}
 					} else if resolution.ResolvedFromLatest || step.Reference.WorkflowVersionID != target.Version.ID {
@@ -435,13 +435,13 @@ func (p TestTaskVersionPlan) validateDependencyGraph(nodes map[string]bool) erro
 	}
 	for _, item := range p.Version.Items {
 		for _, dependency := range p.Workflows {
-			if dependency.Workflow.ID != item.WorkflowID {
+			if dependency.FlowFragment.ID != item.FlowFragmentID {
 				continue
 			}
-			if item.VersionPolicy == WorkflowVersionFixed && dependency.Version.ID != item.WorkflowVersionID {
+			if item.VersionPolicy == FlowFragmentVersionFixed && dependency.Version.ID != item.WorkflowVersionID {
 				continue
 			}
-			if item.VersionPolicy == WorkflowVersionLatest && !dependency.ResolvedFromLatest {
+			if item.VersionPolicy == FlowFragmentVersionLatest && !dependency.ResolvedFromLatest {
 				continue
 			}
 			if err := visit(dependency.Version.ID); err != nil {

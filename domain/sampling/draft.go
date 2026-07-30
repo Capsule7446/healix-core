@@ -14,7 +14,7 @@ type StepContainer struct {
 	BranchID     string
 }
 
-func InsertDraftStep(workflow TemporarySamplingWorkflow, container StepContainer, index int, step automation.WorkflowStep) (TemporarySamplingWorkflow, error) {
+func InsertDraftStep(workflow TemporarySamplingWorkflow, container StepContainer, index int, step automation.FlowFragmentStep) (TemporarySamplingWorkflow, error) {
 	next := cloneTemporaryWorkflow(workflow)
 	steps, err := locateStepContainer(&next, container)
 	if err != nil {
@@ -23,19 +23,19 @@ func InsertDraftStep(workflow TemporarySamplingWorkflow, container StepContainer
 	if index < 0 || index > len(*steps) {
 		return TemporarySamplingWorkflow{}, fmt.Errorf("sampling insert index %d is out of range", index)
 	}
-	*steps = slices.Insert(*steps, index, cloneSamplingSteps([]automation.WorkflowStep{step})[0])
+	*steps = slices.Insert(*steps, index, cloneSamplingSteps([]automation.FlowFragmentStep{step})[0])
 	return finalizeDraft(next)
 }
 
-func UpdateDraftStep(workflow TemporarySamplingWorkflow, step automation.WorkflowStep) (TemporarySamplingWorkflow, error) {
+func UpdateDraftStep(workflow TemporarySamplingWorkflow, step automation.FlowFragmentStep) (TemporarySamplingWorkflow, error) {
 	if strings.TrimSpace(step.ID) == "" {
 		return TemporarySamplingWorkflow{}, fmt.Errorf("sampling step id is required")
 	}
 	next := cloneTemporaryWorkflow(workflow)
 	found := false
-	walkSamplingSteps(next.Steps, func(candidate *automation.WorkflowStep) {
+	walkSamplingSteps(next.Steps, func(candidate *automation.FlowFragmentStep) {
 		if candidate.ID == step.ID {
-			*candidate = cloneSamplingSteps([]automation.WorkflowStep{step})[0]
+			*candidate = cloneSamplingSteps([]automation.FlowFragmentStep{step})[0]
 			found = true
 		}
 	})
@@ -48,8 +48,8 @@ func UpdateDraftStep(workflow TemporarySamplingWorkflow, step automation.Workflo
 func DeleteDraftStep(workflow TemporarySamplingWorkflow, stepID string) (TemporarySamplingWorkflow, error) {
 	next := cloneTemporaryWorkflow(workflow)
 	deleted := false
-	var remove func(*[]automation.WorkflowStep)
-	remove = func(steps *[]automation.WorkflowStep) {
+	var remove func(*[]automation.FlowFragmentStep)
+	remove = func(steps *[]automation.FlowFragmentStep) {
 		for index := 0; index < len(*steps); index++ {
 			step := &(*steps)[index]
 			if step.ID == stepID {
@@ -80,11 +80,11 @@ func DeleteDraftStep(workflow TemporarySamplingWorkflow, stepID string) (Tempora
 }
 
 func MoveDraftStep(workflow TemporarySamplingWorkflow, stepID string, destination StepContainer, index int) (TemporarySamplingWorkflow, error) {
-	var moved automation.WorkflowStep
+	var moved automation.FlowFragmentStep
 	found := false
-	walkSamplingSteps(workflow.Steps, func(step *automation.WorkflowStep) {
+	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
 		if step.ID == stepID {
-			moved = cloneSamplingSteps([]automation.WorkflowStep{*step})[0]
+			moved = cloneSamplingSteps([]automation.FlowFragmentStep{*step})[0]
 			found = true
 		}
 	})
@@ -104,14 +104,14 @@ func ReorderDraftSteps(workflow TemporarySamplingWorkflow, container StepContain
 	if err != nil {
 		return TemporarySamplingWorkflow{}, err
 	}
-	byID := make(map[string]automation.WorkflowStep, len(*steps))
+	byID := make(map[string]automation.FlowFragmentStep, len(*steps))
 	for _, step := range *steps {
 		byID[step.ID] = step
 	}
 	if len(orderedIDs) != len(byID) {
 		return TemporarySamplingWorkflow{}, fmt.Errorf("sampling reorder requires an exact step permutation")
 	}
-	reordered := make([]automation.WorkflowStep, len(orderedIDs))
+	reordered := make([]automation.FlowFragmentStep, len(orderedIDs))
 	for index, id := range orderedIDs {
 		step, exists := byID[id]
 		if !exists {
@@ -142,15 +142,15 @@ func DeleteDraftNode(workflow TemporarySamplingWorkflow, nodeID string) (Tempora
 	return finalizeDraft(next)
 }
 
-func locateStepContainer(workflow *TemporarySamplingWorkflow, container StepContainer) (*[]automation.WorkflowStep, error) {
+func locateStepContainer(workflow *TemporarySamplingWorkflow, container StepContainer) (*[]automation.FlowFragmentStep, error) {
 	if container.ParentStepID == "" {
 		if container.BranchID != "" {
 			return nil, fmt.Errorf("sampling root container cannot select a branch")
 		}
 		return &workflow.Steps, nil
 	}
-	var result *[]automation.WorkflowStep
-	walkSamplingSteps(workflow.Steps, func(step *automation.WorkflowStep) {
+	var result *[]automation.FlowFragmentStep
+	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
 		if result != nil || step.ID != container.ParentStepID {
 			return
 		}
@@ -177,7 +177,7 @@ func locateStepContainer(workflow *TemporarySamplingWorkflow, container StepCont
 	return result, nil
 }
 
-func walkSamplingSteps(steps []automation.WorkflowStep, visit func(*automation.WorkflowStep)) {
+func walkSamplingSteps(steps []automation.FlowFragmentStep, visit func(*automation.FlowFragmentStep)) {
 	for index := range steps {
 		step := &steps[index]
 		visit(step)
@@ -216,7 +216,7 @@ func validateDraftIdentity(workflow TemporarySamplingWorkflow) error {
 	}
 	stepIDs := map[string]struct{}{}
 	var identityErr error
-	walkSamplingSteps(workflow.Steps, func(step *automation.WorkflowStep) {
+	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
 		if identityErr != nil {
 			return
 		}

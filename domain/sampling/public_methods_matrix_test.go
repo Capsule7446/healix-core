@@ -17,14 +17,14 @@ func TestDraftCommandsRejectBoundaryIndexesAndMissingTargetsWithoutMutation(t *t
 		{
 			name: "insert index below zero",
 			run: func(workflow TemporarySamplingWorkflow) (TemporarySamplingWorkflow, error) {
-				return InsertDraftStep(workflow, StepContainer{}, -1, automation.WorkflowStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-a"})
+				return InsertDraftStep(workflow, StepContainer{}, -1, automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-a"})
 			},
 			want: "out of range",
 		},
 		{
 			name: "insert index above length",
 			run: func(workflow TemporarySamplingWorkflow) (TemporarySamplingWorkflow, error) {
-				return InsertDraftStep(workflow, StepContainer{}, len(workflow.Steps)+1, automation.WorkflowStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-a"})
+				return InsertDraftStep(workflow, StepContainer{}, len(workflow.Steps)+1, automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-a"})
 			},
 			want: "out of range",
 		},
@@ -115,7 +115,7 @@ func TestDraftContainerSelectionRejectsImpossibleBusinessShapes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			workflow := draftFixture()
 			before := draftFixture()
-			got, err := InsertDraftStep(workflow, test.container, 0, automation.WorkflowStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-a"})
+			got, err := InsertDraftStep(workflow, test.container, 0, automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-a"})
 			if err == nil || !strings.Contains(err.Error(), "container") {
 				t.Fatalf("container error = %v", err)
 			}
@@ -144,7 +144,7 @@ func TestDraftCommandsRejectMalformedWorkflowIdentity(t *testing.T) {
 			test.mutate(&workflow)
 			before := draftFixture()
 			test.mutate(&before)
-			got, err := InsertDraftStep(workflow, StepContainer{}, len(workflow.Steps), automation.WorkflowStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-c"})
+			got, err := InsertDraftStep(workflow, StepContainer{}, len(workflow.Steps), automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, NodeID: "node-c"})
 			if err == nil || !strings.Contains(strings.ToLower(err.Error()), test.want) {
 				t.Fatalf("identity error = %v, want containing %q", err, test.want)
 			}
@@ -158,8 +158,8 @@ func TestDraftCommandsRejectMalformedWorkflowIdentity(t *testing.T) {
 func TestRebuildTemporaryNodeReferencesDerivesNestedProjectionInEncounterOrder(t *testing.T) {
 	workflow := draftFixture()
 	workflow.Steps = append(workflow.Steps,
-		automation.WorkflowStep{ID: "a-second", DisplayName: "a second", Kind: automation.StepAction, NodeID: "node-a"},
-		automation.WorkflowStep{ID: "wait", DisplayName: "wait", Kind: automation.StepWait},
+		automation.FlowFragmentStep{ID: "a-second", DisplayName: "a second", Kind: automation.StepAction, NodeID: "node-a"},
+		automation.FlowFragmentStep{ID: "wait", DisplayName: "wait", Kind: automation.StepWait},
 	)
 	for index := range workflow.Nodes {
 		workflow.Nodes[index].StepIDs = []string{"stale"}

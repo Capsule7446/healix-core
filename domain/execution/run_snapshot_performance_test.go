@@ -15,9 +15,9 @@ func TestBuildSnapshotValidationIndexesIncludesEveryWorkflowReference(t *testing
 		stepID := fmt.Sprintf("call-%04d", index)
 		childID := fmt.Sprintf("child-%04d", index)
 		childVersionID := fmt.Sprintf("child-v%04d", index)
-		step := Step{ID: stepID, DisplayName: stepID, Kind: WorkflowReference, Reference: &Reference{WorkflowID: childID, WorkflowVersionID: childVersionID}}
-		resolution := ReferenceResolution{ParentVersionID: root.VersionID, StepID: stepID, WorkflowID: childID, WorkflowVersionID: childVersionID}
-		workflow := WorkflowSnapshot{ID: childID, WorkflowID: childID, VersionID: childVersionID, DisplayName: childID, VersionNumber: 1, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}
+		step := Step{ID: stepID, DisplayName: stepID, Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: childID, WorkflowVersionID: childVersionID}}
+		resolution := ReferenceResolution{ParentVersionID: root.VersionID, StepID: stepID, FlowFragmentID: childID, WorkflowVersionID: childVersionID}
+		workflow := WorkflowSnapshot{ID: childID, FlowFragmentID: childID, VersionID: childVersionID, DisplayName: childID, VersionNumber: 1, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}
 		root.Steps[index] = step
 		input.Plan.References[index] = resolution
 		input.Plan.Workflows = append(input.Plan.Workflows, workflow)
@@ -65,13 +65,13 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 	const entryCount = 128
 	input := validRunSnapshotInput(t)
 	parameters := input.Plan.Entries[0].Parameters
-	input.TestTaskVersion.Items = make([]TestTaskVersionItemSnapshot, entryCount)
+	input.ExecutionFlowVersion.Items = make([]ExecutionFlowVersionItemSnapshot, entryCount)
 	input.Plan.Entries = make([]WorkflowEntry, entryCount)
 	for index := 0; index < entryCount; index++ {
 		itemID := fmt.Sprintf("item-%04d", index)
 		executionID := fmt.Sprintf("entry-%04d", index)
-		input.TestTaskVersion.Items[index] = TestTaskVersionItemSnapshot{ID: itemID, TestTaskVersionID: input.TestTaskVersionID, SequenceNumber: index + 1, WorkflowID: "workflow-1", WorkflowVersionID: "workflow-v2"}
-		input.Plan.Entries[index] = WorkflowEntry{ExecutionID: executionID, TestTaskItemID: itemID, SequenceNumber: index + 1, WorkflowID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
+		input.ExecutionFlowVersion.Items[index] = ExecutionFlowVersionItemSnapshot{ID: itemID, TestTaskVersionID: input.TestTaskVersionID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}
+		input.Plan.Entries[index] = WorkflowEntry{ExecutionID: executionID, TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
 	}
 
 	indexes, err := buildSnapshotValidationIndexes(input.Plan)
@@ -116,31 +116,31 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 func TestValidateSnapshotIndexesTestTaskVersionItems(t *testing.T) {
 	const itemCount = 256
 	input := validRunSnapshotInput(t)
-	input.TestTaskVersion.Items = make([]TestTaskVersionItemSnapshot, itemCount)
+	input.ExecutionFlowVersion.Items = make([]ExecutionFlowVersionItemSnapshot, itemCount)
 	input.Plan.Entries = make([]WorkflowEntry, itemCount)
 	for index := 0; index < itemCount; index++ {
 		itemID := fmt.Sprintf("item-%04d", index)
-		input.TestTaskVersion.Items[index] = TestTaskVersionItemSnapshot{
+		input.ExecutionFlowVersion.Items[index] = ExecutionFlowVersionItemSnapshot{
 			ID:                itemID,
 			TestTaskVersionID: input.TestTaskVersionID,
 			SequenceNumber:    index + 1,
-			WorkflowID:        "workflow-1",
+			FlowFragmentID:    "workflow-1",
 			WorkflowVersionID: "workflow-v2",
 		}
 		input.Plan.Entries[index] = WorkflowEntry{
 			ExecutionID:       fmt.Sprintf("entry-%04d", index),
 			TestTaskItemID:    itemID,
 			SequenceNumber:    index + 1,
-			WorkflowID:        "workflow-1",
+			FlowFragmentID:    "workflow-1",
 			WorkflowVersionID: "workflow-v2",
 		}
 	}
 	err := validateTestTaskVersionItemEntries(
 		input.TestTaskVersionID,
-		input.TestTaskVersion.Items,
+		input.ExecutionFlowVersion.Items,
 		input.Plan.Entries,
 	)
 	if err != nil {
-		t.Fatalf("validate complete TestTaskVersion item-entry correspondence: %v", err)
+		t.Fatalf("validate complete ExecutionFlowVersion item-entry correspondence: %v", err)
 	}
 }

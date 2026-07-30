@@ -64,15 +64,15 @@ func TestLoadedHistoryWithoutCurrentRequiresAllVersionsDeleted(t *testing.T) {
 			return (NodeAggregate{Node: Node{ID: "node"}, Current: versionedNodeVersion("node-v1", "node", 1, 2)}).ValidateLoadedHistory()
 		}, want: "cannot carry a current version"},
 		{name: "workflow all deleted", run: func() error {
-			return (WorkflowAggregate{Workflow: Workflow{ID: "workflow"}, Versions: []WorkflowVersion{
+			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Versions: []FlowFragmentVersion{
 				versionedWorkflowVersion("workflow-v2", "workflow", 2, 3), versionedWorkflowVersion("workflow-v1", "workflow", 1, 2),
 			}}).ValidateLoadedHistory()
 		}},
 		{name: "workflow available version", run: func() error {
-			return (WorkflowAggregate{Workflow: Workflow{ID: "workflow"}, Versions: []WorkflowVersion{versionedWorkflowVersion("workflow-v1", "workflow", 1, 0)}}).ValidateLoadedHistory()
+			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Versions: []FlowFragmentVersion{versionedWorkflowVersion("workflow-v1", "workflow", 1, 0)}}).ValidateLoadedHistory()
 		}, want: "requires a current pointer"},
 		{name: "workflow carries current value", run: func() error {
-			return (WorkflowAggregate{Workflow: Workflow{ID: "workflow"}, Current: versionedWorkflowVersion("workflow-v1", "workflow", 1, 2)}).ValidateLoadedHistory()
+			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Current: versionedWorkflowVersion("workflow-v1", "workflow", 1, 2)}).ValidateLoadedHistory()
 		}, want: "cannot carry a current version"},
 	}
 	for _, test := range tests {
@@ -90,27 +90,27 @@ func TestLoadedHistoryWithoutCurrentRequiresAllVersionsDeleted(t *testing.T) {
 
 func TestWorkflowAggregateValidateLoadedHistoryIdentityMatrix(t *testing.T) {
 	current := versionedWorkflowVersion("workflow-v2", "workflow", 2, 0)
-	base := WorkflowAggregate{
-		Workflow: Workflow{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: current.ID},
-		Current:  current,
-		Versions: []WorkflowVersion{versionedWorkflowVersion("workflow-v1", "workflow", 1, 2), current},
+	base := FlowFragmentAggregate{
+		FlowFragment: FlowFragment{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: current.ID},
+		Current:      current,
+		Versions:     []FlowFragmentVersion{versionedWorkflowVersion("workflow-v1", "workflow", 1, 2), current},
 	}
 	tests := []struct {
 		name   string
-		mutate func(*WorkflowAggregate)
+		mutate func(*FlowFragmentAggregate)
 		want   string
 	}{
 		{name: "complete history"},
-		{name: "current absent", mutate: func(aggregate *WorkflowAggregate) { aggregate.Versions = aggregate.Versions[:1] }, want: "missing from loaded history"},
-		{name: "owner mismatch", mutate: func(aggregate *WorkflowAggregate) { aggregate.Versions[0].WorkflowID = "other" }, want: "belongs to another workflow"},
-		{name: "duplicate id", mutate: func(aggregate *WorkflowAggregate) { aggregate.Versions[0].ID = aggregate.Versions[1].ID }, want: "duplicate version identity"},
-		{name: "duplicate number", mutate: func(aggregate *WorkflowAggregate) { aggregate.Versions[0].VersionNumber = 2 }, want: "duplicate version identity"},
-		{name: "gap", mutate: func(aggregate *WorkflowAggregate) { aggregate.Versions[1].VersionNumber = 3 }, want: "contiguous from 1"},
+		{name: "current absent", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions = aggregate.Versions[:1] }, want: "missing from loaded history"},
+		{name: "owner mismatch", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].FlowFragmentID = "other" }, want: "belongs to another workflow"},
+		{name: "duplicate id", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].ID = aggregate.Versions[1].ID }, want: "duplicate version identity"},
+		{name: "duplicate number", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].VersionNumber = 2 }, want: "duplicate version identity"},
+		{name: "gap", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[1].VersionNumber = 3 }, want: "contiguous from 1"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			aggregate := base
-			aggregate.Versions = append([]WorkflowVersion(nil), base.Versions...)
+			aggregate.Versions = append([]FlowFragmentVersion(nil), base.Versions...)
 			if test.mutate != nil {
 				test.mutate(&aggregate)
 			}
@@ -126,12 +126,12 @@ func TestWorkflowAggregateValidateLoadedHistoryIdentityMatrix(t *testing.T) {
 }
 
 func TestWorkflowVersionValidateForUsesSelectedHistoricalVersion(t *testing.T) {
-	workflow := Workflow{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: "workflow-v2"}
+	workflow := FlowFragment{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: "workflow-v2"}
 	historical := versionedWorkflowVersion("workflow-v1", "workflow", 1, 0)
 	if err := historical.ValidateFor(workflow); err != nil {
 		t.Fatalf("historical selected version rejected: %v", err)
 	}
-	historical.WorkflowID = "other"
+	historical.FlowFragmentID = "other"
 	if err := historical.ValidateFor(workflow); err == nil || !strings.Contains(err.Error(), "belong to workflow") {
 		t.Fatalf("wrong historical owner error = %v", err)
 	}
@@ -191,14 +191,14 @@ func TestPublishVersionRejectsInvalidPublishedContentAndCurrentAggregate(t *test
 	})
 	t.Run("invalid workflow publication content", func(t *testing.T) {
 		aggregate := versionedWorkflowAggregate()
-		_, err := aggregate.PublishVersion("workflow-v3", WorkflowDefinition{}, 3)
+		_, err := aggregate.PublishVersion("workflow-v3", FlowFragmentContent{}, 3)
 		if err == nil || !strings.Contains(err.Error(), "requires at least one step") {
 			t.Fatalf("invalid workflow version error = %v", err)
 		}
 	})
 	t.Run("invalid workflow current aggregate", func(t *testing.T) {
 		aggregate := versionedWorkflowAggregate()
-		aggregate.Workflow.CurrentVersionID = "other"
+		aggregate.FlowFragment.CurrentVersionID = "other"
 		_, err := aggregate.PublishVersion("workflow-v3", aggregate.Current.Definition, 3)
 		if err == nil || !strings.Contains(err.Error(), "invalid current workflow aggregate") {
 			t.Fatalf("invalid current workflow error = %v", err)
@@ -230,12 +230,12 @@ func TestPublishVersionCountsCurrentWhenLoadedHistoryOmitsIt(t *testing.T) {
 
 func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.T) {
 	aggregate := versionedWorkflowAggregate()
-	definition := WorkflowDefinition{
+	definition := FlowFragmentContent{
 		Parameters: []ParameterDefinition{{Name: "region", DisplayName: "区域", Type: parameter.MultiSelect, Options: []string{"east", "west"}, Default: parameter.PresentValue(parameter.MultiSelectValue([]string{"east"}))}},
-		Steps: []WorkflowStep{
+		Steps: []FlowFragmentStep{
 			{ID: "select", DisplayName: "选择", Kind: StepAction, Action: "select", NodeID: "node", NodeVersionID: "node-v1", Values: []string{"east"}},
-			{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []WorkflowStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}},
-			{ID: "ref", DisplayName: "引用", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.SingleSelectValue("east"))}}},
+			{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}},
+			{ID: "ref", DisplayName: "引用", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.SingleSelectValue("east"))}}},
 			{ID: "validation", DisplayName: "验证", Kind: StepValidation, NodeID: "node", NodeVersionID: "node-v1", Validation: &ValidationConfig{
 				Assertion: ValidationAssertion{Kind: ValidationSelectedSetEquals, ExpectedValues: []string{"east"}},
 				Wait:      ValidationWait{MaxWaitMS: 2_000, StabilityMS: 200}, SupportedKinds: []ValidationAssertionKind{ValidationSelectedSetEquals},
@@ -243,7 +243,7 @@ func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.
 			{ID: "group", DisplayName: "验证组", Kind: StepValidationGroup, ValidationGroup: &ValidationGroup{
 				Wait: ValidationWait{MaxWaitMS: 2_000, StabilityMS: 200},
 				Branches: []ValidationBranch{
-					{ID: "branch", Name: "分支", Steps: []WorkflowStep{
+					{ID: "branch", Name: "分支", Steps: []FlowFragmentStep{
 						{
 							ID: "member", DisplayName: "成员", Kind: StepValidation, NodeID: "node", NodeVersionID: "node-v1",
 							Validation: &ValidationConfig{Assertion: ValidationAssertion{Kind: ValidationVisible}},
@@ -281,9 +281,9 @@ func versionedNodeVersion(id, nodeID string, number int, deletedAt int64) NodeVe
 		Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: SourceManual}
 }
 
-func versionedWorkflowVersion(id, workflowID string, number int, deletedAt int64) WorkflowVersion {
-	return WorkflowVersion{ID: id, WorkflowID: workflowID, VersionNumber: number, DeletedAt: deletedAt,
-		Definition: WorkflowDefinition{Steps: []WorkflowStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}}
+func versionedWorkflowVersion(id, workflowID string, number int, deletedAt int64) FlowFragmentVersion {
+	return FlowFragmentVersion{ID: id, FlowFragmentID: workflowID, VersionNumber: number, DeletedAt: deletedAt,
+		Definition: FlowFragmentContent{Steps: []FlowFragmentStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}}
 }
 
 func versionedNodeAggregate() NodeAggregate {
@@ -293,9 +293,9 @@ func versionedNodeAggregate() NodeAggregate {
 		Current: v2, Versions: []NodeVersion{v1, v2}}
 }
 
-func versionedWorkflowAggregate() WorkflowAggregate {
+func versionedWorkflowAggregate() FlowFragmentAggregate {
 	v1 := versionedWorkflowVersion("workflow-v1", "workflow", 1, 2)
 	v2 := versionedWorkflowVersion("workflow-v2", "workflow", 2, 0)
-	return WorkflowAggregate{Workflow: Workflow{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: v2.ID, CreatedAt: 1, UpdatedAt: 2, Revision: 1},
-		Current: v2, Versions: []WorkflowVersion{v1, v2}}
+	return FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: v2.ID, CreatedAt: 1, UpdatedAt: 2, Revision: 1},
+		Current: v2, Versions: []FlowFragmentVersion{v1, v2}}
 }

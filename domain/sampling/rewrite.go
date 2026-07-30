@@ -8,7 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/automation"
 )
 
-func RewriteTemporaryNodeReferences(steps []automation.WorkflowStep, mappings []automation.SamplingNodeMapping) ([]automation.WorkflowStep, error) {
+func RewriteTemporaryNodeReferences(steps []automation.FlowFragmentStep, mappings []automation.SamplingNodeMapping) ([]automation.FlowFragmentStep, error) {
 	mappingByTemporaryID := make(map[string]automation.SamplingNodeMapping, len(mappings))
 	for _, mapping := range mappings {
 		if strings.TrimSpace(mapping.TemporaryNodeID) == "" || strings.TrimSpace(mapping.NodeID) == "" || strings.TrimSpace(mapping.NodeVersionID) == "" {
@@ -30,7 +30,7 @@ func RewriteTemporaryNodeReferences(steps []automation.WorkflowStep, mappings []
 	return rewritten, nil
 }
 
-func rewriteSamplingSteps(steps []automation.WorkflowStep, mappings map[string]automation.SamplingNodeMapping, used map[string]struct{}) ([]automation.WorkflowStep, error) {
+func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping, used map[string]struct{}) ([]automation.FlowFragmentStep, error) {
 	rewritten := cloneSamplingSteps(steps)
 	for index := range rewritten {
 		step := &rewritten[index]
@@ -61,11 +61,11 @@ func rewriteSamplingSteps(steps []automation.WorkflowStep, mappings map[string]a
 	return rewritten, nil
 }
 
-func cloneSamplingSteps(steps []automation.WorkflowStep) []automation.WorkflowStep {
+func cloneSamplingSteps(steps []automation.FlowFragmentStep) []automation.FlowFragmentStep {
 	if steps == nil {
 		return nil
 	}
-	cloned := make([]automation.WorkflowStep, len(steps))
+	cloned := make([]automation.FlowFragmentStep, len(steps))
 	for index, step := range steps {
 		cloned[index] = step
 		cloned[index].Values = append([]string(nil), step.Values...)

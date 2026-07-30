@@ -34,7 +34,7 @@ func TestValidateRunDirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid, err := NewRun(Run{ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	valid, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestRunSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.SchemaVersion() != RunSnapshotSchemaV1 || snapshot.TestTaskID() != "task-1" || snapshot.TestTaskVersionID() != "task-v3" {
+	if snapshot.SchemaVersion() != RunSnapshotSchemaV1 || snapshot.ExecutionFlowID() != "task-1" || snapshot.TestTaskVersionID() != "task-v3" {
 		t.Fatalf("accessors returned wrong identity")
 	}
 	invocation, ok := snapshot.Invocation("entry-1")

@@ -133,7 +133,7 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	queued, err := NewRun(Run{
-		ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
+		ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
 		Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10,
 	}, snapshot)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
 		t.Fatal(err)
 	}
 	base, err := NewRun(Run{
-		ID: "run-1", TestTaskID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
+		ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
 		Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10,
 	}, snapshot)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
 		mutate func(*Run)
 	}{
 		{name: "blank run id", mutate: func(run *Run) { run.ID = " \t" }},
-		{name: "blank task id", mutate: func(run *Run) { run.TestTaskID = "\n" }},
+		{name: "blank task id", mutate: func(run *Run) { run.ExecutionFlowID = "\n" }},
 		{name: "blank task version id", mutate: func(run *Run) { run.TestTaskVersionID = " " }},
 		{name: "blank environment id", mutate: func(run *Run) { run.EnvironmentID = " " }},
 		{name: "schema below boundary", mutate: func(run *Run) { run.SnapshotSchemaVersion = RunSnapshotSchemaV1 - 1 }},

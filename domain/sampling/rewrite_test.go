@@ -8,10 +8,10 @@ import (
 )
 
 func TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput(t *testing.T) {
-	steps := []automation.WorkflowStep{
+	steps := []automation.FlowFragmentStep{
 		{ID: "root", DisplayName: "root", Kind: automation.StepAction, NodeID: "temp-a"},
-		{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.WorkflowStep{{ID: "child", DisplayName: "child", Kind: automation.StepAction, NodeID: "temp-a"}}},
-		{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.WorkflowStep{{ID: "validation", DisplayName: "validation", Kind: automation.StepValidation, NodeID: "temp-b"}}}}}},
+		{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "child", DisplayName: "child", Kind: automation.StepAction, NodeID: "temp-a"}}},
+		{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.FlowFragmentStep{{ID: "validation", DisplayName: "validation", Kind: automation.StepValidation, NodeID: "temp-b"}}}}}},
 	}
 	original := cloneSamplingSteps(steps)
 	mappings := []automation.SamplingNodeMapping{
@@ -35,7 +35,7 @@ func TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput(t *testing.T
 }
 
 func TestRewriteTemporaryNodeReferencesRequiresExactMappingSet(t *testing.T) {
-	steps := []automation.WorkflowStep{{ID: "step", DisplayName: "step", Kind: automation.StepAction, NodeID: "temp-a"}}
+	steps := []automation.FlowFragmentStep{{ID: "step", DisplayName: "step", Kind: automation.StepAction, NodeID: "temp-a"}}
 	for _, test := range []struct {
 		name     string
 		mappings []automation.SamplingNodeMapping
@@ -54,7 +54,7 @@ func TestRewriteTemporaryNodeReferencesRequiresExactMappingSet(t *testing.T) {
 }
 
 func TestRewriteTemporaryNodeReferencesAllowsStepsWithoutNodes(t *testing.T) {
-	steps := []automation.WorkflowStep{{ID: "wait", DisplayName: "wait", Kind: automation.StepWait}}
+	steps := []automation.FlowFragmentStep{{ID: "wait", DisplayName: "wait", Kind: automation.StepWait}}
 	got, err := RewriteTemporaryNodeReferences(steps, nil)
 	if err != nil || !reflect.DeepEqual(got, steps) {
 		t.Fatalf("node-free rewrite = %#v, %v", got, err)

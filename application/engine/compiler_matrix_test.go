@@ -12,7 +12,7 @@ import (
 )
 
 func minimalCompilerPlan() execution.Draft {
-	return execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{ID: "root", WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}}}
+	return execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{ID: "root", FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}}}
 }
 
 func TestCompilePlanRejectsSnapshotIdentityMatrix(t *testing.T) {
@@ -24,7 +24,7 @@ func TestCompilePlanRejectsSnapshotIdentityMatrix(t *testing.T) {
 		{name: "empty workflow version id", mutate: func(plan *execution.Draft) { plan.Workflows[0].VersionID = "" }, want: "empty version id"},
 		{name: "duplicate workflow version", mutate: func(plan *execution.Draft) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, want: "duplicate workflow version"},
 		{name: "duplicate reference resolution", mutate: func(plan *execution.Draft) {
-			resolution := execution.ReferenceResolution{ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}
+			resolution := execution.ReferenceResolution{ParentVersionID: "root-v1", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}
 			plan.References = []execution.ReferenceResolution{resolution, resolution}
 		}, want: "duplicate workflow resolution"},
 		{name: "duplicate node dependency", mutate: func(plan *execution.Draft) {
@@ -32,7 +32,7 @@ func TestCompilePlanRejectsSnapshotIdentityMatrix(t *testing.T) {
 			plan.Nodes = []execution.NodeSnapshot{dependency, dependency}
 		}, want: "duplicate node dependency"},
 		{name: "missing root version", mutate: func(plan *execution.Draft) { plan.Entries[0].WorkflowVersionID = "missing-v1" }, want: "entry workflow version"},
-		{name: "workflow version has wrong owner", mutate: func(plan *execution.Draft) { plan.Workflows[0].WorkflowID = "other" }, want: "does not belong"},
+		{name: "workflow version has wrong owner", mutate: func(plan *execution.Draft) { plan.Workflows[0].FlowFragmentID = "other" }, want: "does not belong"},
 		{name: "invalid frozen workflow", mutate: func(plan *execution.Draft) { plan.Workflows[0].Steps = nil }, want: "failed execution preflight"},
 	}
 	for _, test := range tests {
@@ -95,18 +95,18 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, WorkflowID: "root", WorkflowVersionID: "root-v1"}},
+	plan := execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
-			{WorkflowID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{
+			{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{
 				{ID: "select", DisplayName: "选择", Kind: execution.ActionStep, Action: "select", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Values: []string{"east", "west"}, Optional: true, CaptureScreenshot: true},
 				{ID: "validate", DisplayName: "验证", Kind: execution.ValidationStep, NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Validation: &execution.Validation{Kind: "text_contains", Expected: "ready", IgnoreCase: true, MaxWaitMS: 2_000, StabilityMS: 200}},
 				{ID: "repeat", DisplayName: "重复", Kind: execution.RepeatStep, RepeatCount: 2, Children: []execution.Step{{ID: "network", DisplayName: "网络", Kind: execution.WaitStep, WaitKind: "network_idle", WaitMS: 300}}},
-				{ID: "call", DisplayName: "调用", Kind: execution.WorkflowReference, Reference: &execution.Reference{WorkflowID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("north")), "enabled": parameter.LiteralBinding(parameter.BooleanValue(true)), "count": parameter.LiteralBinding(number), "regions": parameter.LiteralBinding(parameter.MultiSelectValue([]string{"north,east", "south"}))}}},
+				{ID: "call", DisplayName: "调用", Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("north")), "enabled": parameter.LiteralBinding(parameter.BooleanValue(true)), "count": parameter.LiteralBinding(number), "regions": parameter.LiteralBinding(parameter.MultiSelectValue([]string{"north,east", "south"}))}}},
 			}},
-			{WorkflowID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1, Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Required: true}, {Name: "enabled", DisplayName: "Enabled", Type: parameter.Boolean, Required: true}, {Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []execution.Step{{ID: "child-wait", DisplayName: "子等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}},
+			{FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "子流程", VersionNumber: 1, Parameters: []execution.Parameter{{Name: "region", DisplayName: "Region", Type: parameter.Text, Required: true}, {Name: "enabled", DisplayName: "Enabled", Type: parameter.Boolean, Required: true}, {Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []execution.Step{{ID: "child-wait", DisplayName: "子等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}},
 		},
 		Nodes:      []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "region")},
-		References: []execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call", WorkflowID: "child", WorkflowVersionID: "child-v1"}},
+		References: []execution.ReferenceResolution{{ParentVersionID: "root-v1", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}},
 	}
 	compiled, err := compileDraft(plan)
 	if err != nil {

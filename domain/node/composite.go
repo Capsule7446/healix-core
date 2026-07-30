@@ -209,8 +209,8 @@ func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 }
 
 // WorkflowNode 按顺序运行 Children。Application 编译器从锁定的 Workspace
-// 版本快照构造它；它也是 Workflow 相互引用时被引用的不可变执行单元。
-// Workflow 按顺序执行；跨 Workflow 调度由应用层负责。
+// 版本快照构造它；它也是 FlowFragment 相互引用时被引用的不可变执行单元。
+// FlowFragment 按顺序执行；跨 FlowFragment 调度由应用层负责。
 type WorkflowNode struct {
 	NodeID             string
 	Children           []Node

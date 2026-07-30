@@ -168,11 +168,11 @@ type ValidationConfig struct {
 	SupportedKinds []ValidationAssertionKind
 }
 
-// ValidationBranch 是固定 (AND...) OR (AND...) 组语法中的一个 AND 分支。步骤保留为 WorkflowStep 值，以便 DTO 映射器和实现器可以使用一种递归模式，而聚合验证则阻止任何其他类型进入分支。
+// ValidationBranch 是固定 (AND...) OR (AND...) 组语法中的一个 AND 分支。步骤保留为 FlowFragmentStep 值，以便 DTO 映射器和实现器可以使用一种递归模式，而聚合验证则阻止任何其他类型进入分支。
 type ValidationBranch struct {
 	ID    string
 	Name  string
-	Steps []WorkflowStep
+	Steps []FlowFragmentStep
 }
 
 // ValidationGroup 是 AND 分支的一级析取。它的Wait被每个成员节点继承；嵌套组和操作节点无效。
@@ -181,7 +181,7 @@ type ValidationGroup struct {
 	Branches []ValidationBranch
 }
 
-func validateStandaloneValidationStep(step WorkflowStep) []string {
+func validateStandaloneValidationStep(step FlowFragmentStep) []string {
 	var problems []string
 	if step.Validation == nil {
 		return []string{fmt.Sprintf("validation step %q requires validation configuration", step.DisplayName)}
@@ -203,7 +203,7 @@ func validateStandaloneValidationStep(step WorkflowStep) []string {
 	return problems
 }
 
-func validateValidationGroupStep(step WorkflowStep, seen map[string]struct{}) []string {
+func validateValidationGroupStep(step FlowFragmentStep, seen map[string]struct{}) []string {
 	var problems []string
 	if step.ValidationGroup == nil {
 		return []string{fmt.Sprintf("validation group %q requires group configuration", step.DisplayName)}
