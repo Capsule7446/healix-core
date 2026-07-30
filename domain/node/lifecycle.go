@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 )
@@ -96,7 +97,8 @@ const (
 type NodeExecutionRef = StepExecutionRef
 
 type ExecutionErrorSnapshot struct {
-	Kind    string
+	Kind    fault.Kind
+	Code    fault.Code
 	Message string
 }
 
@@ -445,5 +447,10 @@ func snapshotError(err error) *ExecutionErrorSnapshot {
 	if err == nil {
 		return nil
 	}
-	return &ExecutionErrorSnapshot{Kind: string(errorKind(err)), Message: err.Error()}
+	classified := classifyNodeFault(err)
+	descriptor, ok := fault.Describe(classified)
+	if !ok {
+		return nil
+	}
+	return &ExecutionErrorSnapshot{Kind: descriptor.Kind(), Code: descriptor.Code(), Message: descriptor.Message()}
 }

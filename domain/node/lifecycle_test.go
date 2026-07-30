@@ -227,8 +227,8 @@ func TestCompletionChainIsolatesSnapshotErrorBetweenHandlers(t *testing.T) {
 	if err := lifecycle.Complete(context.Background(), original); !errors.Is(err, original) {
 		t.Fatalf("Complete error = %v, want original failure", err)
 	}
-	if observed != original.Error() {
-		t.Fatalf("second handler observed error %q, want %q", observed, original.Error())
+	if observed != "node operation failed" {
+		t.Fatalf("second handler observed error %q, want safe fault message", observed)
 	}
 }
 
