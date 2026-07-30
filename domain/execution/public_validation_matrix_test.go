@@ -63,7 +63,7 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		{name: "entry workflow owner mismatch", build: base, mutate: func(value *Draft) { value.Entries[0].FlowFragmentID = "other" }, want: "belongs to workflow"},
 		{name: "parameterless workflow carries snapshot", build: base, mutate: func(value *Draft) { value.Entries[0].Parameters.ID = "scope" }, want: "requires an empty parameter snapshot"},
 		{name: "parameter snapshot identity invalid", build: func() Draft { return validRunSnapshotInput(t).Plan }, mutate: func(value *Draft) { value.Entries[0].Parameters.ID = " " }, want: "parameter snapshot identity"},
-		{name: "node identity missing", build: base, mutate: func(value *Draft) { value.Nodes[0].NodeID = " " }, want: "node dependency requires"},
+		{name: "node identity missing", build: base, mutate: func(value *Draft) { value.Nodes[0].ElementTargetID = " " }, want: "node dependency requires"},
 		{name: "node version has different owners", build: base, mutate: func(value *Draft) {
 			value.Nodes = append(value.Nodes, validNodeSnapshot("00000000-0000-0000-0000-000000000002", "v1"))
 		}, want: "owned by different nodes"},

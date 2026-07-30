@@ -952,7 +952,7 @@ func TestResolvedCreateRunPreflightRejectsAdapterCollectionsBeforeBuild(t *testi
 			v.Plan.Workflows = make([]automation.FlowFragmentDependencySnapshot, execution.MaxDraftWorkflows+1)
 		}},
 		{"nodes", func(v *ResolvedCreateRun) {
-			v.Plan.Nodes = make([]automation.NodeDependencySnapshot, execution.MaxDraftNodes+1)
+			v.Plan.Nodes = make([]automation.ElementTargetDependencySnapshot, execution.MaxDraftNodes+1)
 		}},
 		{"references", func(v *ResolvedCreateRun) {
 			v.Plan.References = make([]automation.FlowFragmentReferenceResolution, execution.MaxDraftReferences+1)

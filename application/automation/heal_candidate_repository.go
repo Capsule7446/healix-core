@@ -33,7 +33,7 @@ type HealReviewIntent struct {
 	CommandID                 string
 	RequestDigest             string
 	Decision                  HealReviewDecision
-	NodeID                    string
+	ElementTargetID           string
 	BaseNodeVersionID         string
 	CandidateHash             string
 	ExpectedCandidateRevision domain.Revision
@@ -41,7 +41,7 @@ type HealReviewIntent struct {
 	ExpectedStreak            *domain.HealStreak
 	ExpectedStreakDigest      string
 	NextCandidate             domain.HealCandidate
-	NextNode                  *domain.NodeAggregate
+	NextNode                  *domain.ElementTargetAggregate
 	NextStreak                *domain.HealStreak
 	ReviewedBy                string
 	ReviewedAt                int64
@@ -55,10 +55,10 @@ const (
 )
 
 type HealReviewResult struct {
-	Decision  HealReviewDecision
-	Candidate domain.HealCandidate
-	Node      *domain.NodeAggregate
-	Streak    *domain.HealStreak
+	Decision      HealReviewDecision
+	Candidate     domain.HealCandidate
+	ElementTarget *domain.ElementTargetAggregate
+	Streak        *domain.HealStreak
 }
 
 type HealReviewOutcome struct {
@@ -76,7 +76,7 @@ type HealReviewTransaction interface {
 type HealReviewRequest struct {
 	CommandID                 string
 	Decision                  HealReviewDecision
-	NodeID                    string
+	ElementTargetID           string
 	BaseNodeVersionID         string
 	CandidateHash             string
 	ExpectedCandidateRevision domain.Revision
@@ -84,7 +84,7 @@ type HealReviewRequest struct {
 }
 
 func (request HealReviewRequest) Validate() error {
-	if strings.TrimSpace(request.CommandID) == "" || strings.TrimSpace(request.NodeID) == "" || strings.TrimSpace(request.BaseNodeVersionID) == "" || strings.TrimSpace(request.CandidateHash) == "" {
+	if strings.TrimSpace(request.CommandID) == "" || strings.TrimSpace(request.ElementTargetID) == "" || strings.TrimSpace(request.BaseNodeVersionID) == "" || strings.TrimSpace(request.CandidateHash) == "" {
 		return fmt.Errorf("heal review request requires command, node, base version, and candidate identity")
 	}
 	if request.Decision != HealReviewApprove && request.Decision != HealReviewReject {
@@ -121,7 +121,7 @@ func HealReviewStreakDigest(streak domain.HealStreak) (string, error) {
 }
 
 func (intent HealReviewIntent) Validate() error {
-	if strings.TrimSpace(intent.CommandID) == "" || strings.TrimSpace(intent.NodeID) == "" || strings.TrimSpace(intent.BaseNodeVersionID) == "" || strings.TrimSpace(intent.CandidateHash) == "" {
+	if strings.TrimSpace(intent.CommandID) == "" || strings.TrimSpace(intent.ElementTargetID) == "" || strings.TrimSpace(intent.BaseNodeVersionID) == "" || strings.TrimSpace(intent.CandidateHash) == "" {
 		return fmt.Errorf("heal review intent requires command, node, base version, and candidate identity")
 	}
 	if strings.TrimSpace(intent.ReviewedBy) == "" || intent.ReviewedAt <= 0 {
@@ -133,7 +133,7 @@ func (intent HealReviewIntent) Validate() error {
 	if err := intent.ExpectedNodeRevision.ValidatePersisted(); err != nil {
 		return fmt.Errorf("heal review expected node revision: %w", err)
 	}
-	if intent.NextCandidate.Hash != intent.CandidateHash || intent.NextCandidate.NodeID != intent.NodeID || intent.NextCandidate.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextCandidate.Revision != intent.ExpectedCandidateRevision+1 {
+	if intent.NextCandidate.Hash != intent.CandidateHash || intent.NextCandidate.ElementTargetID != intent.ElementTargetID || intent.NextCandidate.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextCandidate.Revision != intent.ExpectedCandidateRevision+1 {
 		return fmt.Errorf("heal review candidate transition does not match authority")
 	}
 	switch intent.Decision {
@@ -141,14 +141,14 @@ func (intent HealReviewIntent) Validate() error {
 		if intent.NextCandidate.Status != domain.HealCandidatePromoted || intent.NextNode == nil || intent.ExpectedStreak != nil || intent.NextStreak != nil {
 			return fmt.Errorf("approval requires promoted candidate and node only")
 		}
-		if intent.NextNode.Node.ID != intent.NodeID || intent.NextNode.Node.Revision != intent.ExpectedNodeRevision+1 || intent.NextNode.Current.ID == intent.BaseNodeVersionID {
+		if intent.NextNode.ElementTarget.ID != intent.ElementTargetID || intent.NextNode.ElementTarget.Revision != intent.ExpectedNodeRevision+1 || intent.NextNode.Current.ID == intent.BaseNodeVersionID {
 			return fmt.Errorf("approval node transition does not match authority")
 		}
 	case HealReviewReject:
 		if intent.NextCandidate.Status != domain.HealCandidateRejected || intent.NextNode != nil || intent.ExpectedStreak == nil || intent.NextStreak == nil {
 			return fmt.Errorf("rejection requires rejected candidate and streak transition only")
 		}
-		if strings.TrimSpace(intent.ExpectedStreakDigest) == "" || intent.ExpectedStreak.NodeID != intent.NodeID || intent.ExpectedStreak.BaseNodeVersionID != intent.BaseNodeVersionID || intent.ExpectedStreak.CandidateHash != intent.CandidateHash || intent.NextStreak.NodeID != intent.NodeID || intent.NextStreak.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextStreak.CandidateHash != intent.CandidateHash || intent.NextStreak.Disposition != domain.HealStreakRejected || intent.NextStreak.LastSequence <= intent.ExpectedStreak.LastSequence {
+		if strings.TrimSpace(intent.ExpectedStreakDigest) == "" || intent.ExpectedStreak.ElementTargetID != intent.ElementTargetID || intent.ExpectedStreak.BaseNodeVersionID != intent.BaseNodeVersionID || intent.ExpectedStreak.CandidateHash != intent.CandidateHash || intent.NextStreak.ElementTargetID != intent.ElementTargetID || intent.NextStreak.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextStreak.CandidateHash != intent.CandidateHash || intent.NextStreak.Disposition != domain.HealStreakRejected || intent.NextStreak.LastSequence <= intent.ExpectedStreak.LastSequence {
 			return fmt.Errorf("rejection streak transition does not match authority")
 		}
 	default:
@@ -162,7 +162,7 @@ func HealReviewRequestDigest(intent HealReviewIntent) (string, error) {
 		return "", err
 	}
 	return HealReviewRequestIdentityDigest(HealReviewRequest{
-		CommandID: intent.CommandID, Decision: intent.Decision, NodeID: intent.NodeID,
+		CommandID: intent.CommandID, Decision: intent.Decision, ElementTargetID: intent.ElementTargetID,
 		BaseNodeVersionID: intent.BaseNodeVersionID, CandidateHash: intent.CandidateHash,
 		ExpectedCandidateRevision: intent.ExpectedCandidateRevision, ExpectedNodeRevision: intent.ExpectedNodeRevision,
 	})
@@ -191,7 +191,7 @@ func cloneHealReviewIntent(intent HealReviewIntent) HealReviewIntent {
 func cloneHealReviewOutcome(outcome HealReviewOutcome) HealReviewOutcome {
 	result := outcome
 	result.Result.Candidate = cloneHealCandidate(outcome.Result.Candidate)
-	result.Result.Node = cloneNodePointer(outcome.Result.Node)
+	result.Result.ElementTarget = cloneNodePointer(outcome.Result.ElementTarget)
 	result.Result.Streak = cloneHealStreakPointer(outcome.Result.Streak)
 	return result
 }
@@ -203,7 +203,7 @@ func cloneHealCandidate(candidate domain.HealCandidate) domain.HealCandidate {
 	return result
 }
 
-func cloneNodePointer(node *domain.NodeAggregate) *domain.NodeAggregate {
+func cloneNodePointer(node *domain.ElementTargetAggregate) *domain.ElementTargetAggregate {
 	if node == nil {
 		return nil
 	}

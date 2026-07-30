@@ -57,7 +57,7 @@ type retainingTransaction struct {
 func (transaction *retainingTransaction) CommitStepTransition(_ context.Context, _ domainexecution.WorkerFence, commit evidence.StepTransitionCommit, _ HealGovernancePlanner) (evidence.StepTransitionCommitResult, error) {
 	transaction.commit = commit
 	if len(commit.HealObservations) > 0 {
-		commit.HealObservations[0].NodeID = "adapter-mutated"
+		commit.HealObservations[0].ElementTargetID = "adapter-mutated"
 	}
 	return transaction.result, nil
 }
@@ -66,20 +66,20 @@ func TestStepTransitionServiceOwnsCommitAndReturnedPromotions(t *testing.T) {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
 		ID: "heal", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
-		NodeID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
+		ElementTargetID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
 	}}
-	transaction := &retainingTransaction{result: evidence.StepTransitionCommitResult{Promotions: []evidence.NodeVersionPromotion{{NodeID: "node", VersionID: "version"}}}}
+	transaction := &retainingTransaction{result: evidence.StepTransitionCommitResult{Promotions: []evidence.NodeVersionPromotion{{ElementTargetID: "node", VersionID: "version"}}}}
 	service := NewStepTransitionService(NewFactCommitter(transaction, NewDefaultHealGovernancePlanner()))
 
 	result, err := service.Commit(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, commit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if commit.HealObservations[0].NodeID != "node" || transaction.commit.HealObservations[0].NodeID != "adapter-mutated" {
-		t.Fatalf("commit ownership leaked: caller=%q adapter=%q", commit.HealObservations[0].NodeID, transaction.commit.HealObservations[0].NodeID)
+	if commit.HealObservations[0].ElementTargetID != "node" || transaction.commit.HealObservations[0].ElementTargetID != "adapter-mutated" {
+		t.Fatalf("commit ownership leaked: caller=%q adapter=%q", commit.HealObservations[0].ElementTargetID, transaction.commit.HealObservations[0].ElementTargetID)
 	}
-	result.Promotions[0].NodeID = "caller-mutated"
-	if transaction.result.Promotions[0].NodeID != "node" {
+	result.Promotions[0].ElementTargetID = "caller-mutated"
+	if transaction.result.Promotions[0].ElementTargetID != "node" {
 		t.Fatal("returned promotions alias adapter storage")
 	}
 }
@@ -142,7 +142,7 @@ func crossRunFinalValidationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.FinalValidations = []evidence.ValidationObservation{{
 		ID: "validation", RunID: "other-run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
-		ValidationStepID: "validation-step", NodeID: "node", NodeVersionID: "node-v1", AssertionKind: "visible",
+		ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "node-v1", AssertionKind: "visible",
 		Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true,
 	}}
@@ -152,12 +152,12 @@ func crossRunFinalValidationCommit() evidence.StepTransitionCommit {
 func crossRunValidationGroupCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.FinalValidations = []evidence.ValidationObservation{
-		{ID: "member-a", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-a", NodeID: "node-a", NodeVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Passed: true, Reason: "passed", BranchDisposition: evidence.ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
-		{ID: "member-b", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-b", NodeID: "node-b", NodeVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Reason: "normal_unsatisfied", BranchDisposition: evidence.ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
+		{ID: "member-a", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Passed: true, Reason: "passed", BranchDisposition: evidence.ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
+		{ID: "member-b", RunID: "run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Reason: "normal_unsatisfied", BranchDisposition: evidence.ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
 	}
 	commit.FinalValidationGroups = []evidence.ValidationGroupTerminalObservation{evidence.NewValidationGroupTerminalObservation(
 		"group-final", "other-run", commit.Event.ExecutionID, commit.Event.ID, "group", evidence.ValidationTerminalPassed, "branch-a",
-		[]evidence.ValidationMemberIdentity{{BranchID: "branch-a", NodeID: "node-a"}, {BranchID: "branch-b", NodeID: "node-b"}}, 1,
+		[]evidence.ValidationMemberIdentity{{BranchID: "branch-a", ElementTargetID: "node-a"}, {BranchID: "branch-b", ElementTargetID: "node-b"}}, 1,
 	)}
 	return commit
 }
@@ -166,7 +166,7 @@ func crossRunHealObservationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
 		ID: "heal", RunID: "other-run", ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
-		NodeID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
+		ElementTargetID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
 	}}
 	return commit
 }
@@ -207,7 +207,7 @@ func TestValidateStepTransitionPayloadSizeRejectsOversizedTopLevelAndNestedStrin
 				commit = validStepTransitionCommit()
 				commit.OriginalSelectorResets = []evidence.HealCandidateReset{{
 					ExecutionID: commit.Event.ExecutionID, StepExecutionID: commit.Event.ID,
-					NodeID: "node", BaseNodeVersionID: test.value, ObservedAt: 1,
+					ElementTargetID: "node", BaseNodeVersionID: test.value, ObservedAt: 1,
 				}}
 				if !test.wantError {
 					if err := commit.Validate(); err != nil {
@@ -259,7 +259,7 @@ func stepTransitionCommitWithEncodedSize(t *testing.T, target int) evidence.Step
 		commit.OriginalSelectorResets[index] = evidence.HealCandidateReset{
 			ExecutionID:       commit.Event.ExecutionID,
 			StepExecutionID:   commit.Event.ID,
-			NodeID:            "node-" + strconv.Itoa(index),
+			ElementTargetID:   "node-" + strconv.Itoa(index),
 			BaseNodeVersionID: "v",
 			ObservedAt:        1,
 		}

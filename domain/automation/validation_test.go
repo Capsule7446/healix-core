@@ -9,7 +9,7 @@ import (
 func TestWorkflowAggregateValidateAcceptsStandaloneValidation(t *testing.T) {
 	aggregate := validationWorkflow(FlowFragmentStep{
 		ID: "validation-status", DisplayName: "验证订单状态", Kind: StepValidation,
-		NodeID: "node-status", NodeVersionID: "node-version-status",
+		ElementTargetID: "node-status", ElementTargetVersionID: "node-version-status",
 		Validation: &ValidationConfig{
 			Assertion: ValidationAssertion{Kind: ValidationTextEquals, Expected: "成功"},
 			Wait:      ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500},
@@ -57,7 +57,7 @@ func TestWorkflowAggregateValidateAcceptsValidationGroup(t *testing.T) {
 func TestWorkflowAggregateValidateRejectsInvalidValidationConfiguration(t *testing.T) {
 	valid := FlowFragmentStep{
 		ID: "validation", DisplayName: "验证", Kind: StepValidation,
-		NodeID: "node", NodeVersionID: "node-version",
+		ElementTargetID: "node", ElementTargetVersionID: "node-version",
 		Validation: &ValidationConfig{
 			Assertion: ValidationAssertion{Kind: ValidationTextEquals, Expected: "成功"},
 			Wait:      ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500},
@@ -69,7 +69,7 @@ func TestWorkflowAggregateValidateRejectsInvalidValidationConfiguration(t *testi
 		want string
 	}{
 		{name: "missing one assertion config", step: func() FlowFragmentStep { s := valid; s.Validation = nil; return s }(), want: "requires validation configuration"},
-		{name: "missing exact node version", step: func() FlowFragmentStep { s := valid; s.NodeVersionID = ""; return s }(), want: "exact node reference"},
+		{name: "missing exact node version", step: func() FlowFragmentStep { s := valid; s.ElementTargetVersionID = ""; return s }(), want: "exact node reference"},
 		{name: "invalid wait", step: func() FlowFragmentStep {
 			s := valid
 			s.Validation = &ValidationConfig{Assertion: s.Validation.Assertion, Wait: ValidationWait{MaxWaitMS: 999, StabilityMS: 200}}
@@ -191,6 +191,6 @@ func validationWorkflow(step FlowFragmentStep) FlowFragmentAggregate {
 
 func validationMember(id, name string) FlowFragmentStep {
 	return FlowFragmentStep{ID: id, DisplayName: name, Kind: StepValidation,
-		NodeID: "node-" + id, NodeVersionID: "version-" + id,
+		ElementTargetID: "node-" + id, ElementTargetVersionID: "version-" + id,
 		Validation: &ValidationConfig{Assertion: ValidationAssertion{Kind: ValidationVisible}}}
 }

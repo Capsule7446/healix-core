@@ -25,7 +25,7 @@ func validCapturedHealReviewIntents(t *testing.T) (HealReviewIntent, HealReviewI
 
 func TestHealReviewRequestRejectsEachPublicIdentityBoundary(t *testing.T) {
 	valid := HealReviewRequest{
-		CommandID: "command", Decision: HealReviewApprove, NodeID: "node", BaseNodeVersionID: "node-v1",
+		CommandID: "command", Decision: HealReviewApprove, ElementTargetID: "node", BaseNodeVersionID: "node-v1",
 		CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1,
 	}
 	tests := []struct {
@@ -63,13 +63,13 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 		mutate func(*HealReviewIntent)
 		want   string
 	}{
-		{name: "missing identity", base: approve, mutate: func(intent *HealReviewIntent) { intent.NodeID = " \n" }, want: "requires command"},
+		{name: "missing identity", base: approve, mutate: func(intent *HealReviewIntent) { intent.ElementTargetID = " \n" }, want: "requires command"},
 		{name: "missing reviewer metadata", base: approve, mutate: func(intent *HealReviewIntent) { intent.ReviewedBy = "" }, want: "trusted reviewer metadata"},
 		{name: "zero candidate revision", base: approve, mutate: func(intent *HealReviewIntent) { intent.ExpectedCandidateRevision = 0 }, want: "expected candidate revision"},
 		{name: "zero node revision", base: approve, mutate: func(intent *HealReviewIntent) { intent.ExpectedNodeRevision = 0 }, want: "expected node revision"},
 		{name: "candidate authority drift", base: approve, mutate: func(intent *HealReviewIntent) { intent.NextCandidate.Hash = "other" }, want: "candidate transition"},
 		{name: "approval shape drift", base: approve, mutate: func(intent *HealReviewIntent) { intent.NextCandidate.Status = domain.HealCandidateAwaitingApproval }, want: "approval requires"},
-		{name: "approval node drift", base: approve, mutate: func(intent *HealReviewIntent) { intent.NextNode.Node.ID = "other" }, want: "approval node transition"},
+		{name: "approval node drift", base: approve, mutate: func(intent *HealReviewIntent) { intent.NextNode.ElementTarget.ID = "other" }, want: "approval node transition"},
 		{name: "rejection shape drift", base: reject, mutate: func(intent *HealReviewIntent) { intent.NextStreak = nil }, want: "rejection requires"},
 		{name: "rejection authority drift", base: reject, mutate: func(intent *HealReviewIntent) { intent.ExpectedStreakDigest = "" }, want: "rejection streak transition"},
 		{name: "unsupported decision", base: approve, mutate: func(intent *HealReviewIntent) { intent.Decision = "UNKNOWN" }, want: "unsupported heal review decision"},
@@ -93,7 +93,7 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 		t.Fatalf("ValidateHealReviewIntentDigest() error = %v", err)
 	}
 
-	if got := (HealReviewIntent{}).NextNodeValue(); got.Node.ID != "" || got.Current.ID != "" {
+	if got := (HealReviewIntent{}).NextNodeValue(); got.ElementTarget.ID != "" || got.Current.ID != "" {
 		t.Fatalf("nil NextNode value = %#v", got)
 	}
 }
@@ -103,7 +103,7 @@ func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testi
 		return SamplingPublicationRequest{
 			FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
 			Workspace: sampledWorkflow(sampling.SamplingResolutionCreate),
-			Nodes:     []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "node", NodeVersionID: "node-v1"}},
+			Nodes:     []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}},
 		}
 	}
 	tests := []struct {
@@ -112,15 +112,15 @@ func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testi
 		want   string
 	}{
 		{name: "missing request identity", mutate: func(request *SamplingPublicationRequest) { request.FlowFragmentID = "" }, want: "requires workflow identity"},
-		{name: "incomplete authority", mutate: func(request *SamplingPublicationRequest) { request.Nodes[0].NodeID = "" }, want: "requires temporary and formal identity"},
+		{name: "incomplete authority", mutate: func(request *SamplingPublicationRequest) { request.Nodes[0].ElementTargetID = "" }, want: "requires temporary and formal identity"},
 		{name: "duplicate temporary authority", mutate: func(request *SamplingPublicationRequest) {
-			request.Nodes = append(request.Nodes, SamplingNodeAuthority{TemporaryNodeID: "temporary-node", NodeID: "other", NodeVersionID: "other-v1"})
+			request.Nodes = append(request.Nodes, SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "other", ElementTargetVersionID: "other-v1"})
 		}, want: "duplicate sampling node authority"},
 		{name: "duplicate formal version", mutate: func(request *SamplingPublicationRequest) {
-			request.Nodes = append(request.Nodes, SamplingNodeAuthority{TemporaryNodeID: "other", NodeID: "other", NodeVersionID: "node-v1"})
+			request.Nodes = append(request.Nodes, SamplingNodeAuthority{TemporaryElementTargetID: "other", ElementTargetID: "other", ElementTargetVersionID: "node-v1"})
 		}, want: "duplicate formal sampling node version"},
 		{name: "unmapped step reference", mutate: func(request *SamplingPublicationRequest) {
-			request.Workspace.Steps[0].Children[0].NodeID = "unknown-temporary-node"
+			request.Workspace.Steps[0].Children[0].ElementTargetID = "unknown-temporary-node"
 		}, want: "rewrite sampled workflow references"},
 		{name: "invalid workflow", mutate: func(request *SamplingPublicationRequest) { request.Workspace.DisplayName = "" }, want: "build sampled workflow"},
 	}

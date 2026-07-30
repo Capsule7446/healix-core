@@ -166,7 +166,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 			return invalid(err.Error())
 		}
 		for _, step := range items {
-			if err := addStrings(step.ID, step.DisplayName, string(step.Kind), step.Action, step.NodeID, step.NodeVersionID, step.Value, step.WaitKind); err != nil {
+			if err := addStrings(step.ID, step.DisplayName, string(step.Kind), step.Action, step.ElementTargetID, step.ElementTargetVersionID, step.Value, step.WaitKind); err != nil {
 				return err
 			}
 			if err := budget.addElements(len(step.Values)); err != nil {
@@ -256,7 +256,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 	}
 	for _, node := range resolved.Plan.Nodes {
 		fingerprint := node.Version.Fingerprint
-		if err := addStrings(node.Node.ID, node.Node.DisplayName, node.Node.CurrentVersionID, node.Version.ID, node.Version.NodeID, node.Version.PageURL, node.Version.Origin, fingerprint.Tag, fingerprint.Text, fingerprint.ARIA.Role, fingerprint.ARIA.Name, fingerprint.Neighbors.Prev, fingerprint.Neighbors.Next, fingerprint.Neighbors.ParentTag, fingerprint.LabelText, fingerprint.FormID); err != nil {
+		if err := addStrings(node.ElementTarget.ID, node.ElementTarget.DisplayName, node.ElementTarget.CurrentVersionID, node.Version.ID, node.Version.ElementTargetID, node.Version.PageURL, node.Version.Origin, fingerprint.Tag, fingerprint.Text, fingerprint.ARIA.Role, fingerprint.ARIA.Name, fingerprint.Neighbors.Prev, fingerprint.Neighbors.Next, fingerprint.Neighbors.ParentTag, fingerprint.LabelText, fingerprint.FormID); err != nil {
 			return err
 		}
 		if err := budget.addElements(len(node.Version.Selectors) + len(fingerprint.Attributes) + len(fingerprint.Path) + len(fingerprint.Framework)); err != nil {

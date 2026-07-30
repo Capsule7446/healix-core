@@ -13,17 +13,17 @@ func TestUpdateDraftStepDirectNestedReplacementAndRejection(t *testing.T) {
 		replacement automation.FlowFragmentStep
 		assert      func(*testing.T, TemporarySamplingWorkflow)
 	}{
-		{"root", "a", automation.FlowFragmentStep{ID: "a", DisplayName: "root replaced", Kind: automation.StepAction, NodeID: "node-b"}, func(t *testing.T, w TemporarySamplingWorkflow) {
+		{"root", "a", automation.FlowFragmentStep{ID: "a", DisplayName: "root replaced", Kind: automation.StepAction, ElementTargetID: "node-b"}, func(t *testing.T, w TemporarySamplingWorkflow) {
 			if w.Steps[0].DisplayName != "root replaced" || !reflect.DeepEqual(w.Nodes[1].StepIDs, []string{"a", "b"}) {
 				t.Fatalf("unexpected root update: %#v", w)
 			}
 		}},
-		{"repeat child", "b", automation.FlowFragmentStep{ID: "b", DisplayName: "nested replaced", Kind: automation.StepAction, NodeID: "node-a"}, func(t *testing.T, w TemporarySamplingWorkflow) {
+		{"repeat child", "b", automation.FlowFragmentStep{ID: "b", DisplayName: "nested replaced", Kind: automation.StepAction, ElementTargetID: "node-a"}, func(t *testing.T, w TemporarySamplingWorkflow) {
 			if w.Steps[1].Children[0].DisplayName != "nested replaced" || !reflect.DeepEqual(w.Nodes[0].StepIDs, []string{"a", "b"}) {
 				t.Fatalf("unexpected repeat update: %#v", w)
 			}
 		}},
-		{"validation branch", "c", automation.FlowFragmentStep{ID: "c", DisplayName: "branch replaced", Kind: automation.StepValidation, NodeID: "node-b"}, func(t *testing.T, w TemporarySamplingWorkflow) {
+		{"validation branch", "c", automation.FlowFragmentStep{ID: "c", DisplayName: "branch replaced", Kind: automation.StepValidation, ElementTargetID: "node-b"}, func(t *testing.T, w TemporarySamplingWorkflow) {
 			if w.Steps[2].ValidationGroup.Branches[0].Steps[0].DisplayName != "branch replaced" {
 				t.Fatalf("unexpected branch update: %#v", w)
 			}
@@ -46,7 +46,7 @@ func TestUpdateDraftStepDirectNestedReplacementAndRejection(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		step automation.FlowFragmentStep
-	}{{"empty id", automation.FlowFragmentStep{}}, {"unknown", automation.FlowFragmentStep{ID: "missing", DisplayName: "x", Kind: automation.StepAction, NodeID: "node-a"}}, {"unknown node is atomic", automation.FlowFragmentStep{ID: "a", DisplayName: "x", Kind: automation.StepAction, NodeID: "missing"}}, {"duplicate replacement is atomic", automation.FlowFragmentStep{ID: "a", DisplayName: "x", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "b", DisplayName: "duplicate", Kind: automation.StepAction, NodeID: "node-a"}}}}} {
+	}{{"empty id", automation.FlowFragmentStep{}}, {"unknown", automation.FlowFragmentStep{ID: "missing", DisplayName: "x", Kind: automation.StepAction, ElementTargetID: "node-a"}}, {"unknown node is atomic", automation.FlowFragmentStep{ID: "a", DisplayName: "x", Kind: automation.StepAction, ElementTargetID: "missing"}}, {"duplicate replacement is atomic", automation.FlowFragmentStep{ID: "a", DisplayName: "x", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "b", DisplayName: "duplicate", Kind: automation.StepAction, ElementTargetID: "node-a"}}}}} {
 		t.Run(tt.name, func(t *testing.T) {
 			source := draftFixture()
 			before := draftFixture()
@@ -82,7 +82,7 @@ func TestRebuildTemporaryNodeReferencesDirectNestedStaleUnknownAndAtomicity(t *t
 	invalid := draftFixture()
 	invalid.Nodes[0].StepIDs = []string{"preserve-a"}
 	invalid.Nodes[1].StepIDs = []string{"preserve-b"}
-	invalid.Steps[1].Children[0].NodeID = "missing"
+	invalid.Steps[1].Children[0].ElementTargetID = "missing"
 	beforeStepIDs := make([][]string, len(invalid.Nodes))
 	for index := range invalid.Nodes {
 		beforeStepIDs[index] = append([]string(nil), invalid.Nodes[index].StepIDs...)

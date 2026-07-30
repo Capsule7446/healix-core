@@ -15,7 +15,7 @@ import (
 
 type healState struct {
 	candidate domain.HealCandidate
-	node      domain.NodeAggregate
+	node      domain.ElementTargetAggregate
 	streak    domain.HealStreak
 	audits    []application.HealReviewResult
 	outbox    []application.HealReviewResult
@@ -31,7 +31,7 @@ type healFixture struct {
 
 func newHealFixture(t *testing.T) conformancetest.HealReviewFixture {
 	t.Helper()
-	base, err := domain.NewNode(domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}, domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"role": "old"}}, Source: domain.SourceManual, CreatedAt: 1})
+	base, err := domain.NewElementTarget(domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}, domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"role": "old"}}, Source: domain.SourceManual, CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,12 +39,12 @@ func newHealFixture(t *testing.T) conformancetest.HealReviewFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := domain.HealCandidate{Hash: "candidate", NodeID: "node", BaseNodeVersionID: "node-v1", Status: domain.HealCandidateAwaitingApproval, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#new"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"role": "new"}}, Revision: 1}
+	candidate := domain.HealCandidate{Hash: "candidate", ElementTargetID: "node", BaseNodeVersionID: "node-v1", Status: domain.HealCandidateAwaitingApproval, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#new"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"role": "new"}}, Revision: 1}
 	nextCandidate := candidate
 	nextCandidate.Status = domain.HealCandidatePromoted
 	nextCandidate.Revision = 2
-	streak := domain.HealStreak{NodeID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", Disposition: domain.HealStreakAwaitApproval, LastSequence: 3, Contributions: []domain.ContributingHealFact{{FactID: "fact", Sequence: 3}}}
-	intent := application.HealReviewIntent{CommandID: "command", Decision: application.HealReviewApprove, NodeID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1, NextCandidate: nextCandidate, NextNode: &next, ReviewedBy: "reviewer", ReviewedAt: 10}
+	streak := domain.HealStreak{ElementTargetID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", Disposition: domain.HealStreakAwaitApproval, LastSequence: 3, Contributions: []domain.ContributingHealFact{{FactID: "fact", Sequence: 3}}}
+	intent := application.HealReviewIntent{CommandID: "command", Decision: application.HealReviewApprove, ElementTargetID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1, NextCandidate: nextCandidate, NextNode: &next, ReviewedBy: "reviewer", ReviewedAt: 10}
 	intent.RequestDigest = healDigest(t, intent)
 	return &healFixture{state: healState{candidate: candidate, node: base, streak: streak, replays: map[string]application.HealReviewOutcome{}, digests: map[string]string{}}, intent: intent}
 }
@@ -67,12 +67,16 @@ func (f *healFixture) MakeCandidateStale() {
 	defer f.mu.Unlock()
 	f.state.candidate.Revision++
 }
-func (f *healFixture) MakeNodeStale() { f.mu.Lock(); defer f.mu.Unlock(); f.state.node.Node.Revision++ }
+func (f *healFixture) MakeNodeStale() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.state.node.ElementTarget.Revision++
+}
 func (f *healFixture) MakeCurrentBaseStale() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.state.node.Current.ID = "node-other"
-	f.state.node.Node.CurrentVersionID = "node-other"
+	f.state.node.ElementTarget.CurrentVersionID = "node-other"
 }
 func (f *healFixture) MakeStreakStale() {
 	f.mu.Lock()
@@ -134,7 +138,7 @@ func (f *healFixture) CommitHealReview(_ context.Context, i application.HealRevi
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if old, ok := f.state.replays[i.CommandID]; ok {
-		if f.state.digests[i.CommandID] != i.RequestDigest || !reflect.DeepEqual(old.Result, application.HealReviewResult{Decision: i.Decision, Candidate: i.NextCandidate, Node: i.NextNode, Streak: i.NextStreak}) {
+		if f.state.digests[i.CommandID] != i.RequestDigest || !reflect.DeepEqual(old.Result, application.HealReviewResult{Decision: i.Decision, Candidate: i.NextCandidate, ElementTarget: i.NextNode, Streak: i.NextStreak}) {
 			return application.HealReviewOutcome{}, application.ErrHealReviewIdentityConflict
 		}
 		old.Status = application.HealReviewReplayed
@@ -143,7 +147,7 @@ func (f *healFixture) CommitHealReview(_ context.Context, i application.HealRevi
 	if f.state.candidate.Status != domain.HealCandidateAwaitingApproval {
 		return application.HealReviewOutcome{}, application.ErrHealReviewDecisionConflict
 	}
-	if f.state.candidate.Revision != i.ExpectedCandidateRevision || f.state.node.Node.Revision != i.ExpectedNodeRevision || f.state.node.Current.ID != i.BaseNodeVersionID {
+	if f.state.candidate.Revision != i.ExpectedCandidateRevision || f.state.node.ElementTarget.Revision != i.ExpectedNodeRevision || f.state.node.Current.ID != i.BaseNodeVersionID {
 		return application.HealReviewOutcome{}, application.ErrHealReviewCASConflict
 	}
 	if i.ExpectedStreak != nil {
@@ -169,7 +173,7 @@ func (f *healFixture) CommitHealReview(_ context.Context, i application.HealRevi
 			return application.HealReviewOutcome{}, errors.New("injected fault")
 		}
 	}
-	result := application.HealReviewResult{Decision: i.Decision, Candidate: cloneCandidate(i.NextCandidate), Node: cloneNode(i.NextNode), Streak: cloneStreakPtr(i.NextStreak)}
+	result := application.HealReviewResult{Decision: i.Decision, Candidate: cloneCandidate(i.NextCandidate), ElementTarget: cloneElementTarget(i.NextNode), Streak: cloneStreakPtr(i.NextStreak)}
 	n.audits = append(n.audits, cloneResult(result))
 	if f.fail(conformancetest.HealFaultAfterAudit) != nil {
 		return application.HealReviewOutcome{}, errors.New("injected fault")
@@ -206,7 +210,7 @@ func healDigest(t *testing.T, i application.HealReviewIntent) string {
 func cloneIntent(i application.HealReviewIntent) application.HealReviewIntent {
 	r := i
 	r.NextCandidate = cloneCandidate(i.NextCandidate)
-	r.NextNode = cloneNode(i.NextNode)
+	r.NextNode = cloneElementTarget(i.NextNode)
 	r.ExpectedStreak = cloneStreakPtr(i.ExpectedStreak)
 	r.NextStreak = cloneStreakPtr(i.NextStreak)
 	return r
@@ -221,7 +225,7 @@ func cloneCandidate(c domain.HealCandidate) domain.HealCandidate {
 	}
 	return r
 }
-func cloneNode(n *domain.NodeAggregate) *domain.NodeAggregate {
+func cloneElementTarget(n *domain.ElementTargetAggregate) *domain.ElementTargetAggregate {
 	if n == nil {
 		return nil
 	}
@@ -241,7 +245,7 @@ func cloneStreakPtr(s *domain.HealStreak) *domain.HealStreak {
 	return &r
 }
 func cloneResult(r application.HealReviewResult) application.HealReviewResult {
-	return application.HealReviewResult{Decision: r.Decision, Candidate: cloneCandidate(r.Candidate), Node: cloneNode(r.Node), Streak: cloneStreakPtr(r.Streak)}
+	return application.HealReviewResult{Decision: r.Decision, Candidate: cloneCandidate(r.Candidate), ElementTarget: cloneElementTarget(r.ElementTarget), Streak: cloneStreakPtr(r.Streak)}
 }
 func cloneOutcome(o application.HealReviewOutcome) application.HealReviewOutcome {
 	o.Result = cloneResult(o.Result)

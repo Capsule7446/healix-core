@@ -23,15 +23,15 @@ func TestWorkflowSnapshotValidateRejectsMalformedExecutionContracts(t *testing.T
 		{"version number", func(w *WorkflowSnapshot) { w.VersionNumber = 0 }, "version number must be"},
 		{"duplicate parameters", func(w *WorkflowSnapshot) { w.Parameters = []Parameter{{Name: "query"}, {Name: "query"}} }, "duplicate parameter"},
 		{"duplicate recursive ids", func(w *WorkflowSnapshot) {
-			w.Steps = []Step{{ID: "repeat", DisplayName: "repeat", Kind: RepeatStep, RepeatCount: 1, Children: []Step{{ID: "repeat", DisplayName: "child", Kind: ActionStep, Action: "noop", NodeID: "node", NodeVersionID: "v1"}}}}
+			w.Steps = []Step{{ID: "repeat", DisplayName: "repeat", Kind: RepeatStep, RepeatCount: 1, Children: []Step{{ID: "repeat", DisplayName: "child", Kind: ActionStep, Action: "noop", ElementTargetID: "node", ElementTargetVersionID: "v1"}}}}
 		}, "duplicate workflow step id"},
 		{"unsupported action", func(w *WorkflowSnapshot) { w.Steps[0].Action = "double_click" }, "unsupported action"},
-		{"node version", func(w *WorkflowSnapshot) { w.Steps[0].NodeVersionID = "" }, "exact node version"},
+		{"node version", func(w *WorkflowSnapshot) { w.Steps[0].ElementTargetVersionID = "" }, "exact node version"},
 		{"wait kind", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "wait", DisplayName: "wait", Kind: WaitStep, WaitKind: "event"}
 		}, "unsupported wait kind"},
 		{"repeat count", func(w *WorkflowSnapshot) {
-			w.Steps[0] = Step{ID: "repeat", DisplayName: "repeat", Kind: RepeatStep, Children: []Step{{ID: "child", DisplayName: "child", Kind: ActionStep, Action: "noop", NodeID: "node", NodeVersionID: "v1"}}}
+			w.Steps[0] = Step{ID: "repeat", DisplayName: "repeat", Kind: RepeatStep, Children: []Step{{ID: "child", DisplayName: "child", Kind: ActionStep, Action: "noop", ElementTargetID: "node", ElementTargetVersionID: "v1"}}}
 		}, "repeat requires count"},
 		{"optional restriction", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "wait", DisplayName: "wait", Kind: WaitStep, WaitMS: 1, Optional: true}
@@ -70,7 +70,7 @@ func TestDraftValidateRejectsInvalidNodeSnapshots(t *testing.T) {
 	}{
 		{"selector", func(node *NodeSnapshot) { node.Selectors[0].Value = " " }, "selectors[0]"},
 		{"fingerprint", func(node *NodeSnapshot) { node.Fingerprint.Tag = "" }, "fingerprint.tag"},
-		{"spec identity", func(node *NodeSnapshot) { node.NodeID = "not-a-uuid" }, "uuid must be a canonical UUID"},
+		{"spec identity", func(node *NodeSnapshot) { node.ElementTargetID = "not-a-uuid" }, "uuid must be a canonical UUID"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -90,8 +90,8 @@ func TestDraftValidateRejectsNodeVersionOwnedByDifferentNodes(t *testing.T) {
 		validNodeSnapshot("00000000-0000-0000-0000-000000000001", "shared-v1"),
 		validNodeSnapshot("00000000-0000-0000-0000-000000000002", "shared-v1"),
 	)
-	draft.Workflows[0].Steps[0].NodeID = draft.Nodes[0].NodeID
-	draft.Workflows[0].Steps[0].NodeVersionID = "shared-v1"
+	draft.Workflows[0].Steps[0].ElementTargetID = draft.Nodes[0].ElementTargetID
+	draft.Workflows[0].Steps[0].ElementTargetVersionID = "shared-v1"
 	if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), "owned by different nodes") {
 		t.Fatalf("Validate() error = %v, want cross-node version ownership error", err)
 	}
@@ -186,7 +186,7 @@ func TestSealOwnsNestedMutableValues(t *testing.T) {
 }
 
 func TestWorkflowSnapshotValidateBoundsNestingWithoutOverflow(t *testing.T) {
-	step := Step{ID: "leaf", DisplayName: "leaf", Kind: ActionStep, Action: "noop", NodeID: "node", NodeVersionID: "v1"}
+	step := Step{ID: "leaf", DisplayName: "leaf", Kind: ActionStep, Action: "noop", ElementTargetID: "node", ElementTargetVersionID: "v1"}
 	for depth := 0; depth < MaxStepNestingDepth; depth++ {
 		step = Step{ID: fmt.Sprintf("repeat-%d", depth), DisplayName: "repeat", Kind: RepeatStep, RepeatCount: 1, Children: []Step{step}}
 	}
@@ -210,7 +210,7 @@ func TestParameterValidateRequiresCompleteDefinition(t *testing.T) {
 func TestSealedPlanAccessorsAndNestedCopies(t *testing.T) {
 	node := validNodeSnapshot("00000000-0000-0000-0000-000000000001", "v1")
 	member := standaloneValidation("visible", 0, 0)
-	member.NodeID, member.NodeVersionID = node.NodeID, node.VersionID
+	member.ElementTargetID, member.ElementTargetVersionID = node.ElementTargetID, node.VersionID
 	workflow := validWorkflowSnapshot()
 	workflow.Steps = []Step{
 		{ID: "repeat", DisplayName: "Repeat", Kind: RepeatStep, RepeatCount: 1, Children: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitMS: 1}}, Values: nil},
@@ -360,9 +360,9 @@ func TestExecutionBudgetSharedDiamondGrowthIsLinear(t *testing.T) {
 
 func TestDraftValidateReportsOrphanResolutionDeterministically(t *testing.T) {
 	workflow := validWorkflowSnapshot()
-	workflow.Steps[0].NodeID = "00000000-0000-7000-8000-000000000001"
-	workflow.Steps[0].NodeVersionID = "00000000-0000-7000-8000-000000000002"
-	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: []NodeSnapshot{validNodeSnapshot(workflow.Steps[0].NodeID, workflow.Steps[0].NodeVersionID)}, References: []ReferenceResolution{
+	workflow.Steps[0].ElementTargetID = "00000000-0000-7000-8000-000000000001"
+	workflow.Steps[0].ElementTargetVersionID = "00000000-0000-7000-8000-000000000002"
+	draft := Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: []NodeSnapshot{validNodeSnapshot(workflow.Steps[0].ElementTargetID, workflow.Steps[0].ElementTargetVersionID)}, References: []ReferenceResolution{
 		{ParentVersionID: "z", StepID: "z", FlowFragmentID: "unused", WorkflowVersionID: "unused-v1"},
 		{ParentVersionID: "a", StepID: "a", FlowFragmentID: "unused", WorkflowVersionID: "unused-v1"},
 	}}
@@ -533,7 +533,7 @@ func TestExecutionStatusRejectsUnknownAndTerminalTransitions(t *testing.T) {
 
 func validNodeSnapshot(nodeID, versionID string) NodeSnapshot {
 	return NodeSnapshot{
-		NodeID: nodeID, VersionID: versionID, DisplayName: "Node",
+		ElementTargetID: nodeID, VersionID: versionID, DisplayName: "ElementTarget",
 		Selectors:   []fingerprint.Selector{{Type: fingerprint.SelectorTestID, Value: "submit"}},
 		Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}},
 	}
@@ -541,8 +541,8 @@ func validNodeSnapshot(nodeID, versionID string) NodeSnapshot {
 
 func validDraftWithNodes(nodes ...NodeSnapshot) Draft {
 	workflow := validWorkflowSnapshot()
-	workflow.Steps[0].NodeID = nodes[0].NodeID
-	workflow.Steps[0].NodeVersionID = nodes[0].VersionID
+	workflow.Steps[0].ElementTargetID = nodes[0].ElementTargetID
+	workflow.Steps[0].ElementTargetVersionID = nodes[0].VersionID
 	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: workflow.VersionID}}, Workflows: []WorkflowSnapshot{workflow}, Nodes: nodes}
 }
 
@@ -559,9 +559,9 @@ func workflowReferenceDraft(edges map[string]string) Draft {
 }
 
 func validWorkflowSnapshot() WorkflowSnapshot {
-	return WorkflowSnapshot{ID: "workflow", FlowFragmentID: "workflow", VersionID: "workflow-v1", DisplayName: "FlowFragment", VersionNumber: 1, Steps: []Step{{ID: "click", DisplayName: "Click", Kind: ActionStep, Action: "click", NodeID: "node", NodeVersionID: "v1"}}}
+	return WorkflowSnapshot{ID: "workflow", FlowFragmentID: "workflow", VersionID: "workflow-v1", DisplayName: "FlowFragment", VersionNumber: 1, Steps: []Step{{ID: "click", DisplayName: "Click", Kind: ActionStep, Action: "click", ElementTargetID: "node", ElementTargetVersionID: "v1"}}}
 }
 
 func standaloneValidation(kind string, maxWait, stability int) Step {
-	return Step{ID: "validation", DisplayName: "Validation", Kind: ValidationStep, NodeID: "node", NodeVersionID: "v1", Validation: &Validation{Kind: kind, MaxWaitMS: maxWait, StabilityMS: stability}}
+	return Step{ID: "validation", DisplayName: "Validation", Kind: ValidationStep, ElementTargetID: "node", ElementTargetVersionID: "v1", Validation: &Validation{Kind: kind, MaxWaitMS: maxWait, StabilityMS: stability}}
 }

@@ -122,7 +122,7 @@ func Run(t *testing.T, factory Factory) {
 			guarded := ""
 			for _, node := range intent.Publication.Nodes {
 				if node.ResolutionMode == test.mode {
-					guarded = node.Aggregate.Node.ID
+					guarded = node.Aggregate.ElementTarget.ID
 					break
 				}
 			}
@@ -249,7 +249,7 @@ func Run(t *testing.T, factory Factory) {
 func Result(publication domain.SamplingPublication) domain.SamplingPublicationResult {
 	mappings := make([]domain.SamplingNodeMapping, len(publication.Nodes))
 	for index, node := range publication.Nodes {
-		mappings[index] = domain.SamplingNodeMapping{TemporaryNodeID: node.TemporaryNodeID, NodeID: node.Aggregate.Node.ID, NodeVersionID: node.Aggregate.Current.ID, ResolutionMode: node.ResolutionMode}
+		mappings[index] = domain.SamplingNodeMapping{TemporaryElementTargetID: node.TemporaryElementTargetID, ElementTargetID: node.Aggregate.ElementTarget.ID, ElementTargetVersionID: node.Aggregate.Current.ID, ResolutionMode: node.ResolutionMode}
 	}
 	return domain.SamplingPublicationResult{FlowFragmentID: publication.FlowFragment.FlowFragment.ID, WorkflowVersionID: publication.FlowFragment.Current.ID, VersionNumber: publication.FlowFragment.Current.VersionNumber, Nodes: mappings}
 }

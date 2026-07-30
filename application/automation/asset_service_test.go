@@ -11,33 +11,33 @@ import (
 )
 
 type nodeRepositoryFake struct {
-	current      domain.NodeAggregate
+	current      domain.ElementTargetAggregate
 	expected     domain.Revision
 	loadErr      error
 	createErr    error
 	saveErr      error
 	createCalls  int
 	saveCalls    int
-	saveInput    domain.NodeAggregate
+	saveInput    domain.ElementTargetAggregate
 	saveExpected domain.Revision
 }
 
-func (f *nodeRepositoryFake) Load(context.Context, string) (domain.NodeAggregate, error) {
+func (f *nodeRepositoryFake) Load(context.Context, string) (domain.ElementTargetAggregate, error) {
 	return f.current, f.loadErr
 }
-func (f *nodeRepositoryFake) Create(_ context.Context, value domain.NodeAggregate) (domain.NodeAggregate, error) {
+func (f *nodeRepositoryFake) Create(_ context.Context, value domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error) {
 	f.createCalls++
 	if f.createErr != nil {
-		return domain.NodeAggregate{}, f.createErr
+		return domain.ElementTargetAggregate{}, f.createErr
 	}
 	f.current = value
 	return value, nil
 }
-func (f *nodeRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.NodeAggregate) (domain.NodeAggregate, error) {
+func (f *nodeRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error) {
 	f.saveCalls++
 	f.saveExpected, f.saveInput = expected, value
 	if f.saveErr != nil {
-		return domain.NodeAggregate{}, f.saveErr
+		return domain.ElementTargetAggregate{}, f.saveErr
 	}
 	f.expected, f.current = expected, value
 	return value, nil
@@ -75,8 +75,8 @@ func TestRevisionConflictErrorExposesClassificationAndContext(t *testing.T) {
 func TestNodeServiceLifecycleAndPublication(t *testing.T) {
 	repository := &nodeRepositoryFake{}
 	service := NewNodeService(repository)
-	node := domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
+	node := domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
 	_, err := service.Create(context.Background(), node, version)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestNodeServiceLifecycleAndPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), "node", deleted.Node.Revision, 5); err != nil {
+	if _, err := service.Restore(context.Background(), "node", deleted.ElementTarget.Revision, 5); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Update(context.Background(), "node", "x", "", domain.Properties{}, 99, 6); err == nil {
@@ -103,12 +103,12 @@ func TestNodeServiceLifecycleAndPublication(t *testing.T) {
 
 func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	sentinel := errors.New("repository unavailable")
-	validNode := domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	validVersion := domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
+	validNode := domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	validVersion := domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
 
 	t.Run("invalid aggregate is rejected before create", func(t *testing.T) {
 		repository := &nodeRepositoryFake{}
-		_, err := NewNodeService(repository).Create(context.Background(), domain.Node{}, domain.NodeVersion{})
+		_, err := NewNodeService(repository).Create(context.Background(), domain.ElementTarget{}, domain.ElementTargetVersion{})
 		if err == nil || !strings.Contains(err.Error(), "create node") {
 			t.Fatalf("Create() error = %v", err)
 		}
@@ -137,12 +137,12 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	})
 
 	t.Run("transition validation prevents save", func(t *testing.T) {
-		aggregate, err := domain.NewNode(validNode, validVersion)
+		aggregate, err := domain.NewElementTarget(validNode, validVersion)
 		if err != nil {
 			t.Fatal(err)
 		}
 		repository := &nodeRepositoryFake{current: aggregate}
-		_, err = NewNodeService(repository).Update(context.Background(), "node", "", "", domain.Properties{}, aggregate.Node.Revision, 2)
+		_, err = NewNodeService(repository).Update(context.Background(), "node", "", "", domain.Properties{}, aggregate.ElementTarget.Revision, 2)
 		if err == nil || !strings.Contains(err.Error(), "transition node") {
 			t.Fatalf("Update() error = %v", err)
 		}
@@ -152,20 +152,20 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	})
 
 	t.Run("save failure reports error after submitting transitioned aggregate", func(t *testing.T) {
-		aggregate, err := domain.NewNode(validNode, validVersion)
+		aggregate, err := domain.NewElementTarget(validNode, validVersion)
 		if err != nil {
 			t.Fatal(err)
 		}
 		repository := &nodeRepositoryFake{current: aggregate, saveErr: sentinel}
-		_, err = NewNodeService(repository).Update(context.Background(), "node", "Updated", "", domain.Properties{}, aggregate.Node.Revision, 2)
+		_, err = NewNodeService(repository).Update(context.Background(), "node", "Updated", "", domain.Properties{}, aggregate.ElementTarget.Revision, 2)
 		if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "persist node") {
 			t.Fatalf("Update() error = %v", err)
 		}
-		if repository.saveCalls != 1 || repository.saveExpected != aggregate.Node.Revision {
+		if repository.saveCalls != 1 || repository.saveExpected != aggregate.ElementTarget.Revision {
 			t.Fatalf("SaveAggregate() calls/expected = %d/%d", repository.saveCalls, repository.saveExpected)
 		}
-		if repository.saveInput.Node.DisplayName != "Updated" || repository.saveInput.Node.Revision != aggregate.Node.Revision+1 {
-			t.Fatalf("SaveAggregate() input = %#v", repository.saveInput.Node)
+		if repository.saveInput.ElementTarget.DisplayName != "Updated" || repository.saveInput.ElementTarget.Revision != aggregate.ElementTarget.Revision+1 {
+			t.Fatalf("SaveAggregate() input = %#v", repository.saveInput.ElementTarget)
 		}
 	})
 }

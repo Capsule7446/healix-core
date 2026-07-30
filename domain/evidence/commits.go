@@ -9,7 +9,7 @@ import (
 type HealCandidateReset struct {
 	ExecutionID       string
 	StepExecutionID   string
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 	ObservedAt        int64
 }
@@ -83,12 +83,12 @@ func (c StepTransitionCommit) Validate() error {
 	type resetIdentity struct {
 		ExecutionID       string
 		StepExecutionID   string
-		NodeID            string
+		ElementTargetID   string
 		BaseNodeVersionID string
 	}
 	seenResets := make(map[resetIdentity]struct{}, len(c.OriginalSelectorResets))
 	for _, reset := range c.OriginalSelectorResets {
-		identity := resetIdentity{reset.ExecutionID, reset.StepExecutionID, reset.NodeID, reset.BaseNodeVersionID}
+		identity := resetIdentity{reset.ExecutionID, reset.StepExecutionID, reset.ElementTargetID, reset.BaseNodeVersionID}
 		if _, exists := seenResets[identity]; exists {
 			return errors.New("heal candidate reset identity is duplicated")
 		}
@@ -96,7 +96,7 @@ func (c StepTransitionCommit) Validate() error {
 		if c.Event.Phase != "SUCCEEDED" {
 			return errors.New("original selector reset requires a succeeded terminal step")
 		}
-		if reset.ExecutionID != c.Event.ExecutionID || reset.StepExecutionID != c.Event.ID || reset.NodeID == "" || reset.BaseNodeVersionID == "" || reset.ObservedAt <= 0 {
+		if reset.ExecutionID != c.Event.ExecutionID || reset.StepExecutionID != c.Event.ID || reset.ElementTargetID == "" || reset.BaseNodeVersionID == "" || reset.ObservedAt <= 0 {
 			return errors.New("heal candidate reset must belong to committed step and execution")
 		}
 	}
@@ -105,9 +105,9 @@ func (c StepTransitionCommit) Validate() error {
 
 func validateValidationGroupTopology(event StepPhaseEvent, validations []ValidationObservation, groups []ValidationGroupTerminalObservation) error {
 	type memberKey struct {
-		GroupID  string
-		BranchID string
-		NodeID   string
+		GroupID         string
+		BranchID        string
+		ElementTargetID string
 	}
 	members := make(map[memberKey]ValidationObservation, len(validations))
 	seenValidationIDs := make(map[string]struct{}, len(validations))
@@ -119,7 +119,7 @@ func validateValidationGroupTopology(event StepPhaseEvent, validations []Validat
 		if validation.GroupID == "" {
 			continue
 		}
-		key := memberKey{GroupID: validation.GroupID, BranchID: validation.BranchID, NodeID: validation.NodeID}
+		key := memberKey{GroupID: validation.GroupID, BranchID: validation.BranchID, ElementTargetID: validation.ElementTargetID}
 		if _, exists := members[key]; exists {
 			return errors.New("final validation member is duplicated")
 		}
@@ -146,7 +146,7 @@ func validateValidationGroupTopology(event StepPhaseEvent, validations []Validat
 		}
 		seenGroups[group.GroupID] = struct{}{}
 		for _, expected := range group.ExpectedMembers() {
-			member, exists := members[memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, NodeID: expected.NodeID}]
+			member, exists := members[memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, ElementTargetID: expected.ElementTargetID}]
 			if !exists {
 				return errors.New("final validation group is missing an expected member")
 			}
@@ -164,7 +164,7 @@ func validateValidationGroupTopology(event StepPhaseEvent, validations []Validat
 					return errors.New("non-winning validation branch member is marked won")
 				}
 			}
-			delete(members, memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, NodeID: expected.NodeID})
+			delete(members, memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, ElementTargetID: expected.ElementTargetID})
 		}
 	}
 	for key := range members {
@@ -190,8 +190,8 @@ func validationTerminalMatchesPhase(reason ValidationTerminalReason, phase strin
 }
 
 type NodeVersionPromotion struct {
-	NodeID    string
-	VersionID string
+	ElementTargetID string
+	VersionID       string
 }
 
 type StepTransitionCommitResult struct {

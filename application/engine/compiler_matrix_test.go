@@ -74,7 +74,7 @@ func TestCompilePlanBuildsWaitKinds(t *testing.T) {
 			plan := minimalCompilerPlan()
 			step := execution.Step{ID: "wait", DisplayName: "Wait", Kind: execution.WaitStep, WaitKind: test.kind, WaitMS: 100}
 			if test.requiresNode {
-				step.NodeID, step.NodeVersionID = compilerNodeID, compilerNodeV1
+				step.ElementTargetID, step.ElementTargetVersionID = compilerNodeID, compilerNodeV1
 				plan.Nodes = []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "target")}
 			}
 			plan.Workflows[0].Steps = []execution.Step{step}
@@ -98,8 +98,8 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	plan := execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
 			{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{
-				{ID: "select", DisplayName: "选择", Kind: execution.ActionStep, Action: "select", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Values: []string{"east", "west"}, Optional: true, CaptureScreenshot: true},
-				{ID: "validate", DisplayName: "验证", Kind: execution.ValidationStep, NodeID: compilerNodeID, NodeVersionID: compilerNodeV1, Validation: &execution.Validation{Kind: "text_contains", Expected: "ready", IgnoreCase: true, MaxWaitMS: 2_000, StabilityMS: 200}},
+				{ID: "select", DisplayName: "选择", Kind: execution.ActionStep, Action: "select", ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1, Values: []string{"east", "west"}, Optional: true, CaptureScreenshot: true},
+				{ID: "validate", DisplayName: "验证", Kind: execution.ValidationStep, ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1, Validation: &execution.Validation{Kind: "text_contains", Expected: "ready", IgnoreCase: true, MaxWaitMS: 2_000, StabilityMS: 200}},
 				{ID: "repeat", DisplayName: "重复", Kind: execution.RepeatStep, RepeatCount: 2, Children: []execution.Step{{ID: "network", DisplayName: "网络", Kind: execution.WaitStep, WaitKind: "network_idle", WaitMS: 300}}},
 				{ID: "call", DisplayName: "调用", Kind: execution.FlowFragmentReference, Reference: &execution.Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.TextValue("north")), "enabled": parameter.LiteralBinding(parameter.BooleanValue(true)), "count": parameter.LiteralBinding(number), "regions": parameter.LiteralBinding(parameter.MultiSelectValue([]string{"north,east", "south"}))}}},
 			}},
@@ -129,7 +129,7 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 
 func TestCompilePlanPreservesCompleteFingerprint(t *testing.T) {
 	plan := minimalCompilerPlan()
-	plan.Workflows[0].Steps = []execution.Step{{ID: "click", DisplayName: "点击", Kind: execution.ActionStep, Action: "click", NodeID: compilerNodeID, NodeVersionID: compilerNodeV1}}
+	plan.Workflows[0].Steps = []execution.Step{{ID: "click", DisplayName: "点击", Kind: execution.ActionStep, Action: "click", ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1}}
 	dependency := compilerNodeSnapshot(compilerNodeV1, "submit")
 	dependency.PageURL, dependency.Origin = "/checkout", "https://example.test"
 	dependency.Fingerprint = fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"name": "submit"}, Text: "提交", ARIA: fingerprint.ARIA{Role: "button", Name: "提交"}, Path: []string{"html", "body"}, SiblingIndex: 2, Neighbors: fingerprint.Neighbors{Prev: "input", Next: "a", ParentTag: "form"}, LabelText: "提交订单", FormID: "checkout"}

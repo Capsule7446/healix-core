@@ -300,11 +300,11 @@ func (p ResolvedExecutionFlow) Validate() error {
 	}
 	nodes := map[string]bool{}
 	for _, dependency := range p.Nodes {
-		if dependency.Node.ID == "" || dependency.Version.ID == "" ||
-			dependency.Version.NodeID != dependency.Node.ID || dependency.Version.VersionNumber < 1 {
+		if dependency.ElementTarget.ID == "" || dependency.Version.ID == "" ||
+			dependency.Version.ElementTargetID != dependency.ElementTarget.ID || dependency.Version.VersionNumber < 1 {
 			return errors.New("node dependency snapshot identity is invalid")
 		}
-		key := NodeDependencyIdentity(dependency.Node.ID, dependency.Version.ID)
+		key := ElementTargetDependencyIdentity(dependency.ElementTarget.ID, dependency.Version.ID)
 		if nodes[key] {
 			return errors.New("duplicate node dependency snapshot")
 		}
@@ -382,8 +382,8 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 		var walk func([]FlowFragmentStep) error
 		walk = func(steps []FlowFragmentStep) error {
 			for _, step := range steps {
-				if step.NodeID != "" {
-					key := NodeDependencyIdentity(step.NodeID, step.NodeVersionID)
+				if step.ElementTargetID != "" {
+					key := ElementTargetDependencyIdentity(step.ElementTargetID, step.ElementTargetVersionID)
 					if !nodes[key] {
 						return fmt.Errorf("step %s has no exact node dependency", step.ID)
 					}
@@ -477,6 +477,6 @@ func EnvironmentKeys(values ...string) ([]string, error) {
 	return result, nil
 }
 
-func NodeDependencyIdentity(nodeID, versionID string) string {
+func ElementTargetDependencyIdentity(nodeID, versionID string) string {
 	return nodeID + "\x00" + versionID
 }

@@ -11,13 +11,13 @@ import (
 func RewriteTemporaryNodeReferences(steps []automation.FlowFragmentStep, mappings []automation.SamplingNodeMapping) ([]automation.FlowFragmentStep, error) {
 	mappingByTemporaryID := make(map[string]automation.SamplingNodeMapping, len(mappings))
 	for _, mapping := range mappings {
-		if strings.TrimSpace(mapping.TemporaryNodeID) == "" || strings.TrimSpace(mapping.NodeID) == "" || strings.TrimSpace(mapping.NodeVersionID) == "" {
+		if strings.TrimSpace(mapping.TemporaryElementTargetID) == "" || strings.TrimSpace(mapping.ElementTargetID) == "" || strings.TrimSpace(mapping.ElementTargetVersionID) == "" {
 			return nil, fmt.Errorf("sampling node mapping requires temporary and formal identity")
 		}
-		if _, exists := mappingByTemporaryID[mapping.TemporaryNodeID]; exists {
-			return nil, fmt.Errorf("duplicate sampling node mapping %q", mapping.TemporaryNodeID)
+		if _, exists := mappingByTemporaryID[mapping.TemporaryElementTargetID]; exists {
+			return nil, fmt.Errorf("duplicate sampling node mapping %q", mapping.TemporaryElementTargetID)
 		}
-		mappingByTemporaryID[mapping.TemporaryNodeID] = mapping
+		mappingByTemporaryID[mapping.TemporaryElementTargetID] = mapping
 	}
 	used := make(map[string]struct{}, len(mappingByTemporaryID))
 	rewritten, err := rewriteSamplingSteps(steps, mappingByTemporaryID, used)
@@ -34,14 +34,14 @@ func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[stri
 	rewritten := cloneSamplingSteps(steps)
 	for index := range rewritten {
 		step := &rewritten[index]
-		if step.NodeID != "" {
-			mapping, exists := mappings[step.NodeID]
+		if step.ElementTargetID != "" {
+			mapping, exists := mappings[step.ElementTargetID]
 			if !exists {
-				return nil, fmt.Errorf("sampling step %q references unmapped temporary node %q", step.ID, step.NodeID)
+				return nil, fmt.Errorf("sampling step %q references unmapped temporary node %q", step.ID, step.ElementTargetID)
 			}
-			used[step.NodeID] = struct{}{}
-			step.NodeID = mapping.NodeID
-			step.NodeVersionID = mapping.NodeVersionID
+			used[step.ElementTargetID] = struct{}{}
+			step.ElementTargetID = mapping.ElementTargetID
+			step.ElementTargetVersionID = mapping.ElementTargetVersionID
 		}
 		children, err := rewriteSamplingSteps(step.Children, mappings, used)
 		if err != nil {

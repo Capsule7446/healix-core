@@ -51,7 +51,7 @@ func (fake *healReviewTransactionFake) CommitHealReview(_ context.Context, inten
 	}
 	return HealReviewOutcome{
 		Status: HealReviewApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest,
-		Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, Node: intent.NextNode, Streak: intent.NextStreak},
+		Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, ElementTarget: intent.NextNode, Streak: intent.NextStreak},
 	}, nil
 }
 
@@ -136,16 +136,16 @@ func TestNewHealReviewServiceRejectsNilDependencies(t *testing.T) {
 
 func healReviewFixture(t *testing.T) (*healReviewSourceFake, *nodeRepositoryFake, *healReviewTransactionFake, domain.HealCandidateReviewCommand) {
 	t.Helper()
-	node := domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1,
+	node := domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1,
 		Selectors:   []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}},
 		Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}},
 		Source:      domain.SourceManual, CreatedAt: 1}
-	aggregate, err := domain.NewNode(node, version)
+	aggregate, err := domain.NewElementTarget(node, version)
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := domain.HealCandidate{Hash: "candidate", NodeID: "node", BaseNodeVersionID: "node-v1",
+	candidate := domain.HealCandidate{Hash: "candidate", ElementTargetID: "node", BaseNodeVersionID: "node-v1",
 		Status: domain.HealCandidateAwaitingApproval, PageURL: "https://example.test", Origin: "https://example.test",
 		Selectors: version.Selectors, Fingerprint: version.Fingerprint, Revision: 1}
 	contributions := []domain.ContributingHealFact{
@@ -153,8 +153,8 @@ func healReviewFixture(t *testing.T) (*healReviewSourceFake, *nodeRepositoryFake
 		{FactID: "f2", CommitID: "c2", RunID: "r2", ExecutionID: "e2", StepExecutionID: "s2", Sequence: 2},
 		{FactID: "f3", CommitID: "c3", RunID: "r3", ExecutionID: "e3", StepExecutionID: "s3", Sequence: 3},
 	}
-	streak := domain.HealStreak{NodeID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", Band: domain.HealDecisionBandBelowCap, Contributions: contributions, LastSequence: 3, Disposition: domain.HealStreakAwaitApproval}
-	command := domain.HealCandidateReviewCommand{CommandID: "review-1", NodeID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
+	streak := domain.HealStreak{ElementTargetID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", Band: domain.HealDecisionBandBelowCap, Contributions: contributions, LastSequence: 3, Disposition: domain.HealStreakAwaitApproval}
+	command := domain.HealCandidateReviewCommand{CommandID: "review-1", ElementTargetID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
 	return &healReviewSourceFake{candidate: candidate, streak: streak}, &nodeRepositoryFake{current: aggregate}, &healReviewTransactionFake{}, command
 }
 
@@ -209,7 +209,7 @@ func TestHealReviewServiceRejectsStaleStateBeforeCommit(t *testing.T) {
 		t.Fatal("stale candidate was committed")
 	}
 	command.ExpectedCandidateRevision = 1
-	nodes.current.Node.CurrentVersionID = "other"
+	nodes.current.ElementTarget.CurrentVersionID = "other"
 	if err := newReviewService(t, source, nodes, transaction).Reject(context.Background(), command); !errors.Is(err, ErrHealCandidateStaleBase) {
 		t.Fatalf("base conflict = %v", err)
 	}
@@ -217,7 +217,7 @@ func TestHealReviewServiceRejectsStaleStateBeforeCommit(t *testing.T) {
 
 func TestHealReviewRequestDigestUsesImmutableCommandIdentity(t *testing.T) {
 	source, nodes, _, command := healReviewFixture(t)
-	base := HealReviewIntent{CommandID: command.CommandID, Decision: HealReviewApprove, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision, NextCandidate: source.candidate, NextNode: &nodes.current, ReviewedBy: "reviewer-a", ReviewedAt: 10}
+	base := HealReviewIntent{CommandID: command.CommandID, Decision: HealReviewApprove, ElementTargetID: command.ElementTargetID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision, NextCandidate: source.candidate, NextNode: &nodes.current, ReviewedBy: "reviewer-a", ReviewedAt: 10}
 	base.NextCandidate.Status = domain.HealCandidatePromoted
 	base.NextCandidate.Revision++
 	published, err := nodes.current.PublishVersion("version-a", base.NextCandidate.PageURL, base.NextCandidate.Origin, base.NextCandidate.Selectors, base.NextCandidate.Fingerprint, domain.SourceAutoHeal, 10)
@@ -233,7 +233,7 @@ func TestHealReviewRequestDigestUsesImmutableCommandIdentity(t *testing.T) {
 	changed.ReviewedBy = "reviewer-b"
 	changed.ReviewedAt = 99
 	changed.NextNode.Current.ID = "version-b"
-	changed.NextNode.Node.CurrentVersionID = "version-b"
+	changed.NextNode.ElementTarget.CurrentVersionID = "version-b"
 	second, err := HealReviewRequestDigest(changed)
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +241,7 @@ func TestHealReviewRequestDigestUsesImmutableCommandIdentity(t *testing.T) {
 	if first != second {
 		t.Fatalf("trusted/generated fields changed replay identity: %q != %q", first, second)
 	}
-	request := HealReviewRequest{CommandID: changed.CommandID, Decision: changed.Decision, NodeID: changed.NodeID, BaseNodeVersionID: changed.BaseNodeVersionID, CandidateHash: changed.CandidateHash, ExpectedCandidateRevision: changed.ExpectedCandidateRevision, ExpectedNodeRevision: changed.ExpectedNodeRevision + 1}
+	request := HealReviewRequest{CommandID: changed.CommandID, Decision: changed.Decision, ElementTargetID: changed.ElementTargetID, BaseNodeVersionID: changed.BaseNodeVersionID, CandidateHash: changed.CandidateHash, ExpectedCandidateRevision: changed.ExpectedCandidateRevision, ExpectedNodeRevision: changed.ExpectedNodeRevision + 1}
 	third, err := HealReviewRequestIdentityDigest(request)
 	if err != nil {
 		t.Fatal(err)
@@ -253,7 +253,7 @@ func TestHealReviewRequestDigestUsesImmutableCommandIdentity(t *testing.T) {
 
 func TestHealReviewServiceReplaysBeforeLoadingMutableState(t *testing.T) {
 	source, nodes, transaction, command := healReviewFixture(t)
-	digest, err := HealReviewRequestIdentityDigest(HealReviewRequest{CommandID: command.CommandID, Decision: HealReviewApprove, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision})
+	digest, err := HealReviewRequestIdentityDigest(HealReviewRequest{CommandID: command.CommandID, Decision: HealReviewApprove, ElementTargetID: command.ElementTargetID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestHealReviewServiceReplaysBeforeLoadingMutableState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.replay = &HealReviewOutcome{Status: HealReviewReplayed, CommandID: command.CommandID, RequestDigest: digest, Result: HealReviewResult{Decision: HealReviewApprove, Candidate: promoted, Node: &node}}
+	transaction.replay = &HealReviewOutcome{Status: HealReviewReplayed, CommandID: command.CommandID, RequestDigest: digest, Result: HealReviewResult{Decision: HealReviewApprove, Candidate: promoted, ElementTarget: &node}}
 	source.candidate.Status = domain.HealCandidatePromoted
 	result, err := newReviewService(t, source, nodes, transaction).Approve(context.Background(), command)
 	if err != nil || result.Current.ID != "stable-version" {
@@ -303,7 +303,7 @@ func TestHealReviewServiceAuthorizesBeforeReplayExactlyOnce(t *testing.T) {
 
 func TestHealReviewServiceReplayAuthorizesExactlyOnce(t *testing.T) {
 	source, nodes, transaction, command := healReviewFixture(t)
-	digest, err := HealReviewRequestIdentityDigest(HealReviewRequest{CommandID: command.CommandID, Decision: HealReviewApprove, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision})
+	digest, err := HealReviewRequestIdentityDigest(HealReviewRequest{CommandID: command.CommandID, Decision: HealReviewApprove, ElementTargetID: command.ElementTargetID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestHealReviewServiceReplayAuthorizesExactlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.replay = &HealReviewOutcome{Status: HealReviewReplayed, CommandID: command.CommandID, RequestDigest: digest, Result: HealReviewResult{Decision: HealReviewApprove, Candidate: promoted, Node: &node}}
+	transaction.replay = &HealReviewOutcome{Status: HealReviewReplayed, CommandID: command.CommandID, RequestDigest: digest, Result: HealReviewResult{Decision: HealReviewApprove, Candidate: promoted, ElementTarget: &node}}
 	calls := 0
 	service, err := NewHealReviewService(source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer", calls: &calls}, reviewClockFake(10), candidateVerifierFake{}, healReviewIdentityFake{versionID: "unused", sequence: 99})
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 func TestHealCandidateReviewTransitions(t *testing.T) {
 	candidate := HealCandidate{
 		Hash:              "candidate",
-		NodeID:            "node",
+		ElementTargetID:   "node",
 		BaseNodeVersionID: "node-v1",
 		Status:            HealCandidateAwaitingApproval,
 		Selectors:         []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}},
@@ -38,7 +38,7 @@ func TestHealCandidateReviewTransitions(t *testing.T) {
 }
 
 func TestHealCandidateRejectsInvalidIdentityAndTransitions(t *testing.T) {
-	valid := HealCandidate{Hash: "candidate", NodeID: "node", BaseNodeVersionID: "node-v1", Status: HealCandidateAwaitingApproval, Revision: 1}
+	valid := HealCandidate{Hash: "candidate", ElementTargetID: "node", BaseNodeVersionID: "node-v1", Status: HealCandidateAwaitingApproval, Revision: 1}
 	tests := []struct {
 		name string
 		run  func() error
@@ -65,16 +65,16 @@ func TestHealCandidateRejectsInvalidIdentityAndTransitions(t *testing.T) {
 
 func samplingCreatePublication() SamplingPublication {
 	node := versionedNodeAggregate()
-	node.Node.CurrentVersionID = "node-v1"
+	node.ElementTarget.CurrentVersionID = "node-v1"
 	node.Current = versionedNodeVersion("node-v1", "node", 1, 0)
-	node.Versions = []NodeVersion{node.Current}
+	node.Versions = []ElementTargetVersion{node.Current}
 	return SamplingPublication{
 		FlowFragment: versionedWorkflowAggregate(),
-		Nodes: []SamplingNodePublication{{
-			TemporaryNodeID: "temporary",
-			ResolutionMode:  "CREATE",
-			Aggregate:       node,
-			PublishVersion:  true,
+		Nodes: []SamplingElementTargetPublication{{
+			TemporaryElementTargetID: "temporary",
+			ResolutionMode:           "CREATE",
+			Aggregate:                node,
+			PublishVersion:           true,
 		}},
 	}
 }
@@ -90,14 +90,14 @@ func TestSamplingPublicationValidation(t *testing.T) {
 		mutate func(*SamplingPublication)
 		want   string
 	}{
-		{name: "missing temporary id", mutate: func(p *SamplingPublication) { p.Nodes[0].TemporaryNodeID = " " }, want: "temporary id is required"},
+		{name: "missing temporary id", mutate: func(p *SamplingPublication) { p.Nodes[0].TemporaryElementTargetID = " " }, want: "temporary id is required"},
 		{name: "unsupported resolution", mutate: func(p *SamplingPublication) { p.Nodes[0].ResolutionMode = "COPY" }, want: "unsupported resolution mode"},
 		{name: "duplicate temporary id", mutate: func(p *SamplingPublication) { p.Nodes = append(p.Nodes, p.Nodes[0]) }, want: "duplicate sampled node"},
-		{name: "invalid aggregate", mutate: func(p *SamplingPublication) { p.Nodes[0].Aggregate.Node.ID = "" }, want: "sampled node temporary"},
+		{name: "invalid aggregate", mutate: func(p *SamplingPublication) { p.Nodes[0].Aggregate.ElementTarget.ID = "" }, want: "sampled node temporary"},
 		{name: "create has authority", mutate: func(p *SamplingPublication) { p.Nodes[0].ExpectedRevision = 1 }, want: "new ownership"},
 		{name: "duplicate formal node", mutate: func(p *SamplingPublication) {
 			second := p.Nodes[0]
-			second.TemporaryNodeID = "other"
+			second.TemporaryElementTargetID = "other"
 			p.Nodes = append(p.Nodes, second)
 		}, want: "duplicate formal sampled node"},
 	}
@@ -116,7 +116,7 @@ func TestSamplingPublicationValidatesReuseAuthority(t *testing.T) {
 	publication := samplingCreatePublication()
 	node := &publication.Nodes[0]
 	node.ResolutionMode = "REUSE"
-	node.ExpectedRevision = node.Aggregate.Node.Revision
+	node.ExpectedRevision = node.Aggregate.ElementTarget.Revision
 	node.ExpectedCurrentVersionID = node.Aggregate.Current.ID
 	node.PublishVersion = false
 	if err := publication.Validate(); err != nil {
@@ -133,7 +133,7 @@ func TestSamplingPublicationRejectsInvalidMergeAuthority(t *testing.T) {
 	publication := samplingCreatePublication()
 	node := &publication.Nodes[0]
 	node.ResolutionMode = "MERGE"
-	node.ExpectedRevision = node.Aggregate.Node.Revision
+	node.ExpectedRevision = node.Aggregate.ElementTarget.Revision
 	node.ExpectedCurrentVersionID = node.Aggregate.Current.ID
 	if err := publication.Validate(); err == nil || !strings.Contains(err.Error(), "merge requires current revision") {
 		t.Fatalf("invalid merge error = %v", err)
@@ -155,15 +155,15 @@ func TestValidationIssuesErrorReportsSafeContext(t *testing.T) {
 }
 
 func TestNodeDependencyIdentitySeparatesAmbiguousPairs(t *testing.T) {
-	first := NodeDependencyIdentity("ab", "c")
-	second := NodeDependencyIdentity("a", "bc")
+	first := ElementTargetDependencyIdentity("ab", "c")
+	second := ElementTargetDependencyIdentity("a", "bc")
 	if first == second || first != "ab\x00c" {
 		t.Fatalf("dependency identities = %q/%q", first, second)
 	}
 }
 
 func TestSamplingPublicationCloneOwnsNestedAggregates(t *testing.T) {
-	publication := SamplingPublication{FlowFragment: versionedWorkflowAggregate(), Nodes: []SamplingNodePublication{{TemporaryNodeID: "temporary", Aggregate: versionedNodeAggregate()}}}
+	publication := SamplingPublication{FlowFragment: versionedWorkflowAggregate(), Nodes: []SamplingElementTargetPublication{{TemporaryElementTargetID: "temporary", Aggregate: versionedNodeAggregate()}}}
 	clone := publication.Clone()
 
 	clone.FlowFragment.Current.Definition.Steps[0].DisplayName = "changed"

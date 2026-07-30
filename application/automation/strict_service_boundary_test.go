@@ -108,7 +108,7 @@ func TestFolderMethodsRejectBlankIdentityBeforeRepositoryAccess(t *testing.T) {
 }
 
 func TestHealReviewRequestValidateDirectBoundaries(t *testing.T) {
-	valid := HealReviewRequest{CommandID: "command", Decision: HealReviewApprove, NodeID: "node", BaseNodeVersionID: "version", CandidateHash: "hash", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
+	valid := HealReviewRequest{CommandID: "command", Decision: HealReviewApprove, ElementTargetID: "node", BaseNodeVersionID: "version", CandidateHash: "hash", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid request: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestHealReviewRequestValidateDirectBoundaries(t *testing.T) {
 		mutate func(*HealReviewRequest)
 	}{
 		{"blank command", func(value *HealReviewRequest) { value.CommandID = " \t" }},
-		{"blank node", func(value *HealReviewRequest) { value.NodeID = "" }},
+		{"blank node", func(value *HealReviewRequest) { value.ElementTargetID = "" }},
 		{"blank base", func(value *HealReviewRequest) { value.BaseNodeVersionID = " " }},
 		{"blank hash", func(value *HealReviewRequest) { value.CandidateHash = "" }},
 		{"invalid decision", func(value *HealReviewRequest) { value.Decision = "UNKNOWN" }},
@@ -137,14 +137,14 @@ func TestHealReviewRequestValidateDirectBoundaries(t *testing.T) {
 }
 
 func TestHealReviewIntentNextNodeValueReturnsOwnedValue(t *testing.T) {
-	if got := (HealReviewIntent{}).NextNodeValue(); got.Node.ID != "" {
+	if got := (HealReviewIntent{}).NextNodeValue(); got.ElementTarget.ID != "" {
 		t.Fatalf("nil node value = %#v", got)
 	}
-	node := domain.NodeAggregate{Node: domain.Node{ID: "node"}, Current: domain.NodeVersion{ID: "version", Selectors: nil}}
+	node := domain.ElementTargetAggregate{ElementTarget: domain.ElementTarget{ID: "node"}, Current: domain.ElementTargetVersion{ID: "version", Selectors: nil}}
 	intent := HealReviewIntent{NextNode: &node}
 	got := intent.NextNodeValue()
-	got.Node.ID = "changed"
-	if intent.NextNode.Node.ID != "node" {
+	got.ElementTarget.ID = "changed"
+	if intent.NextNode.ElementTarget.ID != "node" {
 		t.Fatal("returned node aliases intent")
 	}
 }

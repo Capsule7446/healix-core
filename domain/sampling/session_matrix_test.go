@@ -100,7 +100,7 @@ func TestSessionPauseResumePreservesIdentityAndSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Created || second.NodeUUID != first.NodeUUID || second.NodeID != first.NodeID || second.Sequence != first.Sequence+1 {
+	if second.Created || second.NodeUUID != first.NodeUUID || second.ElementTargetID != first.ElementTargetID || second.Sequence != first.Sequence+1 {
 		t.Fatalf("identity/sequence changed across pause: first=%+v second=%+v", first, second)
 	}
 }

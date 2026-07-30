@@ -131,7 +131,7 @@ func TestValidationValidateBoundaryAndKindMatrix(t *testing.T) {
 func validValidationGroupContract() (Step, *ValidationGroup, map[string]struct{}) {
 	member := Step{
 		ID: "member", DisplayName: "Member", Kind: ValidationStep,
-		NodeID: "node", NodeVersionID: "node-v1", Validation: &Validation{Kind: "visible"},
+		ElementTargetID: "node", ElementTargetVersionID: "node-v1", Validation: &Validation{Kind: "visible"},
 	}
 	return Step{ID: "group", DisplayName: "Group", Kind: ValidationGroupStep}, &ValidationGroup{
 		MaxWaitMS: validationMinWaitMS, StabilityMS: validationMinStabilityMS,
@@ -177,7 +177,7 @@ func TestValidationGroupValidateScenarioMatrix(t *testing.T) {
 			(*group).Branches[0].Steps[0].Kind = WaitStep
 		}, want: "only accepts VALIDATION steps"},
 		{name: "invalid validation member", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
-			(*group).Branches[0].Steps[0].NodeID = ""
+			(*group).Branches[0].Steps[0].ElementTargetID = ""
 		}, want: "requires an exact node reference"},
 		{name: "aggregate members above boundary", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
 			template := (*group).Branches[0].Steps[0]

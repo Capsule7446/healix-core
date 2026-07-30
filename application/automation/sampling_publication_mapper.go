@@ -8,10 +8,10 @@ import (
 )
 
 type SamplingNodeAuthority struct {
-	TemporaryNodeID          string
-	NodeID                   string
-	NodeVersionID            string
-	Current                  *domainautomation.NodeAggregate
+	TemporaryElementTargetID string
+	ElementTargetID          string
+	ElementTargetVersionID   string
+	Current                  *domainautomation.ElementTargetAggregate
 	ExpectedRevision         domainautomation.Revision
 	ExpectedCurrentVersionID string
 	ForceCreateAuthorized    bool
@@ -33,23 +33,23 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	formalNodeIDs := make(map[string]struct{}, len(request.Nodes))
 	formalVersionIDs := make(map[string]struct{}, len(request.Nodes))
 	for _, authority := range request.Nodes {
-		if authority.TemporaryNodeID == "" || authority.NodeID == "" || authority.NodeVersionID == "" {
+		if authority.TemporaryElementTargetID == "" || authority.ElementTargetID == "" || authority.ElementTargetVersionID == "" {
 			return domainautomation.SamplingPublication{}, fmt.Errorf("sampling node authority requires temporary and formal identity")
 		}
-		if _, exists := authorityByTemporaryID[authority.TemporaryNodeID]; exists {
-			return domainautomation.SamplingPublication{}, fmt.Errorf("duplicate sampling node authority %q", authority.TemporaryNodeID)
+		if _, exists := authorityByTemporaryID[authority.TemporaryElementTargetID]; exists {
+			return domainautomation.SamplingPublication{}, fmt.Errorf("duplicate sampling node authority %q", authority.TemporaryElementTargetID)
 		}
-		if _, exists := formalNodeIDs[authority.NodeID]; exists {
-			return domainautomation.SamplingPublication{}, fmt.Errorf("duplicate formal sampling node %q", authority.NodeID)
+		if _, exists := formalNodeIDs[authority.ElementTargetID]; exists {
+			return domainautomation.SamplingPublication{}, fmt.Errorf("duplicate formal sampling node %q", authority.ElementTargetID)
 		}
-		if _, exists := formalVersionIDs[authority.NodeVersionID]; exists {
-			return domainautomation.SamplingPublication{}, fmt.Errorf("duplicate formal sampling node version %q", authority.NodeVersionID)
+		if _, exists := formalVersionIDs[authority.ElementTargetVersionID]; exists {
+			return domainautomation.SamplingPublication{}, fmt.Errorf("duplicate formal sampling node version %q", authority.ElementTargetVersionID)
 		}
-		authorityByTemporaryID[authority.TemporaryNodeID] = authority
-		formalNodeIDs[authority.NodeID] = struct{}{}
-		formalVersionIDs[authority.NodeVersionID] = struct{}{}
+		authorityByTemporaryID[authority.TemporaryElementTargetID] = authority
+		formalNodeIDs[authority.ElementTargetID] = struct{}{}
+		formalVersionIDs[authority.ElementTargetVersionID] = struct{}{}
 	}
-	publications := make([]domainautomation.SamplingNodePublication, len(request.Workspace.Nodes))
+	publications := make([]domainautomation.SamplingElementTargetPublication, len(request.Workspace.Nodes))
 	mappings := make([]domainautomation.SamplingNodeMapping, len(request.Workspace.Nodes))
 	for index, temporary := range request.Workspace.Nodes {
 		authority, exists := authorityByTemporaryID[temporary.ID]
@@ -62,7 +62,7 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 			return domainautomation.SamplingPublication{}, err
 		}
 		publications[index] = publication
-		mappings[index] = domainautomation.SamplingNodeMapping{TemporaryNodeID: temporary.ID, NodeID: publication.Aggregate.Node.ID, NodeVersionID: publication.Aggregate.Current.ID, ResolutionMode: publication.ResolutionMode}
+		mappings[index] = domainautomation.SamplingNodeMapping{TemporaryElementTargetID: temporary.ID, ElementTargetID: publication.Aggregate.ElementTarget.ID, ElementTargetVersionID: publication.Aggregate.Current.ID, ResolutionMode: publication.ResolutionMode}
 	}
 	if len(authorityByTemporaryID) != 0 {
 		return domainautomation.SamplingPublication{}, fmt.Errorf("sampling node authority must exactly match temporary nodes")
@@ -85,44 +85,44 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	return result, nil
 }
 
-func mapSamplingNode(temporary sampling.TemporarySamplingNode, authority SamplingNodeAuthority, at int64) (domainautomation.SamplingNodePublication, error) {
+func mapSamplingNode(temporary sampling.TemporarySamplingNode, authority SamplingNodeAuthority, at int64) (domainautomation.SamplingElementTargetPublication, error) {
 	mode := temporary.ResolutionMode
-	publication := domainautomation.SamplingNodePublication{TemporaryNodeID: temporary.ID, ResolutionMode: string(mode)}
+	publication := domainautomation.SamplingElementTargetPublication{TemporaryElementTargetID: temporary.ID, ResolutionMode: string(mode)}
 	switch mode {
 	case sampling.SamplingResolutionCreate, sampling.SamplingResolutionForceCreate:
 		if authority.Current != nil || authority.ExpectedRevision != 0 || authority.ExpectedCurrentVersionID != "" {
-			return domainautomation.SamplingNodePublication{}, fmt.Errorf("sampling node %q create cannot carry current-node authority", temporary.ID)
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q create cannot carry current-node authority", temporary.ID)
 		}
 		if mode == sampling.SamplingResolutionForceCreate && !authority.ForceCreateAuthorized {
-			return domainautomation.SamplingNodePublication{}, fmt.Errorf("sampling node %q force create is not authorized", temporary.ID)
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q force create is not authorized", temporary.ID)
 		}
-		aggregate, err := domainautomation.NewNode(
-			domainautomation.Node{ID: authority.NodeID, DisplayName: temporary.DisplayName, Properties: temporary.Properties.Clone(), CreatedAt: at, UpdatedAt: at},
-			domainautomation.NodeVersion{ID: authority.NodeVersionID, PageURL: temporary.PageURL, Origin: temporary.Origin, Selectors: temporary.Selectors, Fingerprint: temporary.Fingerprint, Source: domainautomation.SourceSampling, CreatedAt: at},
+		aggregate, err := domainautomation.NewElementTarget(
+			domainautomation.ElementTarget{ID: authority.ElementTargetID, DisplayName: temporary.DisplayName, Properties: temporary.Properties.Clone(), CreatedAt: at, UpdatedAt: at},
+			domainautomation.ElementTargetVersion{ID: authority.ElementTargetVersionID, PageURL: temporary.PageURL, Origin: temporary.Origin, Selectors: temporary.Selectors, Fingerprint: temporary.Fingerprint, Source: domainautomation.SourceSampling, CreatedAt: at},
 		)
 		if err != nil {
-			return domainautomation.SamplingNodePublication{}, fmt.Errorf("build sampled node %q: %w", temporary.ID, err)
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("build sampled node %q: %w", temporary.ID, err)
 		}
 		publication.Aggregate, publication.PublishVersion = aggregate, true
 	case sampling.SamplingResolutionMerge:
-		if authority.Current == nil || authority.Current.Node.ID != authority.NodeID || authority.ExpectedRevision == 0 || authority.ExpectedCurrentVersionID == "" || authority.Current.Node.Revision != authority.ExpectedRevision || authority.Current.Node.CurrentVersionID != authority.ExpectedCurrentVersionID {
-			return domainautomation.SamplingNodePublication{}, fmt.Errorf("sampling node %q merge requires exact current node authority", temporary.ID)
+		if authority.Current == nil || authority.Current.ElementTarget.ID != authority.ElementTargetID || authority.ExpectedRevision == 0 || authority.ExpectedCurrentVersionID == "" || authority.Current.ElementTarget.Revision != authority.ExpectedRevision || authority.Current.ElementTarget.CurrentVersionID != authority.ExpectedCurrentVersionID {
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q merge requires exact current node authority", temporary.ID)
 		}
-		aggregate, err := authority.Current.PublishVersion(authority.NodeVersionID, temporary.PageURL, temporary.Origin, temporary.Selectors, temporary.Fingerprint, domainautomation.SourceSampling, at)
+		aggregate, err := authority.Current.PublishVersion(authority.ElementTargetVersionID, temporary.PageURL, temporary.Origin, temporary.Selectors, temporary.Fingerprint, domainautomation.SourceSampling, at)
 		if err != nil {
-			return domainautomation.SamplingNodePublication{}, fmt.Errorf("merge sampled node %q: %w", temporary.ID, err)
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("merge sampled node %q: %w", temporary.ID, err)
 		}
 		publication.Aggregate, publication.ExpectedRevision, publication.ExpectedCurrentVersionID, publication.PublishVersion = aggregate, authority.ExpectedRevision, authority.ExpectedCurrentVersionID, true
 	case sampling.SamplingResolutionReuse:
-		if authority.Current == nil || authority.Current.Node.ID != authority.NodeID || authority.Current.Current.ID != authority.NodeVersionID || authority.ExpectedRevision == 0 || authority.Current.Node.Revision != authority.ExpectedRevision || authority.Current.Node.CurrentVersionID != authority.ExpectedCurrentVersionID || authority.ExpectedCurrentVersionID != authority.NodeVersionID {
-			return domainautomation.SamplingNodePublication{}, fmt.Errorf("sampling node %q reuse requires exact current node authority", temporary.ID)
+		if authority.Current == nil || authority.Current.ElementTarget.ID != authority.ElementTargetID || authority.Current.Current.ID != authority.ElementTargetVersionID || authority.ExpectedRevision == 0 || authority.Current.ElementTarget.Revision != authority.ExpectedRevision || authority.Current.ElementTarget.CurrentVersionID != authority.ExpectedCurrentVersionID || authority.ExpectedCurrentVersionID != authority.ElementTargetVersionID {
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires exact current node authority", temporary.ID)
 		}
 		publication.Aggregate = authority.Current.Clone()
 		publication.ExpectedRevision, publication.ExpectedCurrentVersionID = authority.ExpectedRevision, authority.ExpectedCurrentVersionID
 	case sampling.SamplingResolutionUndecided:
-		return domainautomation.SamplingNodePublication{}, fmt.Errorf("sampling node %q resolution is undecided", temporary.ID)
+		return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q resolution is undecided", temporary.ID)
 	default:
-		return domainautomation.SamplingNodePublication{}, fmt.Errorf("sampling node %q has unsupported resolution mode %q", temporary.ID, mode)
+		return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q has unsupported resolution mode %q", temporary.ID, mode)
 	}
 	return publication, nil
 }

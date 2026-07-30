@@ -10,28 +10,28 @@ import (
 
 func TestNodeAggregateValidateLoadedHistoryMatrix(t *testing.T) {
 	current := versionedNodeVersion("node-v2", "node", 2, 0)
-	base := NodeAggregate{
-		Node:     Node{ID: "node", DisplayName: "节点", Properties: Properties{}, CurrentVersionID: current.ID},
-		Current:  current,
-		Versions: []NodeVersion{current, versionedNodeVersion("node-v1", "node", 1, 2)},
+	base := ElementTargetAggregate{
+		ElementTarget: ElementTarget{ID: "node", DisplayName: "节点", Properties: Properties{}, CurrentVersionID: current.ID},
+		Current:       current,
+		Versions:      []ElementTargetVersion{current, versionedNodeVersion("node-v1", "node", 1, 2)},
 	}
 	tests := []struct {
 		name   string
-		mutate func(*NodeAggregate)
+		mutate func(*ElementTargetAggregate)
 		want   string
 	}{
 		{name: "unsorted complete history"},
-		{name: "current absent from history", mutate: func(aggregate *NodeAggregate) { aggregate.Versions = aggregate.Versions[1:] }, want: "missing from loaded history"},
-		{name: "history owner mismatch", mutate: func(aggregate *NodeAggregate) { aggregate.Versions[1].NodeID = "other" }, want: "belongs to another node"},
-		{name: "blank history version id", mutate: func(aggregate *NodeAggregate) { aggregate.Versions[1].ID = "" }, want: "invalid version identity"},
-		{name: "duplicate history id", mutate: func(aggregate *NodeAggregate) { aggregate.Versions[1].ID = aggregate.Versions[0].ID }, want: "duplicate version identity"},
-		{name: "duplicate history number", mutate: func(aggregate *NodeAggregate) { aggregate.Versions[1].VersionNumber = 2 }, want: "duplicate version identity"},
-		{name: "gap in history numbers", mutate: func(aggregate *NodeAggregate) { aggregate.Versions[0].VersionNumber = 3 }, want: "contiguous from 1"},
+		{name: "current absent from history", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions = aggregate.Versions[1:] }, want: "missing from loaded history"},
+		{name: "history owner mismatch", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ElementTargetID = "other" }, want: "belongs to another node"},
+		{name: "blank history version id", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ID = "" }, want: "invalid version identity"},
+		{name: "duplicate history id", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ID = aggregate.Versions[0].ID }, want: "duplicate version identity"},
+		{name: "duplicate history number", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].VersionNumber = 2 }, want: "duplicate version identity"},
+		{name: "gap in history numbers", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[0].VersionNumber = 3 }, want: "contiguous from 1"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			aggregate := base
-			aggregate.Versions = append([]NodeVersion(nil), base.Versions...)
+			aggregate.Versions = append([]ElementTargetVersion(nil), base.Versions...)
 			if test.mutate != nil {
 				test.mutate(&aggregate)
 			}
@@ -53,15 +53,15 @@ func TestLoadedHistoryWithoutCurrentRequiresAllVersionsDeleted(t *testing.T) {
 		want string
 	}{
 		{name: "node all deleted", run: func() error {
-			return (NodeAggregate{Node: Node{ID: "node"}, Versions: []NodeVersion{
+			return (ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node"}, Versions: []ElementTargetVersion{
 				versionedNodeVersion("node-v2", "node", 2, 3), versionedNodeVersion("node-v1", "node", 1, 2),
 			}}).ValidateLoadedHistory()
 		}},
 		{name: "node available version", run: func() error {
-			return (NodeAggregate{Node: Node{ID: "node"}, Versions: []NodeVersion{versionedNodeVersion("node-v1", "node", 1, 0)}}).ValidateLoadedHistory()
+			return (ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node"}, Versions: []ElementTargetVersion{versionedNodeVersion("node-v1", "node", 1, 0)}}).ValidateLoadedHistory()
 		}, want: "requires a current pointer"},
 		{name: "node carries current value", run: func() error {
-			return (NodeAggregate{Node: Node{ID: "node"}, Current: versionedNodeVersion("node-v1", "node", 1, 2)}).ValidateLoadedHistory()
+			return (ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node"}, Current: versionedNodeVersion("node-v1", "node", 1, 2)}).ValidateLoadedHistory()
 		}, want: "cannot carry a current version"},
 		{name: "workflow all deleted", run: func() error {
 			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Versions: []FlowFragmentVersion{
@@ -233,10 +233,10 @@ func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.
 	definition := FlowFragmentContent{
 		Parameters: []ParameterDefinition{{Name: "region", DisplayName: "区域", Type: parameter.MultiSelect, Options: []string{"east", "west"}, Default: parameter.PresentValue(parameter.MultiSelectValue([]string{"east"}))}},
 		Steps: []FlowFragmentStep{
-			{ID: "select", DisplayName: "选择", Kind: StepAction, Action: "select", NodeID: "node", NodeVersionID: "node-v1", Values: []string{"east"}},
+			{ID: "select", DisplayName: "选择", Kind: StepAction, Action: "select", ElementTargetID: "node", ElementTargetVersionID: "node-v1", Values: []string{"east"}},
 			{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}},
 			{ID: "ref", DisplayName: "引用", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"region": parameter.LiteralBinding(parameter.SingleSelectValue("east"))}}},
-			{ID: "validation", DisplayName: "验证", Kind: StepValidation, NodeID: "node", NodeVersionID: "node-v1", Validation: &ValidationConfig{
+			{ID: "validation", DisplayName: "验证", Kind: StepValidation, ElementTargetID: "node", ElementTargetVersionID: "node-v1", Validation: &ValidationConfig{
 				Assertion: ValidationAssertion{Kind: ValidationSelectedSetEquals, ExpectedValues: []string{"east"}},
 				Wait:      ValidationWait{MaxWaitMS: 2_000, StabilityMS: 200}, SupportedKinds: []ValidationAssertionKind{ValidationSelectedSetEquals},
 			}},
@@ -245,7 +245,7 @@ func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.
 				Branches: []ValidationBranch{
 					{ID: "branch", Name: "分支", Steps: []FlowFragmentStep{
 						{
-							ID: "member", DisplayName: "成员", Kind: StepValidation, NodeID: "node", NodeVersionID: "node-v1",
+							ID: "member", DisplayName: "成员", Kind: StepValidation, ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 							Validation: &ValidationConfig{Assertion: ValidationAssertion{Kind: ValidationVisible}},
 						},
 					}},
@@ -275,8 +275,8 @@ func TestWorkflowPublishVersionDeepCopiesEveryMutableDefinitionField(t *testing.
 	}
 }
 
-func versionedNodeVersion(id, nodeID string, number int, deletedAt int64) NodeVersion {
-	return NodeVersion{ID: id, NodeID: nodeID, VersionNumber: number, DeletedAt: deletedAt,
+func versionedNodeVersion(id, nodeID string, number int, deletedAt int64) ElementTargetVersion {
+	return ElementTargetVersion{ID: id, ElementTargetID: nodeID, VersionNumber: number, DeletedAt: deletedAt,
 		Selectors:   []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#node"}},
 		Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: SourceManual}
 }
@@ -286,11 +286,11 @@ func versionedWorkflowVersion(id, workflowID string, number int, deletedAt int64
 		Definition: FlowFragmentContent{Steps: []FlowFragmentStep{{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}}
 }
 
-func versionedNodeAggregate() NodeAggregate {
+func versionedNodeAggregate() ElementTargetAggregate {
 	v1 := versionedNodeVersion("node-v1", "node", 1, 2)
 	v2 := versionedNodeVersion("node-v2", "node", 2, 0)
-	return NodeAggregate{Node: Node{ID: "node", DisplayName: "节点", Properties: Properties{}, CurrentVersionID: v2.ID, CreatedAt: 1, UpdatedAt: 2, Revision: 1},
-		Current: v2, Versions: []NodeVersion{v1, v2}}
+	return ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node", DisplayName: "节点", Properties: Properties{}, CurrentVersionID: v2.ID, CreatedAt: 1, UpdatedAt: 2, Revision: 1},
+		Current: v2, Versions: []ElementTargetVersion{v1, v2}}
 }
 
 func versionedWorkflowAggregate() FlowFragmentAggregate {

@@ -282,22 +282,22 @@ func (p Draft) Validate() error {
 	nodes := make(map[NodeDependencyKey]struct{}, len(p.Nodes))
 	versionOwners := make(map[string]string, len(p.Nodes))
 	for _, snapshot := range p.Nodes {
-		if strings.TrimSpace(snapshot.NodeID) == "" || strings.TrimSpace(snapshot.VersionID) == "" {
+		if strings.TrimSpace(snapshot.ElementTargetID) == "" || strings.TrimSpace(snapshot.VersionID) == "" {
 			return errors.New("node dependency requires node and version identities")
 		}
 		spec := fingerprint.ElementTargetSpec{
-			UUID: snapshot.NodeID, ID: snapshot.VersionID, PageURL: snapshot.PageURL,
+			UUID: snapshot.ElementTargetID, ID: snapshot.VersionID, PageURL: snapshot.PageURL,
 			Origin: snapshot.Origin, Role: snapshot.Fingerprint.ARIA.Role,
 			Selectors: snapshot.Selectors, Fingerprint: snapshot.Fingerprint,
 		}
 		if err := spec.Validate(); err != nil {
 			return fmt.Errorf("node version %q failed execution preflight: %w", snapshot.VersionID, err)
 		}
-		if owner, exists := versionOwners[snapshot.VersionID]; exists && owner != snapshot.NodeID {
-			return fmt.Errorf("node version %q is owned by different nodes %q and %q", snapshot.VersionID, owner, snapshot.NodeID)
+		if owner, exists := versionOwners[snapshot.VersionID]; exists && owner != snapshot.ElementTargetID {
+			return fmt.Errorf("node version %q is owned by different nodes %q and %q", snapshot.VersionID, owner, snapshot.ElementTargetID)
 		}
-		versionOwners[snapshot.VersionID] = snapshot.NodeID
-		key := NodeDependencyKey{NodeID: snapshot.NodeID, VersionID: snapshot.VersionID}
+		versionOwners[snapshot.VersionID] = snapshot.ElementTargetID
+		key := NodeDependencyKey{ElementTargetID: snapshot.ElementTargetID, VersionID: snapshot.VersionID}
 		if _, exists := nodes[key]; exists {
 			return fmt.Errorf("duplicate node dependency %q", key)
 		}
@@ -471,7 +471,7 @@ func validateAggregateInputBounds(p Draft) error {
 		steps += len(frame.steps)
 		for i := range frame.steps {
 			step := &frame.steps[i]
-			if err := addStrings(step.ID, step.DisplayName, string(step.Kind), step.Action, step.NodeID, step.NodeVersionID, step.Value, step.WaitKind); err != nil {
+			if err := addStrings(step.ID, step.DisplayName, string(step.Kind), step.Action, step.ElementTargetID, step.ElementTargetVersionID, step.Value, step.WaitKind); err != nil {
 				return err
 			}
 			if err := addCollectionElements(len(step.Values) + len(step.Children)); err != nil {
@@ -555,7 +555,7 @@ func validateAggregateInputBounds(p Draft) error {
 			return errors.New("execution plan node aggregate limit exceeded")
 		}
 		f := node.Fingerprint
-		if err := addStrings(node.NodeID, node.VersionID, node.DisplayName, node.PageURL, node.Origin, f.Tag, f.Text, f.ARIA.Role, f.ARIA.Name, f.Neighbors.Prev, f.Neighbors.Next, f.Neighbors.ParentTag, f.LabelText, f.FormID); err != nil {
+		if err := addStrings(node.ElementTargetID, node.VersionID, node.DisplayName, node.PageURL, node.Origin, f.Tag, f.Text, f.ARIA.Role, f.ARIA.Name, f.Neighbors.Prev, f.Neighbors.Next, f.Neighbors.ParentTag, f.LabelText, f.FormID); err != nil {
 			return err
 		}
 		for _, selector := range node.Selectors {
@@ -732,8 +732,8 @@ func validateDependencies(workflow WorkflowSnapshot, workflows map[string]Workfl
 				stack = append(stack, branch.Steps...)
 			}
 		}
-		if step.NodeID != "" {
-			if _, exists := nodes[NodeDependencyKey{NodeID: step.NodeID, VersionID: step.NodeVersionID}]; !exists {
+		if step.ElementTargetID != "" {
+			if _, exists := nodes[NodeDependencyKey{ElementTargetID: step.ElementTargetID, VersionID: step.ElementTargetVersionID}]; !exists {
 				return fmt.Errorf("step %q targets missing node version", step.ID)
 			}
 		}
@@ -813,10 +813,10 @@ func validateAction(s Step) []string {
 	default:
 		p = append(p, fmt.Sprintf("step %q has unsupported action %q", s.DisplayName, s.Action))
 	}
-	if s.Action != "navigate" && s.Action != "press" && strings.TrimSpace(s.NodeID) == "" {
+	if s.Action != "navigate" && s.Action != "press" && strings.TrimSpace(s.ElementTargetID) == "" {
 		p = append(p, fmt.Sprintf("step %q requires a node", s.DisplayName))
 	}
-	if strings.TrimSpace(s.NodeID) != "" && strings.TrimSpace(s.NodeVersionID) == "" {
+	if strings.TrimSpace(s.ElementTargetID) != "" && strings.TrimSpace(s.ElementTargetVersionID) == "" {
 		p = append(p, fmt.Sprintf("step %q requires an exact node version", s.DisplayName))
 	}
 	if (s.Action == "navigate" || s.Action == "press" || s.Action == "extract") && strings.TrimSpace(s.Value) == "" {
@@ -881,7 +881,7 @@ func validateSealedNavigationURL(value string) error {
 func validateWait(s Step) []string {
 	var p []string
 	element := s.WaitKind == "element" || s.WaitKind == "element_visible" || s.WaitKind == "element_invisible"
-	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.Value != "" || len(s.Values) != 0 || s.RepeatCount != 0 || s.Reference != nil || len(s.Children) != 0 || (!element && (s.NodeID != "" || s.NodeVersionID != "")) {
+	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.Value != "" || len(s.Values) != 0 || s.RepeatCount != 0 || s.Reference != nil || len(s.Children) != 0 || (!element && (s.ElementTargetID != "" || s.ElementTargetVersionID != "")) {
 		p = append(p, fmt.Sprintf("step %q WAIT contains unsupported step configuration", s.DisplayName))
 	}
 	switch s.WaitKind {
@@ -890,10 +890,10 @@ func validateWait(s Step) []string {
 			p = append(p, fmt.Sprintf("step %q fixed wait must be 1-%dms", s.DisplayName, MaxWaitMS))
 		}
 	case "element", "element_visible", "element_invisible":
-		if strings.TrimSpace(s.NodeID) == "" {
+		if strings.TrimSpace(s.ElementTargetID) == "" {
 			p = append(p, fmt.Sprintf("step %q element wait requires a node", s.DisplayName))
 		}
-		if strings.TrimSpace(s.NodeVersionID) == "" {
+		if strings.TrimSpace(s.ElementTargetVersionID) == "" {
 			p = append(p, fmt.Sprintf("step %q element wait requires an exact node version", s.DisplayName))
 		}
 		if s.WaitMS < 0 || s.WaitMS > MaxWaitMS {
@@ -911,7 +911,7 @@ func validateWait(s Step) []string {
 
 func validateRepeat(s Step) []string {
 	var p []string
-	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.NodeID != "" || s.NodeVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.Reference != nil {
+	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.Reference != nil {
 		p = append(p, fmt.Sprintf("step %q REPEAT contains unsupported step configuration", s.DisplayName))
 	}
 	if s.RepeatCount < 1 || len(s.Children) == 0 {
@@ -924,7 +924,7 @@ func validateRepeat(s Step) []string {
 
 func (r *Reference) Validate(s Step) []string {
 	var p []string
-	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.NodeID != "" || s.NodeVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
+	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
 		p = append(p, fmt.Sprintf("step %q WORKFLOW_REF contains unsupported step configuration", s.DisplayName))
 	}
 	if r == nil || strings.TrimSpace(r.FlowFragmentID) == "" {
@@ -1019,7 +1019,7 @@ func validateValidationStep(s Step, member bool) []string {
 	if s.ValidationGroup != nil || s.Action != "" || s.Reference != nil || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 || s.Optional {
 		p = append(p, fmt.Sprintf("validation step %q contains unsupported action or child configuration", s.DisplayName))
 	}
-	if strings.TrimSpace(s.NodeID) == "" || strings.TrimSpace(s.NodeVersionID) == "" {
+	if strings.TrimSpace(s.ElementTargetID) == "" || strings.TrimSpace(s.ElementTargetVersionID) == "" {
 		p = append(p, fmt.Sprintf("validation step %q requires an exact node reference", s.DisplayName))
 	}
 	if err := s.Validation.Validate(!member); err != nil {
@@ -1033,7 +1033,7 @@ func (g *ValidationGroup) Validate(s Step, seen map[string]struct{}) []string {
 		return []string{fmt.Sprintf("validation group %q requires group configuration", s.DisplayName)}
 	}
 	var p []string
-	if s.Validation != nil || s.Action != "" || s.Reference != nil || s.NodeID != "" || s.NodeVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 || s.Optional {
+	if s.Validation != nil || s.Action != "" || s.Reference != nil || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 || s.Optional {
 		p = append(p, fmt.Sprintf("validation group %q contains unsupported step configuration", s.DisplayName))
 	}
 	if err := validateValidationWait(g.MaxWaitMS, g.StabilityMS); err != nil {

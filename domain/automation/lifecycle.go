@@ -83,66 +83,70 @@ func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, 
 	return next, nil
 }
 
-func NewNode(node Node, initial NodeVersion) (NodeAggregate, error) {
+func NewElementTarget(node ElementTarget, initial ElementTargetVersion) (ElementTargetAggregate, error) {
 	node.Revision = 1
 	node.CurrentVersionID = initial.ID
-	initial.NodeID = node.ID
+	initial.ElementTargetID = node.ID
 	initial.VersionNumber = 1
 	if node.CreatedAt <= 0 || node.UpdatedAt != node.CreatedAt || initial.CreatedAt != node.CreatedAt {
-		return NodeAggregate{}, errors.New("node creation timestamps must be positive and equal")
+		return ElementTargetAggregate{}, errors.New("node creation timestamps must be positive and equal")
 	}
-	a := NodeAggregate{Node: node, Current: initial, Versions: []NodeVersion{initial}}
+	a := ElementTargetAggregate{ElementTarget: node, Current: initial, Versions: []ElementTargetVersion{initial}}
 	a = cloneNodeAggregate(a)
 	if err := a.ValidateLoadedHistory(); err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	return a, nil
 }
 
-func (a NodeAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (NodeAggregate, error) {
-	if a.Node.DeletedAt != 0 {
-		return NodeAggregate{}, ErrDeletedAggregate
+func (a ElementTargetAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (ElementTargetAggregate, error) {
+	if a.ElementTarget.DeletedAt != 0 {
+		return ElementTargetAggregate{}, ErrDeletedAggregate
 	}
-	if err := validateTransitionTime(at, a.Node.UpdatedAt); err != nil {
-		return NodeAggregate{}, err
+	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
+		return ElementTargetAggregate{}, err
 	}
-	r, err := a.Node.Revision.Next()
+	r, err := a.ElementTarget.Revision.Next()
 	if err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	n := cloneNodeAggregate(a)
-	n.Node.DisplayName = displayName
-	n.Node.FolderID = folderID
-	n.Node.Properties = properties.Clone()
-	n.Node.UpdatedAt = at
-	n.Node.Revision = r
+	n.ElementTarget.DisplayName = displayName
+	n.ElementTarget.FolderID = folderID
+	n.ElementTarget.Properties = properties.Clone()
+	n.ElementTarget.UpdatedAt = at
+	n.ElementTarget.Revision = r
 	if err := n.ValidateLoadedHistory(); err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	return n, nil
 }
-func (a NodeAggregate) Delete(at int64) (NodeAggregate, error)  { return a.setDeleted(true, at) }
-func (a NodeAggregate) Restore(at int64) (NodeAggregate, error) { return a.setDeleted(false, at) }
-func (a NodeAggregate) setDeleted(deleted bool, at int64) (NodeAggregate, error) {
-	if (a.Node.DeletedAt != 0) == deleted {
-		return NodeAggregate{}, errors.New("node lifecycle transition is a no-op")
+func (a ElementTargetAggregate) Delete(at int64) (ElementTargetAggregate, error) {
+	return a.setDeleted(true, at)
+}
+func (a ElementTargetAggregate) Restore(at int64) (ElementTargetAggregate, error) {
+	return a.setDeleted(false, at)
+}
+func (a ElementTargetAggregate) setDeleted(deleted bool, at int64) (ElementTargetAggregate, error) {
+	if (a.ElementTarget.DeletedAt != 0) == deleted {
+		return ElementTargetAggregate{}, errors.New("node lifecycle transition is a no-op")
 	}
-	if err := validateTransitionTime(at, a.Node.UpdatedAt); err != nil {
-		return NodeAggregate{}, err
+	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
+		return ElementTargetAggregate{}, err
 	}
-	r, err := a.Node.Revision.Next()
+	r, err := a.ElementTarget.Revision.Next()
 	if err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	n := cloneNodeAggregate(a)
-	n.Node.DeletedAt = 0
+	n.ElementTarget.DeletedAt = 0
 	if deleted {
-		n.Node.DeletedAt = at
+		n.ElementTarget.DeletedAt = at
 	}
-	n.Node.UpdatedAt = at
-	n.Node.Revision = r
+	n.ElementTarget.UpdatedAt = at
+	n.ElementTarget.Revision = r
 	if err := n.ValidateLoadedHistory(); err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	return n, nil
 }

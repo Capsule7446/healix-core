@@ -17,7 +17,7 @@ const (
 	validationMaxGroupSteps  = 20
 )
 
-// ValidationAssertionKind 是一种独立于框架的语句，针对一个精确版本化的 Node 进行评估。框架适配器将 DOM/ARIA 详细信息转换为这些含义；没有特定于框架的选择器或类属于这里。
+// ValidationAssertionKind 是一种独立于框架的语句，针对一个精确版本化的 ElementTarget 进行评估。框架适配器将 DOM/ARIA 详细信息转换为这些含义；没有特定于框架的选择器或类属于这里。
 type ValidationAssertionKind string
 
 const (
@@ -191,7 +191,7 @@ func validateStandaloneValidationStep(step FlowFragmentStep) []string {
 		step.RepeatCount != 0 || len(step.Children) != 0 || step.Optional {
 		problems = append(problems, fmt.Sprintf("validation step %q contains unsupported action or child configuration", step.DisplayName))
 	}
-	if strings.TrimSpace(step.NodeID) == "" || strings.TrimSpace(step.NodeVersionID) == "" {
+	if strings.TrimSpace(step.ElementTargetID) == "" || strings.TrimSpace(step.ElementTargetVersionID) == "" {
 		problems = append(problems, fmt.Sprintf("validation step %q requires an exact node reference", step.DisplayName))
 	}
 	if err := step.Validation.Assertion.Validate(); err != nil {
@@ -209,7 +209,7 @@ func validateValidationGroupStep(step FlowFragmentStep, seen map[string]struct{}
 		return []string{fmt.Sprintf("validation group %q requires group configuration", step.DisplayName)}
 	}
 	if step.Validation != nil || step.Action != "" || step.Reference != nil ||
-		step.NodeID != "" || step.NodeVersionID != "" || step.Value != "" || len(step.Values) != 0 ||
+		step.ElementTargetID != "" || step.ElementTargetVersionID != "" || step.Value != "" || len(step.Values) != 0 ||
 		step.WaitKind != "" || step.WaitMS != 0 || step.RepeatCount != 0 || len(step.Children) != 0 || step.Optional {
 		problems = append(problems, fmt.Sprintf("validation group %q contains unsupported step configuration", step.DisplayName))
 	}
@@ -255,7 +255,7 @@ func validateValidationGroupStep(step FlowFragmentStep, seen map[string]struct{}
 				member.RepeatCount != 0 || len(member.Children) != 0 || member.Optional {
 				problems = append(problems, fmt.Sprintf("validation group %q member %q contains unsupported action or child configuration", step.DisplayName, member.DisplayName))
 			}
-			if strings.TrimSpace(member.NodeID) == "" || strings.TrimSpace(member.NodeVersionID) == "" {
+			if strings.TrimSpace(member.ElementTargetID) == "" || strings.TrimSpace(member.ElementTargetVersionID) == "" {
 				problems = append(problems, fmt.Sprintf("validation group %q member %q requires an exact node reference", step.DisplayName, member.DisplayName))
 			}
 			if err := member.Validation.Assertion.Validate(); err != nil {

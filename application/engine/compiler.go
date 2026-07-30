@@ -13,20 +13,20 @@ import (
 // StepMetadata 将执行树 ID 映射回拥有证据、截图和面向用户进度信息的
 // 不可变工作区步骤。
 type StepMetadata struct {
-	WorkflowStepID    string
-	DisplayName       string
-	Kind              string
-	HierarchyPath     string
-	NodeID            string
-	NodeVersionID     string
-	CaptureScreenshot bool
+	WorkflowStepID         string
+	DisplayName            string
+	Kind                   string
+	HierarchyPath          string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	CaptureScreenshot      bool
 }
 
-// RuntimeNodeIdentity 将运行时 ElementTargetSpec ID（即精确的 NodeVersion ID）映射到
-// 其稳定的工作区 Node 标识。
+// RuntimeNodeIdentity 将运行时 ElementTargetSpec ID（即精确的 ElementTargetVersion ID）映射到
+// 其稳定的工作区 ElementTarget 标识。
 type RuntimeNodeIdentity struct {
-	NodeID        string
-	NodeVersionID string
+	ElementTargetID        string
+	ElementTargetVersionID string
 }
 
 type compiledExecutionIdentity struct {
@@ -126,9 +126,9 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		resolutions[key] = resolution
 	}
 	for _, snapshot := range draft.Nodes {
-		key := nodeDependencyIdentity(snapshot.NodeID, snapshot.VersionID)
+		key := nodeDependencyIdentity(snapshot.ElementTargetID, snapshot.VersionID)
 		if _, exists := nodes[key]; exists {
-			return CompiledRun{}, fmt.Errorf("duplicate node dependency %s version %s", snapshot.NodeID, snapshot.VersionID)
+			return CompiledRun{}, fmt.Errorf("duplicate node dependency %s version %s", snapshot.ElementTargetID, snapshot.VersionID)
 		}
 		nodes[key] = snapshot
 	}
@@ -228,16 +228,16 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath, scopeP
 		path := hierarchy + " / " + step.DisplayName
 		runtimeID := runtimeInvocationStepID(invocationPath, step.ID)
 		c.metadata[runtimeID] = StepMetadata{WorkflowStepID: step.ID, DisplayName: step.DisplayName,
-			Kind: string(step.Kind), HierarchyPath: path, NodeID: step.NodeID,
-			NodeVersionID: step.NodeVersionID, CaptureScreenshot: step.CaptureScreenshot}
+			Kind: string(step.Kind), HierarchyPath: path, ElementTargetID: step.ElementTargetID,
+			ElementTargetVersionID: step.ElementTargetVersionID, CaptureScreenshot: step.CaptureScreenshot}
 
 		var compiled node.Node
 		var err error
 		switch step.Kind {
 		case execution.ActionStep:
 			var target fingerprint.ElementTargetSpec
-			if step.NodeID != "" {
-				target, err = c.spec(step.NodeID, step.NodeVersionID)
+			if step.ElementTargetID != "" {
+				target, err = c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 				if err != nil {
 					return nil, fmt.Errorf("step %s: %w", step.ID, err)
 				}
@@ -273,7 +273,7 @@ func (c *executionCompiler) compileValidation(runtimeID string, step execution.S
 	if step.Validation == nil {
 		return nil, fmt.Errorf("validation step %s has no configuration", step.ID)
 	}
-	target, err := c.spec(step.NodeID, step.NodeVersionID)
+	target, err := c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 	if err != nil {
 		return nil, fmt.Errorf("validation step %s: %w", step.ID, err)
 	}
@@ -306,8 +306,8 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 			memberRuntimeID := runtimeInvocationStepID(invocationPath, member.ID)
 			c.metadata[memberRuntimeID] = StepMetadata{WorkflowStepID: member.ID,
 				DisplayName: member.DisplayName, Kind: string(member.Kind),
-				HierarchyPath: path + " / " + branch.Name + " / " + member.DisplayName,
-				NodeID:        member.NodeID, NodeVersionID: member.NodeVersionID}
+				HierarchyPath:   path + " / " + branch.Name + " / " + member.DisplayName,
+				ElementTargetID: member.ElementTargetID, ElementTargetVersionID: member.ElementTargetVersionID}
 			validation, err := c.compileValidation(memberRuntimeID, member, runtimeID, branch.ID, &execution.Validation{MaxWaitMS: group.MaxWaitMS, StabilityMS: group.StabilityMS})
 			if err != nil {
 				return nil, err
@@ -331,14 +331,14 @@ func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitSleep,
 			Duration: duration}, nil
 	case "element":
-		target, err := c.spec(step.NodeID, step.NodeVersionID)
+		target, err := c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 		if err != nil {
 			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitElement, Target: target,
 			Timeout: duration}, nil
 	case "element_visible", "element_invisible":
-		target, err := c.spec(step.NodeID, step.NodeVersionID)
+		target, err := c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 		if err != nil {
 			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
 		}
@@ -425,14 +425,14 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 	}
 	if existing, ok := c.programSpecs[versionID]; ok {
 		mapped := c.runtimeNodes[versionID]
-		if mapped.NodeID != nodeID {
+		if mapped.ElementTargetID != nodeID {
 			return fingerprint.ElementTargetSpec{}, fmt.Errorf("node version %s is shared by different stable nodes", versionID)
 		}
 		return existing, nil
 	}
 	version := dependency
 	fp := version.Fingerprint
-	spec := fingerprint.ElementTargetSpec{UUID: dependency.NodeID, ID: version.VersionID,
+	spec := fingerprint.ElementTargetSpec{UUID: dependency.ElementTargetID, ID: version.VersionID,
 		PageURL: version.PageURL, Origin: version.Origin, Role: fp.ARIA.Role,
 		Selectors: append([]fingerprint.Selector(nil), version.Selectors...),
 		Fingerprint: fingerprint.Fingerprint{Tag: fp.Tag, Attributes: cloneStrings(fp.Attributes), Text: fp.Text,
@@ -442,7 +442,7 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 		return fingerprint.ElementTargetSpec{}, fmt.Errorf("node %s version %s: %w", nodeID, versionID, err)
 	}
 	c.programSpecs[versionID] = spec
-	c.runtimeNodes[versionID] = RuntimeNodeIdentity{NodeID: nodeID, NodeVersionID: versionID}
+	c.runtimeNodes[versionID] = RuntimeNodeIdentity{ElementTargetID: nodeID, ElementTargetVersionID: versionID}
 	return spec, nil
 }
 
@@ -459,7 +459,7 @@ func impossibleCompilerState(format string, args ...any) error {
 }
 
 func nodeDependencyIdentity(nodeID, versionID string) execution.NodeDependencyKey {
-	return execution.NodeDependencyKey{NodeID: nodeID, VersionID: versionID}
+	return execution.NodeDependencyKey{ElementTargetID: nodeID, VersionID: versionID}
 }
 
 func runtimeWorkflowStepID(workflowVersionID, workflowStepID string) string {

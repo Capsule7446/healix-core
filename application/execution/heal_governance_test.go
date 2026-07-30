@@ -13,12 +13,12 @@ import (
 func healGovernancePlan(runID string, sequence uint64, band evidence.DecisionBand, streak domainautomation.HealStreak) HealGovernancePlan {
 	observation := evidence.HealObservation{
 		ID: "fact-" + runID, RunID: runID, ExecutionID: "execution-" + runID, StepExecutionID: "step-" + runID,
-		NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
+		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 		DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 	}
 	return HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{
-			Key:                  HealGovernanceKey{NodeID: "node", BaseNodeVersionID: "base"},
+			Key:                  HealGovernanceKey{ElementTargetID: "node", BaseNodeVersionID: "base"},
 			CurrentNodeVersionID: "base", Revision: 1, Streak: streak,
 		},
 		Fact: HealAcceptedFact{
@@ -39,7 +39,7 @@ func TestDefaultHealGovernancePlannerValidatesExportedBoundaryInputs(t *testing.
 		{"unsupported fact kind", func(plan *HealGovernancePlan) { plan.Fact.Kind = "OTHER" }},
 		{"unsupported decision band", func(plan *HealGovernancePlan) { plan.Fact.Observation.DecisionBand = "OTHER" }},
 		{"unsupported candidate status", func(plan *HealGovernancePlan) { plan.Snapshot.CandidateStatus = "OTHER" }},
-		{"whitespace node", func(plan *HealGovernancePlan) { plan.Snapshot.Key.NodeID = " \t" }},
+		{"whitespace node", func(plan *HealGovernancePlan) { plan.Snapshot.Key.ElementTargetID = " \t" }},
 		{"whitespace base", func(plan *HealGovernancePlan) { plan.Snapshot.Key.BaseNodeVersionID = " \n" }},
 		{"whitespace current", func(plan *HealGovernancePlan) { plan.Snapshot.CurrentNodeVersionID = "  " }},
 		{"whitespace fact", func(plan *HealGovernancePlan) { plan.Fact.FactID = "  " }},
@@ -135,7 +135,7 @@ func TestDefaultHealGovernancePlannerResetIsScopedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reset := evidence.HealCandidateReset{ExecutionID: "execution-reset", StepExecutionID: "step-reset", NodeID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
+	reset := evidence.HealCandidateReset{ExecutionID: "execution-reset", StepExecutionID: "step-reset", ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
 	plan := HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{Key: first.Snapshot.Key, CurrentNodeVersionID: "base", Revision: 2, Streak: decision.NextStreak},
 		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: "run-2", Sequence: 2, Reset: &reset},
@@ -148,7 +148,7 @@ func TestDefaultHealGovernancePlannerResetIsScopedAndImmutable(t *testing.T) {
 		t.Fatalf("reset decision = %#v", result)
 	}
 	other := plan
-	other.Snapshot.Key.NodeID = "other"
+	other.Snapshot.Key.ElementTargetID = "other"
 	if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(other); err == nil {
 		t.Fatal("cross-node reset was accepted")
 	}
@@ -244,12 +244,12 @@ func TestDefaultHealGovernancePlannerRejectsStreakOutsideGovernanceKey(t *testin
 	for _, field := range []string{"node", "base"} {
 		t.Run(field, func(t *testing.T) {
 			plan := healGovernancePlan("run-2", 2, evidence.DecisionApplied, domainautomation.HealStreak{
-				NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: domainautomation.HealDecisionBandApplied,
+				ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: domainautomation.HealDecisionBandApplied,
 				Contributions: []domainautomation.ContributingHealFact{{FactID: "fact-run-1", CommitID: "commit-run-1", RunID: "run-1", ExecutionID: "execution-run-1", StepExecutionID: "step-run-1", Sequence: 1}},
 				LastSequence:  1, Observing: true, Disposition: domainautomation.HealStreakObserving,
 			})
 			if field == "node" {
-				plan.Snapshot.Streak.NodeID = "other-node"
+				plan.Snapshot.Streak.ElementTargetID = "other-node"
 			} else {
 				plan.Snapshot.Streak.BaseNodeVersionID = "other-base"
 			}

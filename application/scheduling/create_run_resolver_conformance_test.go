@@ -19,8 +19,8 @@ type oneViewCatalog struct {
 	version     automation.ExecutionFlowVersion
 	workflows   map[string]automation.FlowFragment
 	versions    map[string]automation.FlowFragmentVersion
-	nodes       map[string]automation.Node
-	nodeVersion map[string]automation.NodeVersion
+	nodes       map[string]automation.ElementTarget
+	nodeVersion map[string]automation.ElementTargetVersion
 	environment automation.Environment
 }
 
@@ -44,13 +44,13 @@ func newOneViewResolverTx(view oneViewCatalog) *oneViewResolverTx {
 		copy.Definition.Steps = cloneCatalogSteps(version.Definition.Steps)
 		captured.versions[id] = copy
 	}
-	captured.nodes = make(map[string]automation.Node, len(view.nodes))
+	captured.nodes = make(map[string]automation.ElementTarget, len(view.nodes))
 	for id, node := range view.nodes {
 		copy := node
 		copy.Properties = cloneProperties(node.Properties)
 		captured.nodes[id] = copy
 	}
-	captured.nodeVersion = make(map[string]automation.NodeVersion, len(view.nodeVersion))
+	captured.nodeVersion = make(map[string]automation.ElementTargetVersion, len(view.nodeVersion))
 	for id, version := range view.nodeVersion {
 		copy := version
 		copy.Selectors = append([]fingerprint.Selector(nil), version.Selectors...)
@@ -164,10 +164,10 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 		}
 		invocations = append(invocations, invocation)
 		for _, step := range version.Definition.Steps {
-			if step.NodeID != "" {
-				node, nodeOK := tx.view.nodes[step.NodeID]
-				nodeVersion, versionOK := tx.view.nodeVersion[step.NodeVersionID]
-				if !nodeOK || !versionOK || nodeVersion.NodeID != node.ID {
+			if step.ElementTargetID != "" {
+				node, nodeOK := tx.view.nodes[step.ElementTargetID]
+				nodeVersion, versionOK := tx.view.nodeVersion[step.ElementTargetVersionID]
+				if !nodeOK || !versionOK || nodeVersion.ElementTargetID != node.ID {
 					return &CreateRunCatalogGraphError{Operation: "resolve exact node", Cause: errors.New("node or version missing")}
 				}
 				found := false
@@ -177,7 +177,7 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 					}
 				}
 				if !found {
-					plan.Nodes = append(plan.Nodes, automation.NodeDependencySnapshot{Node: node, Version: nodeVersion})
+					plan.Nodes = append(plan.Nodes, automation.ElementTargetDependencySnapshot{ElementTarget: node, Version: nodeVersion})
 				}
 			}
 			if step.Reference == nil {
@@ -257,13 +257,13 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 
 func catalogFromMapperSource() oneViewCatalog {
 	source := validMapperSource()
-	catalog := oneViewCatalog{task: source.Publication.Task, version: source.Publication.Version, workflows: map[string]automation.FlowFragment{}, versions: map[string]automation.FlowFragmentVersion{}, nodes: map[string]automation.Node{}, nodeVersion: map[string]automation.NodeVersion{}, environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}}
+	catalog := oneViewCatalog{task: source.Publication.Task, version: source.Publication.Version, workflows: map[string]automation.FlowFragment{}, versions: map[string]automation.FlowFragmentVersion{}, nodes: map[string]automation.ElementTarget{}, nodeVersion: map[string]automation.ElementTargetVersion{}, environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}}
 	for _, item := range source.Publication.Workflows {
 		catalog.workflows[item.FlowFragment.ID] = item.FlowFragment
 		catalog.versions[item.Version.ID] = item.Version
 	}
 	for _, item := range source.Publication.Nodes {
-		catalog.nodes[item.Node.ID] = item.Node
+		catalog.nodes[item.ElementTarget.ID] = item.ElementTarget
 		catalog.nodeVersion[item.Version.ID] = item.Version
 	}
 	return catalog

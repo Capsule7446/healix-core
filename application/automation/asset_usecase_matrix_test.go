@@ -348,44 +348,44 @@ func TestFolderDeletePreservesUnrelatedFolders(t *testing.T) {
 }
 
 type nodeRepositoryMatrix struct {
-	current   domain.NodeAggregate
+	current   domain.ElementTargetAggregate
 	loadErr   error
 	saveErr   error
 	loadCalls int
 	saveCalls int
-	saved     domain.NodeAggregate
+	saved     domain.ElementTargetAggregate
 }
 
-func (repository *nodeRepositoryMatrix) Load(context.Context, string) (domain.NodeAggregate, error) {
+func (repository *nodeRepositoryMatrix) Load(context.Context, string) (domain.ElementTargetAggregate, error) {
 	repository.loadCalls++
 	return repository.current, repository.loadErr
 }
 
-func (*nodeRepositoryMatrix) Create(_ context.Context, value domain.NodeAggregate) (domain.NodeAggregate, error) {
+func (*nodeRepositoryMatrix) Create(_ context.Context, value domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error) {
 	return value, nil
 }
 
-func (repository *nodeRepositoryMatrix) SaveAggregate(_ context.Context, _ domain.Revision, value domain.NodeAggregate) (domain.NodeAggregate, error) {
+func (repository *nodeRepositoryMatrix) SaveAggregate(_ context.Context, _ domain.Revision, value domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error) {
 	repository.saveCalls++
 	repository.saved = value
 	if repository.saveErr != nil {
-		return domain.NodeAggregate{}, repository.saveErr
+		return domain.ElementTargetAggregate{}, repository.saveErr
 	}
 	return value, nil
 }
 
-func nodeUseCaseFixture(t testing.TB) domain.NodeAggregate {
+func nodeUseCaseFixture(t testing.TB) domain.ElementTargetAggregate {
 	t.Helper()
-	node := domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
-	aggregate, err := domain.NewNode(node, version)
+	node := domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
+	aggregate, err := domain.NewElementTarget(node, version)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return aggregate
 }
 
-func deletedNodeUseCaseFixture(t testing.TB) domain.NodeAggregate {
+func deletedNodeUseCaseFixture(t testing.TB) domain.ElementTargetAggregate {
 	t.Helper()
 	aggregate, err := nodeUseCaseFixture(t).Delete(2)
 	if err != nil {
@@ -398,29 +398,29 @@ func TestNodePublishDeleteRestoreCoverRulesDependenciesCASAndState(t *testing.T)
 	failure := errors.New("node repository unavailable")
 	tests := []struct {
 		name    string
-		current func(testing.TB) domain.NodeAggregate
-		invoke  func(NodeService, domain.Revision) (domain.NodeAggregate, error)
-		assert  func(*testing.T, domain.NodeAggregate)
+		current func(testing.TB) domain.ElementTargetAggregate
+		invoke  func(NodeService, domain.Revision) (domain.ElementTargetAggregate, error)
+		assert  func(*testing.T, domain.ElementTargetAggregate)
 	}{
-		{name: "publish", current: nodeUseCaseFixture, invoke: func(service NodeService, revision domain.Revision) (domain.NodeAggregate, error) {
+		{name: "publish", current: nodeUseCaseFixture, invoke: func(service NodeService, revision domain.Revision) (domain.ElementTargetAggregate, error) {
 			current := nodeUseCaseFixture(t)
 			return service.PublishVersion(context.Background(), "node", "node-v2", "https://example.test", "https://example.test", current.Current.Selectors, current.Current.Fingerprint, domain.SourceManual, revision, 2)
-		}, assert: func(t *testing.T, result domain.NodeAggregate) {
+		}, assert: func(t *testing.T, result domain.ElementTargetAggregate) {
 			if result.Current.ID != "node-v2" || result.Current.VersionNumber != 2 {
 				t.Fatalf("published node = %#v", result)
 			}
 		}},
-		{name: "delete", current: nodeUseCaseFixture, invoke: func(service NodeService, revision domain.Revision) (domain.NodeAggregate, error) {
+		{name: "delete", current: nodeUseCaseFixture, invoke: func(service NodeService, revision domain.Revision) (domain.ElementTargetAggregate, error) {
 			return service.Delete(context.Background(), "node", revision, 2)
-		}, assert: func(t *testing.T, result domain.NodeAggregate) {
-			if result.Node.DeletedAt != 2 {
+		}, assert: func(t *testing.T, result domain.ElementTargetAggregate) {
+			if result.ElementTarget.DeletedAt != 2 {
 				t.Fatalf("deleted node = %#v", result)
 			}
 		}},
-		{name: "restore", current: deletedNodeUseCaseFixture, invoke: func(service NodeService, revision domain.Revision) (domain.NodeAggregate, error) {
+		{name: "restore", current: deletedNodeUseCaseFixture, invoke: func(service NodeService, revision domain.Revision) (domain.ElementTargetAggregate, error) {
 			return service.Restore(context.Background(), "node", revision, 3)
-		}, assert: func(t *testing.T, result domain.NodeAggregate) {
-			if result.Node.DeletedAt != 0 {
+		}, assert: func(t *testing.T, result domain.ElementTargetAggregate) {
+			if result.ElementTarget.DeletedAt != 0 {
 				t.Fatalf("restored node = %#v", result)
 			}
 		}},
@@ -429,22 +429,22 @@ func TestNodePublishDeleteRestoreCoverRulesDependenciesCASAndState(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			current := test.current(t)
 			repository := &nodeRepositoryMatrix{current: current}
-			result, err := test.invoke(NewNodeService(repository), current.Node.Revision)
+			result, err := test.invoke(NewNodeService(repository), current.ElementTarget.Revision)
 			if err != nil || repository.saveCalls != 1 || !reflect.DeepEqual(result, repository.saved) {
 				t.Fatalf("result/error/save calls = %#v/%v/%d", result, err, repository.saveCalls)
 			}
 			test.assert(t, result)
 
 			repository = &nodeRepositoryMatrix{current: current, loadErr: failure}
-			if _, err := test.invoke(NewNodeService(repository), current.Node.Revision); !errors.Is(err, failure) || repository.saveCalls != 0 {
+			if _, err := test.invoke(NewNodeService(repository), current.ElementTarget.Revision); !errors.Is(err, failure) || repository.saveCalls != 0 {
 				t.Fatalf("load failure/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &nodeRepositoryMatrix{current: current}
-			if _, err := test.invoke(NewNodeService(repository), current.Node.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
+			if _, err := test.invoke(NewNodeService(repository), current.ElementTarget.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
 				t.Fatalf("CAS/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &nodeRepositoryMatrix{current: current, saveErr: failure}
-			if result, err := test.invoke(NewNodeService(repository), current.Node.Revision); !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.NodeAggregate{}) || repository.saveCalls != 1 {
+			if result, err := test.invoke(NewNodeService(repository), current.ElementTarget.Revision); !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.ElementTargetAggregate{}) || repository.saveCalls != 1 {
 				t.Fatalf("save failure/result/error/calls = %#v/%v/%d", result, err, repository.saveCalls)
 			}
 		})
@@ -456,7 +456,7 @@ func TestNodePublishDeleteRestoreRejectDomainRulesBeforeSave(t *testing.T) {
 	deleted := deletedNodeUseCaseFixture(t)
 	tests := []struct {
 		name    string
-		current domain.NodeAggregate
+		current domain.ElementTargetAggregate
 		invoke  func(NodeService, domain.Revision) error
 		want    string
 	}{
@@ -476,7 +476,7 @@ func TestNodePublishDeleteRestoreRejectDomainRulesBeforeSave(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &nodeRepositoryMatrix{current: test.current}
-			if err := test.invoke(NewNodeService(repository), test.current.Node.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.saveCalls != 0 {
+			if err := test.invoke(NewNodeService(repository), test.current.ElementTarget.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.saveCalls != 0 {
 				t.Fatalf("error/save calls = %v/%d", err, repository.saveCalls)
 			}
 		})

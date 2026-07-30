@@ -16,7 +16,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryPlanIdentityBoundary(t *testing
 		mutate func(*HealGovernancePlan)
 		want   string
 	}{
-		{name: "blank node", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Key.NodeID = " \t\n" }, want: "requires node and base identity"},
+		{name: "blank node", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Key.ElementTargetID = " \t\n" }, want: "requires node and base identity"},
 		{name: "blank base version", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Key.BaseNodeVersionID = " \t\n" }, want: "requires node and base identity"},
 		{name: "blank current version", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.CurrentNodeVersionID = " \t\n" }, want: "requires current node version identity"},
 		{name: "zero revision", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Revision = 0 }, want: "snapshot revision"},
@@ -52,7 +52,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 		{name: "observation has reset payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Reset = validResetPayload() }, want: "exactly one observation payload"},
 		{name: "observation fact mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ID = "other" }, want: "does not match governance identity"},
 		{name: "observation run mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.RunID = "other" }, want: "does not match governance identity"},
-		{name: "observation node mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.NodeID = "other" }, want: "does not match governance identity"},
+		{name: "observation node mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ElementTargetID = "other" }, want: "does not match governance identity"},
 		{name: "observation base mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.BaseNodeVersionID = "other" }, want: "does not match governance identity"},
 		{name: "unsupported decision band", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.DecisionBand = "INVALID" }, want: "unsupported evidence decision band"},
 		{name: "reset missing payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Kind, plan.Fact.Observation = HealAcceptedReset, nil }, want: "exactly one reset payload"},
@@ -61,7 +61,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 		}, want: "exactly one reset payload"},
 		{name: "reset node mismatch", mutate: func(plan *HealGovernancePlan) {
 			plan.Fact.Kind, plan.Fact.Observation, plan.Fact.Reset = HealAcceptedReset, nil, validResetPayload()
-			plan.Fact.Reset.NodeID = "other"
+			plan.Fact.Reset.ElementTargetID = "other"
 		}, want: "does not match governance identity"},
 		{name: "reset base mismatch", mutate: func(plan *HealGovernancePlan) {
 			plan.Fact.Kind, plan.Fact.Observation, plan.Fact.Reset = HealAcceptedReset, nil, validResetPayload()
@@ -85,7 +85,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 
 func validResetPayload() *evidence.HealCandidateReset {
 	return &evidence.HealCandidateReset{
-		ExecutionID: "execution-reset", StepExecutionID: "step-reset", NodeID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
+		ExecutionID: "execution-reset", StepExecutionID: "step-reset", ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
 	}
 }
 
@@ -208,7 +208,7 @@ func TestDefaultHealGovernancePlannerValidatesEveryTerminalEffectKind(t *testing
 	reset := validResetPayload()
 	reset.ObservedAt = 2
 	resetPlan := HealGovernancePlan{
-		Snapshot: HealGovernanceSnapshot{Key: HealGovernanceKey{NodeID: "node", BaseNodeVersionID: "base"}, CurrentNodeVersionID: "base", Revision: 2, Streak: first.NextStreak},
+		Snapshot: HealGovernanceSnapshot{Key: HealGovernanceKey{ElementTargetID: "node", BaseNodeVersionID: "base"}, CurrentNodeVersionID: "base", Revision: 2, Streak: first.NextStreak},
 		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: "reset-run", Sequence: 2, Reset: reset},
 	}
 	resetDecision, err := planner.PlanHealGovernance(resetPlan)

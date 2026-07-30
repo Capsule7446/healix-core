@@ -66,13 +66,13 @@ type ResolvedExecutionFlow struct {
 	ExpectedExecutionFlowRevision Revision
 	Version                       ExecutionFlowVersion
 	Workflows                     []FlowFragmentDependencySnapshot
-	Nodes                         []NodeDependencySnapshot
+	Nodes                         []ElementTargetDependencySnapshot
 	References                    []FlowFragmentReferenceResolution
 }
 
-type NodeDependencySnapshot struct {
-	Node    Node
-	Version NodeVersion
+type ElementTargetDependencySnapshot struct {
+	ElementTarget ElementTarget
+	Version       ElementTargetVersion
 }
 type FlowFragmentDependencySnapshot struct {
 	FlowFragment       FlowFragment

@@ -233,7 +233,7 @@ func validatePublishSamplingOutcome(command SamplingPublicationCommand, digest s
 	}
 	for index, node := range command.Publication.Nodes {
 		mapping := outcome.Result.Nodes[index]
-		if mapping.TemporaryNodeID != node.TemporaryNodeID || mapping.NodeID != node.Aggregate.Node.ID || mapping.NodeVersionID != node.Aggregate.Current.ID || mapping.ResolutionMode != node.ResolutionMode {
+		if mapping.TemporaryElementTargetID != node.TemporaryElementTargetID || mapping.ElementTargetID != node.Aggregate.ElementTarget.ID || mapping.ElementTargetVersionID != node.Aggregate.Current.ID || mapping.ResolutionMode != node.ResolutionMode {
 			return errors.New("outcome mapping does not match publication")
 		}
 	}

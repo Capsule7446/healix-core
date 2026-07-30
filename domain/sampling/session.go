@@ -73,26 +73,26 @@ type CapturedNode struct {
 }
 
 type RecordedAction struct {
-	UUID       string
-	Sequence   int
-	Kind       ActionKind
-	Value      string
-	Values     []string
-	Hints      ActionHints
-	PageURL    string
-	NodeUUID   string
-	NodeID     string
-	Validation *ValidationSample
+	UUID            string
+	Sequence        int
+	Kind            ActionKind
+	Value           string
+	Values          []string
+	Hints           ActionHints
+	PageURL         string
+	NodeUUID        string
+	ElementTargetID string
+	Validation      *ValidationSample
 }
 
 type CaptureResult struct {
-	SessionID  string
-	CaptureID  string
-	NodeUUID   string
-	NodeID     string
-	ActionUUID string
-	Sequence   int
-	Created    bool
+	SessionID       string
+	CaptureID       string
+	NodeUUID        string
+	ElementTargetID string
+	ActionUUID      string
+	Sequence        int
+	Created         bool
 }
 
 type Snapshot struct {
@@ -251,11 +251,11 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	node := s.nodes[nodeIndex]
 	action := RecordedAction{
 		UUID: actionUUID, Sequence: len(s.actions) + 1, Kind: c.Kind, Value: c.Value, Values: append([]string(nil), c.Values...), Hints: c.Hints,
-		PageURL: c.PageURL, NodeUUID: node.UUID, NodeID: node.Spec.ID, Validation: cloneValidation(c.Validation),
+		PageURL: c.PageURL, NodeUUID: node.UUID, ElementTargetID: node.Spec.ID, Validation: cloneValidation(c.Validation),
 	}
 	s.actions = append(s.actions, action)
 	result := CaptureResult{
-		SessionID: s.id, CaptureID: c.CaptureID, NodeUUID: node.UUID, NodeID: node.Spec.ID,
+		SessionID: s.id, CaptureID: c.CaptureID, NodeUUID: node.UUID, ElementTargetID: node.Spec.ID,
 		ActionUUID: action.UUID, Sequence: action.Sequence, Created: created,
 	}
 	s.byCaptureID[c.CaptureID] = result

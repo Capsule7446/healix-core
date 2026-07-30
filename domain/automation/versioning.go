@@ -11,30 +11,30 @@ import (
 )
 
 // ValidateLoadedHistory 验证细节/水合作用形状。列表查询故意允许省略版本，因此不调用它。
-func (a NodeAggregate) ValidateLoadedHistory() error {
-	if a.Node.CurrentVersionID == "" {
+func (a ElementTargetAggregate) ValidateLoadedHistory() error {
+	if a.ElementTarget.CurrentVersionID == "" {
 		if a.Current.ID != "" {
 			return errors.New("node without a current pointer cannot carry a current version")
 		}
 		for _, version := range a.Versions {
-			if version.NodeID != a.Node.ID {
+			if version.ElementTargetID != a.ElementTarget.ID {
 				return errors.New("node history version belongs to another node")
 			}
 			if version.DeletedAt == 0 {
 				return errors.New("node with an available version requires a current pointer")
 			}
 		}
-		return validateVersionIdentity(a.Node.ID, nodeVersionIdentities(a.Versions))
+		return validateVersionIdentity(a.ElementTarget.ID, nodeVersionIdentities(a.Versions))
 	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
-	if err := validateVersionIdentity(a.Node.ID, nodeVersionIdentities(a.Versions)); err != nil {
+	if err := validateVersionIdentity(a.ElementTarget.ID, nodeVersionIdentities(a.Versions)); err != nil {
 		return err
 	}
 	found := false
 	for _, version := range a.Versions {
-		if version.NodeID != a.Node.ID {
+		if version.ElementTargetID != a.ElementTarget.ID {
 			return errors.New("node history version belongs to another node")
 		}
 		if version.ID == a.Current.ID {
@@ -88,7 +88,7 @@ type versionIdentity struct {
 	number int
 }
 
-func nodeVersionIdentities(versions []NodeVersion) []versionIdentity {
+func nodeVersionIdentities(versions []ElementTargetVersion) []versionIdentity {
 	result := make([]versionIdentity, len(versions))
 	for i, version := range versions {
 		result[i] = versionIdentity{id: version.ID, number: version.VersionNumber}
@@ -128,31 +128,31 @@ func validateVersionIdentity(owner string, versions []versionIdentity) error {
 	return nil
 }
 
-// PublishVersion 创建一个新的不可变 NodeVersion 并返回一个新的聚合值。现有的历史和接收者永远不会改变。
-func (a NodeAggregate) PublishVersion(versionID, pageURL, origin string, selectors []fingerprint.Selector,
-	fp fingerprint.Fingerprint, source VersionSource, at int64) (NodeAggregate, error) {
+// PublishVersion 创建一个新的不可变 ElementTargetVersion 并返回一个新的聚合值。现有的历史和接收者永远不会改变。
+func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string, selectors []fingerprint.Selector,
+	fp fingerprint.Fingerprint, source VersionSource, at int64) (ElementTargetAggregate, error) {
 	if err := validateNodePublicationBase(a, versionID, at); err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	next := cloneNodeAggregate(a)
-	nextRevision, err := a.Node.Revision.Next()
+	nextRevision, err := a.ElementTarget.Revision.Next()
 	if err != nil {
-		return NodeAggregate{}, revisionError("node", a.Node.ID, err)
+		return ElementTargetAggregate{}, revisionError("node", a.ElementTarget.ID, err)
 	}
 	versionNumber, err := nextNodeVersion(a)
 	if err != nil {
-		return NodeAggregate{}, fmt.Errorf("publish node version: %w", err)
+		return ElementTargetAggregate{}, fmt.Errorf("publish node version: %w", err)
 	}
-	version := NodeVersion{ID: versionID, NodeID: a.Node.ID, VersionNumber: versionNumber,
+	version := ElementTargetVersion{ID: versionID, ElementTargetID: a.ElementTarget.ID, VersionNumber: versionNumber,
 		PageURL: pageURL, Origin: origin, Selectors: append([]fingerprint.Selector(nil), selectors...),
 		Fingerprint: cloneFingerprint(fp), Source: source, CreatedAt: at}
-	next.Node.CurrentVersionID = version.ID
-	next.Node.UpdatedAt = at
-	next.Node.Revision = nextRevision
+	next.ElementTarget.CurrentVersionID = version.ID
+	next.ElementTarget.UpdatedAt = at
+	next.ElementTarget.Revision = nextRevision
 	next.Current = cloneNodeVersion(version)
 	next.Versions = append(next.Versions, cloneNodeVersion(version))
 	if err := next.Validate(); err != nil {
-		return NodeAggregate{}, fmt.Errorf("publish node version: %w", err)
+		return ElementTargetAggregate{}, fmt.Errorf("publish node version: %w", err)
 	}
 	return next, nil
 }
@@ -184,17 +184,17 @@ func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowF
 	return next, nil
 }
 
-func validateNodePublicationBase(a NodeAggregate, versionID string, at int64) error {
+func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at int64) error {
 	if err := a.Validate(); err != nil {
 		return fmt.Errorf("invalid current node aggregate: %w", err)
 	}
-	if a.Node.CurrentVersionID != a.Current.ID {
+	if a.ElementTarget.CurrentVersionID != a.Current.ID {
 		return errors.New("node current version pointer is inconsistent")
 	}
-	if a.Node.DeletedAt != 0 {
+	if a.ElementTarget.DeletedAt != 0 {
 		return ErrDeletedAggregate
 	}
-	if err := validateTransitionTime(at, a.Node.UpdatedAt); err != nil {
+	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
 		return err
 	}
 	return validateNewVersionIdentity(versionID, at, a.Current.ID, nodeVersionIDs(a.Versions))
@@ -234,7 +234,7 @@ func validateNewVersionIdentity(versionID string, at int64, currentID string, ex
 	return nil
 }
 
-func nextNodeVersion(a NodeAggregate) (int, error) {
+func nextNodeVersion(a ElementTargetAggregate) (int, error) {
 	metas := make([]VersionMeta, 0, len(a.Versions)+1)
 	seenCurrent := false
 	for _, version := range a.Versions {
@@ -260,7 +260,7 @@ func nextWorkflowVersion(a FlowFragmentAggregate) (int, error) {
 	return NextVersionNumber(metas)
 }
 
-func nodeVersionIDs(versions []NodeVersion) []string {
+func nodeVersionIDs(versions []ElementTargetVersion) []string {
 	result := make([]string, len(versions))
 	for index, version := range versions {
 		result[index] = version.ID
@@ -276,22 +276,22 @@ func workflowVersionIDs(versions []FlowFragmentVersion) []string {
 	return result
 }
 
-func (a NodeAggregate) Clone() NodeAggregate {
+func (a ElementTargetAggregate) Clone() ElementTargetAggregate {
 	return cloneNodeAggregate(a)
 }
 
-func cloneNodeAggregate(input NodeAggregate) NodeAggregate {
+func cloneNodeAggregate(input ElementTargetAggregate) ElementTargetAggregate {
 	result := input
-	result.Node.Properties = input.Node.Properties.Clone()
+	result.ElementTarget.Properties = input.ElementTarget.Properties.Clone()
 	result.Current = cloneNodeVersion(input.Current)
-	result.Versions = make([]NodeVersion, len(input.Versions))
+	result.Versions = make([]ElementTargetVersion, len(input.Versions))
 	for index, version := range input.Versions {
 		result.Versions[index] = cloneNodeVersion(version)
 	}
 	return result
 }
 
-func cloneNodeVersion(input NodeVersion) NodeVersion {
+func cloneNodeVersion(input ElementTargetVersion) ElementTargetVersion {
 	result := input
 	result.Selectors = append([]fingerprint.Selector(nil), input.Selectors...)
 	result.Fingerprint = cloneFingerprint(input.Fingerprint)

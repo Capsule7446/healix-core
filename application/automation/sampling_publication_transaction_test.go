@@ -19,10 +19,10 @@ func samplingOutcomeFor(t testing.TB, command SamplingPublicationCommand, status
 	mappings := make([]domain.SamplingNodeMapping, len(publication.Nodes))
 	for index, node := range publication.Nodes {
 		mappings[index] = domain.SamplingNodeMapping{
-			TemporaryNodeID: node.TemporaryNodeID,
-			NodeID:          node.Aggregate.Node.ID,
-			NodeVersionID:   node.Aggregate.Current.ID,
-			ResolutionMode:  node.ResolutionMode,
+			TemporaryElementTargetID: node.TemporaryElementTargetID,
+			ElementTargetID:          node.Aggregate.ElementTarget.ID,
+			ElementTargetVersionID:   node.Aggregate.Current.ID,
+			ResolutionMode:           node.ResolutionMode,
 		}
 	}
 	return PublishSamplingOutcome{
@@ -114,14 +114,14 @@ func TestSamplingPublicationServiceReturnsOwnedMappings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transaction.outcome.Result.Nodes = append(transaction.outcome.Result.Nodes, domain.SamplingNodeMapping{TemporaryNodeID: "adapter-owned"})
+	transaction.outcome.Result.Nodes = append(transaction.outcome.Result.Nodes, domain.SamplingNodeMapping{TemporaryElementTargetID: "adapter-owned"})
 	if len(result.Nodes) != 0 {
 		t.Fatalf("returned mappings changed with adapter state: %#v", result.Nodes)
 	}
 }
 
 func TestSamplingPublicationServiceReplaysForceCreateBeforeAuthorization(t *testing.T) {
-	publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
+	publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1", ForceCreateAuthorized: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestSamplingPublicationServiceReplaysForceCreateBeforeAuthorization(t *test
 }
 
 func TestSamplingPublicationServiceRequiresVerifiedForceCreateAuthorization(t *testing.T) {
-	publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
+	publication, err := MapSamplingPublication(SamplingPublicationRequest{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1", ForceCreateAuthorized: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}

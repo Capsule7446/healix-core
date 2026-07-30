@@ -185,7 +185,7 @@ func concurrentHeal(t *testing.T, tx application.HealReviewTransaction, intents 
 	return out
 }
 func healOutcome(i application.HealReviewIntent, status application.HealReviewStatus) application.HealReviewOutcome {
-	return application.HealReviewOutcome{Status: status, CommandID: i.CommandID, RequestDigest: i.RequestDigest, Result: application.HealReviewResult{Decision: i.Decision, Candidate: i.NextCandidate, Node: i.NextNode, Streak: i.NextStreak}}
+	return application.HealReviewOutcome{Status: status, CommandID: i.CommandID, RequestDigest: i.RequestDigest, Result: application.HealReviewResult{Decision: i.Decision, Candidate: i.NextCandidate, ElementTarget: i.NextNode, Streak: i.NextStreak}}
 }
 func mustHealDigest(t *testing.T, i application.HealReviewIntent) string {
 	t.Helper()

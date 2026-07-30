@@ -68,15 +68,15 @@ func TestValidationValuesNilEmptyDuplicatesAndImmutability(t *testing.T) {
 }
 
 func TestValidationGroupExpectedMembersImmutable(t *testing.T) {
-	members := []ValidationMemberIdentity{{BranchID: "分支", NodeID: "节点"}}
+	members := []ValidationMemberIdentity{{BranchID: "分支", ElementTargetID: "节点"}}
 	value := NewValidationGroupTerminalObservation("id", "run", "execution", "step", "group", ValidationTerminalPassed, "分支", members, 1)
-	members[0].NodeID = "mutated"
+	members[0].ElementTargetID = "mutated"
 	got := value.ExpectedMembers()
-	if got[0].NodeID != "节点" {
+	if got[0].ElementTargetID != "节点" {
 		t.Fatal("constructor aliased input")
 	}
-	got[0].NodeID = "mutated-again"
-	if value.ExpectedMembers()[0].NodeID != "节点" {
+	got[0].ElementTargetID = "mutated-again"
+	if value.ExpectedMembers()[0].ElementTargetID != "节点" {
 		t.Fatal("accessor exposed internal slice")
 	}
 }

@@ -181,7 +181,7 @@ func commit(id string, revision evidence.StepRevision, runID string, band eviden
 		},
 		HealObservations: []evidence.HealObservation{{
 			ID: "fact-" + runID, RunID: runID, ExecutionID: "execution", StepExecutionID: "step",
-			NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
+			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},
 	}

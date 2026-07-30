@@ -10,11 +10,11 @@ func validGroupedStepTransitionCommit() StepTransitionCommit {
 		ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "validate",
 		Kind: "VALIDATION_GROUP", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 10,
 	}, FinalValidations: []ValidationObservation{
-		{ID: "member-a", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", ValidationStepID: "validation-a", NodeID: "node-a", NodeVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "selected_values", Expected: CollectionValidationValue([]string{"a, b", ""}), Actual: CollectionValidationValue([]string{"", "a, b"}), Passed: true, Reason: "passed", BranchDisposition: ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
-		{ID: "member-b", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", ValidationStepID: "validation-b", NodeID: "node-b", NodeVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: ScalarValidationValue("true"), Actual: ScalarValidationValue("false"), Reason: "normal_unsatisfied", BranchDisposition: ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
+		{ID: "member-a", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "selected_values", Expected: CollectionValidationValue([]string{"a, b", ""}), Actual: CollectionValidationValue([]string{"", "a, b"}), Passed: true, Reason: "passed", BranchDisposition: ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
+		{ID: "member-b", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", ValidationStepID: "validation-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: ScalarValidationValue("true"), Actual: ScalarValidationValue("false"), Reason: "normal_unsatisfied", BranchDisposition: ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
 	}, FinalValidationGroups: []ValidationGroupTerminalObservation{NewValidationGroupTerminalObservation(
 		"group-final", "run", "execution", "step", "group", ValidationTerminalPassed, "branch-a",
-		[]ValidationMemberIdentity{{BranchID: "branch-a", NodeID: "node-a"}, {BranchID: "branch-b", NodeID: "node-b"}}, 10,
+		[]ValidationMemberIdentity{{BranchID: "branch-a", ElementTargetID: "node-a"}, {BranchID: "branch-b", ElementTargetID: "node-b"}}, 10,
 	)}}
 }
 
@@ -41,12 +41,12 @@ func TestStepTransitionCommitValidatesGroupTerminalFactsAndFinalMemberTopology(t
 		{"duplicate group identity", func(commit *StepTransitionCommit) {
 			group := NewValidationGroupTerminalObservation(
 				commit.FinalValidationGroups[0].ID, "run", "execution", "step", "other-group", ValidationTerminalPassed, "other-branch",
-				[]ValidationMemberIdentity{{BranchID: "other-branch", NodeID: "other-node"}}, 10,
+				[]ValidationMemberIdentity{{BranchID: "other-branch", ElementTargetID: "other-node"}}, 10,
 			)
 			commit.FinalValidationGroups = append(commit.FinalValidationGroups, group)
 		}},
 		{"missing member", func(commit *StepTransitionCommit) { commit.FinalValidations = commit.FinalValidations[:1] }},
-		{"unexpected member", func(commit *StepTransitionCommit) { commit.FinalValidations[1].NodeID = "other" }},
+		{"unexpected member", func(commit *StepTransitionCommit) { commit.FinalValidations[1].ElementTargetID = "other" }},
 		{"cross group member", func(commit *StepTransitionCommit) { commit.FinalValidations[1].GroupID = "other" }},
 		{"winner disposition mismatch", func(commit *StepTransitionCommit) {
 			commit.FinalValidations[0].BranchDisposition = ValidationBranchNotSatisfied
@@ -78,7 +78,7 @@ func TestStepTransitionCommitRejectsContradictoryGroupOutcomes(t *testing.T) {
 		{"timeout on succeeded step", func(commit *StepTransitionCommit) {
 			commit.FinalValidationGroups[0] = NewValidationGroupTerminalObservation(
 				"group-final", "run", "execution", "step", "group", ValidationTerminalTimeout, "",
-				[]ValidationMemberIdentity{{BranchID: "branch-a", NodeID: "node-a"}, {BranchID: "branch-b", NodeID: "node-b"}}, 10,
+				[]ValidationMemberIdentity{{BranchID: "branch-a", ElementTargetID: "node-a"}, {BranchID: "branch-b", ElementTargetID: "node-b"}}, 10,
 			)
 		}},
 		{"failed step with passed group", func(commit *StepTransitionCommit) { commit.Event.Phase = "FAILED" }},
@@ -100,14 +100,14 @@ func TestStepTransitionCommitValidatesAtomicFactIdentity(t *testing.T) {
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 10,
 	}, FinalValidations: []ValidationObservation{{
 		ID: "validation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		ValidationStepID: "validation-step", NodeID: "node", NodeVersionID: "node-v1", AssertionKind: "visible",
+		ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "node-v1", AssertionKind: "visible",
 		Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true,
 	}}, HealObservations: []HealObservation{{
-		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", NodeID: "node",
+		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", ElementTargetID: "node",
 		BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 10,
 	}},
-		OriginalSelectorResets: []HealCandidateReset{{ExecutionID: "execution", StepExecutionID: "step", NodeID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10}}}
+		OriginalSelectorResets: []HealCandidateReset{{ExecutionID: "execution", StepExecutionID: "step", ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10}}}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid commit: %v", err)
 	}
@@ -164,9 +164,9 @@ func TestStepTransitionCommitRejectsDuplicateHealAndResetIdentities(t *testing.T
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 10,
 	}, HealObservations: []HealObservation{{
 		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		NodeID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 10,
+		ElementTargetID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 10,
 	}}, OriginalSelectorResets: []HealCandidateReset{{
-		ExecutionID: "execution", StepExecutionID: "step", NodeID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10,
+		ExecutionID: "execution", StepExecutionID: "step", ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10,
 	}}}
 	for _, test := range []struct {
 		name   string

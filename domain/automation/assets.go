@@ -83,7 +83,7 @@ func (s VersionSource) Validate() error {
 	}
 }
 
-type Node struct {
+type ElementTarget struct {
 	ID               string
 	DisplayName      string
 	Properties       Properties
@@ -95,44 +95,44 @@ type Node struct {
 	Revision         Revision
 }
 
-type NodeVersion struct {
-	ID            string
-	NodeID        string
-	VersionNumber int
-	PageURL       string
-	Origin        string
-	Selectors     []fingerprint.Selector
-	Fingerprint   fingerprint.Fingerprint
-	Source        VersionSource
-	CreatedAt     int64
-	DeletedAt     int64
-	RunUsageCount int
+type ElementTargetVersion struct {
+	ID              string
+	ElementTargetID string
+	VersionNumber   int
+	PageURL         string
+	Origin          string
+	Selectors       []fingerprint.Selector
+	Fingerprint     fingerprint.Fingerprint
+	Source          VersionSource
+	CreatedAt       int64
+	DeletedAt       int64
+	RunUsageCount   int
 }
 
-type NodeAggregate struct {
-	Node     Node
-	Current  NodeVersion
-	Versions []NodeVersion
+type ElementTargetAggregate struct {
+	ElementTarget ElementTarget
+	Current       ElementTargetVersion
+	Versions      []ElementTargetVersion
 }
 
-func (a NodeAggregate) Validate() error {
+func (a ElementTargetAggregate) Validate() error {
 	var problems []string
-	if strings.TrimSpace(a.Node.ID) == "" {
+	if strings.TrimSpace(a.ElementTarget.ID) == "" {
 		problems = append(problems, "node id is required")
 	}
-	if strings.TrimSpace(a.Node.DisplayName) == "" {
+	if strings.TrimSpace(a.ElementTarget.DisplayName) == "" {
 		problems = append(problems, "display name is required")
 	}
-	if err := a.Node.Properties.Validate(); err != nil {
+	if err := a.ElementTarget.Properties.Validate(); err != nil {
 		problems = append(problems, err.Error())
 	}
 	if strings.TrimSpace(a.Current.ID) == "" {
 		problems = append(problems, "node version id is required")
 	}
-	if a.Node.CurrentVersionID != a.Current.ID {
+	if a.ElementTarget.CurrentVersionID != a.Current.ID {
 		problems = append(problems, "node current version pointer must match current version")
 	}
-	if a.Current.NodeID != a.Node.ID {
+	if a.Current.ElementTargetID != a.ElementTarget.ID {
 		problems = append(problems, "node version must belong to node")
 	}
 	if a.Current.VersionNumber < 1 {
@@ -310,9 +310,9 @@ type FlowFragmentStep struct {
 	// CaptureScreenshot 属于不可变的 FlowFragmentVersion 定义。它仅表达用户的意图；浏览器捕获和文件输出保留在主机执行基础设施中。
 	CaptureScreenshot bool
 	Action            string
-	NodeID            string
-	// NodeVersionID 是不可变的 FlowFragmentVersion 定义的一部分。  它故意位于 NodeID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
-	NodeVersionID string
+	ElementTargetID   string
+	// ElementTargetVersionID 是不可变的 FlowFragmentVersion 定义的一部分。  它故意位于 ElementTargetID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
+	ElementTargetVersionID string
 	// Value and Values are ordinary literal/interpolated workflow input.
 	Value       string
 	Values      []string
@@ -452,10 +452,10 @@ func (a FlowFragmentAggregate) Validate() error {
 				if !supportedAction(step.Action) {
 					problems = append(problems, fmt.Sprintf("step %q has unsupported action %q", step.DisplayName, step.Action))
 				}
-				if step.Action != "navigate" && step.Action != "press" && strings.TrimSpace(step.NodeID) == "" {
+				if step.Action != "navigate" && step.Action != "press" && strings.TrimSpace(step.ElementTargetID) == "" {
 					problems = append(problems, fmt.Sprintf("step %q requires a node", step.DisplayName))
 				}
-				if strings.TrimSpace(step.NodeID) != "" && strings.TrimSpace(step.NodeVersionID) == "" {
+				if strings.TrimSpace(step.ElementTargetID) != "" && strings.TrimSpace(step.ElementTargetVersionID) == "" {
 					problems = append(problems, fmt.Sprintf("step %q requires an exact node version", step.DisplayName))
 				}
 				if (step.Action == "navigate" || step.Action == "press" || step.Action == "extract") && strings.TrimSpace(step.Value) == "" {
@@ -470,7 +470,7 @@ func (a FlowFragmentAggregate) Validate() error {
 				}
 				if step.Action != "" || step.Value != "" || len(step.Values) != 0 || step.RepeatCount != 0 ||
 					step.Reference != nil || len(step.Children) != 0 ||
-					(!isElementWaitKind(step.WaitKind) && (step.NodeID != "" || step.NodeVersionID != "")) {
+					(!isElementWaitKind(step.WaitKind) && (step.ElementTargetID != "" || step.ElementTargetVersionID != "")) {
 					problems = append(problems, fmt.Sprintf("step %q WAIT contains unsupported step configuration", step.DisplayName))
 				}
 				switch step.WaitKind {
@@ -479,10 +479,10 @@ func (a FlowFragmentAggregate) Validate() error {
 						problems = append(problems, fmt.Sprintf("step %q fixed wait must be > 0", step.DisplayName))
 					}
 				case "element", "element_visible", "element_invisible":
-					if strings.TrimSpace(step.NodeID) == "" {
+					if strings.TrimSpace(step.ElementTargetID) == "" {
 						problems = append(problems, fmt.Sprintf("step %q element wait requires a node", step.DisplayName))
 					}
-					if strings.TrimSpace(step.NodeVersionID) == "" {
+					if strings.TrimSpace(step.ElementTargetVersionID) == "" {
 						problems = append(problems, fmt.Sprintf("step %q element wait requires an exact node version", step.DisplayName))
 					}
 					if step.WaitMS < 0 {
@@ -499,7 +499,7 @@ func (a FlowFragmentAggregate) Validate() error {
 				if step.Validation != nil || step.ValidationGroup != nil {
 					problems = append(problems, fmt.Sprintf("step %q REPEAT cannot carry validation configuration", step.DisplayName))
 				}
-				if step.Action != "" || step.NodeID != "" || step.NodeVersionID != "" || step.Value != "" ||
+				if step.Action != "" || step.ElementTargetID != "" || step.ElementTargetVersionID != "" || step.Value != "" ||
 					len(step.Values) != 0 || step.WaitKind != "" || step.WaitMS != 0 || step.Reference != nil {
 					problems = append(problems, fmt.Sprintf("step %q REPEAT contains unsupported step configuration", step.DisplayName))
 				}
@@ -511,7 +511,7 @@ func (a FlowFragmentAggregate) Validate() error {
 				if step.Validation != nil || step.ValidationGroup != nil {
 					problems = append(problems, fmt.Sprintf("step %q WORKFLOW_REF cannot carry validation configuration", step.DisplayName))
 				}
-				if step.Action != "" || step.NodeID != "" || step.NodeVersionID != "" || step.Value != "" ||
+				if step.Action != "" || step.ElementTargetID != "" || step.ElementTargetVersionID != "" || step.Value != "" ||
 					len(step.Values) != 0 || step.WaitKind != "" || step.WaitMS != 0 ||
 					step.RepeatCount != 0 || len(step.Children) != 0 {
 					problems = append(problems, fmt.Sprintf("step %q WORKFLOW_REF contains unsupported step configuration", step.DisplayName))

@@ -10,7 +10,7 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Workflows[0].Steps = []execution.Step{{
 		ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click",
-		NodeID: compilerNodeID, NodeVersionID: compilerNodeV1,
+		ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1,
 	}}
 	draft.Nodes = []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "submit")}
 	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
@@ -38,7 +38,7 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	}
 	entries[0].ExecutionID = "mutated"
 	entries[0].Metadata[metadataID] = StepMetadata{DisplayName: "mutated"}
-	entries[0].RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{NodeID: "mutated"}
+	entries[0].RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{ElementTargetID: "mutated"}
 	entries = append(entries, CompiledEntry{})
 
 	again, ok := compiled.Entry("execution-entry")
@@ -51,7 +51,7 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	if got := again.Metadata[metadataID]; got.DisplayName != "Click" {
 		t.Fatalf("metadata aliases caller-owned map: %#v", got)
 	}
-	if got := again.RuntimeNodes[compilerNodeV1]; got.NodeID != compilerNodeID {
+	if got := again.RuntimeNodes[compilerNodeV1]; got.ElementTargetID != compilerNodeID {
 		t.Fatalf("runtime node aliases caller-owned map: %#v", got)
 	}
 	if got := len(compiled.Entries()); got != 1 {
@@ -59,9 +59,9 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	}
 
 	again.Metadata[metadataID] = StepMetadata{DisplayName: "mutated again"}
-	again.RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{NodeID: "mutated again"}
+	again.RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{ElementTargetID: "mutated again"}
 	third, ok := compiled.Entry("execution-entry")
-	if !ok || third.Metadata[metadataID].DisplayName != "Click" || third.RuntimeNodes[compilerNodeV1].NodeID != compilerNodeID {
+	if !ok || third.Metadata[metadataID].DisplayName != "Click" || third.RuntimeNodes[compilerNodeV1].ElementTargetID != compilerNodeID {
 		t.Fatalf("Entry exposed internal map ownership: %#v, ok=%t", third, ok)
 	}
 }

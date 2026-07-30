@@ -60,12 +60,12 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 		runID := fmt.Sprintf("run-prior-%d", index+1)
 		observation := evidence.HealObservation{
 			ID: "fact-" + runID, RunID: runID, ExecutionID: "execution", StepExecutionID: "step",
-			NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
+			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 		}
 		decision, err := planner.PlanHealGovernance(execution.HealGovernancePlan{
 			Snapshot: execution.HealGovernanceSnapshot{
-				Key:                  execution.HealGovernanceKey{NodeID: "node", BaseNodeVersionID: "base"},
+				Key:                  execution.HealGovernanceKey{ElementTargetID: "node", BaseNodeVersionID: "base"},
 				CurrentNodeVersionID: "base", Revision: fixture.state.governanceRevision, Streak: fixture.state.streak,
 			},
 			Fact: execution.HealAcceptedFact{
@@ -172,7 +172,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 		next.lastSequence++
 		decision, err := planner.PlanHealGovernance(execution.HealGovernancePlan{
 			Snapshot: execution.HealGovernanceSnapshot{
-				Key:                  execution.HealGovernanceKey{NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID},
+				Key:                  execution.HealGovernanceKey{ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID},
 				CurrentNodeVersionID: observation.BaseNodeVersionID, Revision: next.governanceRevision, Streak: next.streak,
 			},
 			Fact: execution.HealAcceptedFact{
@@ -183,7 +183,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 		if err != nil {
 			return evidence.StepTransitionCommitResult{}, err
 		}
-		if decision.Key.NodeID != observation.NodeID || decision.Key.BaseNodeVersionID != observation.BaseNodeVersionID || decision.FactID != observation.ID || decision.Sequence != next.lastSequence || decision.ExpectedRevision != next.governanceRevision {
+		if decision.Key.ElementTargetID != observation.ElementTargetID || decision.Key.BaseNodeVersionID != observation.BaseNodeVersionID || decision.FactID != observation.ID || decision.Sequence != next.lastSequence || decision.ExpectedRevision != next.governanceRevision {
 			return evidence.StepTransitionCommitResult{}, errors.New("planner decision authority mismatch")
 		}
 		next.streak = decision.NextStreak
@@ -217,7 +217,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 	next.stepRevision++
 	promotions := []evidence.NodeVersionPromotion(nil)
 	if next.publications > f.state.publications {
-		promotions = []evidence.NodeVersionPromotion{{NodeID: "node", VersionID: "version-1"}}
+		promotions = []evidence.NodeVersionPromotion{{ElementTargetID: "node", VersionID: "version-1"}}
 	}
 	result := evidence.StepTransitionCommitResult{Revision: next.stepRevision, WasApplied: true, Promotions: promotions}
 	next.replays[commit.CommitID] = replayRecord{payload: payload, result: result}

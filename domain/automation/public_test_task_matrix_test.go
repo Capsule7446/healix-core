@@ -27,30 +27,30 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 		{name: "merge repeats current version", mutate: func(p *SamplingPublication) {
 			p.Nodes[0].ResolutionMode = "MERGE"
 			p.Nodes[0].Aggregate = versionedNodeAggregate()
-			p.Nodes[0].Aggregate.Node.Revision = 2
+			p.Nodes[0].Aggregate.ElementTarget.Revision = 2
 			p.Nodes[0].ExpectedRevision = 1
 			p.Nodes[0].ExpectedCurrentVersionID = p.Nodes[0].Aggregate.Current.ID
 		}, want: "cannot publish the expected current version"},
 		{name: "merge version below two", mutate: func(p *SamplingPublication) {
 			p.Nodes[0].ResolutionMode = "MERGE"
-			p.Nodes[0].Aggregate.Node.Revision = 2
+			p.Nodes[0].Aggregate.ElementTarget.Revision = 2
 			p.Nodes[0].ExpectedRevision = 1
 			p.Nodes[0].ExpectedCurrentVersionID = "previous-version"
 		}, want: "version 2 or later"},
 		{name: "duplicate formal version", mutate: func(p *SamplingPublication) {
 			second := p.Nodes[0]
 			second.Aggregate = p.Nodes[0].Aggregate.Clone()
-			second.TemporaryNodeID = "temporary-two"
-			second.Aggregate.Node.ID = "node-two"
-			second.Aggregate.Current.NodeID = "node-two"
+			second.TemporaryElementTargetID = "temporary-two"
+			second.Aggregate.ElementTarget.ID = "node-two"
+			second.Aggregate.Current.ElementTargetID = "node-two"
 			second.Aggregate.Versions[0] = second.Aggregate.Current
 			p.Nodes = append(p.Nodes, second)
 		}, want: "duplicate formal sampled node version"},
 		{name: "root reference lacks decision", mutate: func(p *SamplingPublication) {
-			p.FlowFragment = workflowWithSteps(FlowFragmentStep{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", NodeID: "missing", NodeVersionID: "missing-v1"})
+			p.FlowFragment = workflowWithSteps(FlowFragmentStep{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", ElementTargetID: "missing", ElementTargetVersionID: "missing-v1"})
 		}, want: "no matching node decision"},
 		{name: "child reference lacks decision", mutate: func(p *SamplingPublication) {
-			p.FlowFragment = workflowWithSteps(FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", NodeID: "missing", NodeVersionID: "missing-v1"}}})
+			p.FlowFragment = workflowWithSteps(FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "click", DisplayName: "Click", Kind: StepAction, Action: "click", ElementTargetID: "missing", ElementTargetVersionID: "missing-v1"}}})
 		}, want: "no matching node decision"},
 		{name: "validation branch reference lacks decision", mutate: func(p *SamplingPublication) {
 			p.FlowFragment = validationWorkflow(FlowFragmentStep{ID: "group", DisplayName: "Group", Kind: StepValidationGroup, ValidationGroup: &ValidationGroup{Wait: ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500}, Branches: []ValidationBranch{{ID: "branch", Name: "Branch", Steps: []FlowFragmentStep{validationMember("member", "Member")}}}}})
@@ -199,11 +199,11 @@ func TestTestTaskVersionPlanValidateDependencyBoundaryMatrix(t *testing.T) {
 		{name: "version one carries expected revision", mutate: func(plan *ResolvedExecutionFlow) { plan.ExpectedExecutionFlowRevision = 1 }, want: "without a source version"},
 		{name: "invalid workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows[0].Version.FlowFragmentID = "other" }, want: "workflow dependency snapshot identity"},
 		{name: "duplicate workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, want: "duplicate workflow dependency"},
-		{name: "invalid node dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Nodes = []NodeDependencySnapshot{{}} }, want: "node dependency snapshot identity"},
+		{name: "invalid node dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Nodes = []ElementTargetDependencySnapshot{{}} }, want: "node dependency snapshot identity"},
 		{name: "duplicate node dependency", mutate: func(plan *ResolvedExecutionFlow) {
 			node := versionedNodeAggregate()
-			dependency := NodeDependencySnapshot{Node: node.Node, Version: node.Current}
-			plan.Nodes = []NodeDependencySnapshot{dependency, dependency}
+			dependency := ElementTargetDependencySnapshot{ElementTarget: node.ElementTarget, Version: node.Current}
+			plan.Nodes = []ElementTargetDependencySnapshot{dependency, dependency}
 		}, want: "duplicate node dependency"},
 		{name: "invalid item parameter", mutate: func(plan *ResolvedExecutionFlow) {
 			plan.Workflows[0].Version.Definition.Parameters = []ParameterDefinition{{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true}}

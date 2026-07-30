@@ -29,23 +29,23 @@ const (
 )
 
 type Step struct {
-	ID                string
-	DisplayName       string
-	Kind              StepKind
-	CaptureScreenshot bool
-	Action            string
-	NodeID            string
-	NodeVersionID     string
-	Value             string
-	Values            []string
-	WaitKind          string
-	WaitMS            int
-	RepeatCount       int
-	Optional          bool
-	Children          []Step
-	Reference         *Reference
-	Validation        *Validation
-	ValidationGroup   *ValidationGroup
+	ID                     string
+	DisplayName            string
+	Kind                   StepKind
+	CaptureScreenshot      bool
+	Action                 string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	Value                  string
+	Values                 []string
+	WaitKind               string
+	WaitMS                 int
+	RepeatCount            int
+	Optional               bool
+	Children               []Step
+	Reference              *Reference
+	Validation             *Validation
+	ValidationGroup        *ValidationGroup
 }
 
 type Reference struct {
@@ -104,18 +104,18 @@ type WorkflowSnapshot struct {
 }
 
 type NodeSnapshot struct {
-	NodeID      string
-	VersionID   string
-	DisplayName string
-	PageURL     string
-	Origin      string
-	Selectors   []fingerprint.Selector
-	Fingerprint fingerprint.Fingerprint
+	ElementTargetID string
+	VersionID       string
+	DisplayName     string
+	PageURL         string
+	Origin          string
+	Selectors       []fingerprint.Selector
+	Fingerprint     fingerprint.Fingerprint
 }
 
 type NodeDependencyKey struct {
-	NodeID    string
-	VersionID string
+	ElementTargetID string
+	VersionID       string
 }
 
 type WorkflowReferenceKey struct {

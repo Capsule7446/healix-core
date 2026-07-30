@@ -10,7 +10,7 @@ import (
 )
 
 type HealGovernanceKey struct {
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 }
 
@@ -120,7 +120,7 @@ func (DefaultHealGovernancePlanner) PlanHealGovernance(plan HealGovernancePlan) 
 }
 
 func validateHealGovernancePlan(plan HealGovernancePlan) error {
-	if strings.TrimSpace(plan.Snapshot.Key.NodeID) == "" || strings.TrimSpace(plan.Snapshot.Key.BaseNodeVersionID) == "" {
+	if strings.TrimSpace(plan.Snapshot.Key.ElementTargetID) == "" || strings.TrimSpace(plan.Snapshot.Key.BaseNodeVersionID) == "" {
 		return fmt.Errorf("heal governance snapshot requires node and base identity")
 	}
 	if strings.TrimSpace(plan.Snapshot.CurrentNodeVersionID) == "" {
@@ -133,7 +133,7 @@ func validateHealGovernancePlan(plan HealGovernancePlan) error {
 		return fmt.Errorf("accepted heal fact requires fact, commit, run, and sequence identity")
 	}
 	streak := plan.Snapshot.Streak
-	if streak.Disposition != "" && (streak.NodeID != plan.Snapshot.Key.NodeID || streak.BaseNodeVersionID != plan.Snapshot.Key.BaseNodeVersionID) {
+	if streak.Disposition != "" && (streak.ElementTargetID != plan.Snapshot.Key.ElementTargetID || streak.BaseNodeVersionID != plan.Snapshot.Key.BaseNodeVersionID) {
 		return fmt.Errorf("heal governance streak does not match snapshot key")
 	}
 	if err := validateHealCandidateStatus(plan.Snapshot.CandidateStatus, streak.Disposition); err != nil {
@@ -200,7 +200,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted observation requires exactly one observation payload")
 		}
 		observation := *fact.Observation
-		if observation.ID != fact.FactID || observation.RunID != fact.RunID || observation.NodeID != snapshot.Key.NodeID || observation.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
+		if observation.ID != fact.FactID || observation.RunID != fact.RunID || observation.ElementTargetID != snapshot.Key.ElementTargetID || observation.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted observation does not match governance identity")
 		}
 		band, err := mapHealDecisionBand(observation.DecisionBand)
@@ -214,7 +214,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		return domainautomation.HealObservation{
 			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID,
 			ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: fact.Sequence,
-			NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID,
+			ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 			CandidateHash: observation.CandidateHash, Band: band, Outcome: outcome, BaseIsCurrent: baseIsCurrent,
 		}, nil
 	case HealAcceptedReset:
@@ -222,13 +222,13 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted reset requires exactly one reset payload")
 		}
 		reset := *fact.Reset
-		if reset.NodeID != snapshot.Key.NodeID || reset.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
+		if reset.ElementTargetID != snapshot.Key.ElementTargetID || reset.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted reset does not match governance identity")
 		}
 		return domainautomation.HealObservation{
 			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID,
 			ExecutionID: reset.ExecutionID, StepExecutionID: reset.StepExecutionID, Sequence: fact.Sequence,
-			NodeID: reset.NodeID, BaseNodeVersionID: reset.BaseNodeVersionID,
+			ElementTargetID: reset.ElementTargetID, BaseNodeVersionID: reset.BaseNodeVersionID,
 			Outcome: domainautomation.HealOriginalRecovered, BaseIsCurrent: baseIsCurrent,
 		}, nil
 	default:

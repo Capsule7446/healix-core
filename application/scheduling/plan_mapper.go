@@ -168,7 +168,7 @@ func mapParameters(items []automation.ParameterDefinition) ([]execution.Paramete
 func mapSteps(items []automation.FlowFragmentStep) []execution.Step {
 	r := make([]execution.Step, len(items))
 	for i, item := range items {
-		s := execution.Step{ID: item.ID, DisplayName: item.DisplayName, Kind: execution.StepKind(item.Kind), CaptureScreenshot: item.CaptureScreenshot, Action: item.Action, NodeID: item.NodeID, NodeVersionID: item.NodeVersionID, Value: item.Value, Values: append([]string(nil), item.Values...), WaitKind: item.WaitKind, WaitMS: item.WaitMS, RepeatCount: item.RepeatCount, Optional: item.Optional, Children: mapSteps(item.Children)}
+		s := execution.Step{ID: item.ID, DisplayName: item.DisplayName, Kind: execution.StepKind(item.Kind), CaptureScreenshot: item.CaptureScreenshot, Action: item.Action, ElementTargetID: item.ElementTargetID, ElementTargetVersionID: item.ElementTargetVersionID, Value: item.Value, Values: append([]string(nil), item.Values...), WaitKind: item.WaitKind, WaitMS: item.WaitMS, RepeatCount: item.RepeatCount, Optional: item.Optional, Children: mapSteps(item.Children)}
 		if item.Reference != nil {
 			s.Reference = &execution.Reference{FlowFragmentID: item.Reference.FlowFragmentID, WorkflowVersionID: item.Reference.WorkflowVersionID, ParameterBindings: cloneParameterBindings(item.Reference.ParameterBindings)}
 		}
@@ -186,10 +186,10 @@ func mapSteps(items []automation.FlowFragmentStep) []execution.Step {
 	}
 	return r
 }
-func mapNodes(items []automation.NodeDependencySnapshot) []execution.NodeSnapshot {
+func mapNodes(items []automation.ElementTargetDependencySnapshot) []execution.NodeSnapshot {
 	r := make([]execution.NodeSnapshot, len(items))
 	for i, item := range items {
-		r[i] = execution.NodeSnapshot{NodeID: item.Node.ID, VersionID: item.Version.ID, DisplayName: item.Node.DisplayName, PageURL: item.Version.PageURL, Origin: item.Version.Origin, Selectors: append([]fingerprint.Selector(nil), item.Version.Selectors...), Fingerprint: item.Version.Fingerprint}
+		r[i] = execution.NodeSnapshot{ElementTargetID: item.ElementTarget.ID, VersionID: item.Version.ID, DisplayName: item.ElementTarget.DisplayName, PageURL: item.Version.PageURL, Origin: item.Version.Origin, Selectors: append([]fingerprint.Selector(nil), item.Version.Selectors...), Fingerprint: item.Version.Fingerprint}
 	}
 	return r
 }

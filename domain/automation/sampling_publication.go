@@ -6,25 +6,25 @@ import (
 	"strings"
 )
 
-type SamplingNodePublication struct {
-	TemporaryNodeID          string
+type SamplingElementTargetPublication struct {
+	TemporaryElementTargetID string
 	ResolutionMode           string
-	Aggregate                NodeAggregate
+	Aggregate                ElementTargetAggregate
 	ExpectedRevision         Revision
 	ExpectedCurrentVersionID string
 	PublishVersion           bool
 }
 
 type SamplingPublication struct {
-	Nodes        []SamplingNodePublication
+	Nodes        []SamplingElementTargetPublication
 	FlowFragment FlowFragmentAggregate
 }
 
 type SamplingNodeMapping struct {
-	TemporaryNodeID string
-	NodeID          string
-	NodeVersionID   string
-	ResolutionMode  string
+	TemporaryElementTargetID string
+	ElementTargetID          string
+	ElementTargetVersionID   string
+	ResolutionMode           string
 }
 
 type SamplingPublicationResult struct {
@@ -36,7 +36,7 @@ type SamplingPublicationResult struct {
 
 func (p SamplingPublication) Clone() SamplingPublication {
 	cloned := SamplingPublication{FlowFragment: cloneWorkflowAggregate(p.FlowFragment)}
-	cloned.Nodes = make([]SamplingNodePublication, len(p.Nodes))
+	cloned.Nodes = make([]SamplingElementTargetPublication, len(p.Nodes))
 	for index, node := range p.Nodes {
 		cloned.Nodes[index] = node
 		cloned.Nodes[index].Aggregate = cloneNodeAggregate(node.Aggregate)
@@ -53,62 +53,62 @@ func (p SamplingPublication) Validate() error {
 	formalVersions := make(map[string]struct{}, len(p.Nodes))
 	decisions := make(map[string]struct{}, len(p.Nodes))
 	for _, node := range p.Nodes {
-		if strings.TrimSpace(node.TemporaryNodeID) == "" {
+		if strings.TrimSpace(node.TemporaryElementTargetID) == "" {
 			return errors.New("sampled node temporary id is required")
 		}
 		switch node.ResolutionMode {
 		case "CREATE", "FORCE_CREATE", "MERGE", "REUSE":
 		default:
-			return fmt.Errorf("sampled node %s has unsupported resolution mode %q", node.TemporaryNodeID, node.ResolutionMode)
+			return fmt.Errorf("sampled node %s has unsupported resolution mode %q", node.TemporaryElementTargetID, node.ResolutionMode)
 		}
-		if _, ok := seen[node.TemporaryNodeID]; ok {
-			return fmt.Errorf("duplicate sampled node %q", node.TemporaryNodeID)
+		if _, ok := seen[node.TemporaryElementTargetID]; ok {
+			return fmt.Errorf("duplicate sampled node %q", node.TemporaryElementTargetID)
 		}
-		seen[node.TemporaryNodeID] = struct{}{}
+		seen[node.TemporaryElementTargetID] = struct{}{}
 		if err := node.Aggregate.Validate(); err != nil {
-			return fmt.Errorf("sampled node %s: %w", node.TemporaryNodeID, err)
+			return fmt.Errorf("sampled node %s: %w", node.TemporaryElementTargetID, err)
 		}
 		switch node.ResolutionMode {
 		case "CREATE", "FORCE_CREATE":
 			if node.ExpectedRevision != 0 || node.ExpectedCurrentVersionID != "" || !node.PublishVersion || node.Aggregate.Current.VersionNumber != 1 {
-				return fmt.Errorf("sampled node %s new ownership must publish version 1 without current-node authority", node.TemporaryNodeID)
+				return fmt.Errorf("sampled node %s new ownership must publish version 1 without current-node authority", node.TemporaryElementTargetID)
 			}
 		case "MERGE":
 			expectedNextRevision, err := node.ExpectedRevision.Next()
 			if err != nil {
-				return fmt.Errorf("sampled node %s merge revision: %w", node.TemporaryNodeID, err)
+				return fmt.Errorf("sampled node %s merge revision: %w", node.TemporaryElementTargetID, err)
 			}
-			if node.ExpectedRevision == 0 || node.ExpectedCurrentVersionID == "" || !node.PublishVersion || node.Aggregate.Node.Revision != expectedNextRevision {
-				return fmt.Errorf("sampled node %s merge requires current revision and version authority", node.TemporaryNodeID)
+			if node.ExpectedRevision == 0 || node.ExpectedCurrentVersionID == "" || !node.PublishVersion || node.Aggregate.ElementTarget.Revision != expectedNextRevision {
+				return fmt.Errorf("sampled node %s merge requires current revision and version authority", node.TemporaryElementTargetID)
 			}
 			if node.ExpectedCurrentVersionID == node.Aggregate.Current.ID {
-				return fmt.Errorf("sampled node %s cannot publish the expected current version again", node.TemporaryNodeID)
+				return fmt.Errorf("sampled node %s cannot publish the expected current version again", node.TemporaryElementTargetID)
 			}
 			if node.Aggregate.Current.VersionNumber < 2 {
-				return fmt.Errorf("sampled node %s merge must publish version 2 or later", node.TemporaryNodeID)
+				return fmt.Errorf("sampled node %s merge must publish version 2 or later", node.TemporaryElementTargetID)
 			}
 		case "REUSE":
-			if node.ExpectedRevision == 0 || node.PublishVersion || node.ExpectedCurrentVersionID == "" || node.ExpectedCurrentVersionID != node.Aggregate.Current.ID || node.Aggregate.Node.Revision != node.ExpectedRevision {
-				return fmt.Errorf("sampled node %s reuse must keep the expected current version and revision", node.TemporaryNodeID)
+			if node.ExpectedRevision == 0 || node.PublishVersion || node.ExpectedCurrentVersionID == "" || node.ExpectedCurrentVersionID != node.Aggregate.Current.ID || node.Aggregate.ElementTarget.Revision != node.ExpectedRevision {
+				return fmt.Errorf("sampled node %s reuse must keep the expected current version and revision", node.TemporaryElementTargetID)
 			}
 		}
-		if _, ok := formalNodes[node.Aggregate.Node.ID]; ok {
-			return fmt.Errorf("duplicate formal sampled node %q", node.Aggregate.Node.ID)
+		if _, ok := formalNodes[node.Aggregate.ElementTarget.ID]; ok {
+			return fmt.Errorf("duplicate formal sampled node %q", node.Aggregate.ElementTarget.ID)
 		}
-		formalNodes[node.Aggregate.Node.ID] = struct{}{}
+		formalNodes[node.Aggregate.ElementTarget.ID] = struct{}{}
 		if _, ok := formalVersions[node.Aggregate.Current.ID]; ok {
 			return fmt.Errorf("duplicate formal sampled node version %q", node.Aggregate.Current.ID)
 		}
 		formalVersions[node.Aggregate.Current.ID] = struct{}{}
-		decisions[node.Aggregate.Node.ID+"\x00"+node.Aggregate.Current.ID] = struct{}{}
+		decisions[node.Aggregate.ElementTarget.ID+"\x00"+node.Aggregate.Current.ID] = struct{}{}
 	}
 	var validateReferences func([]FlowFragmentStep) error
 	validateReferences = func(steps []FlowFragmentStep) error {
 		for _, step := range steps {
-			if step.NodeID != "" {
-				if _, exists := decisions[step.NodeID+"\x00"+step.NodeVersionID]; !exists {
+			if step.ElementTargetID != "" {
+				if _, exists := decisions[step.ElementTargetID+"\x00"+step.ElementTargetVersionID]; !exists {
 					return fmt.Errorf("sampled workflow step %q has no matching node decision for %s/%s",
-						step.DisplayName, step.NodeID, step.NodeVersionID)
+						step.DisplayName, step.ElementTargetID, step.ElementTargetVersionID)
 				}
 			}
 			if err := validateReferences(step.Children); err != nil {

@@ -55,7 +55,7 @@ const (
 )
 
 type SamplingCandidate struct {
-	NodeID          string
+	ElementTargetID string
 	DisplayName     string
 	VersionID       string
 	VersionNumber   int
@@ -102,7 +102,7 @@ type TemporarySamplingWorkflow struct {
 	SavedVersionNumber          int
 }
 
-// RebuildTemporaryNodeReferences 从可编辑工作流树中派生临时 Node -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
+// RebuildTemporaryNodeReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
 func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	if workflow == nil {
 		return errors.New("temporary sampling workflow is required")
@@ -114,12 +114,12 @@ func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	var walk func([]automation.FlowFragmentStep) error
 	walk = func(steps []automation.FlowFragmentStep) error {
 		for _, step := range steps {
-			if step.NodeID != "" {
-				stepIDs, ok := stepIDsByNode[step.NodeID]
+			if step.ElementTargetID != "" {
+				stepIDs, ok := stepIDsByNode[step.ElementTargetID]
 				if !ok {
-					return fmt.Errorf("sampling step %s references unknown temporary node %s", step.ID, step.NodeID)
+					return fmt.Errorf("sampling step %s references unknown temporary node %s", step.ID, step.ElementTargetID)
 				}
-				stepIDsByNode[step.NodeID] = append(stepIDs, step.ID)
+				stepIDsByNode[step.ElementTargetID] = append(stepIDs, step.ID)
 			}
 			if err := walk(step.Children); err != nil {
 				return err

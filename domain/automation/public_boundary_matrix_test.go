@@ -41,16 +41,16 @@ func TestPrimitiveAssetValidatorsRejectBusinessBoundaries(t *testing.T) {
 func TestNodeAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*NodeAggregate)
+		mutate func(*ElementTargetAggregate)
 		want   string
 	}{
-		{name: "invalid properties", mutate: func(a *NodeAggregate) { a.Node.Properties = Properties{" ": "value"} }, want: "property key"},
-		{name: "missing version id", mutate: func(a *NodeAggregate) { a.Current.ID, a.Node.CurrentVersionID = "", "" }, want: "version id"},
-		{name: "version number below boundary", mutate: func(a *NodeAggregate) { a.Current.VersionNumber = 0 }, want: "version number"},
-		{name: "invalid selector", mutate: func(a *NodeAggregate) { a.Current.Selectors[0].Type = fingerprint.SelectorType("UNKNOWN") }, want: "selector 1"},
-		{name: "missing fingerprint tag", mutate: func(a *NodeAggregate) { a.Current.Fingerprint.Tag = " " }, want: "fingerprint tag"},
-		{name: "nil fingerprint attributes", mutate: func(a *NodeAggregate) { a.Current.Fingerprint.Attributes = nil }, want: "fingerprint attributes"},
-		{name: "unknown source", mutate: func(a *NodeAggregate) { a.Current.Source = "UNKNOWN" }, want: "unsupported version source"},
+		{name: "invalid properties", mutate: func(a *ElementTargetAggregate) { a.ElementTarget.Properties = Properties{" ": "value"} }, want: "property key"},
+		{name: "missing version id", mutate: func(a *ElementTargetAggregate) { a.Current.ID, a.ElementTarget.CurrentVersionID = "", "" }, want: "version id"},
+		{name: "version number below boundary", mutate: func(a *ElementTargetAggregate) { a.Current.VersionNumber = 0 }, want: "version number"},
+		{name: "invalid selector", mutate: func(a *ElementTargetAggregate) { a.Current.Selectors[0].Type = fingerprint.SelectorType("UNKNOWN") }, want: "selector 1"},
+		{name: "missing fingerprint tag", mutate: func(a *ElementTargetAggregate) { a.Current.Fingerprint.Tag = " " }, want: "fingerprint tag"},
+		{name: "nil fingerprint attributes", mutate: func(a *ElementTargetAggregate) { a.Current.Fingerprint.Attributes = nil }, want: "fingerprint attributes"},
+		{name: "unknown source", mutate: func(a *ElementTargetAggregate) { a.Current.Source = "UNKNOWN" }, want: "unsupported version source"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestHealPublicRulesAndErrorBoundaries(t *testing.T) {
 		}
 	}
 
-	validCandidate := HealCandidate{Hash: "candidate", NodeID: "node", BaseNodeVersionID: "base", Status: HealCandidateAwaitingApproval, Revision: 1}
+	validCandidate := HealCandidate{Hash: "candidate", ElementTargetID: "node", BaseNodeVersionID: "base", Status: HealCandidateAwaitingApproval, Revision: 1}
 	invalidCandidate := validCandidate
 	invalidCandidate.Hash = " "
 	if err := invalidCandidate.ValidateReviewed(); err == nil {
@@ -148,7 +148,7 @@ func TestHealPublicRulesAndErrorBoundaries(t *testing.T) {
 		t.Fatal("Review accepted invalid candidate")
 	}
 
-	validCommand := HealCandidateReviewCommand{CommandID: "command", NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
+	validCommand := HealCandidateReviewCommand{CommandID: "command", ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
 	commands := []struct {
 		name     string
 		command  HealCandidateReviewCommand
@@ -183,7 +183,7 @@ func TestHealStreakObserveRejectsInvalidInputsAndStateBoundaries(t *testing.T) {
 		t.Fatal("invalid observation accepted")
 	}
 
-	base := HealStreak{NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1"), LastSequence: 1, Observing: true, Disposition: HealStreakObserving}
+	base := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1"), LastSequence: 1, Observing: true, Disposition: HealStreakObserving}
 	ordering := base
 	ordering.LastSequence = 5
 	staleSequence := valid
@@ -216,7 +216,7 @@ func TestHealStreakRejectRejectsInvalidReceiverAndDisposition(t *testing.T) {
 	if _, err := (HealStreak{Observing: true, Disposition: HealStreakObserving}).Reject(1); err == nil {
 		t.Fatal("invalid streak accepted")
 	}
-	observing := HealStreak{NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1"), LastSequence: 1, Observing: true, Disposition: HealStreakObserving}
+	observing := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1"), LastSequence: 1, Observing: true, Disposition: HealStreakObserving}
 	if _, err := observing.Reject(2); err == nil {
 		t.Fatal("non-awaiting streak rejection accepted")
 	}
@@ -261,23 +261,27 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 	}
 
 	node := versionedNodeAggregate()
-	if _, err := NewNode(func() Node { value := node.Node; value.UpdatedAt = 0; return value }(), node.Current); err == nil {
-		t.Fatal("NewNode accepted invalid timestamps")
+	if _, err := NewElementTarget(func() ElementTarget { value := node.ElementTarget; value.UpdatedAt = 0; return value }(), node.Current); err == nil {
+		t.Fatal("NewElementTarget accepted invalid timestamps")
 	}
-	invalidNode := node.Node
+	invalidNode := node.ElementTarget
 	invalidNode.UpdatedAt = invalidNode.CreatedAt
 	invalidVersion := node.Current
 	invalidVersion.CreatedAt = invalidNode.CreatedAt
 	invalidVersion.Fingerprint.Tag = ""
-	if _, err := NewNode(invalidNode, invalidVersion); err == nil {
-		t.Fatal("NewNode accepted invalid aggregate")
+	if _, err := NewElementTarget(invalidNode, invalidVersion); err == nil {
+		t.Fatal("NewElementTarget accepted invalid aggregate")
 	}
 	for _, test := range []struct {
 		name  string
-		value NodeAggregate
+		value ElementTargetAggregate
 		label string
 	}{
-		{name: "revision overflow", value: func() NodeAggregate { value := node; value.Node.Revision = Revision(math.MaxUint64); return value }(), label: "Node"},
+		{name: "revision overflow", value: func() ElementTargetAggregate {
+			value := node
+			value.ElementTarget.Revision = Revision(math.MaxUint64)
+			return value
+		}(), label: "ElementTarget"},
 		{name: "invalid result", value: node, label: " "},
 	} {
 		t.Run("node "+test.name, func(t *testing.T) {
@@ -371,13 +375,13 @@ func TestTestTaskLifecyclePublicFailureMatrix(t *testing.T) {
 
 func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 	nodeWithoutCurrent := versionedNodeAggregate()
-	nodeWithoutCurrent.Node.CurrentVersionID = ""
-	nodeWithoutCurrent.Current = NodeVersion{}
-	nodeWithoutCurrent.Versions = []NodeVersion{{ID: "v1", NodeID: "other", VersionNumber: 1, DeletedAt: 1}}
+	nodeWithoutCurrent.ElementTarget.CurrentVersionID = ""
+	nodeWithoutCurrent.Current = ElementTargetVersion{}
+	nodeWithoutCurrent.Versions = []ElementTargetVersion{{ID: "v1", ElementTargetID: "other", VersionNumber: 1, DeletedAt: 1}}
 	if err := nodeWithoutCurrent.ValidateLoadedHistory(); err == nil {
 		t.Fatal("cross-node history accepted")
 	}
-	nodeWithoutCurrent.Versions[0].NodeID = nodeWithoutCurrent.Node.ID
+	nodeWithoutCurrent.Versions[0].ElementTargetID = nodeWithoutCurrent.ElementTarget.ID
 	nodeWithoutCurrent.Versions[0].DeletedAt = 0
 	if err := nodeWithoutCurrent.ValidateLoadedHistory(); err == nil {
 		t.Fatal("available node version without current pointer accepted")
@@ -398,7 +402,7 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 
 	node := versionedNodeAggregate()
 	overflowRevisionNode := node
-	overflowRevisionNode.Node.Revision = Revision(math.MaxUint64)
+	overflowRevisionNode.ElementTarget.Revision = Revision(math.MaxUint64)
 	if _, err := overflowRevisionNode.PublishVersion("node-v3", "", "", node.Current.Selectors, node.Current.Fingerprint, SourceManual, 3); err == nil {
 		t.Fatal("node publication revision overflow accepted")
 	}
@@ -422,7 +426,7 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 	}
 
 	clone := node.Clone()
-	if clone.Node.ID != node.Node.ID || len(clone.Versions) != len(node.Versions) {
+	if clone.ElementTarget.ID != node.ElementTarget.ID || len(clone.Versions) != len(node.Versions) {
 		t.Fatalf("Clone() = %#v", clone)
 	}
 	if next, err := Revision(math.MaxUint64).Next(); next != 0 || !errors.Is(err, ErrRevisionOverflow) {

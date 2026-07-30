@@ -105,7 +105,7 @@ const (
 // HealCandidateReviewCommand carries stable candidate identity and review metadata.
 type HealCandidate struct {
 	Hash              string
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 	Status            HealCandidateStatus
 	PageURL           string
@@ -136,7 +136,7 @@ func (candidate HealCandidate) ValidateReviewed() error {
 }
 
 func (candidate HealCandidate) validateIdentity() error {
-	if strings.TrimSpace(candidate.Hash) == "" || strings.TrimSpace(candidate.NodeID) == "" ||
+	if strings.TrimSpace(candidate.Hash) == "" || strings.TrimSpace(candidate.ElementTargetID) == "" ||
 		strings.TrimSpace(candidate.BaseNodeVersionID) == "" {
 		return fmt.Errorf("heal candidate requires identity")
 	}
@@ -160,7 +160,7 @@ func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate
 
 type HealCandidateReviewCommand struct {
 	CommandID                 string
-	NodeID                    string
+	ElementTargetID           string
 	BaseNodeVersionID         string
 	CandidateHash             string
 	ExpectedCandidateRevision Revision
@@ -168,7 +168,7 @@ type HealCandidateReviewCommand struct {
 }
 
 func (command HealCandidateReviewCommand) Validate(approval HealApprovalStatus) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.NodeID) == "" || strings.TrimSpace(command.BaseNodeVersionID) == "" ||
+	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ElementTargetID) == "" || strings.TrimSpace(command.BaseNodeVersionID) == "" ||
 		strings.TrimSpace(command.CandidateHash) == "" {
 		return fmt.Errorf("heal candidate review requires command, node, base version, and candidate hash")
 	}
@@ -213,7 +213,7 @@ type HealObservation struct {
 	ExecutionID       string
 	StepExecutionID   string
 	Sequence          uint64
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 	CandidateHash     string
 	Band              HealDecisionBand
@@ -222,7 +222,7 @@ type HealObservation struct {
 }
 
 type HealStreak struct {
-	NodeID               string
+	ElementTargetID      string
 	BaseNodeVersionID    string
 	CandidateHash        string
 	Band                 HealDecisionBand
@@ -260,13 +260,13 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
 	}
 	if streak.Disposition == HealStreakStale {
-		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.NodeID == streak.NodeID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
+		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.ElementTargetID == streak.ElementTargetID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
 			return HealStreakDecision{Next: newHealStreak(observation)}, nil
 		}
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
 	}
 	if streak.Disposition == HealStreakRejected {
-		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.NodeID == streak.NodeID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
+		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.ElementTargetID == streak.ElementTargetID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
 			return HealStreakDecision{Next: newHealStreak(observation)}, nil
 		}
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
@@ -278,7 +278,7 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
 	}
 	advanced := streak.withObservation(contribution)
-	if streak.Observing && (streak.NodeID != observation.NodeID || streak.BaseNodeVersionID != observation.BaseNodeVersionID) {
+	if streak.Observing && (streak.ElementTargetID != observation.ElementTargetID || streak.BaseNodeVersionID != observation.BaseNodeVersionID) {
 		return HealStreakDecision{Next: advanced}, nil
 	}
 	if !observation.BaseIsCurrent {
@@ -328,18 +328,18 @@ func (streak HealStreak) validate() error {
 		return nil
 	}
 	if streak.Disposition == HealStreakReset || streak.Disposition == HealStreakStale {
-		if streak.Observing || strings.TrimSpace(streak.NodeID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || streak.LastSequence == 0 {
+		if streak.Observing || strings.TrimSpace(streak.ElementTargetID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || streak.LastSequence == 0 {
 			return fmt.Errorf("%s heal streak requires inactive node/base sequence identity", streak.Disposition)
 		}
 		return nil
 	}
 	if streak.Disposition == HealStreakRejected {
-		if streak.Observing || strings.TrimSpace(streak.NodeID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" || streak.LastSequence == 0 {
+		if streak.Observing || strings.TrimSpace(streak.ElementTargetID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" || streak.LastSequence == 0 {
 			return fmt.Errorf("rejected heal streak requires inactive candidate identity")
 		}
 		return validateHealContributions(streak.Contributions)
 	}
-	if strings.TrimSpace(streak.NodeID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" {
+	if strings.TrimSpace(streak.ElementTargetID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" {
 		return fmt.Errorf("heal streak requires node, base version, and candidate identity")
 	}
 	if streak.Band != HealDecisionBandApplied && streak.Band != HealDecisionBandBelowCap {
@@ -411,7 +411,7 @@ func (contribution ContributingHealFact) validate() error {
 }
 
 func (observation HealObservation) validate() error {
-	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.RunID) == "" || strings.TrimSpace(observation.ExecutionID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.NodeID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
+	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.RunID) == "" || strings.TrimSpace(observation.ExecutionID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
 		return fmt.Errorf("heal observation requires fact, commit, run, execution, step, sequence, node, and base version identity")
 	}
 	if observation.Outcome != HealSucceeded && observation.Outcome != HealOriginalRecovered && observation.Outcome != HealFailed {
@@ -435,7 +435,7 @@ func (observation HealObservation) contribution() ContributingHealFact {
 
 func newHealStreak(observation HealObservation) HealStreak {
 	return HealStreak{
-		NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID,
+		ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 		CandidateHash: observation.CandidateHash, Band: observation.Band,
 		Contributions:        []ContributingHealFact{observation.contribution()},
 		ConsumedObservations: []ContributingHealFact{observation.contribution()},
@@ -446,14 +446,14 @@ func newHealStreak(observation HealObservation) HealStreak {
 
 func newHealTerminal(observation HealObservation, disposition HealStreakDisposition) HealStreak {
 	return HealStreak{
-		NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID,
+		ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 		LastSequence: observation.Sequence, Disposition: disposition,
 		ConsumedObservations: []ContributingHealFact{observation.contribution()},
 	}
 }
 
 func (streak HealStreak) matches(observation HealObservation) bool {
-	return streak.NodeID == observation.NodeID && streak.BaseNodeVersionID == observation.BaseNodeVersionID &&
+	return streak.ElementTargetID == observation.ElementTargetID && streak.BaseNodeVersionID == observation.BaseNodeVersionID &&
 		streak.CandidateHash == observation.CandidateHash && streak.Band == observation.Band
 }
 

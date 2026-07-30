@@ -40,7 +40,7 @@ type HealObservation struct {
 	RunID             string
 	ExecutionID       string
 	StepExecutionID   string
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 	CandidateHash     string
 	Selector          fingerprint.Selector
@@ -52,7 +52,7 @@ type HealObservation struct {
 }
 
 func (o HealObservation) Validate() error {
-	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.NodeID == "" || o.BaseNodeVersionID == "" {
+	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.ElementTargetID == "" || o.BaseNodeVersionID == "" {
 		return errors.New("heal observation requires identity")
 	}
 	if o.ObservedAt <= 0 {
@@ -159,8 +159,8 @@ func (d ValidationBranchDisposition) Validate() error {
 }
 
 type ValidationMemberIdentity struct {
-	BranchID string
-	NodeID   string
+	BranchID        string
+	ElementTargetID string
 }
 
 type ValidationGroupTerminalObservation struct {
@@ -213,7 +213,7 @@ func (o ValidationGroupTerminalObservation) Validate() error {
 	seen := make(map[ValidationMemberIdentity]struct{}, len(o.expectedMembers))
 	hasWinningBranch := false
 	for _, member := range o.expectedMembers {
-		if member.BranchID == "" || member.NodeID == "" {
+		if member.BranchID == "" || member.ElementTargetID == "" {
 			return errors.New("validation group expected member requires identity")
 		}
 		if _, exists := seen[member]; exists {
@@ -229,32 +229,32 @@ func (o ValidationGroupTerminalObservation) Validate() error {
 }
 
 type ValidationProgressObservation struct {
-	ID               string
-	RunID            string
-	ExecutionID      string
-	StepExecutionID  string
-	ValidationStepID string
-	NodeID           string
-	NodeVersionID    string
-	GroupID          string
-	BranchID         string
-	AssertionKind    string
-	Expected         ValidationValue
-	Actual           ValidationValue
-	Passed           bool
-	Reason           string
-	Selector         fingerprint.Selector
-	Healed           bool
-	HealConfidence   float64
-	HealReviewStatus string
-	ObservedAt       int64
+	ID                     string
+	RunID                  string
+	ExecutionID            string
+	StepExecutionID        string
+	ValidationStepID       string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	GroupID                string
+	BranchID               string
+	AssertionKind          string
+	Expected               ValidationValue
+	Actual                 ValidationValue
+	Passed                 bool
+	Reason                 string
+	Selector               fingerprint.Selector
+	Healed                 bool
+	HealConfidence         float64
+	HealReviewStatus       string
+	ObservedAt             int64
 }
 
 func (o ValidationProgressObservation) Validate() error {
 	return ValidationObservation{
 		ID: o.ID, RunID: o.RunID, ExecutionID: o.ExecutionID,
 		StepExecutionID: o.StepExecutionID, ValidationStepID: o.ValidationStepID,
-		NodeID: o.NodeID, NodeVersionID: o.NodeVersionID,
+		ElementTargetID: o.ElementTargetID, ElementTargetVersionID: o.ElementTargetVersionID,
 		GroupID: o.GroupID, BranchID: o.BranchID,
 		AssertionKind: o.AssertionKind, Expected: o.Expected, Actual: o.Actual,
 		Passed: o.Passed, Reason: o.Reason, Selector: o.Selector,
@@ -264,31 +264,31 @@ func (o ValidationProgressObservation) Validate() error {
 }
 
 type ValidationObservation struct {
-	ID                string
-	RunID             string
-	ExecutionID       string
-	StepExecutionID   string
-	ValidationStepID  string
-	NodeID            string
-	NodeVersionID     string
-	GroupID           string
-	BranchID          string
-	AssertionKind     string
-	Expected          ValidationValue
-	Actual            ValidationValue
-	Passed            bool
-	Reason            string
-	BranchDisposition ValidationBranchDisposition
-	Selector          fingerprint.Selector
-	Healed            bool
-	HealConfidence    float64
-	HealReviewStatus  string
-	ObservedAt        int64
-	Final             bool
+	ID                     string
+	RunID                  string
+	ExecutionID            string
+	StepExecutionID        string
+	ValidationStepID       string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	GroupID                string
+	BranchID               string
+	AssertionKind          string
+	Expected               ValidationValue
+	Actual                 ValidationValue
+	Passed                 bool
+	Reason                 string
+	BranchDisposition      ValidationBranchDisposition
+	Selector               fingerprint.Selector
+	Healed                 bool
+	HealConfidence         float64
+	HealReviewStatus       string
+	ObservedAt             int64
+	Final                  bool
 }
 
 func (o ValidationObservation) Validate() error {
-	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.ValidationStepID == "" || o.NodeID == "" || o.NodeVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
+	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.ValidationStepID == "" || o.ElementTargetID == "" || o.ElementTargetVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
 		return errors.New("validation observation requires identity and reason")
 	}
 	if o.ObservedAt <= 0 {

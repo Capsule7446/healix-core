@@ -39,16 +39,16 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 
 	t.Run("node", func(t *testing.T) {
 		base := versionedNodeAggregate()
-		base.Node.UpdatedAt = 10
-		base.Node.CreatedAt = 10
+		base.ElementTarget.UpdatedAt = 10
+		base.ElementTarget.CreatedAt = 10
 		base.Current.CreatedAt = 10
 		base.Versions[0].CreatedAt = 10
 		invalid := base
-		invalid.Node.CurrentVersionID = "missing"
+		invalid.ElementTarget.CurrentVersionID = "missing"
 		if _, err := invalid.Delete(10); err == nil {
 			t.Fatal("invalid history accepted by Delete")
 		}
-		assertLifecycleTimeBoundaries(t, base.Node.UpdatedAt, func(at int64) error {
+		assertLifecycleTimeBoundaries(t, base.ElementTarget.UpdatedAt, func(at int64) error {
 			_, err := base.Delete(at)
 			return err
 		})
@@ -56,7 +56,7 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		deleted.Node.CurrentVersionID = "missing"
+		deleted.ElementTarget.CurrentVersionID = "missing"
 		if _, err := deleted.Restore(11); err == nil {
 			t.Fatal("invalid history accepted by Restore")
 		}
@@ -103,14 +103,14 @@ func assertLifecycleTimeBoundaries(t *testing.T, updatedAt int64, transition fun
 
 func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	base := versionedNodeAggregate()
-	base.Node.UpdatedAt = base.Node.CreatedAt
-	base.Current.CreatedAt = base.Node.CreatedAt
-	created, err := NewNode(base.Node, base.Current)
+	base.ElementTarget.UpdatedAt = base.ElementTarget.CreatedAt
+	base.Current.CreatedAt = base.ElementTarget.CreatedAt
+	created, err := NewElementTarget(base.ElementTarget, base.Current)
 	if err != nil {
-		t.Fatalf("NewNode: %v", err)
+		t.Fatalf("NewElementTarget: %v", err)
 	}
-	if created.Node.Revision != 1 || created.Current.VersionNumber != 1 {
-		t.Fatalf("creation identities = revision %d version %d", created.Node.Revision, created.Current.VersionNumber)
+	if created.ElementTarget.Revision != 1 || created.Current.VersionNumber != 1 {
+		t.Fatalf("creation identities = revision %d version %d", created.ElementTarget.Revision, created.Current.VersionNumber)
 	}
 
 	properties := Properties{"owner": "updated"}
@@ -119,8 +119,8 @@ func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 		t.Fatalf("UpdateMetadata: %v", err)
 	}
 	properties["owner"] = "mutated"
-	if updated.Node.Revision != 2 || updated.Node.Properties["owner"] != "updated" || created.Node.DisplayName == updated.Node.DisplayName {
-		t.Fatalf("metadata update was mutable or not revisioned: %#v", updated.Node)
+	if updated.ElementTarget.Revision != 2 || updated.ElementTarget.Properties["owner"] != "updated" || created.ElementTarget.DisplayName == updated.ElementTarget.DisplayName {
+		t.Fatalf("metadata update was mutable or not revisioned: %#v", updated.ElementTarget)
 	}
 	deleted, err := updated.Delete(3)
 	if err != nil {
@@ -130,8 +130,8 @@ func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if deleted.Node.Revision != 3 || restored.Node.Revision != 4 || restored.Node.DeletedAt != 0 {
-		t.Fatalf("lifecycle revisions = deleted %d restored %d", deleted.Node.Revision, restored.Node.Revision)
+	if deleted.ElementTarget.Revision != 3 || restored.ElementTarget.Revision != 4 || restored.ElementTarget.DeletedAt != 0 {
+		t.Fatalf("lifecycle revisions = deleted %d restored %d", deleted.ElementTarget.Revision, restored.ElementTarget.Revision)
 	}
 }
 
@@ -139,12 +139,15 @@ func TestNodeLifecycleRejectsInvalidTransitions(t *testing.T) {
 	base := versionedNodeAggregate()
 	cases := []struct {
 		name string
-		run  func(NodeAggregate) error
+		run  func(ElementTargetAggregate) error
 	}{
-		{name: "stale metadata time", run: func(a NodeAggregate) error { _, err := a.UpdateMetadata("node", "", Properties{}, 0); return err }},
-		{name: "restore active", run: func(a NodeAggregate) error { _, err := a.Restore(2); return err }},
-		{name: "revision overflow", run: func(a NodeAggregate) error {
-			a.Node.Revision = Revision(math.MaxUint64)
+		{name: "stale metadata time", run: func(a ElementTargetAggregate) error {
+			_, err := a.UpdateMetadata("node", "", Properties{}, 0)
+			return err
+		}},
+		{name: "restore active", run: func(a ElementTargetAggregate) error { _, err := a.Restore(2); return err }},
+		{name: "revision overflow", run: func(a ElementTargetAggregate) error {
+			a.ElementTarget.Revision = Revision(math.MaxUint64)
 			_, err := a.Delete(2)
 			return err
 		}},

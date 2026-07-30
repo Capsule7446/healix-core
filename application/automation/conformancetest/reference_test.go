@@ -38,16 +38,16 @@ type referenceFixture struct {
 
 func newReferenceFixture(t *testing.T) conformancetest.Fixture {
 	t.Helper()
-	base, err := domain.NewNode(
-		domain.Node{ID: "existing", DisplayName: "existing", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1},
-		domain.NodeVersion{ID: "existing-v1", PageURL: "/old", Origin: "old", Selectors: selectors("#old"), Fingerprint: fp("old"), Source: domain.SourceManual, CreatedAt: 1},
+	base, err := domain.NewElementTarget(
+		domain.ElementTarget{ID: "existing", DisplayName: "existing", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1},
+		domain.ElementTargetVersion{ID: "existing-v1", PageURL: "/old", Origin: "old", Selectors: selectors("#old"), Fingerprint: fp("old"), Source: domain.SourceManual, CreatedAt: 1},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reused, err := domain.NewNode(
-		domain.Node{ID: "reused", DisplayName: "reused", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1},
-		domain.NodeVersion{ID: "reused-v1", PageURL: "/reuse", Origin: "old", Selectors: selectors("#reuse"), Fingerprint: fp("reuse"), Source: domain.SourceManual, CreatedAt: 1},
+	reused, err := domain.NewElementTarget(
+		domain.ElementTarget{ID: "reused", DisplayName: "reused", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1},
+		domain.ElementTargetVersion{ID: "reused-v1", PageURL: "/reuse", Origin: "old", Selectors: selectors("#reuse"), Fingerprint: fp("reuse"), Source: domain.SourceManual, CreatedAt: 1},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -56,24 +56,24 @@ func newReferenceFixture(t *testing.T) conformancetest.Fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := domain.NewNode(
-		domain.Node{ID: "created", DisplayName: "created", Properties: domain.Properties{}, CreatedAt: 2, UpdatedAt: 2},
-		domain.NodeVersion{ID: "created-v1", PageURL: "/created", Origin: "new", Selectors: selectors("#created"), Fingerprint: fp("created"), Source: domain.SourceSampling, CreatedAt: 2},
+	created, err := domain.NewElementTarget(
+		domain.ElementTarget{ID: "created", DisplayName: "created", Properties: domain.Properties{}, CreatedAt: 2, UpdatedAt: 2},
+		domain.ElementTargetVersion{ID: "created-v1", PageURL: "/created", Origin: "new", Selectors: selectors("#created"), Fingerprint: fp("created"), Source: domain.SourceSampling, CreatedAt: 2},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	workflow, err := domain.NewFlowFragment(
 		domain.FlowFragment{ID: "workflow", DisplayName: "workflow", Properties: domain.Properties{}, CreatedAt: 2, UpdatedAt: 2},
-		domain.FlowFragmentVersion{ID: "workflow-v1", Definition: domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "merge", DisplayName: "merge", Kind: domain.StepAction, Action: "click", NodeID: "existing", NodeVersionID: "existing-v2"}, {ID: "create", DisplayName: "create", Kind: domain.StepAction, Action: "click", NodeID: "created", NodeVersionID: "created-v1"}, {ID: "reuse", DisplayName: "reuse", Kind: domain.StepAction, Action: "click", NodeID: "reused", NodeVersionID: "reused-v1"}}}, CreatedAt: 2},
+		domain.FlowFragmentVersion{ID: "workflow-v1", Definition: domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "merge", DisplayName: "merge", Kind: domain.StepAction, Action: "click", ElementTargetID: "existing", ElementTargetVersionID: "existing-v2"}, {ID: "create", DisplayName: "create", Kind: domain.StepAction, Action: "click", ElementTargetID: "created", ElementTargetVersionID: "created-v1"}, {ID: "reuse", DisplayName: "reuse", Kind: domain.StepAction, Action: "click", ElementTargetID: "reused", ElementTargetVersionID: "reused-v1"}}}, CreatedAt: 2},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publication := domain.SamplingPublication{Nodes: []domain.SamplingNodePublication{
-		{TemporaryNodeID: "temporary-existing", ResolutionMode: "MERGE", Aggregate: merged, ExpectedRevision: base.Node.Revision, ExpectedCurrentVersionID: base.Current.ID, PublishVersion: true},
-		{TemporaryNodeID: "temporary-created", ResolutionMode: "CREATE", Aggregate: created, PublishVersion: true},
-		{TemporaryNodeID: "temporary-reused", ResolutionMode: "REUSE", Aggregate: reused, ExpectedRevision: reused.Node.Revision, ExpectedCurrentVersionID: reused.Current.ID},
+	publication := domain.SamplingPublication{Nodes: []domain.SamplingElementTargetPublication{
+		{TemporaryElementTargetID: "temporary-existing", ResolutionMode: "MERGE", Aggregate: merged, ExpectedRevision: base.ElementTarget.Revision, ExpectedCurrentVersionID: base.Current.ID, PublishVersion: true},
+		{TemporaryElementTargetID: "temporary-created", ResolutionMode: "CREATE", Aggregate: created, PublishVersion: true},
+		{TemporaryElementTargetID: "temporary-reused", ResolutionMode: "REUSE", Aggregate: reused, ExpectedRevision: reused.ElementTarget.Revision, ExpectedCurrentVersionID: reused.Current.ID},
 	}, FlowFragment: workflow}
 	command := application.SamplingPublicationCommand{PublicationID: "publication", Publication: publication}
 	digest, err := application.SamplingPublicationRequestDigest(command)
@@ -82,7 +82,7 @@ func newReferenceFixture(t *testing.T) conformancetest.Fixture {
 	}
 	return &referenceFixture{
 		state: referenceState{
-			nodes:    map[string]storedNode{"existing": {revision: base.Node.Revision, current: base.Current.ID}, "reused": {revision: reused.Node.Revision, current: reused.Current.ID}},
+			nodes:    map[string]storedNode{"existing": {revision: base.ElementTarget.Revision, current: base.Current.ID}, "reused": {revision: reused.ElementTarget.Revision, current: reused.Current.ID}},
 			versions: map[string]struct{}{base.Current.ID: {}, reused.Current.ID: {}}, workflows: map[string]struct{}{},
 			replays: map[string]application.PublishSamplingOutcome{}, digests: map[string]string{},
 		},
@@ -136,20 +136,20 @@ func competingIntent(base application.PublishSamplingIntent, suffix string) appl
 		switch node.ResolutionMode {
 		case "MERGE":
 			node.Aggregate.Current.ID += "-" + suffix
-			node.Aggregate.Node.CurrentVersionID = node.Aggregate.Current.ID
+			node.Aggregate.ElementTarget.CurrentVersionID = node.Aggregate.Current.ID
 		case "CREATE", "FORCE_CREATE":
-			node.Aggregate.Node.ID += "-" + suffix
+			node.Aggregate.ElementTarget.ID += "-" + suffix
 			node.Aggregate.Current.ID += "-" + suffix
-			node.Aggregate.Node.CurrentVersionID = node.Aggregate.Current.ID
-			node.Aggregate.Current.NodeID = node.Aggregate.Node.ID
+			node.Aggregate.ElementTarget.CurrentVersionID = node.Aggregate.Current.ID
+			node.Aggregate.Current.ElementTargetID = node.Aggregate.ElementTarget.ID
 		}
 	}
 	for index := range publication.FlowFragment.Current.Definition.Steps {
 		step := &publication.FlowFragment.Current.Definition.Steps[index]
 		for _, node := range publication.Nodes {
 			if step.ID == "merge" && node.ResolutionMode == "MERGE" || step.ID == "create" && node.ResolutionMode == "CREATE" {
-				step.NodeID = node.Aggregate.Node.ID
-				step.NodeVersionID = node.Aggregate.Current.ID
+				step.ElementTargetID = node.Aggregate.ElementTarget.ID
+				step.ElementTargetVersionID = node.Aggregate.Current.ID
 			}
 		}
 	}
@@ -201,8 +201,8 @@ func (f *referenceFixture) AssertApplied(intent application.PublishSamplingInten
 		return errors.New("outbox or replay result is incomplete")
 	}
 	for _, decision := range intent.Publication.Nodes {
-		stored, exists := f.state.nodes[decision.Aggregate.Node.ID]
-		if !exists || stored.current != decision.Aggregate.Current.ID || stored.revision != decision.Aggregate.Node.Revision {
+		stored, exists := f.state.nodes[decision.Aggregate.ElementTarget.ID]
+		if !exists || stored.current != decision.Aggregate.Current.ID || stored.revision != decision.Aggregate.ElementTarget.Revision {
 			return errors.New("node materialization does not match publication")
 		}
 		if _, exists := f.state.versions[decision.Aggregate.Current.ID]; !exists {
@@ -244,7 +244,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 	}
 	next := cloneState(f.state)
 	for _, decision := range intent.Publication.Nodes {
-		nodeID, versionID := decision.Aggregate.Node.ID, decision.Aggregate.Current.ID
+		nodeID, versionID := decision.Aggregate.ElementTarget.ID, decision.Aggregate.Current.ID
 		switch decision.ResolutionMode {
 		case "CREATE", "FORCE_CREATE":
 			if _, exists := next.nodes[nodeID]; exists {
@@ -260,7 +260,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 			if _, exists := next.versions[versionID]; exists {
 				return application.PublishSamplingOutcome{}, errors.New("node version identity conflict")
 			}
-			next.nodes[nodeID] = storedNode{revision: decision.Aggregate.Node.Revision, current: versionID}
+			next.nodes[nodeID] = storedNode{revision: decision.Aggregate.ElementTarget.Revision, current: versionID}
 			next.versions[versionID] = struct{}{}
 		}
 	}
@@ -285,7 +285,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 		return application.PublishSamplingOutcome{}, err
 	}
 	for _, mapping := range mappings {
-		next.outbox = append(next.outbox, "NODE:"+mapping.NodeID+":"+mapping.NodeVersionID)
+		next.outbox = append(next.outbox, "NODE:"+mapping.ElementTargetID+":"+mapping.ElementTargetVersionID)
 	}
 	next.outbox = append(next.outbox, "WORKFLOW:"+workflowID)
 	if err := f.fail(conformancetest.FaultAfterOutbox); err != nil {

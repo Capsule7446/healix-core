@@ -9,7 +9,7 @@ import (
 func validValidationProgressObservation() ValidationProgressObservation {
 	return ValidationProgressObservation{
 		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		ValidationStepID: "validation", NodeID: "node", NodeVersionID: "node-v1",
+		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
 	}
@@ -66,7 +66,7 @@ func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 	valid := HealObservation{
 		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		NodeID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
+		ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
 		DecisionBand: DecisionUnknown,
 	}
 	tests := []struct {
@@ -81,7 +81,7 @@ func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 		{name: "below cap candidate", mutate: func(value *HealObservation) {
 			value.CandidateHash, value.DecisionBand, value.Confidence = "candidate", DecisionBelowCap, 0.5
 		}},
-		{name: "missing identity", mutate: func(value *HealObservation) { value.NodeID = "" }, wantError: "requires identity"},
+		{name: "missing identity", mutate: func(value *HealObservation) { value.ElementTargetID = "" }, wantError: "requires identity"},
 		{name: "timestamp below boundary", mutate: func(value *HealObservation) { value.ObservedAt = 0 }, wantError: "positive time"},
 		{name: "confidence below boundary", mutate: func(value *HealObservation) { value.Confidence = -0.0001 }, wantError: "confidence"},
 		{name: "confidence above boundary", mutate: func(value *HealObservation) { value.Confidence = 1.0001 }, wantError: "confidence"},
@@ -154,7 +154,7 @@ func TestValidationValueEqualityKindsAndCollectionOwnership(t *testing.T) {
 func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 	valid := ValidationObservation{
 		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		ValidationStepID: "validation", NodeID: "node", NodeVersionID: "node-v1",
+		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
 	}
@@ -239,7 +239,7 @@ func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 	}, HealObservations: []HealObservation{{
 		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "other-step",
-		NodeID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 1,
+		ElementTargetID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 1,
 	}}}
 	if err := crossStep.Validate(); err == nil || !strings.Contains(err.Error(), "committed step") {
 		t.Fatalf("cross-step heal error = %v", err)
@@ -249,7 +249,7 @@ func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing
 func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t *testing.T) {
 	valid := NewValidationGroupTerminalObservation(
 		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
-		[]ValidationMemberIdentity{{BranchID: "branch", NodeID: "node"}}, 1,
+		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	missingIdentity := valid
 	missingIdentity.ID = ""
@@ -265,7 +265,7 @@ func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t 
 	}
 	duplicateMember := NewValidationGroupTerminalObservation(
 		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
-		[]ValidationMemberIdentity{{BranchID: "branch", NodeID: "node"}, {BranchID: "branch", NodeID: "node"}}, 1,
+		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}, {BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	if err := duplicateMember.Validate(); err == nil || !strings.Contains(err.Error(), "duplicated") {
 		t.Fatalf("duplicate member error = %v", err)
