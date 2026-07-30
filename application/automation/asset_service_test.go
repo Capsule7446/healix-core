@@ -172,7 +172,7 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 
 func TestWorkflowServiceLifecycleAndPublication(t *testing.T) {
 	repository := &workflowRepositoryFake{}
-	service := NewWorkflowService(repository)
+	service := NewFlowFragmentService(repository)
 	definition := domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "press", DisplayName: "Press", Kind: domain.StepAction, Action: "press", Value: "Enter"}}}
 	workflow := domain.FlowFragment{ID: "workflow", DisplayName: "FlowFragment", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
 	version := domain.FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1, Definition: definition, CreatedAt: 1}

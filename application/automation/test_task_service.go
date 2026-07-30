@@ -8,13 +8,13 @@ import (
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
-type TestTaskService struct{ repository TestTaskRepository }
+type ExecutionFlowService struct{ repository ExecutionFlowRepository }
 
-func NewTestTaskService(repository TestTaskRepository) TestTaskService {
-	return TestTaskService{repository: repository}
+func NewExecutionFlowService(repository ExecutionFlowRepository) ExecutionFlowService {
+	return ExecutionFlowService{repository: repository}
 }
 
-func (s TestTaskService) Create(ctx context.Context, task domain.ExecutionFlow, initial domain.ExecutionFlowVersion) (domain.ExecutionFlowAggregate, error) {
+func (s ExecutionFlowService) Create(ctx context.Context, task domain.ExecutionFlow, initial domain.ExecutionFlowVersion) (domain.ExecutionFlowAggregate, error) {
 	if isNilDependency(s.repository) {
 		return domain.ExecutionFlowAggregate{}, ErrAutomationConfiguration
 	}
@@ -29,7 +29,7 @@ func (s TestTaskService) Create(ctx context.Context, task domain.ExecutionFlow, 
 	return result, nil
 }
 
-func (s TestTaskService) PublishVersion(
+func (s ExecutionFlowService) PublishVersion(
 	ctx context.Context,
 	taskID string,
 	expected domain.Revision,

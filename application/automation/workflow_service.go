@@ -8,13 +8,13 @@ import (
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
-type WorkflowService struct{ repository WorkflowRepository }
+type FlowFragmentService struct{ repository FlowFragmentRepository }
 
-func NewWorkflowService(repository WorkflowRepository) WorkflowService {
-	return WorkflowService{repository: repository}
+func NewFlowFragmentService(repository FlowFragmentRepository) FlowFragmentService {
+	return FlowFragmentService{repository: repository}
 }
 
-func (s WorkflowService) Create(ctx context.Context, workflow domain.FlowFragment, initial domain.FlowFragmentVersion) (domain.FlowFragmentAggregate, error) {
+func (s FlowFragmentService) Create(ctx context.Context, workflow domain.FlowFragment, initial domain.FlowFragmentVersion) (domain.FlowFragmentAggregate, error) {
 	if isNilDependency(s.repository) {
 		return domain.FlowFragmentAggregate{}, ErrAutomationConfiguration
 	}
@@ -29,27 +29,27 @@ func (s WorkflowService) Create(ctx context.Context, workflow domain.FlowFragmen
 	return result, nil
 }
 
-func (s WorkflowService) Update(ctx context.Context, id, displayName, folderID string, properties domain.Properties, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
+func (s FlowFragmentService) Update(ctx context.Context, id, displayName, folderID string, properties domain.Properties, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
 	return s.transition(ctx, id, expected, func(a domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) {
 		return a.UpdateMetadata(displayName, folderID, properties, at)
 	})
 }
 
-func (s WorkflowService) PublishVersion(ctx context.Context, id, versionID string, definition domain.FlowFragmentContent, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
+func (s FlowFragmentService) PublishVersion(ctx context.Context, id, versionID string, definition domain.FlowFragmentContent, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
 	return s.transition(ctx, id, expected, func(a domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) {
 		return a.PublishVersion(versionID, definition, at)
 	})
 }
 
-func (s WorkflowService) Delete(ctx context.Context, id string, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
+func (s FlowFragmentService) Delete(ctx context.Context, id string, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
 	return s.transition(ctx, id, expected, func(a domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) { return a.Delete(at) })
 }
 
-func (s WorkflowService) Restore(ctx context.Context, id string, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
+func (s FlowFragmentService) Restore(ctx context.Context, id string, expected domain.Revision, at int64) (domain.FlowFragmentAggregate, error) {
 	return s.transition(ctx, id, expected, func(a domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) { return a.Restore(at) })
 }
 
-func (s WorkflowService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error)) (domain.FlowFragmentAggregate, error) {
+func (s FlowFragmentService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error)) (domain.FlowFragmentAggregate, error) {
 	if isNilDependency(s.repository) {
 		return domain.FlowFragmentAggregate{}, ErrAutomationConfiguration
 	}

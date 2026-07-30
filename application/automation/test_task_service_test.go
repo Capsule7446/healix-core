@@ -40,7 +40,7 @@ func testTaskFixture() (domain.ExecutionFlow, domain.ExecutionFlowVersion) {
 
 func TestTestTaskServiceCreateAndPublishVersion(t *testing.T) {
 	repository := &testTaskRepositoryFake{}
-	service := NewTestTaskService(repository)
+	service := NewExecutionFlowService(repository)
 	task, version := testTaskFixture()
 	created, err := service.Create(context.Background(), task, version)
 	if err != nil {
@@ -74,7 +74,7 @@ func TestTestTaskServiceCreateAndPublishVersion(t *testing.T) {
 
 func TestTestTaskServiceRejectsInvalidAndStaleWrites(t *testing.T) {
 	repository := &testTaskRepositoryFake{}
-	service := NewTestTaskService(repository)
+	service := NewExecutionFlowService(repository)
 	task, version := testTaskFixture()
 	if _, err := service.Create(context.Background(), domain.ExecutionFlow{}, version); err == nil {
 		t.Fatal("invalid task accepted")

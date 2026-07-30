@@ -532,7 +532,7 @@ func TestTestTaskUseCasesCoverDependencyFailuresAndPrecommitRejections(t *testin
 	failure := errors.New("test task repository unavailable")
 	task, version := testTaskFixture()
 	repository := &testTaskRepositoryMatrix{createErr: failure}
-	if result, err := NewTestTaskService(repository).Create(context.Background(), task, version); !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.ExecutionFlowAggregate{}) || repository.createCalls != 1 {
+	if result, err := NewExecutionFlowService(repository).Create(context.Background(), task, version); !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.ExecutionFlowAggregate{}) || repository.createCalls != 1 {
 		t.Fatalf("create failure/result/error/calls = %#v/%v/%d", result, err, repository.createCalls)
 	}
 
@@ -560,7 +560,7 @@ func TestTestTaskUseCasesCoverDependencyFailuresAndPrecommitRejections(t *testin
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := NewTestTaskService(test.repository).PublishVersion(context.Background(), test.taskID, test.expected, test.publication)
+			result, err := NewExecutionFlowService(test.repository).PublishVersion(context.Background(), test.taskID, test.expected, test.publication)
 			if err == nil || !reflect.DeepEqual(result, domain.ExecutionFlowAggregate{}) || test.want != nil && !errors.Is(err, test.want) || test.wantText != "" && !strings.Contains(err.Error(), test.wantText) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
@@ -629,14 +629,14 @@ func TestWorkflowCreateCoversValidationAndRepositoryFailure(t *testing.T) {
 	failure := errors.New("workflow repository unavailable")
 	current := workflowUseCaseFixture(t)
 	repository := &workflowRepositoryMatrix{createErr: failure}
-	result, err := NewWorkflowService(repository).Create(context.Background(), current.FlowFragment, current.Current)
+	result, err := NewFlowFragmentService(repository).Create(context.Background(), current.FlowFragment, current.Current)
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.FlowFragmentAggregate{}) || repository.createCalls != 1 {
 		t.Fatalf("result/error/calls = %#v/%v/%d", result, err, repository.createCalls)
 	}
 	repository = &workflowRepositoryMatrix{}
 	invalid := current.FlowFragment
 	invalid.DisplayName = ""
-	if _, err := NewWorkflowService(repository).Create(context.Background(), invalid, current.Current); err == nil || repository.createCalls != 0 {
+	if _, err := NewFlowFragmentService(repository).Create(context.Background(), invalid, current.Current); err == nil || repository.createCalls != 0 {
 		t.Fatalf("invalid create/error/calls = %v/%d", err, repository.createCalls)
 	}
 }
@@ -646,31 +646,31 @@ func TestWorkflowTransitionsCoverRulesDependenciesCASAndState(t *testing.T) {
 	tests := []struct {
 		name    string
 		current func(testing.TB) domain.FlowFragmentAggregate
-		invoke  func(WorkflowService, domain.Revision) (domain.FlowFragmentAggregate, error)
+		invoke  func(FlowFragmentService, domain.Revision) (domain.FlowFragmentAggregate, error)
 		assert  func(*testing.T, domain.FlowFragmentAggregate)
 	}{
-		{name: "update", current: workflowUseCaseFixture, invoke: func(service WorkflowService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
+		{name: "update", current: workflowUseCaseFixture, invoke: func(service FlowFragmentService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
 			return service.Update(context.Background(), "workflow", "Updated", "folder", domain.Properties{"owner": "qa"}, revision, 2)
 		}, assert: func(t *testing.T, result domain.FlowFragmentAggregate) {
 			if result.FlowFragment.DisplayName != "Updated" {
 				t.Fatalf("updated workflow = %#v", result)
 			}
 		}},
-		{name: "publish", current: workflowUseCaseFixture, invoke: func(service WorkflowService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
+		{name: "publish", current: workflowUseCaseFixture, invoke: func(service FlowFragmentService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
 			return service.PublishVersion(context.Background(), "workflow", "workflow-v2", workflowUseCaseFixture(t).Current.Definition, revision, 2)
 		}, assert: func(t *testing.T, result domain.FlowFragmentAggregate) {
 			if result.Current.ID != "workflow-v2" || result.Current.VersionNumber != 2 {
 				t.Fatalf("published workflow = %#v", result)
 			}
 		}},
-		{name: "delete", current: workflowUseCaseFixture, invoke: func(service WorkflowService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
+		{name: "delete", current: workflowUseCaseFixture, invoke: func(service FlowFragmentService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
 			return service.Delete(context.Background(), "workflow", revision, 2)
 		}, assert: func(t *testing.T, result domain.FlowFragmentAggregate) {
 			if result.FlowFragment.DeletedAt != 2 {
 				t.Fatalf("deleted workflow = %#v", result)
 			}
 		}},
-		{name: "restore", current: deletedWorkflowUseCaseFixture, invoke: func(service WorkflowService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
+		{name: "restore", current: deletedWorkflowUseCaseFixture, invoke: func(service FlowFragmentService, revision domain.Revision) (domain.FlowFragmentAggregate, error) {
 			return service.Restore(context.Background(), "workflow", revision, 3)
 		}, assert: func(t *testing.T, result domain.FlowFragmentAggregate) {
 			if result.FlowFragment.DeletedAt != 0 {
@@ -682,22 +682,22 @@ func TestWorkflowTransitionsCoverRulesDependenciesCASAndState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			current := test.current(t)
 			repository := &workflowRepositoryMatrix{current: current}
-			result, err := test.invoke(NewWorkflowService(repository), current.FlowFragment.Revision)
+			result, err := test.invoke(NewFlowFragmentService(repository), current.FlowFragment.Revision)
 			if err != nil || repository.saveCalls != 1 || !reflect.DeepEqual(result, repository.saved) {
 				t.Fatalf("result/error/save calls = %#v/%v/%d", result, err, repository.saveCalls)
 			}
 			test.assert(t, result)
 
 			repository = &workflowRepositoryMatrix{current: current, loadErr: failure}
-			if _, err := test.invoke(NewWorkflowService(repository), current.FlowFragment.Revision); !errors.Is(err, failure) || repository.saveCalls != 0 {
+			if _, err := test.invoke(NewFlowFragmentService(repository), current.FlowFragment.Revision); !errors.Is(err, failure) || repository.saveCalls != 0 {
 				t.Fatalf("load failure/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &workflowRepositoryMatrix{current: current}
-			if _, err := test.invoke(NewWorkflowService(repository), current.FlowFragment.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
+			if _, err := test.invoke(NewFlowFragmentService(repository), current.FlowFragment.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
 				t.Fatalf("CAS/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &workflowRepositoryMatrix{current: current, saveErr: failure}
-			if result, err := test.invoke(NewWorkflowService(repository), current.FlowFragment.Revision); !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.FlowFragmentAggregate{}) || repository.saveCalls != 1 {
+			if result, err := test.invoke(NewFlowFragmentService(repository), current.FlowFragment.Revision); !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.FlowFragmentAggregate{}) || repository.saveCalls != 1 {
 				t.Fatalf("save failure/result/error/calls = %#v/%v/%d", result, err, repository.saveCalls)
 			}
 		})
@@ -710,22 +710,22 @@ func TestWorkflowTransitionsRejectDomainRulesBeforeSave(t *testing.T) {
 	tests := []struct {
 		name    string
 		current domain.FlowFragmentAggregate
-		invoke  func(WorkflowService, domain.Revision) error
+		invoke  func(FlowFragmentService, domain.Revision) error
 		want    string
 	}{
-		{name: "invalid update", current: active, want: "display name is required", invoke: func(service WorkflowService, revision domain.Revision) error {
+		{name: "invalid update", current: active, want: "display name is required", invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.Update(context.Background(), "workflow", "", "", domain.Properties{}, revision, 2)
 			return err
 		}},
-		{name: "duplicate publication", current: active, want: "new version id must differ from the current version", invoke: func(service WorkflowService, revision domain.Revision) error {
+		{name: "duplicate publication", current: active, want: "new version id must differ from the current version", invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.PublishVersion(context.Background(), "workflow", "workflow-v1", active.Current.Definition, revision, 2)
 			return err
 		}},
-		{name: "delete twice", current: deleted, want: "lifecycle transition is a no-op", invoke: func(service WorkflowService, revision domain.Revision) error {
+		{name: "delete twice", current: deleted, want: "lifecycle transition is a no-op", invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.Delete(context.Background(), "workflow", revision, 3)
 			return err
 		}},
-		{name: "restore active", current: active, want: "lifecycle transition is a no-op", invoke: func(service WorkflowService, revision domain.Revision) error {
+		{name: "restore active", current: active, want: "lifecycle transition is a no-op", invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.Restore(context.Background(), "workflow", revision, 2)
 			return err
 		}},
@@ -733,7 +733,7 @@ func TestWorkflowTransitionsRejectDomainRulesBeforeSave(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &workflowRepositoryMatrix{current: test.current}
-			if err := test.invoke(NewWorkflowService(repository), test.current.FlowFragment.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.saveCalls != 0 {
+			if err := test.invoke(NewFlowFragmentService(repository), test.current.FlowFragment.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.saveCalls != 0 {
 				t.Fatalf("error/save calls = %v/%d", err, repository.saveCalls)
 			}
 		})
