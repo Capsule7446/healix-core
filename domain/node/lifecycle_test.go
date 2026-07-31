@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 )
@@ -291,7 +292,7 @@ func TestLeafLifecycleStartFailurePreventsExecution(t *testing.T) {
 	sink := &timelineSinkStub{errAt: StepBoundaryStarted, err: original}
 	rt := &Runtime{RunID: "run", Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}}}, StepTimeline: sink}
 	_, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
-	if !errors.Is(err, ErrStepTimelineStart) || !errors.Is(err, original) {
+	if !fault.IsCode(err, CodeStepTimelineStartFailed) || !errors.Is(err, original) {
 		t.Fatalf("error = %v, want start sentinel and original error", err)
 	}
 }
@@ -306,7 +307,7 @@ func TestLeafLifecycleFinishFailurePreservesOriginalFailure(t *testing.T) {
 		t.Fatalf("beginLeafLifecycle: %v", err)
 	}
 	err = lifecycle.Complete(context.Background(), nodeErr)
-	if !errors.Is(err, nodeErr) || !errors.Is(err, ErrStepTimelineFinish) || !errors.Is(err, timelineErr) {
+	if !errors.Is(err, nodeErr) || !fault.IsCode(err, CodeStepTimelineFinishFailed) || !errors.Is(err, timelineErr) {
 		t.Fatalf("error chain = %v, want node, finish sentinel, and timeline errors", err)
 	}
 }

@@ -19,6 +19,10 @@ This registry defines the stable public error-code contract. A code is immutable
 | `EXECUTION_OPERATION_TIMEOUT` | `DEADLINE_EXCEEDED` | `node operation timed out` | none | Must preserve deadline cause. |
 | `EXECUTION_TRANSIENT_DRIVER` | `UNAVAILABLE` | `node driver is temporarily unavailable` | none | Explicit retryable driver classification only. |
 | `EXECUTION_OPERATION_FAILED` | `INTERNAL` | `node operation failed` | none | Cause is never public. |
+| `EXECUTION_STEP_TIMELINE_START_FAILED` | `INTERNAL` | `step timeline start could not be recorded` | none | Preserve the recorder cause privately; node identity, occurrence, and adapter details remain private. |
+| `EXECUTION_STEP_TIMELINE_FINISH_FAILED` | `INTERNAL` | `step timeline finish could not be recorded` | none | Preserve validation or recorder causes privately; node identity, occurrence, and timeline values remain private. |
+| `EXECUTION_NODE_COMPLETION_OBSERVATION_FAILED` | `INTERNAL` | `node completion observation could not be recorded` | none | Preserve the observer cause privately; execution identities, handler results, and adapter details remain private. |
+| `EXECUTION_LEAF_COMPLETION_FAILED` | `INTERNAL` | `leaf execution completion failed` | none | Aggregate node and completion side-effect failures without exposing any underlying message; every cause remains traversable privately. |
 | `EXECUTION_PLAN_UNSEALED` | `FAILED_PRECONDITION` | `execution plan must be sealed` | none | Not retryable without sealing. |
 | `EXECUTION_STATUS_TRANSITION_INVALID` | `FAILED_PRECONDITION` | `execution status transition is invalid` | none | The lifecycle state is not itself a fault. |
 | `EXECUTION_RUN_STATUS_TRANSITION_INVALID` | `FAILED_PRECONDITION` | `run status transition is invalid` | none | The containing run lifecycle is not itself a fault. |

@@ -31,8 +31,6 @@
 | `runtimeReadOnlyBrowser.ObserveElement` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NewNodeCompletionChain` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NodeCompletionChain.HasHandlers` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `LeafCompletionError.Error` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `LeafCompletionError.Unwrap` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `LeafExecutionError` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `leafLifecycle.MarkSkipped` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `leafLifecycle.Complete` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |

@@ -72,13 +72,13 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result R
 	rt := newRuntime(program, cfg, timeline)
 	runErr = program.Root.Run(ctx, rt)
 	result.ExecutionOutcome = executionOutcome(node.LeafExecutionError(runErr))
-	if errors.Is(runErr, node.ErrStepTimelineStart) {
+	if fault.IsCode(runErr, node.CodeStepTimelineStartFailed) {
 		if !rt.LeafExecutionStarted() {
 			result.ExecutionOutcome = ExecutionNotStarted
 		}
 		result.TimelineOutcome = TimelineStartFailed
 	}
-	if errors.Is(runErr, node.ErrStepTimelineFinish) {
+	if fault.IsCode(runErr, node.CodeStepTimelineFinishFailed) {
 		result.TimelineOutcome = TimelineFinishFailed
 	}
 	return result, runErr

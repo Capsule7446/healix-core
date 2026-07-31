@@ -16,12 +16,6 @@ const (
 	defaultCompletionChainTimeout   = 30 * time.Second
 )
 
-var (
-	ErrStepTimelineStart         = errors.New("node: record step timeline start")
-	ErrStepTimelineFinish        = errors.New("node: record step timeline finish")
-	ErrNodeCompletionObservation = errors.New("node: record completion observation")
-)
-
 type TimelineMark struct {
 	Offset   time.Duration
 	Sequence uint64
@@ -316,26 +310,118 @@ type NodeCompletionObserver interface {
 	RecordNodeCompletion(context.Context, NodeCompletionObservation) error
 }
 
-type LeafCompletionError struct {
-	NodeErr        error
-	TimelineErr    error
-	ObservationErr error
+type leafCompletionError struct {
+	fault          error
+	nodeErr        error
+	timelineErr    error
+	observationErr error
 }
 
-func (e *LeafCompletionError) Error() string {
-	return errors.Join(e.NodeErr, e.TimelineErr, e.ObservationErr).Error()
+func (e *leafCompletionError) Error() string {
+	return e.fault.Error()
 }
 
-func (e *LeafCompletionError) Unwrap() []error {
-	return []error{e.NodeErr, e.TimelineErr, e.ObservationErr}
+func (e *leafCompletionError) Unwrap() []error {
+	return nonNilErrors(e.fault, e.nodeErr, e.timelineErr, e.observationErr)
+}
+
+func newLeafCompletionError(nodeErr, timelineErr, observationErr error) error {
+	return &leafCompletionError{
+		fault: mustNodeFault(
+			fault.Internal,
+			CodeLeafCompletionFailed,
+			"leaf execution completion failed",
+		),
+		nodeErr:        nodeErr,
+		timelineErr:    timelineErr,
+		observationErr: observationErr,
+	}
 }
 
 func LeafExecutionError(err error) error {
-	var completionErr *LeafCompletionError
-	if errors.As(err, &completionErr) {
-		return completionErr.NodeErr
+	if !containsLeafCompletionError(err) {
+		return err
+	}
+	return withoutLeafCompletionEffects(err)
+}
+
+func containsLeafCompletionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if _, ok := err.(*leafCompletionError); ok {
+		return true
+	}
+	if multi, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range multi.Unwrap() {
+			if containsLeafCompletionError(child) {
+				return true
+			}
+		}
+		return false
+	}
+	return containsLeafCompletionError(errors.Unwrap(err))
+}
+
+func withoutLeafCompletionEffects(err error) error {
+	if err == nil {
+		return nil
+	}
+	if completionErr, ok := err.(*leafCompletionError); ok {
+		return completionErr.nodeErr
+	}
+	if multi, ok := err.(interface{ Unwrap() []error }); ok {
+		children := multi.Unwrap()
+		transformed := make([]error, 0, len(children))
+		for _, child := range children {
+			if executionErr := withoutLeafCompletionEffects(child); executionErr != nil {
+				transformed = append(transformed, executionErr)
+			}
+		}
+		return errors.Join(transformed...)
+	}
+	if child := errors.Unwrap(err); child != nil && containsLeafCompletionError(child) {
+		return withoutLeafCompletionEffects(child)
 	}
 	return err
+}
+
+func stepTimelineStartError(cause error) error {
+	return wrapNodeFault(cause, CodeStepTimelineStartFailed, "step timeline start could not be recorded")
+}
+
+func stepTimelineFinishError(cause error) error {
+	return wrapNodeFault(cause, CodeStepTimelineFinishFailed, "step timeline finish could not be recorded")
+}
+
+func nodeCompletionObservationError(cause error) error {
+	return wrapNodeFault(cause, CodeNodeCompletionObservation, "node completion observation could not be recorded")
+}
+
+func wrapNodeFault(cause error, code fault.Code, message string) error {
+	err, constructionErr := fault.Wrap(cause, fault.Internal, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func mustNodeFault(kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.New(kind, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func nonNilErrors(values ...error) []error {
+	result := make([]error, 0, len(values))
+	for _, value := range values {
+		if value != nil {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 type leafLifecycle struct {
@@ -367,7 +453,7 @@ func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind stri
 		return nil, fmt.Errorf("validate step timeline start: %w", err)
 	}
 	if err := rt.StepTimeline.RecordStepTimelineEvent(ctx, event); err != nil {
-		return nil, fmt.Errorf("%w for %s/%d: %w", ErrStepTimelineStart, nodeID, occurrence, err)
+		return nil, stepTimelineStartError(err)
 	}
 	rt.leafExecutionStarted = true
 	return lifecycle, nil
@@ -397,7 +483,7 @@ func (l *leafLifecycle) Complete(ctx context.Context, nodeErr error) error {
 			cancel()
 		}
 		if timelineErr != nil {
-			timelineErr = fmt.Errorf("%w for %s/%d: %w", ErrStepTimelineFinish, l.execution.NodeID, l.execution.Occurrence, timelineErr)
+			timelineErr = stepTimelineFinishError(timelineErr)
 		}
 	}
 	snapshot := NodeExecutionSnapshot{
@@ -415,12 +501,12 @@ func (l *leafLifecycle) Complete(ctx context.Context, nodeErr error) error {
 		observation := NodeCompletionObservation{Execution: l.execution, Results: append([]CompletionHandlerResult(nil), results...)}
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
 		if err := l.runtime.CompletionObserver.RecordNodeCompletion(cleanupCtx, observation); err != nil {
-			observationErr = fmt.Errorf("%w for %s/%d: %w", ErrNodeCompletionObservation, l.execution.NodeID, l.execution.Occurrence, err)
+			observationErr = nodeCompletionObservationError(err)
 		}
 		cancel()
 	}
 	if timelineErr != nil || observationErr != nil {
-		return &LeafCompletionError{NodeErr: nodeErr, TimelineErr: timelineErr, ObservationErr: observationErr}
+		return newLeafCompletionError(nodeErr, timelineErr, observationErr)
 	}
 	return nodeErr
 }

@@ -43,7 +43,7 @@ func TestRunProgramReportsTimelineStartFailureBeforeLeafExecution(t *testing.T) 
 		Recorder:     &engineTestRecorder{},
 		StepTimeline: &resultTimelineSink{startErr: startErr},
 	})
-	if !errors.Is(err, node.ErrStepTimelineStart) {
+	if !fault.IsCode(err, node.CodeStepTimelineStartFailed) {
 		t.Fatalf("error = %v, want timeline start error", err)
 	}
 	if result.ExecutionOutcome != ExecutionNotStarted || result.TimelineOutcome != TimelineStartFailed {
@@ -70,7 +70,7 @@ func TestRunProgramReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
 		Recorder:     &engineTestRecorder{},
 		StepTimeline: &resultTimelineSink{startErr: startErr, failStartAt: 2},
 	})
-	if !errors.Is(err, node.ErrStepTimelineStart) {
+	if !fault.IsCode(err, node.CodeStepTimelineStartFailed) {
 		t.Fatalf("error = %v, want timeline start error", err)
 	}
 	if result.ExecutionOutcome != ExecutionFailed || result.TimelineOutcome != TimelineStartFailed {
@@ -89,7 +89,7 @@ func TestRunProgramKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {
 		Recorder:     &engineTestRecorder{},
 		StepTimeline: &resultTimelineSink{finishErr: finishErr},
 	})
-	if !errors.Is(err, node.ErrStepTimelineFinish) {
+	if !fault.IsCode(err, node.CodeStepTimelineFinishFailed) {
 		t.Fatalf("error = %v, want timeline finish error", err)
 	}
 	if result.ExecutionOutcome != ExecutionSucceeded || result.TimelineOutcome != TimelineFinishFailed || result.RecordingOutcome != RecordingSucceeded {
@@ -215,7 +215,7 @@ func TestRunProgramReportsObserverFailureWithoutChangingExecutionOutcome(t *test
 		ReadOnlyBrowser:    readOnlyBrowserNoop{},
 		CompletionObserver: completionObserverError{err: observerErr},
 	})
-	if !errors.Is(err, node.ErrNodeCompletionObservation) || !errors.Is(err, observerErr) {
+	if !fault.IsCode(err, node.CodeNodeCompletionObservation) || !errors.Is(err, observerErr) {
 		t.Fatalf("error = %v, want completion observation error", err)
 	}
 	if result.ExecutionOutcome != ExecutionSucceeded {

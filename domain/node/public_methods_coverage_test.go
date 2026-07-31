@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,25 +55,65 @@ func TestWorkflowCallNodeIDUsesExplicitThenTargetIdentity(t *testing.T) {
 	}
 }
 
-func TestLeafCompletionErrorPreservesAllCausesAndMessage(t *testing.T) {
-	nodeErr := errors.New("node failed")
-	timelineErr := errors.New("timeline failed")
-	observationErr := errors.New("observation failed")
-	err := &LeafCompletionError{NodeErr: nodeErr, TimelineErr: timelineErr, ObservationErr: observationErr}
-
-	if got, want := err.Error(), "node failed\ntimeline failed\nobservation failed"; got != want {
-		t.Fatalf("Error() = %q, want %q", got, want)
+func TestLifecycleSideEffectFaultsExposeSafeStableContracts(t *testing.T) {
+	cause := errors.New("node=node-secret occurrence=999 adapter=adapter-secret")
+	tests := []struct {
+		name    string
+		err     error
+		code    fault.Code
+		message string
+	}{
+		{"start", stepTimelineStartError(cause), CodeStepTimelineStartFailed, "step timeline start could not be recorded"},
+		{"finish", stepTimelineFinishError(cause), CodeStepTimelineFinishFailed, "step timeline finish could not be recorded"},
+		{"observation", nodeCompletionObservationError(cause), CodeNodeCompletionObservation, "node completion observation could not be recorded"},
 	}
-	for _, cause := range []error{nodeErr, timelineErr, observationErr} {
-		if !errors.Is(err, cause) {
-			t.Fatalf("LeafCompletionError does not wrap %v", cause)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor, ok := fault.Describe(test.err)
+			if !ok || descriptor.Code() != test.code || descriptor.Kind() != fault.Internal || descriptor.Message() != test.message || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || !errors.Is(test.err, cause) {
+				t.Fatalf("descriptor/error = %#v/%v", descriptor, test.err)
+			}
+			for _, secret := range []string{"node-secret", "999", "adapter-secret", cause.Error()} {
+				if strings.Contains(test.err.Error(), secret) {
+					t.Fatalf("public error leaked %q: %q", secret, test.err.Error())
+				}
+			}
+		})
+	}
+}
+
+func TestLeafCompletionErrorPreservesCausesBehindSafeContract(t *testing.T) {
+	nodeErr := errors.New("node-secret")
+	timelineCause := errors.New("timeline-secret")
+	observationCause := errors.New("observation-secret")
+	err := newLeafCompletionError(
+		nodeErr,
+		stepTimelineFinishError(timelineCause),
+		nodeCompletionObservationError(observationCause),
+	)
+
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeLeafCompletionFailed || descriptor.Kind() != fault.Internal || descriptor.Message() != "leaf execution completion failed" {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
+	}
+	for _, secret := range []string{"node-secret", "timeline-secret", "observation-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("public error leaked %q: %q", secret, err.Error())
 		}
+	}
+	for _, cause := range []error{nodeErr, timelineCause, observationCause} {
+		if !errors.Is(err, cause) {
+			t.Fatalf("completion error does not wrap %v", cause)
+		}
+	}
+	if !fault.IsCode(err, CodeStepTimelineFinishFailed) || !fault.IsCode(err, CodeNodeCompletionObservation) {
+		t.Fatalf("side-effect codes were not preserved: %v", err)
 	}
 }
 
 func TestLeafExecutionErrorExtractsNodeCause(t *testing.T) {
 	nodeErr := errors.New("node failed")
-	wrapper := &LeafCompletionError{NodeErr: nodeErr, TimelineErr: errors.New("timeline failed")}
+	wrapper := newLeafCompletionError(nodeErr, stepTimelineFinishError(errors.New("timeline failed")), nil)
 	if got := LeafExecutionError(wrapper); !errors.Is(got, nodeErr) {
 		t.Fatalf("LeafExecutionError() = %v, want node cause", got)
 	}

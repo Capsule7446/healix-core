@@ -37,15 +37,37 @@ func TestNodeCompletionChainHasHandlersDirect(t *testing.T) {
 
 func TestLeafExecutionErrorDirect(t *testing.T) {
 	nodeErr := errors.New("node")
-	completion := &LeafCompletionError{NodeErr: nodeErr, TimelineErr: errors.New("timeline")}
+	completion := newLeafCompletionError(nodeErr, stepTimelineFinishError(errors.New("timeline")), nil)
 	wrapped := fmt.Errorf("wrapped: %w", completion)
+	telemetryOnly := newLeafCompletionError(nil, stepTimelineFinishError(errors.New("timeline only")), nil)
+	canceled := newLeafCompletionError(context.Canceled, stepTimelineFinishError(errors.New("timeline canceled")), nil)
+	independent := errors.New("independent")
+	joinedTelemetry := errors.Join(telemetryOnly, independent)
+	wrappedJoinedTelemetry := fmt.Errorf("wrapped: %w", joinedTelemetry)
+	joinedNode := errors.Join(completion, independent)
+	joinedCanceled := errors.Join(telemetryOnly, context.Canceled)
 	for _, tt := range []struct {
 		name        string
 		input, want error
-	}{{"plain", nodeErr, nodeErr}, {"completion", completion, nodeErr}, {"wrapped completion", wrapped, nodeErr}, {"nil", nil, nil}} {
+	}{
+		{"plain", nodeErr, nodeErr},
+		{"completion", completion, nodeErr},
+		{"wrapped completion", wrapped, nodeErr},
+		{"telemetry only", telemetryOnly, nil},
+		{"canceled node", canceled, context.Canceled},
+		{"joined telemetry", joinedTelemetry, independent},
+		{"wrapped joined telemetry", wrappedJoinedTelemetry, independent},
+		{"joined node", joinedNode, nodeErr},
+		{"joined cancellation", joinedCanceled, context.Canceled},
+		{"nil", nil, nil},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := LeafExecutionError(tt.input); got != tt.want {
-				t.Fatalf("got %v want %v", got, tt.want)
+			got := LeafExecutionError(tt.input)
+			if tt.want == nil && got != nil || tt.want != nil && !errors.Is(got, tt.want) {
+				t.Fatalf("got %v want cause %v", got, tt.want)
+			}
+			if tt.name == "joined node" && !errors.Is(got, independent) {
+				t.Fatalf("joined sibling cause was lost: %v", got)
 			}
 		})
 	}
