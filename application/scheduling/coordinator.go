@@ -30,7 +30,12 @@ func isNilPort(port any) bool {
 		return true
 	}
 	value := reflect.ValueOf(port)
-	return value.Kind() == reflect.Ptr && value.IsNil()
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 type Claim struct {

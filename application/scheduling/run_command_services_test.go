@@ -169,6 +169,12 @@ func (*typedNilSignaler) SignalRunCancellation(context.Context, string) error {
 	panic("typed nil signaler invoked")
 }
 
+type functionSignaler func(context.Context, string) error
+
+func (signaler functionSignaler) SignalRunCancellation(ctx context.Context, runID string) error {
+	return signaler(ctx, runID)
+}
+
 func TestCancelRejectsSignalRequirementThatDisagreesWithExpectedStatus(t *testing.T) {
 	for _, test := range []struct {
 		status domainexecution.RunStatus
@@ -208,24 +214,35 @@ func TestRunningCancelAndAbortSignalOnlyAfterAtomicCommit(t *testing.T) {
 }
 
 func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
-	var signaler *typedNilSignaler
-	committed := RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: false, SignalRequired: true}
-	store := &commandStoreStub{abortResult: committed}
+	var pointerSignaler *typedNilSignaler
+	var funcSignaler functionSignaler
+	for _, test := range []struct {
+		name     string
+		signaler RunCancellationSignaler
+	}{
+		{name: "pointer", signaler: pointerSignaler},
+		{name: "function", signaler: funcSignaler},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			committed := RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: false, SignalRequired: true}
+			store := &commandStoreStub{abortResult: committed}
 
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			t.Fatalf("typed-nil signaler panicked: %v", recovered)
-		}
-	}()
-	result, err := NewAbortRunService(store, signaler).AbortRun(context.Background(), AbortRunCommand{
-		CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2,
-		Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"},
-	})
-	if !fault.IsCode(err, CodeRunSignalRetryable) || !reflect.DeepEqual(result, committed) {
-		t.Fatalf("result/error = %#v/%v", result, err)
-	}
-	if strings.Contains(err.Error(), "typed nil") || strings.Contains(err.Error(), "unavailable") {
-		t.Fatalf("public retry error leaked internal details: %v", err)
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("typed-nil signaler panicked: %v", recovered)
+				}
+			}()
+			result, err := NewAbortRunService(store, test.signaler).AbortRun(context.Background(), AbortRunCommand{
+				CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2,
+				Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"},
+			})
+			if !fault.IsCode(err, CodeRunSignalRetryable) || !reflect.DeepEqual(result, committed) {
+				t.Fatalf("result/error = %#v/%v", result, err)
+			}
+			if strings.Contains(err.Error(), "typed nil") || strings.Contains(err.Error(), "unavailable") {
+				t.Fatalf("public retry error leaked internal details: %v", err)
+			}
+		})
 	}
 }
 
