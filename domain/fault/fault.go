@@ -3,9 +3,11 @@ package fault
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"regexp"
+	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -166,6 +168,16 @@ func construct(cause error, kind Kind, code Code, safeMessage string, options ..
 	if err := validateParams(values.params); err != nil {
 		return nil, err
 	}
+	// Truncating here rather than rejecting is deliberate. Violations are built
+	// from untrusted input, so an over-cap slice is a routine consequence of a
+	// hostile payload, not a programming error. Failing construction turned that
+	// payload into a construction error, which the must-construct idiom every
+	// context uses then turned into a panic. Keeping the deterministic leading
+	// prefix degrades the report instead of the process; callers that truncate
+	// themselves are unaffected.
+	if len(values.violations) > MaxViolations {
+		values.violations = values.violations[:MaxViolations]
+	}
 	if err := validateViolations(values.violations); err != nil {
 		return nil, err
 	}
@@ -184,6 +196,25 @@ func (e *Error) Unwrap() error {
 		return nil
 	}
 	return e.cause
+}
+
+// Format keeps every verb on the safe surface. Without it, the default struct
+// formatting used by %#v and %+v reflects over unexported fields and prints the
+// private cause — the one part of a fault that is allowed to hold a token, a
+// URL, or page content. A host writing err to a log with %#v would then publish
+// exactly what Unwrap exists to gate. Callers that genuinely want the cause must
+// ask for it through Unwrap.
+func (e *Error) Format(state fmt.State, verb rune) {
+	if e == nil {
+		_, _ = io.WriteString(state, "<nil>")
+		return
+	}
+	switch verb {
+	case 'q':
+		_, _ = io.WriteString(state, strconv.Quote(e.Error()))
+	default:
+		_, _ = io.WriteString(state, e.Error())
+	}
 }
 
 // Is matches another fault only by stable code.
@@ -258,6 +289,21 @@ func KindOf(err error) (Kind, bool) {
 	}
 	return fault.kind, true
 }
+
+// IsCode asks whether code appears ANYWHERE in the chain, which is a different
+// question from the one CodeOf, KindOf, and Describe answer.
+//
+// Those three report the boundary fault — the single classification a host
+// routes and renders on. IsCode walks the whole chain, so it stays true for a
+// fault carried underneath one. The difference is deliberate and load-bearing:
+// a leaf completion that failed for several reasons at once wraps each
+// contributing fault so a host can ask about all of them, while still having
+// one primary code to act on.
+//
+// The distinction is worth stating because the two can disagree, and a host
+// that classifies with CodeOf but branches with IsCode would route the same
+// error two ways. Use CodeOf or Describe to decide what an error IS; use IsCode
+// to ask whether a particular failure was INVOLVED.
 func IsCode(err error, code Code) bool {
 	if validateCode(code) != nil {
 		return false
@@ -306,12 +352,22 @@ func validateMessage(message string) error {
 	return nil
 }
 
+// containsUnsafePublicText rejects anything that could make public text render
+// as something other than what it says.
+//
+// Naming two separators by hand covered U+2028 and U+2029 and nothing else: the
+// other Unicode space separators, combining marks, variation selectors, and
+// default-ignorable characters all passed. A lone U+3164 HANGUL FILLER, which
+// renders as nothing at all, counted as safe English. The rule is now stated
+// positively — public text is printable ASCII, which is what every safe message
+// in the registry already is. Anything a caller needs beyond that belongs in the
+// private cause, where rendering does not matter.
 func containsUnsafePublicText(value string) bool {
 	if !utf8.ValidString(value) {
 		return true
 	}
 	for _, character := range value {
-		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == ' ' || character == ' ' {
+		if character < 0x20 || character > 0x7E {
 			return true
 		}
 	}

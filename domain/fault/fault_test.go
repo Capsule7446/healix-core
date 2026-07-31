@@ -212,3 +212,93 @@ func TestFaultRejectsMaliciousTextAtPublicBoundaries(t *testing.T) {
 		})
 	}
 }
+
+// A cause may hold a token, a URL, or page content — that is what Unwrap exists
+// to gate. Default struct formatting reflects over unexported fields, so %#v and
+// %+v published exactly that to any host logging the error.
+func TestFormattingNeverReachesThePrivateCause(t *testing.T) {
+	cause := fmt.Errorf("carrier: %w", &formattedCause{token: "token-8f21"})
+
+	err, constructionErr := Wrap(cause, Internal, Code("KERNEL_FORMAT_PROBE"), "operation could not be completed")
+	if constructionErr != nil {
+		t.Fatalf("construct: %v", constructionErr)
+	}
+
+	for _, format := range []string{"%v", "%s", "%q", "%+v", "%#v"} {
+		rendered := fmt.Sprintf(format, err)
+		if strings.Contains(rendered, "token-8f21") {
+			t.Fatalf("%s rendered the private cause: %s", format, rendered)
+		}
+		if !strings.Contains(rendered, "KERNEL_FORMAT_PROBE") {
+			t.Fatalf("%s lost the code: %s", format, rendered)
+		}
+	}
+	// The cause is still reachable for a caller that deliberately asks.
+	if !errors.Is(err, cause) {
+		t.Fatal("Unwrap no longer reaches the cause")
+	}
+}
+
+type formattedCause struct{ token string }
+
+func (c *formattedCause) Error() string { return "private detail " + c.token }
+
+// Over-cap violations used to fail construction. Every context builds violations
+// from untrusted input and constructs through a must-helper, so a hostile payload
+// became a panic instead of a classified rejection.
+func TestOverCapViolationsTruncateInsteadOfFailingConstruction(t *testing.T) {
+	violations := make([]Violation, 0, MaxViolations+10)
+	for index := 0; index < MaxViolations+10; index++ {
+		violation, err := NewViolation(CodeFieldInvalid, fmt.Sprintf("items.%d", index), "item is invalid")
+		if err != nil {
+			t.Fatalf("build violation %d: %v", index, err)
+		}
+		violations = append(violations, violation)
+	}
+
+	err, constructionErr := New(InvalidArgument, Code("KERNEL_CAP_PROBE"), "input is invalid", WithViolations(violations...))
+	if constructionErr != nil {
+		t.Fatalf("construction failed instead of truncating: %v", constructionErr)
+	}
+	kept := err.Violations()
+	if len(kept) != MaxViolations {
+		t.Fatalf("kept %d violations, want the cap %d", len(kept), MaxViolations)
+	}
+	// The prefix is kept, so the report degrades deterministically rather than
+	// becoming an arbitrary subset.
+	for index, violation := range kept {
+		if want := fmt.Sprintf("items.%d", index); violation.Field() != want {
+			t.Fatalf("violation %d is %q, want the leading prefix entry %q", index, violation.Field(), want)
+		}
+	}
+}
+
+// "safe English" was enforced by naming two separators by hand, which let every
+// other invisible or reordering character through.
+func TestPublicTextRejectsInvisibleAndReorderingCharacters(t *testing.T) {
+	rejected := map[string]string{
+		"no-break space":     "safe\u00A0text",
+		"ogham space":        "safe\u1680text",
+		"en quad":            "safe\u2000text",
+		"narrow no-break":    "safe\u202Ftext",
+		"ideographic space":  "safe\u3000text",
+		"hangul filler":      "\u3164",
+		"combining marks":    "A\u0300\u0301\u0302",
+		"variation selector": "safe\uFE0Ftext",
+		"right-to-left mark": "safe\u200Ftext",
+		"zero width joiner":  "safe\u200Dtext",
+	}
+	for name, text := range rejected {
+		t.Run(name, func(t *testing.T) {
+			if _, err := New(InvalidArgument, Code("KERNEL_TEXT_PROBE"), text); err == nil {
+				t.Fatalf("message %q was accepted as safe public text", text)
+			}
+			if _, err := NewParam("detail", text); err == nil {
+				t.Fatalf("param value %q was accepted as safe public text", text)
+			}
+		})
+	}
+	if _, err := New(InvalidArgument, Code("KERNEL_TEXT_PROBE"), "plain ascii message (with punctuation) 123"); err != nil {
+		t.Fatalf("ordinary safe English was rejected: %v", err)
+	}
+}
