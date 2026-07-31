@@ -114,6 +114,55 @@ func TestBoundedContextIsolation(t *testing.T) {
 	}
 }
 
+func TestSamplingOwnsNoAutomationAggregateConstructionOrPersistence(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, relative := range []string{"domain/sampling", "application/sampling"} {
+		directory := filepath.Join(root, filepath.FromSlash(relative))
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		err := walkProductionGo(directory, func(path string, parsed *ast.File, fset *token.FileSet) {
+			automationNames := make(map[string]struct{})
+			for _, spec := range parsed.Imports {
+				if unquote(t, spec) != coreModule+"domain/automation" {
+					continue
+				}
+				name := "automation"
+				if spec.Name != nil {
+					name = spec.Name.Name
+				}
+				automationNames[name] = struct{}{}
+			}
+			ast.Inspect(parsed, func(node ast.Node) bool {
+				selector, ok := node.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				identifier, ok := selector.X.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if _, imported := automationNames[identifier.Name]; !imported {
+					return true
+				}
+				forbidden := strings.HasPrefix(selector.Sel.Name, "NewElementTarget") ||
+					strings.HasPrefix(selector.Sel.Name, "NewFlowFragment") ||
+					strings.HasSuffix(selector.Sel.Name, "Aggregate")
+				if forbidden {
+					rel, _ := filepath.Rel(root, path)
+					t.Errorf("%s:%d: Sampling must not construct or expose Automation aggregate %s", filepath.ToSlash(rel), fset.Position(selector.Pos()).Line, selector.Sel.Name)
+				}
+				return true
+			})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestWorkspacePackageIsRemoved(t *testing.T) {
 	root := repositoryRoot(t)
 	workspacePath := filepath.Join(root, "domain", "workspace")
