@@ -15,7 +15,7 @@ func TestNodeFaultCodesAreStableAndWellFormed(t *testing.T) {
 		CodeTransientDriver,
 		CodeOperationFailed,
 	}
-	pattern := regexp.MustCompile(`^NODE_[A-Z][A-Z0-9_]{2,62}$`)
+	pattern := regexp.MustCompile(`^EXECUTION_[A-Z][A-Z0-9_]{2,62}$`)
 	seen := make(map[fault.Code]struct{}, len(codes))
 	for _, code := range codes {
 		if !pattern.MatchString(string(code)) {

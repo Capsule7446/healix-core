@@ -300,13 +300,13 @@ func TestStepActionFailureMatrix(t *testing.T) {
 		want   string
 	}{
 		{name: "missing input variable", action: Action{Kind: ActionInput, Value: "${missing}"}, want: "undefined variable"},
-		{name: "empty select", action: Action{Kind: ActionSelect}, want: "NODE_OPERATION_FAILED"},
-		{name: "empty extract variable", action: Action{Kind: ActionExtract}, want: "NODE_OPERATION_FAILED"},
-		{name: "unknown action", action: Action{Kind: "double_click"}, want: "NODE_OPERATION_FAILED"},
-		{name: "wait stable", action: Action{Kind: ActionClick}, setup: func(element *matrixElement, _ *matrixDriver, _ *Runtime) { element.waitStableErr = sentinel }, want: "NODE_OPERATION_FAILED"},
-		{name: "element action", action: Action{Kind: ActionClick}, setup: func(element *matrixElement, _ *matrixDriver, _ *Runtime) { element.actionErr = sentinel }, want: "NODE_OPERATION_FAILED"},
-		{name: "navigate", action: Action{Kind: ActionNavigate, Value: "https://example.test"}, setup: func(_ *matrixElement, driver *matrixDriver, _ *Runtime) { driver.navigateErr = sentinel }, want: "NODE_OPERATION_FAILED"},
-		{name: "press", action: Action{Kind: ActionPress, Value: "Enter"}, setup: func(_ *matrixElement, driver *matrixDriver, _ *Runtime) { driver.pressErr = sentinel }, want: "NODE_OPERATION_FAILED"},
+		{name: "empty select", action: Action{Kind: ActionSelect}, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "empty extract variable", action: Action{Kind: ActionExtract}, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "unknown action", action: Action{Kind: "double_click"}, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "wait stable", action: Action{Kind: ActionClick}, setup: func(element *matrixElement, _ *matrixDriver, _ *Runtime) { element.waitStableErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "element action", action: Action{Kind: ActionClick}, setup: func(element *matrixElement, _ *matrixDriver, _ *Runtime) { element.actionErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "navigate", action: Action{Kind: ActionNavigate, Value: "https://example.test"}, setup: func(_ *matrixElement, driver *matrixDriver, _ *Runtime) { driver.navigateErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "press", action: Action{Kind: ActionPress, Value: "Enter"}, setup: func(_ *matrixElement, driver *matrixDriver, _ *Runtime) { driver.pressErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
