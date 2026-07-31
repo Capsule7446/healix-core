@@ -21,7 +21,22 @@ const (
 	CodeQueueRevisionConflict       fault.Code = "EXECUTION_QUEUE_REVISION_CONFLICT"
 	CodeQueueMembershipConflict     fault.Code = "EXECUTION_QUEUE_MEMBERSHIP_CONFLICT"
 	CodeRunAdapterContractViolation fault.Code = "EXECUTION_RUN_COMMAND_ADAPTER_CONTRACT_VIOLATION"
+	CodeCancelRunCommandInvalid     fault.Code = "EXECUTION_CANCEL_RUN_COMMAND_INVALID"
+	CodeAbortRunCommandInvalid      fault.Code = "EXECUTION_ABORT_RUN_COMMAND_INVALID"
+	CodeReorderQueueCommandInvalid  fault.Code = "EXECUTION_REORDER_QUEUE_COMMAND_INVALID"
 )
+
+func cancelRunCommandInvalidError(cause error) error {
+	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeCancelRunCommandInvalid, "cancel run command is invalid")
+}
+
+func abortRunCommandInvalidError(cause error) error {
+	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeAbortRunCommandInvalid, "abort run command is invalid")
+}
+
+func reorderQueueCommandInvalidError(cause error) error {
+	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeReorderQueueCommandInvalid, "reorder queue command is invalid")
+}
 
 func runCommandConflictError() error {
 	return newRunCommandFault(fault.Conflict, CodeRunCommandIdentityConflict, "run command identity conflicts with an existing request")
@@ -49,6 +64,14 @@ func queueMembershipConflictError() error {
 
 func runAdapterContractViolationError(cause error) error {
 	err, constructionErr := fault.Wrap(cause, fault.Internal, CodeRunAdapterContractViolation, "run command adapter returned an invalid authoritative result")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func newRunCommandWrappedFault(cause error, kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.Wrap(cause, kind, code, message)
 	if constructionErr != nil {
 		panic(constructionErr)
 	}
@@ -166,11 +189,8 @@ func NewAbortRunService(store RunCommandStore, signaler RunCancellationSignaler)
 	return AbortRunService{store: store, signaler: signaler}
 }
 func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) (RunCommandResult, error) {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.RunID) == "" || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.RunID != command.RunID {
-		return RunCommandResult{}, errors.New("invalid abort run command")
-	}
-	if err := command.Fence.Validate(); err != nil {
-		return RunCommandResult{}, fmt.Errorf("invalid abort run command: %w", err)
+	if err := validateAbort(command); err != nil {
+		return RunCommandResult{}, err
 	}
 	if isNilPort(s.store) {
 		return RunCommandResult{}, schedulingDependencyRequiredError()
@@ -203,7 +223,17 @@ func signalIfRequired(ctx context.Context, signaler RunCancellationSignaler, res
 
 func validateCancel(command CancelRunCommand) error {
 	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.RunID) == "" || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
-		return errors.New("invalid cancel run command")
+		return cancelRunCommandInvalidError(nil)
+	}
+	return nil
+}
+
+func validateAbort(command AbortRunCommand) error {
+	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.RunID) == "" || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.RunID != command.RunID {
+		return abortRunCommandInvalidError(nil)
+	}
+	if err := command.Fence.Validate(); err != nil {
+		return abortRunCommandInvalidError(err)
 	}
 	return nil
 }
@@ -278,12 +308,12 @@ func ReorderQueueRequestDigest(command ReorderQueueCommand) (string, error) {
 
 func validateReorder(command ReorderQueueCommand) error {
 	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ScopeID) == "" || command.ExpectedRevision < 0 || len(command.RunIDs) == 0 {
-		return errors.New("invalid reorder queue command")
+		return reorderQueueCommandInvalidError(nil)
 	}
 	seen := make(map[string]struct{}, len(command.RunIDs))
 	for _, id := range command.RunIDs {
 		if strings.TrimSpace(id) == "" {
-			return errors.New("invalid reorder queue command")
+			return reorderQueueCommandInvalidError(nil)
 		}
 		if _, ok := seen[id]; ok {
 			return queueMembershipConflictError()

@@ -82,7 +82,7 @@ func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			test.mutate(&command)
 			store := &commandStoreStub{}
 			result, err := NewCancelRunService(store, nil).CancelRun(context.Background(), command)
-			if err == nil || !strings.Contains(err.Error(), "invalid cancel run command") {
+			if !fault.IsCode(err, CodeCancelRunCommandInvalid) {
 				t.Fatalf("CancelRun() error = %v", err)
 			}
 			if result != (RunCommandResult{}) || len(store.calls) != 0 {
@@ -116,7 +116,7 @@ func TestAbortRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			test.mutate(&command)
 			store := &commandStoreStub{}
 			result, err := NewAbortRunService(store, nil).AbortRun(context.Background(), command)
-			if err == nil || !strings.Contains(err.Error(), "invalid abort run command") {
+			if !fault.IsCode(err, CodeAbortRunCommandInvalid) {
 				t.Fatalf("AbortRun() error = %v", err)
 			}
 			if result != (RunCommandResult{}) || len(store.calls) != 0 {
@@ -228,6 +228,9 @@ func TestReorderQueueRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			if test.target != nil && !errors.Is(err, test.target) {
 				t.Fatalf("ReorderQueue() error = %v, want %v", err, test.target)
 			}
+			if test.target == nil && !fault.IsCode(err, CodeReorderQueueCommandInvalid) {
+				t.Fatalf("ReorderQueue() error = %v", err)
+			}
 			if !reflect.DeepEqual(result, ReorderQueueResult{}) || store.calls != 0 {
 				t.Fatalf("rejected command result/calls = %#v/%d", result, store.calls)
 			}
@@ -260,6 +263,32 @@ func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *te
 			}
 			if test.err != nil && !errors.Is(err, test.err) {
 				t.Fatalf("ReorderQueue() error = %v, want dependency error", err)
+			}
+		})
+	}
+}
+
+func TestInvalidRunCommandFaultsExposeSafeStableContracts(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		code    fault.Code
+		message string
+	}{
+		{name: "cancel", err: cancelRunCommandInvalidError(errors.New("command=command-secret value=credential-secret")), code: CodeCancelRunCommandInvalid, message: "cancel run command is invalid"},
+		{name: "abort", err: abortRunCommandInvalidError(errors.New("fence=claim-secret value=credential-secret")), code: CodeAbortRunCommandInvalid, message: "abort run command is invalid"},
+		{name: "reorder", err: reorderQueueCommandInvalidError(errors.New("scope=scope-secret run=run-secret")), code: CodeReorderQueueCommandInvalid, message: "reorder queue command is invalid"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor, ok := fault.Describe(test.err)
+			if !ok || descriptor.Code() != test.code || descriptor.Kind() != fault.InvalidArgument || descriptor.Message() != test.message || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("descriptor/error = %#v/%v", descriptor, test.err)
+			}
+			for _, sensitive := range []string{"command-secret", "credential-secret", "claim-secret", "scope-secret", "run-secret"} {
+				if strings.Contains(test.err.Error(), sensitive) {
+					t.Fatalf("public error leaked %q: %q", sensitive, test.err.Error())
+				}
 			}
 		})
 	}
