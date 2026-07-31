@@ -33,6 +33,10 @@ This registry defines the stable public error-code contract. A code is immutable
 
 ## Sampling, evidence, fingerprint, interpolation
 
+| Code | Kind | Safe message | Allowed params / violations | Notes |
+|---|---|---|---|---|
+| `FINGERPRINT_SELECTOR_INVALID` | `INVALID_ARGUMENT` | `element selector is invalid` | none | Selector source values are never exposed in the public message. |
+
 These families are added only in the atomic bounded-context migration that introduces the corresponding producer. Every addition must include its `Kind`, fixed safe fallback message, allowed parameter/violation schema, retry behavior, public consumer, and any persistence mapping.
 
 ## Historical execution evidence mapping
