@@ -102,7 +102,7 @@ func (tx *oneViewResolverTx) InsertCreateRun(context.Context, CreateRunIntent) (
 func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateRunCommand) (ResolvedCreateRun, error) {
 	tx.reads = append(tx.reads, tx.readToken)
 	if tx.view.task.ID != command.ExecutionFlowID || tx.view.version.ID != command.TestTaskVersionID {
-		return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve task version", Cause: errors.New("missing task/version")}
+		return ResolvedCreateRun{}, createRunCatalogGraphUnresolvableError(errors.New("missing task/version"))
 	}
 	plan := automation.ResolvedExecutionFlow{Task: tx.view.task, Version: tx.view.version}
 	invocations := []execution.InvocationScopeSnapshot{}
@@ -126,13 +126,13 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 	var resolveWorkflow func(string, bool, string, string, string, map[string]parameter.Value, map[string]parameter.Binding, int) error
 	resolveWorkflow = func(versionID string, latest bool, path, parentPath, stepID string, values map[string]parameter.Value, bindings map[string]parameter.Binding, depth int) error {
 		if depth > maxDepth {
-			return &CreateRunCatalogGraphError{Operation: "resolve workflow graph", Cause: errors.New("depth limit exceeded")}
+			return createRunCatalogGraphUnresolvableError(errors.New("depth limit exceeded"))
 		}
 		if active[versionID] {
-			return &CreateRunCatalogGraphError{Operation: "resolve workflow graph", Cause: errors.New("cycle detected")}
+			return createRunCatalogGraphUnresolvableError(errors.New("cycle detected"))
 		}
 		if invocationCount >= maxInvocations || len(values) > maxValues-valueCount {
-			return &CreateRunCatalogGraphError{Operation: "resolve workflow graph", Cause: errors.New("invocation or resolved-value limit exceeded")}
+			return createRunCatalogGraphUnresolvableError(errors.New("invocation or resolved-value limit exceeded"))
 		}
 		invocationCount++
 		valueCount += len(values)
@@ -140,14 +140,14 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 		defer delete(active, versionID)
 		version, ok := tx.view.versions[versionID]
 		if !ok {
-			return &CreateRunCatalogGraphError{Operation: "resolve workflow version", Cause: fmt.Errorf("missing %s", versionID)}
+			return createRunCatalogGraphUnresolvableError(fmt.Errorf("missing %s", versionID))
 		}
 		workflow, ok := tx.view.workflows[version.FlowFragmentID]
 		if !ok {
-			return &CreateRunCatalogGraphError{Operation: "resolve workflow", Cause: fmt.Errorf("missing %s", version.FlowFragmentID)}
+			return createRunCatalogGraphUnresolvableError(fmt.Errorf("missing %s", version.FlowFragmentID))
 		}
 		if latest && workflow.CurrentVersionID != version.ID {
-			return &CreateRunCatalogGraphError{Operation: "resolve current workflow", Cause: errors.New("current pointer mismatch")}
+			return createRunCatalogGraphUnresolvableError(errors.New("current pointer mismatch"))
 		}
 		if !seenDependencies[version.ID] {
 			seenDependencies[version.ID] = true
@@ -169,7 +169,7 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 				node, nodeOK := tx.view.nodes[step.ElementTargetID]
 				nodeVersion, versionOK := tx.view.nodeVersion[step.ElementTargetVersionID]
 				if !nodeOK || !versionOK || nodeVersion.ElementTargetID != node.ID {
-					return &CreateRunCatalogGraphError{Operation: "resolve exact node", Cause: errors.New("node or version missing")}
+					return createRunCatalogGraphUnresolvableError(errors.New("node or version missing"))
 				}
 				found := false
 				for _, existing := range plan.Nodes {
@@ -185,7 +185,7 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 				continue
 			}
 			if edgeCount >= maxEdges {
-				return &CreateRunCatalogGraphError{Operation: "resolve workflow graph", Cause: errors.New("reference-edge limit exceeded")}
+				return createRunCatalogGraphUnresolvableError(errors.New("reference-edge limit exceeded"))
 			}
 			edgeCount++
 			targetID := step.Reference.WorkflowVersionID
@@ -193,14 +193,14 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 			if fromLatest {
 				target, ok := tx.view.workflows[step.Reference.FlowFragmentID]
 				if !ok || target.CurrentVersionID == "" {
-					return &CreateRunCatalogGraphError{Operation: "resolve nested current workflow", Cause: errors.New("missing current pointer")}
+					return createRunCatalogGraphUnresolvableError(errors.New("missing current pointer"))
 				}
 				targetID = target.CurrentVersionID
 			}
 			key := version.ID + "\x00" + step.ID
 			resolution := automation.FlowFragmentReferenceResolution{ParentFlowFragmentVersionID: version.ID, StepID: step.ID, FlowFragmentID: step.Reference.FlowFragmentID, WorkflowVersionID: targetID, ResolvedFromLatest: fromLatest}
 			if existing, exists := seenEdges[key]; exists && existing != resolution {
-				return &CreateRunCatalogGraphError{Operation: "resolve edge", Cause: errors.New("conflicting duplicate edge")}
+				return createRunCatalogGraphUnresolvableError(errors.New("conflicting duplicate edge"))
 			}
 			if _, exists := seenEdges[key]; !exists {
 				seenEdges[key] = resolution
@@ -208,13 +208,13 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 			}
 			childVersion, ok := tx.view.versions[targetID]
 			if !ok {
-				return &CreateRunCatalogGraphError{Operation: "resolve nested version", Cause: errors.New("missing exact version")}
+				return createRunCatalogGraphUnresolvableError(errors.New("missing exact version"))
 			}
 			resolvedValues := map[string]parameter.Value{}
 			for name, binding := range step.Reference.ParameterBindings {
 				value, err := binding.Resolve(values)
 				if err != nil {
-					return &CreateRunCatalogGraphError{Operation: "resolve binding", Cause: err}
+					return createRunCatalogGraphUnresolvableError(err)
 				}
 				resolvedValues[name] = value
 			}
@@ -235,19 +235,19 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 	for _, item := range tx.view.version.Items {
 		workflow, ok := tx.view.workflows[item.FlowFragmentID]
 		if !ok {
-			return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve root", Cause: errors.New("missing root")}
+			return ResolvedCreateRun{}, createRunCatalogGraphUnresolvableError(errors.New("missing root"))
 		}
 		versionID, latest := item.WorkflowVersionID, item.VersionPolicy == automation.FlowFragmentVersionLatest
 		if latest {
 			if workflow.CurrentVersionID == "" {
-				return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve root current", Cause: errors.New("missing current pointer")}
+				return ResolvedCreateRun{}, createRunCatalogGraphUnresolvableError(errors.New("missing current pointer"))
 			}
 			versionID = workflow.CurrentVersionID
 		}
 		version := tx.view.versions[versionID]
 		values, err := automation.ResolveParameterValues(version.Definition.Parameters, command.Entries[item.ID])
 		if err != nil {
-			return ResolvedCreateRun{}, &CreateRunCatalogGraphError{Operation: "resolve root values", Cause: err}
+			return ResolvedCreateRun{}, createRunCatalogGraphUnresolvableError(err)
 		}
 		if err := resolveWorkflow(versionID, latest, concreteRootPath(command.RunID, item.ID), "", "", values, nil, 0); err != nil {
 			return ResolvedCreateRun{}, err
@@ -335,8 +335,7 @@ func TestOneViewResolverRejectsCatalogGraphFailuresWithTypedErrors(t *testing.T)
 			view := catalogFromMapperSource()
 			test.mutate(&view)
 			_, err := (newOneViewResolverTx(view)).ResolveCreateRun(context.Background(), validCreateRunCommand())
-			var typed *CreateRunCatalogGraphError
-			if !errors.Is(err, ErrCreateRunCatalogGraph) || !errors.As(err, &typed) {
+			if !fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
 				t.Fatalf("error=%v", err)
 			}
 		})
@@ -366,8 +365,7 @@ func TestOneViewResolverRejectsConflictingDuplicateEdgeResolution(t *testing.T) 
 	root.Definition.Steps = append(root.Definition.Steps, duplicate)
 	view.versions[root.ID] = root
 	_, err := newOneViewResolverTx(view).ResolveCreateRun(context.Background(), validCreateRunCommand())
-	var typed *CreateRunCatalogGraphError
-	if !errors.Is(err, ErrCreateRunCatalogGraph) || !errors.As(err, &typed) {
+	if !fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
 		t.Fatalf("error=%v", err)
 	}
 }
@@ -402,8 +400,7 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 			tx := newOneViewResolverTx(catalogFromMapperSource())
 			test.configure(tx)
 			_, err := tx.ResolveCreateRun(context.Background(), validCreateRunCommand())
-			var typed *CreateRunCatalogGraphError
-			if !errors.Is(err, ErrCreateRunCatalogGraph) || !errors.As(err, &typed) {
+			if !fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
 				t.Fatalf("error=%v", err)
 			}
 		})
@@ -413,7 +410,7 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 func TestOneViewResolverSeparatesRetryableAdapterErrors(t *testing.T) {
 	cause := errors.New("serialization")
 	err := fmt.Errorf("transaction read: %w", createRunRetryableError(cause))
-	if !fault.IsCode(err, CodeCreateRunRetryable) || !errors.Is(err, cause) || errors.Is(err, ErrCreateRunCatalogGraph) {
+	if !fault.IsCode(err, CodeCreateRunRetryable) || !errors.Is(err, cause) || fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
 		t.Fatalf("error category drifted: %v", err)
 	}
 }

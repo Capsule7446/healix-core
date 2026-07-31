@@ -1067,8 +1067,8 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil, ""},
 		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil, ""},
 		{"catalog graph", base, func(f *createRunFake) {
-			f.resolveErr = &CreateRunCatalogGraphError{Operation: "resolve workflow", Cause: errors.New("missing child")}
-		}, ErrCreateRunCatalogGraph, ""},
+			f.resolveErr = createRunCatalogGraphUnresolvableError(errors.New("missing child"))
+		}, nil, CodeCreateRunCatalogGraphUnresolvable},
 		{"retryable resolver", base, func(f *createRunFake) {
 			f.resolveErr = createRunRetryableError(errors.New("serialization"))
 		}, nil, CodeCreateRunRetryable},

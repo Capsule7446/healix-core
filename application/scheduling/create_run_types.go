@@ -2,8 +2,6 @@ package scheduling
 
 import (
 	"context"
-	"errors"
-
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fault"
@@ -146,23 +144,20 @@ func createRunRetryableError(cause error) error {
 	return err
 }
 
-type CreateRunCatalogGraphError struct {
-	Operation string
-	Cause     error
-}
+const CodeCreateRunCatalogGraphUnresolvable fault.Code = "EXECUTION_CREATE_RUN_CATALOG_GRAPH_UNRESOLVABLE"
 
-func (e *CreateRunCatalogGraphError) Error() string {
-	if e.Cause == nil {
-		return "create-run catalog graph not found or invalid: " + e.Operation
+func createRunCatalogGraphUnresolvableError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.FailedPrecondition,
+		CodeCreateRunCatalogGraphUnresolvable,
+		"create-run catalog graph is unavailable or invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
 	}
-	return "create-run catalog graph not found or invalid: " + e.Operation + ": " + e.Cause.Error()
+	return err
 }
-func (e *CreateRunCatalogGraphError) Is(target error) bool { return target == ErrCreateRunCatalogGraph }
-func (e *CreateRunCatalogGraphError) Unwrap() error        { return e.Cause }
-
-var (
-	ErrCreateRunCatalogGraph = errors.New("create-run catalog graph not found or invalid")
-)
 
 type CreateRunStore interface {
 	InTransaction(context.Context, func(CreateRunTx) error) error

@@ -14,12 +14,6 @@
 | `CreateRunRequestDigest` | [`application/scheduling/create_run_service.go`](../../application/scheduling/create_run_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NewCreateRunService` | [`application/scheduling/create_run_service.go`](../../application/scheduling/create_run_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `CreateRunService.CreateRun` | [`application/scheduling/create_run_service.go`](../../application/scheduling/create_run_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunCatalogGraphError.Error` | [`application/scheduling/create_run_types.go`](../../application/scheduling/create_run_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunCatalogGraphError.Is` | [`application/scheduling/create_run_types.go`](../../application/scheduling/create_run_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunCatalogGraphError.Unwrap` | [`application/scheduling/create_run_types.go`](../../application/scheduling/create_run_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunRetryableError.Error` | [`application/scheduling/create_run_types.go`](../../application/scheduling/create_run_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunRetryableError.Is` | [`application/scheduling/create_run_types.go`](../../application/scheduling/create_run_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunRetryableError.Unwrap` | [`application/scheduling/create_run_types.go`](../../application/scheduling/create_run_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `DecideAdvance` | [`application/scheduling/decision.go`](../../application/scheduling/decision.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `CommandConflictError.Error` | [`application/scheduling/run_command_services.go`](../../application/scheduling/run_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `CommandConflictError.Is` | [`application/scheduling/run_command_services.go`](../../application/scheduling/run_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |

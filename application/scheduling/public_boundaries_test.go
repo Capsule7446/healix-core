@@ -120,13 +120,23 @@ func TestCreateRunAdapterContractViolationExposesSafeStableContract(t *testing.T
 	}
 }
 
-func TestCreateRunCatalogGraphTypedErrorCoversNilCauseAndUnwrap(t *testing.T) {
-	catalog := &CreateRunCatalogGraphError{Operation: "resolve"}
-	if got := catalog.Error(); !strings.Contains(got, "resolve") || strings.HasSuffix(got, ": ") {
-		t.Fatalf("catalog error = %q", got)
+func TestCreateRunCatalogGraphUnresolvableErrorExposesSafeStableContract(t *testing.T) {
+	cause := errors.New("operation=resolve binding catalog=workflow-secret value=credential-secret")
+	err := createRunCatalogGraphUnresolvableError(cause)
+	descriptor, ok := fault.Describe(err)
+	if !ok ||
+		descriptor.Code() != CodeCreateRunCatalogGraphUnresolvable ||
+		descriptor.Kind() != fault.FailedPrecondition ||
+		descriptor.Message() != "create-run catalog graph is unavailable or invalid" ||
+		len(descriptor.Params()) != 0 ||
+		len(descriptor.Violations()) != 0 ||
+		!errors.Is(err, cause) {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
 	}
-	if catalog.Unwrap() != nil || !errors.Is(catalog, ErrCreateRunCatalogGraph) {
-		t.Fatalf("catalog classification/unwrap = %v/%v", errors.Is(catalog, ErrCreateRunCatalogGraph), catalog.Unwrap())
+	for _, sensitive := range []string{"resolve binding", "workflow-secret", "credential-secret", cause.Error()} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("public error leaked %q: %q", sensitive, err.Error())
+		}
 	}
 }
 
