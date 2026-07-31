@@ -109,7 +109,7 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 					} else {
 						got, err = NewAbortRunService(store, signal).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "token"}})
 					}
-					if !errors.Is(err, ErrRunAdapterContract) || got != (RunCommandResult{}) || len(store.calls) != 1 {
+					if !fault.IsCode(err, CodeRunAdapterContractViolation) || got != (RunCommandResult{}) || len(store.calls) != 1 {
 						t.Fatalf("operation/result/error/calls=%s/%#v/%v/%v", operation, got, err, store.calls)
 					}
 				}
@@ -121,7 +121,7 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 func TestServicesRejectMalformedAuthoritativeAdapterOutcomes(t *testing.T) {
 	cancelStore := &commandStoreStub{cancelResult: RunCommandResult{Run: domainexecution.Run{ID: "foreign", Status: domainexecution.Canceled}, Revision: 2}}
 	result, err := NewCancelRunService(cancelStore, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "c", RunID: "run", ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2})
-	if !errors.Is(err, ErrRunIdentityConflict) || result != (RunCommandResult{}) {
+	if !fault.IsCode(err, CodeRunIdentityConflict) || result != (RunCommandResult{}) {
 		t.Fatalf("cancel result/error=%#v/%v", result, err)
 	}
 	abortStore := &commandStoreStub{abortResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2}}
@@ -313,7 +313,7 @@ func TestReorderClonesAuthoritativePermutationAndRejectsDuplicates(t *testing.T)
 		t.Fatal("result aliases store state")
 	}
 	_, err = NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r2", ScopeID: "scope", ExpectedRevision: 2, RunIDs: []string{"a", "a"}})
-	if !errors.Is(err, ErrQueueMembershipConflict) {
+	if !fault.IsCode(err, CodeQueueMembershipConflict) {
 		t.Fatalf("duplicate error=%v", err)
 	}
 }

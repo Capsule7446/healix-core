@@ -19,14 +19,13 @@ func TestBatch2PublicCommandContractsCompile(t *testing.T) {
 	_, _ = app.CancelRunRequestDigest(app.CancelRunCommand{})
 	_, _ = app.AbortRunRequestDigest(app.AbortRunCommand{})
 	_, _ = app.ReorderQueueRequestDigest(app.ReorderQueueCommand{})
-	var commandConflict *app.CommandConflictError
-	var identityConflict *app.RunIdentityConflictError
-	var revisionConflict *app.RunRevisionConflictError
-	var statusConflict *app.RunStatusConflictError
-	var queueRevisionConflict *app.QueueRevisionConflictError
-	var queueMembershipConflict *app.QueueMembershipConflictError
-	var adapterContract *app.RunAdapterContractError
-	_, _, _, _, _, _, _ = commandConflict, identityConflict, revisionConflict, statusConflict, queueRevisionConflict, queueMembershipConflict, adapterContract
 	_ = app.CodeRunSignalRetryable
+	_ = app.CodeRunCommandIdentityConflict
+	_ = app.CodeRunIdentityConflict
+	_ = app.CodeRunRevisionConflict
+	_ = app.CodeRunStatusConflict
+	_ = app.CodeQueueRevisionConflict
+	_ = app.CodeQueueMembershipConflict
+	_ = app.CodeRunAdapterContractViolation
 	_ = context.Background()
 }

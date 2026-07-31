@@ -13,75 +13,55 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-var (
-	ErrRunCommandConflict      = errors.New("run command identity conflict")
-	ErrRunIdentityConflict     = errors.New("run identity conflict")
-	ErrRunRevisionConflict     = errors.New("run revision conflict")
-	ErrRunStatusConflict       = errors.New("run status conflict")
-	ErrQueueRevisionConflict   = errors.New("queue revision conflict")
-	ErrQueueMembershipConflict = errors.New("queue membership conflict")
-	ErrRunAdapterContract      = errors.New("run command adapter contract violation")
+const (
+	CodeRunCommandIdentityConflict  fault.Code = "EXECUTION_RUN_COMMAND_IDENTITY_CONFLICT"
+	CodeRunIdentityConflict         fault.Code = "EXECUTION_RUN_IDENTITY_CONFLICT"
+	CodeRunRevisionConflict         fault.Code = "EXECUTION_RUN_REVISION_CONFLICT"
+	CodeRunStatusConflict           fault.Code = "EXECUTION_RUN_STATUS_CONFLICT"
+	CodeQueueRevisionConflict       fault.Code = "EXECUTION_QUEUE_REVISION_CONFLICT"
+	CodeQueueMembershipConflict     fault.Code = "EXECUTION_QUEUE_MEMBERSHIP_CONFLICT"
+	CodeRunAdapterContractViolation fault.Code = "EXECUTION_RUN_COMMAND_ADAPTER_CONTRACT_VIOLATION"
 )
 
-type CommandConflictError struct{ CommandID string }
-
-func (e *CommandConflictError) Error() string        { return "run command identity conflict: " + e.CommandID }
-func (e *CommandConflictError) Is(target error) bool { return target == ErrRunCommandConflict }
-
-type RunIdentityConflictError struct{ RunID string }
-
-func (e *RunIdentityConflictError) Error() string        { return "run identity conflict: " + e.RunID }
-func (e *RunIdentityConflictError) Is(target error) bool { return target == ErrRunIdentityConflict }
-
-type RunRevisionConflictError struct {
-	RunID            string
-	Expected, Actual int64
+func runCommandConflictError() error {
+	return newRunCommandFault(fault.Conflict, CodeRunCommandIdentityConflict, "run command identity conflicts with an existing request")
 }
 
-func (e *RunRevisionConflictError) Error() string {
-	return fmt.Sprintf("run revision conflict: %s expected %d actual %d", e.RunID, e.Expected, e.Actual)
-}
-func (e *RunRevisionConflictError) Is(target error) bool { return target == ErrRunRevisionConflict }
-
-type RunStatusConflictError struct {
-	RunID            string
-	Expected, Actual domainexecution.RunStatus
+func runIdentityConflictError() error {
+	return newRunCommandFault(fault.Conflict, CodeRunIdentityConflict, "run identity conflicts with the authoritative state")
 }
 
-func (e *RunStatusConflictError) Error() string {
-	return fmt.Sprintf("run status conflict: %s expected %s actual %s", e.RunID, e.Expected, e.Actual)
-}
-func (e *RunStatusConflictError) Is(target error) bool { return target == ErrRunStatusConflict }
-
-type QueueRevisionConflictError struct {
-	ScopeID          string
-	Expected, Actual int64
+func runRevisionConflictError() error {
+	return newRunCommandFault(fault.Conflict, CodeRunRevisionConflict, "run revision conflicts with current state")
 }
 
-func (e *QueueRevisionConflictError) Error() string {
-	return fmt.Sprintf("queue revision conflict: %s expected %d actual %d", e.ScopeID, e.Expected, e.Actual)
-}
-func (e *QueueRevisionConflictError) Is(target error) bool { return target == ErrQueueRevisionConflict }
-
-type QueueMembershipConflictError struct{ ScopeID string }
-
-func (e *QueueMembershipConflictError) Error() string {
-	return "queue membership conflict: " + e.ScopeID
-}
-func (e *QueueMembershipConflictError) Is(target error) bool {
-	return target == ErrQueueMembershipConflict
+func runStatusConflictError() error {
+	return newRunCommandFault(fault.Conflict, CodeRunStatusConflict, "run status conflicts with current state")
 }
 
-type RunAdapterContractError struct {
-	Operation string
-	Cause     error
+func queueRevisionConflictError() error {
+	return newRunCommandFault(fault.Conflict, CodeQueueRevisionConflict, "queue revision conflicts with current state")
 }
 
-func (e *RunAdapterContractError) Error() string {
-	return fmt.Sprintf("run command adapter contract violation: %s: %v", e.Operation, e.Cause)
+func queueMembershipConflictError() error {
+	return newRunCommandFault(fault.Conflict, CodeQueueMembershipConflict, "queue membership conflicts with the authoritative state")
 }
-func (e *RunAdapterContractError) Unwrap() error        { return e.Cause }
-func (e *RunAdapterContractError) Is(target error) bool { return target == ErrRunAdapterContract }
+
+func runAdapterContractViolationError(cause error) error {
+	err, constructionErr := fault.Wrap(cause, fault.Internal, CodeRunAdapterContractViolation, "run command adapter returned an invalid authoritative result")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func newRunCommandFault(kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.New(kind, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 const CodeRunSignalRetryable fault.Code = "EXECUTION_RUN_SIGNAL_RETRYABLE"
 
@@ -172,7 +152,7 @@ func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunComman
 	}
 	shouldSignal := command.ExpectedStatus == domainexecution.Running
 	if result.SignalRequired != shouldSignal {
-		return RunCommandResult{}, &RunAdapterContractError{Operation: "validate Host cancellation requirement", Cause: errors.New("unexpected SignalRequired value")}
+		return RunCommandResult{}, runAdapterContractViolationError(errors.New("unexpected SignalRequired value"))
 	}
 	return signalIfRequired(ctx, s.signaler, result)
 }
@@ -203,7 +183,7 @@ func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) 
 		return RunCommandResult{}, fmt.Errorf("abort run authoritative result: %w", err)
 	}
 	if !result.SignalRequired {
-		return RunCommandResult{}, &RunAdapterContractError{Operation: "validate Host cancellation requirement", Cause: errors.New("abort must require cancellation signal")}
+		return RunCommandResult{}, runAdapterContractViolationError(errors.New("abort must require cancellation signal"))
 	}
 	return signalIfRequired(ctx, s.signaler, result)
 }
@@ -259,16 +239,16 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 }
 func validateRunResult(runID string, status domainexecution.RunStatus, expectedRevision int64, result RunCommandResult) error {
 	if result.Run.ID != runID {
-		return &RunAdapterContractError{Operation: "validate run identity", Cause: &RunIdentityConflictError{RunID: runID}}
+		return runAdapterContractViolationError(runIdentityConflictError())
 	}
 	if result.Run.Status != status {
-		return &RunAdapterContractError{Operation: "validate run status", Cause: &RunStatusConflictError{RunID: runID, Expected: status, Actual: result.Run.Status}}
+		return runAdapterContractViolationError(runStatusConflictError())
 	}
 	if result.Revision != expectedRevision+1 {
-		return &RunAdapterContractError{Operation: "validate run revision", Cause: &RunRevisionConflictError{RunID: runID, Expected: expectedRevision + 1, Actual: result.Revision}}
+		return runAdapterContractViolationError(runRevisionConflictError())
 	}
 	if err := domainexecution.ValidateRun(result.Run); err != nil {
-		return &RunAdapterContractError{Operation: "validate run lifecycle", Cause: err}
+		return runAdapterContractViolationError(err)
 	}
 	return nil
 }
@@ -306,7 +286,7 @@ func validateReorder(command ReorderQueueCommand) error {
 			return errors.New("invalid reorder queue command")
 		}
 		if _, ok := seen[id]; ok {
-			return &QueueMembershipConflictError{ScopeID: command.ScopeID}
+			return queueMembershipConflictError()
 		}
 		seen[id] = struct{}{}
 	}

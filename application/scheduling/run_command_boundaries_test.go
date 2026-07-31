@@ -12,33 +12,35 @@ import (
 )
 
 func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
-	cause := errors.New("dependency failed")
+	cause := errors.New("dependency failed: secret-token")
 	tests := []struct {
-		name       string
-		err        error
-		wantText   string
-		wantTarget error
-		wantCause  error
+		name    string
+		err     error
+		code    fault.Code
+		kind    fault.Kind
+		message string
+		cause   error
 	}{
-		{name: "command identity", err: &CommandConflictError{CommandID: "command"}, wantText: "run command identity conflict: command", wantTarget: ErrRunCommandConflict},
-		{name: "run identity", err: &RunIdentityConflictError{RunID: "run"}, wantText: "run identity conflict: run", wantTarget: ErrRunIdentityConflict},
-		{name: "run revision", err: &RunRevisionConflictError{RunID: "run", Expected: 2, Actual: 3}, wantText: "run revision conflict: run expected 2 actual 3", wantTarget: ErrRunRevisionConflict},
-		{name: "run status", err: &RunStatusConflictError{RunID: "run", Expected: domainexecution.Running, Actual: domainexecution.Succeeded}, wantText: "run status conflict: run expected RUNNING actual SUCCEEDED", wantTarget: ErrRunStatusConflict},
-		{name: "queue revision", err: &QueueRevisionConflictError{ScopeID: "scope", Expected: 2, Actual: 3}, wantText: "queue revision conflict: scope expected 2 actual 3", wantTarget: ErrQueueRevisionConflict},
-		{name: "queue membership", err: &QueueMembershipConflictError{ScopeID: "scope"}, wantText: "queue membership conflict: scope", wantTarget: ErrQueueMembershipConflict},
-		{name: "adapter contract", err: &RunAdapterContractError{Operation: "validate", Cause: cause}, wantText: "run command adapter contract violation: validate: dependency failed", wantTarget: ErrRunAdapterContract, wantCause: cause},
+		{name: "command identity", err: runCommandConflictError(), code: CodeRunCommandIdentityConflict, kind: fault.Conflict, message: "run command identity conflicts with an existing request"},
+		{name: "run identity", err: runIdentityConflictError(), code: CodeRunIdentityConflict, kind: fault.Conflict, message: "run identity conflicts with the authoritative state"},
+		{name: "run revision", err: runRevisionConflictError(), code: CodeRunRevisionConflict, kind: fault.Conflict, message: "run revision conflicts with current state"},
+		{name: "run status", err: runStatusConflictError(), code: CodeRunStatusConflict, kind: fault.Conflict, message: "run status conflicts with current state"},
+		{name: "queue revision", err: queueRevisionConflictError(), code: CodeQueueRevisionConflict, kind: fault.Conflict, message: "queue revision conflicts with current state"},
+		{name: "queue membership", err: queueMembershipConflictError(), code: CodeQueueMembershipConflict, kind: fault.Conflict, message: "queue membership conflicts with the authoritative state"},
+		{name: "adapter contract", err: runAdapterContractViolationError(cause), code: CodeRunAdapterContractViolation, kind: fault.Internal, message: "run command adapter returned an invalid authoritative result", cause: cause},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.err.Error(); got != test.wantText {
-				t.Fatalf("Error() = %q, want %q", got, test.wantText)
+			descriptor, ok := fault.Describe(test.err)
+			if !ok || descriptor.Code() != test.code || descriptor.Kind() != test.kind || descriptor.Message() != test.message || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("descriptor = %#v, ok = %v", descriptor, ok)
 			}
-			if !errors.Is(test.err, test.wantTarget) {
-				t.Fatalf("errors.Is(%v, %v) = false", test.err, test.wantTarget)
-			}
-			if test.wantCause != nil && !errors.Is(test.err, test.wantCause) {
+			if test.cause != nil && !errors.Is(test.err, test.cause) {
 				t.Fatalf("errors.Is(%v, cause) = false", test.err)
+			}
+			if strings.Contains(test.err.Error(), "secret-token") || strings.Contains(test.err.Error(), "dependency failed") || strings.Contains(test.err.Error(), "command-sensitive-id") || strings.Contains(test.err.Error(), "run-sensitive-id") || strings.Contains(test.err.Error(), "scope-sensitive-id") {
+				t.Fatalf("public error leaked sensitive detail: %q", test.err.Error())
 			}
 		})
 	}
@@ -210,7 +212,7 @@ func TestReorderQueueRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 		{name: "nil members", mutate: func(command *ReorderQueueCommand) { command.RunIDs = nil }},
 		{name: "empty members", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{} }},
 		{name: "blank member", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{"a", " \t\n"} }},
-		{name: "duplicate member", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{"a", "a"} }, target: ErrQueueMembershipConflict},
+		{name: "duplicate member", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{"a", "a"} }, target: CodeQueueMembershipConflict},
 	}
 
 	for _, test := range tests {

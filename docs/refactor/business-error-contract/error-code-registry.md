@@ -33,6 +33,13 @@ This registry defines the stable public error-code contract. A code is immutable
 | `EXECUTION_RUN_SIGNAL_RETRYABLE` | `UNAVAILABLE` | `execution cancellation signal must be retried` | none | The terminal state is committed; retry only the external cancellation signal and retain its cause privately. |
 | `EXECUTION_STEP_REVISION_CONFLICT` | `CONFLICT` | `step transition revision conflicts with current state` | none | Re-read authoritative execution evidence state before retrying; revision values remain private. |
 | `EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT` | `CONFLICT` | `step transition commit identity conflicts with the previously accepted commit` | none | A changed replay is rejected; commit identity and payload details remain private. |
+| `EXECUTION_RUN_COMMAND_IDENTITY_CONFLICT` | `CONFLICT` | `run command identity conflicts with an existing request` | none | A changed command replay is rejected without exposing command identity or payload details. |
+| `EXECUTION_RUN_IDENTITY_CONFLICT` | `CONFLICT` | `run identity conflicts with the authoritative state` | none | Re-read the authoritative run before retrying; run identity remains private. |
+| `EXECUTION_RUN_REVISION_CONFLICT` | `CONFLICT` | `run revision conflicts with current state` | none | Re-read the authoritative run before retrying; revision values remain private. |
+| `EXECUTION_RUN_STATUS_CONFLICT` | `CONFLICT` | `run status conflicts with current state` | none | Re-read the authoritative run lifecycle before retrying; status values remain private. |
+| `EXECUTION_QUEUE_REVISION_CONFLICT` | `CONFLICT` | `queue revision conflicts with current state` | none | Re-read the authoritative queue before retrying; scope and revision values remain private. |
+| `EXECUTION_QUEUE_MEMBERSHIP_CONFLICT` | `CONFLICT` | `queue membership conflicts with the authoritative state` | none | Re-read the authoritative queue membership before retrying; scope and run identities remain private. |
+| `EXECUTION_RUN_COMMAND_ADAPTER_CONTRACT_VIOLATION` | `INTERNAL` | `run command adapter returned an invalid authoritative result` | none | Preserve the validation cause only for diagnostics; public output never includes adapter details, identities, revisions, statuses, or payloads. |
 
 ## Automation
 

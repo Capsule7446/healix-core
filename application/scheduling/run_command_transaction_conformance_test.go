@@ -80,7 +80,7 @@ func replay(state *referenceState, id, digest string) (storedCommand, bool, erro
 		return storedCommand{}, false, nil
 	}
 	if stored.digest != digest {
-		return storedCommand{}, true, &CommandConflictError{CommandID: id}
+		return storedCommand{}, true, runCommandConflictError()
 	}
 	stored.run.WasApplied, stored.queue.WasApplied = false, false
 	return stored, true, nil
@@ -93,13 +93,13 @@ func (s *referenceCommandStore) Cancel(_ context.Context, command CancelRunComma
 		}
 		record, ok := state.runs[command.RunID]
 		if !ok {
-			return storedCommand{}, &RunIdentityConflictError{RunID: command.RunID}
+			return storedCommand{}, runIdentityConflictError()
 		}
 		if record.revision != command.ExpectedRevision {
-			return storedCommand{}, &RunRevisionConflictError{RunID: command.RunID, Expected: command.ExpectedRevision, Actual: record.revision}
+			return storedCommand{}, runRevisionConflictError()
 		}
 		if record.run.Status != command.ExpectedStatus {
-			return storedCommand{}, &RunStatusConflictError{RunID: command.RunID, Expected: command.ExpectedStatus, Actual: record.run.Status}
+			return storedCommand{}, runStatusConflictError()
 		}
 		record.run.Status, record.run.FinishedAt, record.revision = domainexecution.Canceled, command.At, record.revision+1
 		record.claimed, record.fence = false, domainexecution.WorkerFence{}
@@ -136,16 +136,16 @@ func (s *referenceCommandStore) Abort(_ context.Context, command AbortRunCommand
 		}
 		record, ok := state.runs[command.RunID]
 		if !ok {
-			return storedCommand{}, &RunIdentityConflictError{RunID: command.RunID}
+			return storedCommand{}, runIdentityConflictError()
 		}
 		if record.fence != command.Fence {
 			return storedCommand{}, domainexecution.NewStaleWorkerFenceError()
 		}
 		if record.revision != command.ExpectedRevision {
-			return storedCommand{}, &RunRevisionConflictError{RunID: command.RunID, Expected: command.ExpectedRevision, Actual: record.revision}
+			return storedCommand{}, runRevisionConflictError()
 		}
 		if record.run.Status != domainexecution.Running {
-			return storedCommand{}, &RunStatusConflictError{RunID: command.RunID, Expected: domainexecution.Running, Actual: record.run.Status}
+			return storedCommand{}, runStatusConflictError()
 		}
 		record.run.Status, record.run.FinishedAt, record.revision = domainexecution.Aborted, command.At, record.revision+1
 		record.claimed, record.fence = false, domainexecution.WorkerFence{}
@@ -165,7 +165,7 @@ func (s *referenceCommandStore) Reorder(_ context.Context, command ReorderQueueC
 		}
 		actual := state.queueRevision[command.ScopeID]
 		if actual != command.ExpectedRevision {
-			return storedCommand{}, &QueueRevisionConflictError{ScopeID: command.ScopeID, Expected: command.ExpectedRevision, Actual: actual}
+			return storedCommand{}, queueRevisionConflictError()
 		}
 		eligible := map[string]struct{}{}
 		for id, record := range state.runs {
@@ -174,11 +174,11 @@ func (s *referenceCommandStore) Reorder(_ context.Context, command ReorderQueueC
 			}
 		}
 		if len(eligible) != len(command.RunIDs) {
-			return storedCommand{}, &QueueMembershipConflictError{ScopeID: command.ScopeID}
+			return storedCommand{}, queueMembershipConflictError()
 		}
 		for index, id := range command.RunIDs {
 			if _, ok := eligible[id]; !ok {
-				return storedCommand{}, &QueueMembershipConflictError{ScopeID: command.ScopeID}
+				return storedCommand{}, queueMembershipConflictError()
 			}
 			record := state.runs[id]
 			record.run.QueuePosition = index
@@ -186,7 +186,7 @@ func (s *referenceCommandStore) Reorder(_ context.Context, command ReorderQueueC
 			delete(eligible, id)
 		}
 		if len(eligible) != 0 {
-			return storedCommand{}, &QueueMembershipConflictError{ScopeID: command.ScopeID}
+			return storedCommand{}, queueMembershipConflictError()
 		}
 		state.queueRevision[command.ScopeID] = actual + 1
 		result := ReorderQueueResult{ScopeID: command.ScopeID, Revision: actual + 1, RunIDs: append([]string(nil), command.RunIDs...), WasApplied: true}
@@ -226,7 +226,7 @@ func TestQueuedCancelAtomicallyRemovesAndNormalizesQueue(t *testing.T) {
 		t.Fatal("stale pre-cancel claim revision succeeded")
 	}
 	stale := ReorderQueueCommand{CommandID: "stale", ScopeID: "scope", ExpectedRevision: 0, RunIDs: []string{"c", "a"}}
-	if _, err := store.Reorder(context.Background(), stale); !errors.Is(err, ErrQueueRevisionConflict) {
+	if _, err := store.Reorder(context.Background(), stale); !fault.IsCode(err, CodeQueueRevisionConflict) {
 		t.Fatalf("stale reorder=%v", err)
 	}
 	fresh := stale
@@ -259,7 +259,7 @@ func TestReferenceStoreReplayConflictRollbackAndUnknownCommit(t *testing.T) {
 	}
 	changed := command
 	changed.At++
-	if _, err := store.Cancel(context.Background(), changed); !errors.Is(err, ErrRunCommandConflict) {
+	if _, err := store.Cancel(context.Background(), changed); !fault.IsCode(err, CodeRunCommandIdentityConflict) {
 		t.Fatalf("conflict=%v", err)
 	}
 	rollback := newReferenceCommandStore(referenceRun{run: domainexecution.Run{ID: "rollback", Status: domainexecution.Queued}, revision: 1})
@@ -442,7 +442,7 @@ func TestReferenceStoreReorderExactPermutationReplayRollbackAndClaimRace(t *test
 	}
 	changed := command
 	changed.RunIDs = []string{"a", "b"}
-	if _, err := store.Reorder(context.Background(), changed); !errors.Is(err, ErrRunCommandConflict) {
+	if _, err := store.Reorder(context.Background(), changed); !fault.IsCode(err, CodeRunCommandIdentityConflict) {
 		t.Fatalf("conflict=%v", err)
 	}
 	for _, invalid := range [][]string{{"a"}, {"a", "foreign"}} {
@@ -450,7 +450,7 @@ func TestReferenceStoreReorderExactPermutationReplayRollbackAndClaimRace(t *test
 		badCommand := command
 		badCommand.CommandID = "bad"
 		badCommand.RunIDs = invalid
-		if _, err := bad.Reorder(context.Background(), badCommand); !errors.Is(err, ErrQueueMembershipConflict) {
+		if _, err := bad.Reorder(context.Background(), badCommand); !fault.IsCode(err, CodeQueueMembershipConflict) {
 			t.Fatalf("members %v: %v", invalid, err)
 		}
 	}
@@ -458,19 +458,19 @@ func TestReferenceStoreReorderExactPermutationReplayRollbackAndClaimRace(t *test
 	record := claimed.state.runs["a"]
 	record.claimed = true
 	claimed.state.runs["a"] = record
-	if _, err := claimed.Reorder(context.Background(), command); !errors.Is(err, ErrQueueMembershipConflict) {
+	if _, err := claimed.Reorder(context.Background(), command); !fault.IsCode(err, CodeQueueMembershipConflict) {
 		t.Fatalf("claimed=%v", err)
 	}
 	nonqueued := makeStore()
 	record = nonqueued.state.runs["a"]
 	record.run.Status = domainexecution.Succeeded
 	nonqueued.state.runs["a"] = record
-	if _, err := nonqueued.Reorder(context.Background(), command); !errors.Is(err, ErrQueueMembershipConflict) {
+	if _, err := nonqueued.Reorder(context.Background(), command); !fault.IsCode(err, CodeQueueMembershipConflict) {
 		t.Fatalf("nonqueued=%v", err)
 	}
 	stale := makeStore()
 	stale.state.queueRevision["scope"] = 2
-	if _, err := stale.Reorder(context.Background(), command); !errors.Is(err, ErrQueueRevisionConflict) {
+	if _, err := stale.Reorder(context.Background(), command); !fault.IsCode(err, CodeQueueRevisionConflict) {
 		t.Fatalf("stale=%v", err)
 	}
 	rollback := makeStore()
