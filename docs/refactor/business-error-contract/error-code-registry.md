@@ -62,7 +62,7 @@ This registry defines the stable public error-code contract. A code is immutable
 
 | Code | Kind | Safe message | Allowed params / violations | Notes |
 |---|---|---|---|---|
-| `AUTOMATION_TEST_TASK_INVALID` | `INVALID_ARGUMENT` | `test task input is invalid` | ordered typed violations only | Aggregate validation envelope. |
+| `AUTOMATION_EXECUTION_FLOW_INVALID` | `INVALID_ARGUMENT` | `execution flow input is invalid` | ordered typed violations only | Aggregate validation envelope: one top-level fault carrying every field failure as an ordered violation. Never one code per failing field, never a joined message. |
 | `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
 | `AUTOMATION_FOLDER_INVALID` | `INVALID_ARGUMENT` | `automation folder is invalid` | none | Correct malformed folder identities, names, kinds, or occupancy before retrying; rejected values remain private. |
 | `AUTOMATION_FOLDER_TREE_INVALID` | `FAILED_PRECONDITION` | `automation folder tree is invalid` | none | Repair duplicate, orphaned, mixed-kind, cyclic, or over-depth persisted hierarchy state; folder identities and names remain private. |
