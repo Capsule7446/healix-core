@@ -33,6 +33,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
 | `AUTOMATION_AGGREGATE_DELETED` | `FAILED_PRECONDITION` | `automation aggregate has been deleted` | none | Mutations require a restored aggregate; no aggregate identity is exposed. |
 | `AUTOMATION_VERSION_NUMBER_EXHAUSTED` | `RESOURCE_EXHAUSTED` | `automation version number capacity is exhausted` | none | Publishing cannot continue until version capacity is remediated. |
+| `AUTOMATION_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `automation service is not configured` | none | The caller must provide valid service dependencies; no dependency identity is exposed. |
 
 ## Sampling, evidence, fingerprint, interpolation
 

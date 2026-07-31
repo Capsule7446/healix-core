@@ -6,13 +6,27 @@ import (
 	"reflect"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 var (
-	ErrRevisionConflict        = errors.New("revision conflict")
-	ErrHealCandidateStaleBase  = errors.New("heal candidate base version is no longer current")
-	ErrAutomationConfiguration = errors.New("automation service is not configured")
+	ErrRevisionConflict       = errors.New("revision conflict")
+	ErrHealCandidateStaleBase = errors.New("heal candidate base version is no longer current")
 )
+
+const CodeAutomationConfigurationInvalid fault.Code = "AUTOMATION_CONFIGURATION_INVALID"
+
+func AutomationConfigurationError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeAutomationConfigurationInvalid,
+		"automation service is not configured",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func isNilDependency(value any) bool {
 	if value == nil {

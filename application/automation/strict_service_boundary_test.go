@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestAggregateServicesRejectMissingRepositoriesWithoutPanicking(t *testing.T) {
@@ -34,7 +35,7 @@ func TestAggregateServicesRejectMissingRepositoriesWithoutPanicking(t *testing.T
 					t.Fatalf("panicked: %v", recovered)
 				}
 			}()
-			if err := test.call(); !errors.Is(err, ErrAutomationConfiguration) {
+			if err := test.call(); !fault.IsCode(err, CodeAutomationConfigurationInvalid) {
 				t.Fatalf("error = %v", err)
 			}
 		})
@@ -56,22 +57,23 @@ func TestConstructorsAndMethodsRejectTypedNilDependencies(t *testing.T) {
 	var sampling *typedNilSamplingTransaction
 
 	tests := []struct {
-		name string
-		call func() error
-		want error
+		name     string
+		call     func() error
+		wantCode fault.Code
+		want     error
 	}{
 		{"environment", func() error {
 			_, err := NewEnvironmentService(environment).Delete(context.Background(), "id", 1, 1)
 			return err
-		}, ErrAutomationConfiguration},
+		}, CodeAutomationConfigurationInvalid, nil},
 		{"folder", func() error {
 			_, err := NewFolderService(folder).Delete(context.Background(), domain.FolderNode, "id", 1)
 			return err
-		}, ErrAutomationConfiguration},
+		}, CodeAutomationConfigurationInvalid, nil},
 		{"sampling", func() error {
 			_, err := NewSamplingPublicationService(sampling).Publish(context.Background(), SamplingPublicationCommand{})
 			return err
-		}, ErrSamplingPublicationConfiguration},
+		}, "", ErrSamplingPublicationConfiguration},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -80,7 +82,11 @@ func TestConstructorsAndMethodsRejectTypedNilDependencies(t *testing.T) {
 					t.Fatalf("panicked: %v", recovered)
 				}
 			}()
-			if err := test.call(); !errors.Is(err, test.want) {
+			err := test.call()
+			if test.wantCode != "" && !fault.IsCode(err, test.wantCode) {
+				t.Fatalf("error = %v, want code %v", err, test.wantCode)
+			}
+			if test.want != nil && !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)
 			}
 		})

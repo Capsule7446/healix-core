@@ -16,7 +16,7 @@ func NewFlowFragmentService(repository FlowFragmentRepository) FlowFragmentServi
 
 func (s FlowFragmentService) Create(ctx context.Context, workflow domain.FlowFragment, initial domain.FlowFragmentVersion) (domain.FlowFragmentAggregate, error) {
 	if isNilDependency(s.repository) {
-		return domain.FlowFragmentAggregate{}, ErrAutomationConfiguration
+		return domain.FlowFragmentAggregate{}, AutomationConfigurationError()
 	}
 	aggregate, err := domain.NewFlowFragment(workflow, initial)
 	if err != nil {
@@ -51,7 +51,7 @@ func (s FlowFragmentService) Restore(ctx context.Context, id string, expected do
 
 func (s FlowFragmentService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error)) (domain.FlowFragmentAggregate, error) {
 	if isNilDependency(s.repository) {
-		return domain.FlowFragmentAggregate{}, ErrAutomationConfiguration
+		return domain.FlowFragmentAggregate{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(id) == "" {
 		return domain.FlowFragmentAggregate{}, fmt.Errorf("workflow ID is required")

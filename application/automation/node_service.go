@@ -17,7 +17,7 @@ func NewNodeService(repository NodeRepository) NodeService {
 
 func (s NodeService) Create(ctx context.Context, node domain.ElementTarget, initial domain.ElementTargetVersion) (domain.ElementTargetAggregate, error) {
 	if isNilDependency(s.repository) {
-		return domain.ElementTargetAggregate{}, ErrAutomationConfiguration
+		return domain.ElementTargetAggregate{}, AutomationConfigurationError()
 	}
 	aggregate, err := domain.NewElementTarget(node, initial)
 	if err != nil {
@@ -52,7 +52,7 @@ func (s NodeService) Restore(ctx context.Context, id string, expected domain.Rev
 
 func (s NodeService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error)) (domain.ElementTargetAggregate, error) {
 	if isNilDependency(s.repository) {
-		return domain.ElementTargetAggregate{}, ErrAutomationConfiguration
+		return domain.ElementTargetAggregate{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(id) == "" {
 		return domain.ElementTargetAggregate{}, fmt.Errorf("node ID is required")

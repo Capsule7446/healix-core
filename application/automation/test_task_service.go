@@ -16,7 +16,7 @@ func NewExecutionFlowService(repository ExecutionFlowRepository) ExecutionFlowSe
 
 func (s ExecutionFlowService) Create(ctx context.Context, task domain.ExecutionFlow, initial domain.ExecutionFlowVersion) (domain.ExecutionFlowAggregate, error) {
 	if isNilDependency(s.repository) {
-		return domain.ExecutionFlowAggregate{}, ErrAutomationConfiguration
+		return domain.ExecutionFlowAggregate{}, AutomationConfigurationError()
 	}
 	aggregate, err := domain.NewExecutionFlow(task, initial)
 	if err != nil {
@@ -36,7 +36,7 @@ func (s ExecutionFlowService) PublishVersion(
 	publication domain.ExecutionFlowVersionPublication,
 ) (domain.ExecutionFlowAggregate, error) {
 	if isNilDependency(s.repository) {
-		return domain.ExecutionFlowAggregate{}, ErrAutomationConfiguration
+		return domain.ExecutionFlowAggregate{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(taskID) == "" {
 		return domain.ExecutionFlowAggregate{}, fmt.Errorf("test task ID is required")

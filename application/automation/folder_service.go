@@ -41,7 +41,7 @@ func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, par
 
 func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id string, expected domain.Revision) (FolderSnapshot, error) {
 	if isNilDependency(s.repository) {
-		return FolderSnapshot{}, ErrAutomationConfiguration
+		return FolderSnapshot{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(id) == "" {
 		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
@@ -89,7 +89,7 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 
 func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expected domain.Revision, apply func([]domain.Folder) ([]domain.Folder, error)) (FolderSnapshot, error) {
 	if isNilDependency(s.repository) {
-		return FolderSnapshot{}, ErrAutomationConfiguration
+		return FolderSnapshot{}, AutomationConfigurationError()
 	}
 	snapshot, err := s.repository.Load(ctx, kind)
 	if err != nil {

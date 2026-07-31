@@ -18,7 +18,7 @@ func NewEnvironmentService(repository EnvironmentRepository) EnvironmentService 
 
 func (s EnvironmentService) Create(ctx context.Context, value domain.Environment) (domain.Environment, error) {
 	if isNilDependency(s.repository) {
-		return domain.Environment{}, ErrAutomationConfiguration
+		return domain.Environment{}, AutomationConfigurationError()
 	}
 	created, err := domain.NewEnvironment(value)
 	if err != nil {
@@ -47,7 +47,7 @@ func (s EnvironmentService) Restore(ctx context.Context, id string, expected dom
 
 func (s EnvironmentService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.Environment) (domain.Environment, error)) (domain.Environment, error) {
 	if isNilDependency(s.repository) {
-		return domain.Environment{}, ErrAutomationConfiguration
+		return domain.Environment{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(id) == "" {
 		return domain.Environment{}, fmt.Errorf("environment ID is required")
