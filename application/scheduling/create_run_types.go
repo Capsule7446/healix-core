@@ -102,6 +102,20 @@ func createRunCommandConflictError() error {
 	return err
 }
 
+const CodeCreateRunSnapshotConflict fault.Code = "EXECUTION_CREATE_RUN_SNAPSHOT_CONFLICT"
+
+func createRunSnapshotConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeCreateRunSnapshotConflict,
+		"create-run snapshot conflicts with the authoritative run",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
 type CreateRunAdapterContractError struct {
 	Operation string
 	Reason    string
@@ -142,20 +156,10 @@ func (e *CreateRunRetryableError) Error() string {
 func (e *CreateRunRetryableError) Is(target error) bool { return target == ErrCreateRunRetryable }
 func (e *CreateRunRetryableError) Unwrap() error        { return e.Cause }
 
-type CreateRunSnapshotConflictError struct{ RunID string }
-
-func (e *CreateRunSnapshotConflictError) Error() string {
-	return "immutable run identity or snapshot conflict: " + e.RunID
-}
-func (e *CreateRunSnapshotConflictError) Is(target error) bool {
-	return target == ErrCreateRunSnapshotConflict
-}
-
 var (
-	ErrCreateRunCatalogGraph     = errors.New("create-run catalog graph not found or invalid")
-	ErrCreateRunRetryable        = errors.New("retryable create-run transaction or catalog conflict")
-	ErrCreateRunSnapshotConflict = errors.New("immutable run identity or snapshot conflict")
-	ErrCreateRunAdapterContract  = errors.New("create-run adapter contract violation")
+	ErrCreateRunCatalogGraph    = errors.New("create-run catalog graph not found or invalid")
+	ErrCreateRunRetryable       = errors.New("retryable create-run transaction or catalog conflict")
+	ErrCreateRunAdapterContract = errors.New("create-run adapter contract violation")
 )
 
 type CreateRunStore interface {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -123,7 +124,7 @@ transactionAttempt:
 			}
 			if winner, exists := s.state.runs[command.Result.Run.ID]; exists && winner.SnapshotDigest != command.Result.Run.SnapshotDigest {
 				s.mu.Unlock()
-				return &CreateRunSnapshotConflictError{RunID: command.Result.Run.ID}
+				return createRunSnapshotConflictError()
 			}
 		}
 		s.state = tx.state
@@ -151,7 +152,7 @@ func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunInte
 		return InsertCreateRunOutcome{Status: InsertCreateRunReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: existing.Result}, nil
 	}
 	if existing, ok := tx.state.runs[intent.Run.ID]; ok && existing.SnapshotDigest != intent.Run.SnapshotDigest {
-		return InsertCreateRunOutcome{}, &CreateRunSnapshotConflictError{RunID: intent.Run.ID}
+		return InsertCreateRunOutcome{}, createRunSnapshotConflictError()
 	}
 	fail := func(stage conformanceStage) error {
 		if tx.store.fault == stage {
@@ -318,8 +319,9 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 	sameRun.CommandID = "command-2"
 	sameRun.ScreenshotPolicy.Destination = "other"
 	result, err := service.CreateRun(context.Background(), sameRun)
-	var typedSnapshot *CreateRunSnapshotConflictError
-	if !errors.Is(err, ErrCreateRunSnapshotConflict) || !errors.As(err, &typedSnapshot) || typedSnapshot.RunID != sameRun.RunID || !isZeroCreateRunResult(result) {
+	if !fault.IsCode(err, CodeCreateRunSnapshotConflict) ||
+		strings.Contains(err.Error(), sameRun.RunID) ||
+		!isZeroCreateRunResult(result) {
 		t.Fatalf("snapshot conflict result/error=%#v/%v", result, err)
 	}
 	if len(store.state.queue) != 1 || len(store.state.positions) != 1 {
@@ -332,10 +334,9 @@ func TestCopyOnWriteStoreConflictErrorsAreTyped(t *testing.T) {
 	if !fault.IsCode(commandErr, CodeCreateRunCommandConflict) {
 		t.Fatalf("command conflict classification = %v", commandErr)
 	}
-	var snapshotConflict *CreateRunSnapshotConflictError
-	snapshotErr := &CreateRunSnapshotConflictError{RunID: "run"}
-	if !errors.Is(snapshotErr, ErrCreateRunSnapshotConflict) || !errors.As(snapshotErr, &snapshotConflict) {
-		t.Fatal("snapshot conflict is not typed")
+	snapshotErr := createRunSnapshotConflictError()
+	if !fault.IsCode(snapshotErr, CodeCreateRunSnapshotConflict) {
+		t.Fatalf("snapshot conflict classification = %v", snapshotErr)
 	}
 }
 
