@@ -8,6 +8,7 @@ import (
 	"time"
 
 	application "github.com/Capsule7446/healix-core/application/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type HealReviewFaultPoint string
@@ -89,7 +90,7 @@ func RunHealReview(t *testing.T, factory HealReviewFactory) {
 			f := factory(t)
 			tc.mutate(f)
 			before := f.Snapshot()
-			if _, err := f.CommitHealReview(context.Background(), f.Intent()); !errors.Is(err, application.ErrHealReviewCASConflict) {
+			if _, err := f.CommitHealReview(context.Background(), f.Intent()); !fault.IsCode(err, application.CodeHealReviewCASConflict) {
 				t.Fatalf("error = %v", err)
 			}
 			if !reflect.DeepEqual(before, f.Snapshot()) {
@@ -142,7 +143,7 @@ func RunHealReview(t *testing.T, factory HealReviewFactory) {
 				winners++
 				continue
 			}
-			if errors.Is(r.err, application.ErrHealReviewDecisionConflict) || errors.Is(r.err, application.ErrHealReviewCASConflict) {
+			if errors.Is(r.err, application.ErrHealReviewDecisionConflict) || fault.IsCode(r.err, application.CodeHealReviewCASConflict) {
 				losers++
 				continue
 			}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -18,9 +19,22 @@ const healReviewDigestV1 = "heal-review-v1"
 var (
 	ErrHealReviewIdentityConflict = errors.New("heal review command identity conflict")
 	ErrHealReviewDecisionConflict = errors.New("heal review decision conflict")
-	ErrHealReviewCASConflict      = errors.New("heal review compare-and-swap conflict")
 	ErrHealReviewContract         = errors.New("heal review transaction contract violation")
 )
+
+const CodeHealReviewCASConflict fault.Code = "AUTOMATION_HEAL_REVIEW_CAS_CONFLICT"
+
+func HealReviewCASConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeHealReviewCASConflict,
+		"heal review state conflicts with the current authoritative state",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 type HealReviewDecision string
 

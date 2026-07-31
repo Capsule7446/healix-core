@@ -361,11 +361,11 @@ func TestHealReviewUseCasesRejectInvalidIdentityAndTrustedTimeBeforeCommit(t *te
 		{name: "candidate identity", configure: func(source *healReviewSourceProbe, _ *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			source.candidate.Hash = "other"
 			return reviewClockFake(10)
-		}, target: ErrHealReviewCASConflict},
+		}, target: CodeHealReviewCASConflict},
 		{name: "node identity", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			nodes.current.ElementTarget.ID = "other"
 			return reviewClockFake(10)
-		}, target: ErrHealReviewCASConflict},
+		}, target: CodeHealReviewCASConflict},
 		{name: "node revision", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			nodes.current.ElementTarget.Revision++
 			return reviewClockFake(10)

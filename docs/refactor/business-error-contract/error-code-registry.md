@@ -45,6 +45,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `automation service is not configured` | none | The caller must provide valid service dependencies; no dependency identity is exposed. |
 | `AUTOMATION_HEAL_CANDIDATE_STALE_BASE` | `CONFLICT` | `heal candidate base version is no longer current` | none | Refresh the candidate and current element target before retrying; no candidate/version identifiers are exposed. |
 | `AUTOMATION_REVISION_CONFLICT` | `CONFLICT` | `automation revision conflicts with current state` | none | Re-read authoritative automation state before retrying; aggregate identities and revision values remain private. |
+| `AUTOMATION_HEAL_REVIEW_CAS_CONFLICT` | `CONFLICT` | `heal review state conflicts with the current authoritative state` | none | Re-read candidate, node, and streak state before reconciling; review identities and revisions remain private. |
 | `SAMPLING_PUBLICATION_IDENTITY_CONFLICT` | `CONFLICT` | `sampling publication identity conflicts with an existing request` | none | A replay with the same publication identity but a different request digest is rejected without exposing identity or digest values. |
 
 ## Sampling, evidence, fingerprint, interpolation

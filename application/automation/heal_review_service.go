@@ -243,7 +243,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, err
 	}
 	if candidate.ElementTargetID != command.ElementTargetID || candidate.BaseNodeVersionID != command.BaseNodeVersionID || candidate.Hash != command.CandidateHash {
-		return HealReviewIntent{}, ErrHealReviewCASConflict
+		return HealReviewIntent{}, HealReviewCASConflictError()
 	}
 	if candidate.Revision != command.ExpectedCandidateRevision {
 		return HealReviewIntent{}, AutomationRevisionConflictError()
@@ -256,7 +256,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, fmt.Errorf("load node: %w", err)
 	}
 	if node.ElementTarget.ID != command.ElementTargetID {
-		return HealReviewIntent{}, ErrHealReviewCASConflict
+		return HealReviewIntent{}, HealReviewCASConflictError()
 	}
 	if node.ElementTarget.Revision != command.ExpectedNodeRevision {
 		return HealReviewIntent{}, AutomationRevisionConflictError()

@@ -148,12 +148,12 @@ func (f *healFixture) CommitHealReview(_ context.Context, i application.HealRevi
 		return application.HealReviewOutcome{}, application.ErrHealReviewDecisionConflict
 	}
 	if f.state.candidate.Revision != i.ExpectedCandidateRevision || f.state.node.ElementTarget.Revision != i.ExpectedNodeRevision || f.state.node.Current.ID != i.BaseNodeVersionID {
-		return application.HealReviewOutcome{}, application.ErrHealReviewCASConflict
+		return application.HealReviewOutcome{}, application.HealReviewCASConflictError()
 	}
 	if i.ExpectedStreak != nil {
 		streakDigest, _ := application.HealReviewStreakDigest(f.state.streak)
 		if !reflect.DeepEqual(f.state.streak, *i.ExpectedStreak) || streakDigest != i.ExpectedStreakDigest {
-			return application.HealReviewOutcome{}, application.ErrHealReviewCASConflict
+			return application.HealReviewOutcome{}, application.HealReviewCASConflictError()
 		}
 	}
 	n := cloneHealState(f.state)
