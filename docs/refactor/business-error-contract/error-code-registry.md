@@ -1,0 +1,48 @@
+# v0.6 Fault Code Registry
+
+This registry defines the stable public error-code contract. A code is immutable once published: its owner, `Kind`, meaning, required safe detail schema, and retry meaning cannot change or be reused. `Message` is a safe English fallback, not an i18n key or a stable text protocol.
+
+## Registry rules
+
+- Code format: `UPPER_SNAKE_CASE`, with a bounded-context prefix.
+- `EXECUTION_*` owns node runtime, engine, scheduling, and execution-application failures.
+- Allowed parameters are fixed per code, lower-camel-case, locale-neutral, bounded, and never secrets, selectors, environment/parameter values, URLs, command payloads, stack traces, or causes.
+- Violations are allowed only on aggregate input codes and are ordered deterministically.
+- Unregistered production fault codes, duplicate codes, cross-context prefixes, and public `errors.New` sentinels are contract violations.
+
+## Execution
+
+| Code | Kind | Safe message | Allowed params | Retry / notes |
+|---|---|---|---|---|
+| `EXECUTION_ELEMENT_NOT_FOUND` | `NOT_FOUND` | `element was not found` | none | Existing healing policy decides recovery. |
+| `EXECUTION_OPERATION_CANCELED` | `CANCELED` | `node operation was canceled` | none | Must preserve `context.Canceled` in chain. |
+| `EXECUTION_OPERATION_TIMEOUT` | `DEADLINE_EXCEEDED` | `node operation timed out` | none | Must preserve deadline cause. |
+| `EXECUTION_TRANSIENT_DRIVER` | `UNAVAILABLE` | `node driver is temporarily unavailable` | none | Explicit retryable driver classification only. |
+| `EXECUTION_OPERATION_FAILED` | `INTERNAL` | `node operation failed` | none | Cause is never public. |
+| `EXECUTION_PLAN_UNSEALED` | `FAILED_PRECONDITION` | `execution plan must be sealed` | none | Not retryable without sealing. |
+| `EXECUTION_WORKER_FENCE_STALE` | `CONFLICT` | `worker execution authority is stale` | none | Re-read/claim authority; no raw fence value. |
+
+## Automation
+
+| Code | Kind | Safe message | Allowed params / violations | Notes |
+|---|---|---|---|---|
+| `AUTOMATION_TEST_TASK_INVALID` | `INVALID_ARGUMENT` | `test task input is invalid` | ordered typed violations only | Aggregate validation envelope. |
+| `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
+
+## Sampling, evidence, fingerprint, interpolation
+
+These families are added only in the atomic bounded-context migration that introduces the corresponding producer. Every addition must include its `Kind`, fixed safe fallback message, allowed parameter/violation schema, retry behavior, public consumer, and any persistence mapping.
+
+## Historical execution evidence mapping
+
+Host persistence migration is required for values formerly recorded as node `ErrorKind`:
+
+| v0.5 persisted kind | v0.6 kind | v0.6 code |
+|---|---|---|
+| `not_found` | `NOT_FOUND` | `EXECUTION_ELEMENT_NOT_FOUND` |
+| `timeout` | `DEADLINE_EXCEEDED` | `EXECUTION_OPERATION_TIMEOUT` |
+| `canceled` | `CANCELED` | `EXECUTION_OPERATION_CANCELED` |
+| `transient` | `UNAVAILABLE` | `EXECUTION_TRANSIENT_DRIVER` |
+| `unknown` / unclassified | `INTERNAL` | `EXECUTION_OPERATION_FAILED` |
+
+The Core writes only v0.6 `Kind + Code` facts after migration. SQLite/schema conversion or dual-read behavior belongs to the Host and must be independently verified there.
