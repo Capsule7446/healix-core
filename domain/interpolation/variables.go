@@ -2,12 +2,27 @@
 package interpolation
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type Resolver interface {
 	Variable(name string) (string, bool)
+}
+
+const (
+	CodeResolverRequired  fault.Code = "INTERPOLATION_RESOLVER_REQUIRED"
+	CodeExpressionInvalid fault.Code = "INTERPOLATION_EXPRESSION_INVALID"
+	CodeVariableUndefined fault.Code = "INTERPOLATION_VARIABLE_UNDEFINED"
+)
+
+func interpolationFault(kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.New(kind, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 func Expand(value string, resolver Resolver) (string, error) {
@@ -15,7 +30,7 @@ func Expand(value string, resolver Resolver) (string, error) {
 		return value, nil
 	}
 	if resolver == nil {
-		return "", fmt.Errorf("variable resolver is required for %q", value)
+		return "", interpolationFault(fault.FailedPrecondition, CodeResolverRequired, "variable resolver is required")
 	}
 	var out strings.Builder
 	rest := value
@@ -27,7 +42,7 @@ func Expand(value string, resolver Resolver) (string, error) {
 		}
 		end := strings.Index(rest[start:], "}")
 		if end < 0 {
-			return "", fmt.Errorf("unterminated ${ in %q", value)
+			return "", interpolationFault(fault.InvalidArgument, CodeExpressionInvalid, "variable expression is invalid")
 		}
 		name := rest[start+2 : start+end]
 		if err := validateName(name, value); err != nil {
@@ -35,7 +50,7 @@ func Expand(value string, resolver Resolver) (string, error) {
 		}
 		resolved, ok := resolver.Variable(name)
 		if !ok {
-			return "", fmt.Errorf("undefined variable %q referenced in %q", name, value)
+			return "", interpolationFault(fault.NotFound, CodeVariableUndefined, "referenced variable is not defined")
 		}
 		out.WriteString(rest[:start])
 		out.WriteString(resolved)
@@ -57,7 +72,7 @@ func Names(value string) ([]string, error) {
 		}
 		end := strings.Index(rest[start:], "}")
 		if end < 0 {
-			return nil, fmt.Errorf("unterminated ${ in %q", value)
+			return nil, interpolationFault(fault.InvalidArgument, CodeExpressionInvalid, "variable expression is invalid")
 		}
 		name := rest[start+2 : start+end]
 		if err := validateName(name, value); err != nil {
@@ -69,11 +84,8 @@ func Names(value string) ([]string, error) {
 }
 
 func validateName(name, expression string) error {
-	if name == "" {
-		return fmt.Errorf("empty variable reference ${} in %q", expression)
-	}
-	if strings.TrimSpace(name) != name || strings.ContainsAny(name, "\t\r\n {}$") {
-		return fmt.Errorf("invalid variable name %q referenced in %q", name, expression)
+	if name == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, "\t\r\n {}$") {
+		return interpolationFault(fault.InvalidArgument, CodeExpressionInvalid, "variable expression is invalid")
 	}
 	return nil
 }

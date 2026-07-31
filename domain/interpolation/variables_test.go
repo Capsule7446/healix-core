@@ -2,8 +2,9 @@ package interpolation
 
 import (
 	"slices"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type variableMap map[string]string
@@ -20,7 +21,7 @@ func TestNamesAndExpandExpressionMatrix(t *testing.T) {
 		values     variableMap
 		wantNames  []string
 		want       string
-		wantErr    string
+		wantCode   fault.Code
 	}{
 		{name: "plain", expression: "plain", want: "plain"},
 		{name: "adjacent", expression: "${a}${b}", values: variableMap{"a": "A", "b": "B"}, wantNames: []string{"a", "b"}, want: "AB"},
@@ -28,22 +29,22 @@ func TestNamesAndExpandExpressionMatrix(t *testing.T) {
 		{name: "unicode", expression: "${租户}", values: variableMap{"租户": "北区"}, wantNames: []string{"租户"}, want: "北区"},
 		{name: "empty resolved value", expression: "x${a}y", values: variableMap{"a": ""}, wantNames: []string{"a"}, want: "xy"},
 		{name: "non recursive", expression: "${a}", values: variableMap{"a": "${b}", "b": "B"}, wantNames: []string{"a"}, want: "${b}"},
-		{name: "undefined", expression: "${missing}", values: variableMap{}, wantNames: []string{"missing"}, wantErr: "undefined variable"},
-		{name: "unterminated", expression: "${a", wantErr: "unterminated"},
-		{name: "empty name", expression: "${}", wantErr: "empty variable"},
-		{name: "whitespace", expression: "${ a }", wantErr: "invalid variable name"},
-		{name: "nested dollar", expression: "${a$b}", wantErr: "invalid variable name"},
+		{name: "undefined", expression: "${missing}", values: variableMap{}, wantNames: []string{"missing"}, wantCode: CodeVariableUndefined},
+		{name: "unterminated", expression: "${a", wantCode: CodeExpressionInvalid},
+		{name: "empty name", expression: "${}", wantCode: CodeExpressionInvalid},
+		{name: "whitespace", expression: "${ a }", wantCode: CodeExpressionInvalid},
+		{name: "nested dollar", expression: "${a$b}", wantCode: CodeExpressionInvalid},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			names, namesErr := Names(test.expression)
 			got, expandErr := Expand(test.expression, test.values)
-			if test.wantErr != "" {
-				if namesErr == nil && !strings.Contains(test.wantErr, "undefined") {
+			if test.wantCode != "" {
+				if namesErr == nil && test.wantCode != CodeVariableUndefined {
 					t.Fatalf("Names accepted invalid expression: %v", names)
 				}
-				if expandErr == nil || !strings.Contains(expandErr.Error(), test.wantErr) {
-					t.Fatalf("Expand error=%v want containing %q", expandErr, test.wantErr)
+				if !fault.IsCode(expandErr, test.wantCode) {
+					t.Fatalf("Expand error=%v want code %q", expandErr, test.wantCode)
 				}
 				return
 			}
@@ -58,7 +59,7 @@ func TestExpandRejectsNilResolverOnlyWhenNeeded(t *testing.T) {
 	if got, err := Expand("plain", nil); err != nil || got != "plain" {
 		t.Fatalf("plain value with nil resolver = %q, %v", got, err)
 	}
-	if _, err := Expand("${name}", nil); err == nil || !strings.Contains(err.Error(), "resolver is required") {
+	if _, err := Expand("${name}", nil); !fault.IsCode(err, CodeResolverRequired) {
 		t.Fatalf("nil resolver error = %v", err)
 	}
 }
