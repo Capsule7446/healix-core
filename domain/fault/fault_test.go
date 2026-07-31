@@ -168,6 +168,27 @@ func TestFaultRejectsInvalidOptionsAndViolationShapes(t *testing.T) {
 	}
 }
 
+func TestFaultValidationErrorsDoNotReflectRejectedValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		secret string
+		make   func(string) error
+	}{
+		{name: "kind", secret: "secret-kind", make: func(secret string) error { _, err := New(Kind(secret), testCode, "safe message"); return err }},
+		{name: "code", secret: "secret-code", make: func(secret string) error { _, err := New(Internal, Code(secret), "safe message"); return err }},
+		{name: "parameter key", secret: "secret-key", make: func(secret string) error { _, err := NewParam(ParamKey(secret), "safe value"); return err }},
+		{name: "violation field", secret: "secret-field", make: func(secret string) error { _, err := NewViolation(testCode, secret, "safe message"); return err }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.make(test.secret)
+			if err == nil || strings.Contains(err.Error(), test.secret) {
+				t.Fatalf("validation error = %v", err)
+			}
+		})
+	}
+}
+
 func TestFaultRejectsMaliciousTextAtPublicBoundaries(t *testing.T) {
 	tests := []struct {
 		name string
@@ -177,6 +198,10 @@ func TestFaultRejectsMaliciousTextAtPublicBoundaries(t *testing.T) {
 		{name: "message null byte", make: func() error { _, err := New(Internal, testCode, "safe\x00secret"); return err }},
 		{name: "message unicode line separator", make: func() error { _, err := New(Internal, testCode, "safe secret"); return err }},
 		{name: "violation message unicode paragraph separator", make: func() error { _, err := NewViolation(testCode, "field", "safe secret"); return err }},
+		{name: "message invalid UTF-8", make: func() error { _, err := New(Internal, testCode, string([]byte{'s', 0xff})); return err }},
+		{name: "parameter bidi override", make: func() error { _, err := NewParam("field", "safe‮secret"); return err }},
+		{name: "message bidi isolate", make: func() error { _, err := New(Internal, testCode, "safe⁦secret"); return err }},
+		{name: "violation message zero-width format", make: func() error { _, err := NewViolation(testCode, "field", "safe​secret"); return err }},
 	}
 
 	for _, test := range tests {

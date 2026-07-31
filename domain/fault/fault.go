@@ -3,10 +3,10 @@ package fault
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Kind describes the general remediation strategy for a business fault.
@@ -57,7 +57,7 @@ type Param struct {
 
 func NewParam(key ParamKey, value string) (Param, error) {
 	if !paramKeyPattern.MatchString(string(key)) {
-		return Param{}, fmt.Errorf("invalid fault parameter key %q", key)
+		return Param{}, errors.New("invalid fault parameter key")
 	}
 	if len(value) > maxParamValueLen {
 		return Param{}, errors.New("fault parameter value exceeds maximum length")
@@ -84,7 +84,7 @@ func NewViolation(code Code, field, message string, params ...Param) (Violation,
 		return Violation{}, err
 	}
 	if !fieldPattern.MatchString(field) {
-		return Violation{}, fmt.Errorf("invalid violation field %q", field)
+		return Violation{}, errors.New("invalid violation field")
 	}
 	if err := validateMessage(message); err != nil {
 		return Violation{}, err
@@ -280,12 +280,12 @@ func validateKind(kind Kind) error {
 	case InvalidArgument, OutOfRange, NotFound, AlreadyExists, Conflict, FailedPrecondition, ResourceExhausted, Canceled, DeadlineExceeded, Unavailable, Internal:
 		return nil
 	default:
-		return fmt.Errorf("unsupported fault kind %q", kind)
+		return errors.New("unsupported fault kind")
 	}
 }
 func validateCode(code Code) error {
 	if !codePattern.MatchString(string(code)) {
-		return fmt.Errorf("invalid fault code %q", code)
+		return errors.New("invalid fault code")
 	}
 	return nil
 }
@@ -303,8 +303,11 @@ func validateMessage(message string) error {
 }
 
 func containsUnsafePublicText(value string) bool {
+	if !utf8.ValidString(value) {
+		return true
+	}
 	for _, character := range value {
-		if unicode.IsControl(character) || character == ' ' || character == ' ' {
+		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == ' ' || character == ' ' {
 			return true
 		}
 	}
@@ -319,7 +322,7 @@ func validateViolations(violations []Violation) error {
 			return err
 		}
 		if !fieldPattern.MatchString(violation.field) {
-			return fmt.Errorf("invalid violation field %q", violation.field)
+			return errors.New("invalid violation field")
 		}
 		if err := validateMessage(violation.message); err != nil {
 			return err
@@ -337,7 +340,7 @@ func validateParams(params []Param) error {
 	seen := make(map[ParamKey]struct{}, len(params))
 	for _, param := range params {
 		if !paramKeyPattern.MatchString(string(param.key)) {
-			return fmt.Errorf("invalid fault parameter key %q", param.key)
+			return errors.New("invalid fault parameter key")
 		}
 		if len(param.value) > maxParamValueLen {
 			return errors.New("fault parameter value exceeds maximum length")
@@ -346,7 +349,7 @@ func validateParams(params []Param) error {
 			return errors.New("fault parameter value contains control characters")
 		}
 		if _, duplicate := seen[param.key]; duplicate {
-			return fmt.Errorf("duplicate fault parameter key %q", param.key)
+			return errors.New("duplicate fault parameter key")
 		}
 		seen[param.key] = struct{}{}
 	}
