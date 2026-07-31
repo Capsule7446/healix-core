@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestRunStatusTransitionMatrix(t *testing.T) {
@@ -30,8 +32,8 @@ func TestRunStatusTransitionMatrix(t *testing.T) {
 				if wantAllowed && err != nil {
 					t.Fatalf("legal transition rejected: %v", err)
 				}
-				if !wantAllowed && !errors.Is(err, ErrInvalidRunStatusTransition) {
-					t.Fatalf("illegal transition error = %v, want %v", err, ErrInvalidRunStatusTransition)
+				if !wantAllowed && !fault.IsCode(err, CodeRunStatusTransitionInvalid) {
+					t.Fatalf("illegal transition error = %v, want %v", err, CodeRunStatusTransitionInvalid)
 				}
 			})
 		}
@@ -86,8 +88,8 @@ func TestExecutionStatusTransitionAndTerminalMatrices(t *testing.T) {
 				if wantAllowed && err != nil {
 					t.Fatalf("legal transition rejected: %v", err)
 				}
-				if !wantAllowed && !errors.Is(err, ErrInvalidExecutionStatusTransition) {
-					t.Fatalf("illegal transition error = %v, want %v", err, ErrInvalidExecutionStatusTransition)
+				if !wantAllowed && !fault.IsCode(err, CodeStatusTransitionInvalid) {
+					t.Fatalf("illegal transition error = %v, want %v", err, CodeStatusTransitionInvalid)
 				}
 			})
 		}

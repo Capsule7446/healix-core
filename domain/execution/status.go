@@ -1,9 +1,6 @@
 package execution
 
-import (
-	"errors"
-	"fmt"
-)
+import "github.com/Capsule7446/healix-core/domain/fault"
 
 // ExecutionStatus describes the lifecycle of one workflow execution. It is
 // intentionally distinct from RunStatus, which describes the containing run.
@@ -18,8 +15,6 @@ const (
 	ExecutionAborted   ExecutionStatus = "ABORTED"
 	ExecutionSkipped   ExecutionStatus = "SKIPPED"
 )
-
-var ErrInvalidExecutionStatusTransition = errors.New("invalid execution status transition")
 
 func ValidateExecutionStatusTransition(from, to ExecutionStatus) error {
 	return from.CanTransitionTo(to)
@@ -40,5 +35,5 @@ func (from ExecutionStatus) CanTransitionTo(to ExecutionStatus) error {
 	if allowed {
 		return nil
 	}
-	return fmt.Errorf("%w: %s -> %s", ErrInvalidExecutionStatusTransition, from, to)
+	return mustExecutionFault(fault.FailedPrecondition, CodeStatusTransitionInvalid, "execution status transition is invalid")
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type RunStatus string
@@ -18,8 +20,6 @@ const (
 	Aborted   RunStatus = "ABORTED"
 )
 
-var ErrInvalidRunStatusTransition = errors.New("invalid run status transition")
-
 const sha256DigestLength = 71
 
 func ValidateRunStatusTransition(from, to RunStatus) error {
@@ -28,7 +28,7 @@ func ValidateRunStatusTransition(from, to RunStatus) error {
 	if allowed {
 		return nil
 	}
-	return fmt.Errorf("%w: %s -> %s", ErrInvalidRunStatusTransition, from, to)
+	return mustExecutionFault(fault.FailedPrecondition, CodeRunStatusTransitionInvalid, "run status transition is invalid")
 }
 
 type Run struct {

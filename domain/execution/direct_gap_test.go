@@ -1,9 +1,9 @@
 package execution
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -102,7 +102,7 @@ func TestExecutionStatusDirect(t *testing.T) {
 			if (err == nil) != tt.allowed {
 				t.Fatalf("error=%v", err)
 			}
-			if !tt.allowed && !errors.Is(err, ErrInvalidExecutionStatusTransition) {
+			if !tt.allowed && !fault.IsCode(err, CodeStatusTransitionInvalid) {
 				t.Fatalf("wrong error: %v", err)
 			}
 		})

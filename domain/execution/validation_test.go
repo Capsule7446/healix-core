@@ -1,7 +1,6 @@
 package execution
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -525,7 +524,7 @@ func TestExecutionStatusRejectsUnknownAndTerminalTransitions(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := ValidateExecutionStatusTransition(test.from, test.to); !errors.Is(err, ErrInvalidExecutionStatusTransition) {
+			if err := ValidateExecutionStatusTransition(test.from, test.to); !fault.IsCode(err, CodeStatusTransitionInvalid) {
 				t.Fatalf("transition %s -> %s error = %v, want ErrInvalidExecutionStatusTransition", test.from, test.to, err)
 			}
 		})
