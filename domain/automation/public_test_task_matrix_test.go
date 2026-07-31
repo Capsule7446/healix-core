@@ -193,11 +193,50 @@ func TestResolveParameterValuesRejectsInvalidAndDuplicateDefinitions(t *testing.
 	valid := ParameterDefinition{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true}
 	invalid := valid
 	invalid.Name = " "
-	if _, err := ResolveParameterValues([]ParameterDefinition{invalid}, nil); err == nil {
-		t.Fatal("invalid parameter definition accepted")
+	_, err := ResolveParameterValues([]ParameterDefinition{invalid}, nil)
+	requireViolationOf(t, err, CodeExecutionFlowDependencyInvalid, fault.CodeFieldInvalid, "parameters.definitions.0")
+
+	_, err = ResolveParameterValues([]ParameterDefinition{valid, valid}, nil)
+	requireViolationOf(t, err, CodeExecutionFlowDependencyInvalid, fault.CodeFieldDuplicate, "parameters.definitions.1")
+	// The duplicated name survives on the private cause for diagnostics only.
+	if cause := errorsUnwrap(err); cause == nil || !strings.Contains(cause.Error(), `"value"`) {
+		t.Fatalf("private cause = %v, want it to retain the duplicated name", cause)
 	}
-	if _, err := ResolveParameterValues([]ParameterDefinition{valid, valid}, nil); err == nil || !strings.Contains(err.Error(), "duplicate parameter") {
-		t.Fatalf("duplicate parameter definitions error = %v", err)
+	if descriptor, _ := fault.Describe(err); strings.Contains(descriptor.Message(), "value") {
+		t.Fatalf("public message %q carries the parameter name", descriptor.Message())
+	}
+}
+
+// ResolveParameterValues used to report the first undeclared supplied key in Go's
+// randomised map order, so the same input produced different private detail on
+// different runs. The public envelope was already stable; the cause now is too.
+func TestResolveParameterValuesReportsUnknownKeysDeterministically(t *testing.T) {
+	definitions := []ParameterDefinition{{Name: "declared", DisplayName: "Declared", Type: parameter.Text, Required: false}}
+	supplied := map[string]parameter.Value{
+		"zulu-undeclared":  parameter.TextValue("z"),
+		"alpha-undeclared": parameter.TextValue("a"),
+		"mike-undeclared":  parameter.TextValue("m"),
+	}
+	_, first := ResolveParameterValues(definitions, supplied)
+	requireViolationOf(t, first, CodeExecutionFlowDependencyInvalid, fault.CodeFieldInvalid, "parameters")
+	for attempt := 0; attempt < 100; attempt++ {
+		_, again := ResolveParameterValues(definitions, supplied)
+		if again == nil || errorsUnwrap(again) == nil || errorsUnwrap(again).Error() != errorsUnwrap(first).Error() {
+			t.Fatalf("attempt %d: cause = %v, want the same as the first run %v", attempt, errorsUnwrap(again), errorsUnwrap(first))
+		}
+	}
+	// Sorted order, and supplied keys are user input: absent from public text.
+	cause := errorsUnwrap(first)
+	if !strings.Contains(cause.Error(), `"alpha-undeclared" "mike-undeclared" "zulu-undeclared"`) {
+		t.Fatalf("cause = %v, want the undeclared keys sorted", cause)
+	}
+	if descriptor, _ := fault.Describe(first); strings.Contains(descriptor.Message(), "undeclared") {
+		t.Fatalf("public message %q carries a supplied key", descriptor.Message())
+	}
+	for _, violation := range mustDescriptor(t, first).Violations() {
+		if strings.Contains(violation.Message(), "zulu") || strings.Contains(violation.Field(), "zulu") {
+			t.Fatalf("violation %q/%q carries a supplied key", violation.Field(), violation.Message())
+		}
 	}
 }
 

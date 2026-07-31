@@ -1,14 +1,15 @@
 package automation
 
 import (
+	"errors"
 	"fmt"
-	"github.com/Capsule7446/healix-core/domain/parameter"
 	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // Validate reports every field failure through one aggregate envelope. Field
@@ -120,6 +121,15 @@ func (a ExecutionFlowAggregate) Validate() error {
 	if err := a.Task.Validate(); err != nil {
 		return err
 	}
+	// A version's own shape failure propagates unwrapped under its own code, so
+	// this pass runs to completion BEFORE any history violation is accumulated.
+	// Interleaving the two meant an already-built history violation list could be
+	// silently discarded when a later version's envelope returned mid-loop.
+	for _, version := range a.Versions {
+		if err := version.Validate(); err != nil {
+			return err
+		}
+	}
 	var violations []fault.Violation
 	if len(a.Versions) == 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "versions", "execution flow requires version history"))
@@ -129,9 +139,6 @@ func (a ExecutionFlowAggregate) Validate() error {
 	byID := map[string]ExecutionFlowVersion{}
 	highest := ExecutionFlowVersion{}
 	for index, version := range a.Versions {
-		if err := version.Validate(); err != nil {
-			return err
-		}
 		field := func(name string) string { return fmt.Sprintf("versions.%d.%s", index, name) }
 		if version.ExecutionFlowID != a.Task.ID {
 			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field("executionFlowId"), "version belongs to another execution flow"))
@@ -176,36 +183,72 @@ func (a ExecutionFlowAggregate) Validate() error {
 	return nil
 }
 
+// ResolveParameterValues reports every failure through one dependency envelope
+// with ordered violations. It is exported and host-callable, so it cannot return
+// bare errors; parameter names are caller data (and supplied map keys are user
+// input outright), so names live only on the private cause. Definition-side
+// failures follow the definitions slice order; unknown supplied keys are sorted
+// before reporting, because ranging the map made which key was reported — and
+// therefore the error — a function of Go's randomised iteration order.
 func ResolveParameterValues(definitions []ParameterDefinition, supplied map[string]parameter.Value) (map[string]parameter.Value, error) {
+	var violations []fault.Violation
+	var details []string
 	byName := make(map[string]ParameterDefinition, len(definitions))
-	for _, definition := range definitions {
+	for index, definition := range definitions {
+		field := fmt.Sprintf("parameters.definitions.%d", index)
+		// The definition's own failure degrades into this envelope rather than
+		// nesting; its text may carry names and option values.
 		if err := definition.Validate(); err != nil {
-			return nil, fmt.Errorf("parameter %q: %w", definition.Name, err)
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field, "parameter definition is invalid"))
+			details = append(details, fmt.Sprintf("definition %d (%s): %v", index, definition.Name, err))
+			continue
 		}
 		if _, duplicate := byName[definition.Name]; duplicate {
-			return nil, fmt.Errorf("duplicate parameter %q", definition.Name)
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field, "parameter definition name is duplicated"))
+			details = append(details, fmt.Sprintf("definition %d duplicates %q", index, definition.Name))
+			continue
 		}
 		byName[definition.Name] = definition
 	}
+	unknown := make([]string, 0, len(supplied))
 	for name := range supplied {
 		if _, exists := byName[name]; !exists {
-			return nil, fmt.Errorf("parameter %q is unknown", name)
+			unknown = append(unknown, name)
 		}
 	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "parameters", "one or more supplied parameters are not declared"))
+		details = append(details, fmt.Sprintf("undeclared parameters: %q", unknown))
+	}
 	resolved := make(map[string]parameter.Value, len(definitions))
-	for _, definition := range definitions {
+	for index, definition := range definitions {
+		field := fmt.Sprintf("parameters.definitions.%d", index)
 		value, exists := supplied[definition.Name]
 		if !exists {
-			if fallback, present := definition.Default.Value(); present {
-				value = fallback
-			} else {
-				return nil, fmt.Errorf("parameter %q is required", definition.Name)
+			fallback, present := definition.Default.Value()
+			if !present {
+				violations = append(violations, mustViolation(fault.CodeFieldRequired, field, "a required parameter was not supplied"))
+				details = append(details, fmt.Sprintf("parameter %q is required", definition.Name))
+				continue
 			}
+			value = fallback
 		}
 		if err := definition.ValidateValue(value); err != nil {
-			return nil, fmt.Errorf("parameter %q: %w", definition.Name, err)
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field, "a supplied parameter value is incompatible with its declaration"))
+			details = append(details, fmt.Sprintf("parameter %q: %v", definition.Name, err))
+			continue
 		}
 		resolved[definition.Name] = value.Clone()
+	}
+	if len(violations) > 0 {
+		return nil, wrapAutomationFault(
+			errors.New(strings.Join(details, "; ")),
+			fault.InvalidArgument,
+			CodeExecutionFlowDependencyInvalid,
+			"execution flow dependency resolution is invalid",
+			fault.WithViolations(capViolations(violations)...),
+		)
 	}
 	return resolved, nil
 }

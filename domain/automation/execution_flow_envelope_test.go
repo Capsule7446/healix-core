@@ -8,6 +8,18 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
+// errorsUnwrap and mustDescriptor keep matrix-test call sites terse.
+func errorsUnwrap(err error) error { return errors.Unwrap(err) }
+
+func mustDescriptor(t *testing.T, err error) fault.Descriptor {
+	t.Helper()
+	descriptor, ok := fault.Describe(err)
+	if !ok {
+		t.Fatalf("error is not a fault: %v", err)
+	}
+	return descriptor
+}
+
 func violationKey(code fault.Code, field string) string {
 	return string(code) + "@" + field
 }
