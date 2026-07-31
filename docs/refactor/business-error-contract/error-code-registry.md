@@ -31,6 +31,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_TEST_TASK_INVALID` | `INVALID_ARGUMENT` | `test task input is invalid` | ordered typed violations only | Aggregate validation envelope. |
 | `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
 | `AUTOMATION_AGGREGATE_DELETED` | `FAILED_PRECONDITION` | `automation aggregate has been deleted` | none | Mutations require a restored aggregate; no aggregate identity is exposed. |
+| `AUTOMATION_VERSION_NUMBER_EXHAUSTED` | `RESOURCE_EXHAUSTED` | `automation version number capacity is exhausted` | none | Publishing cannot continue until version capacity is remediated. |
 
 ## Sampling, evidence, fingerprint, interpolation
 

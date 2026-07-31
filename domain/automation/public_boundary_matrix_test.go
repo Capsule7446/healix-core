@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -126,7 +127,7 @@ func TestWorkflowAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 }
 
 func TestHealPublicRulesAndErrorBoundaries(t *testing.T) {
-	if _, err := NextVersionNumber([]VersionMeta{{ID: "max", VersionNumber: math.MaxInt}}); !errors.Is(err, ErrVersionNumberOverflow) {
+	if _, err := NextVersionNumber([]VersionMeta{{ID: "max", VersionNumber: math.MaxInt}}); !fault.IsCode(err, CodeVersionNumberExhausted) {
 		t.Fatalf("NextVersionNumber() error = %v", err)
 	}
 	if err := ValidateHealDecisionBand("", HealDecisionBandApplied); err == nil {
@@ -408,7 +409,7 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 	}
 	overflowVersionNode := node.Clone()
 	overflowVersionNode.Versions[0].VersionNumber = math.MaxInt
-	if _, err := overflowVersionNode.PublishVersion("node-v3", "", "", node.Current.Selectors, node.Current.Fingerprint, SourceManual, 3); !errors.Is(err, ErrVersionNumberOverflow) {
+	if _, err := overflowVersionNode.PublishVersion("node-v3", "", "", node.Current.Selectors, node.Current.Fingerprint, SourceManual, 3); !fault.IsCode(err, CodeVersionNumberExhausted) {
 		t.Fatalf("node publication version overflow error = %v", err)
 	}
 
@@ -421,7 +422,7 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 	overflowVersionWorkflow := workflow
 	overflowVersionWorkflow.Versions = append([]FlowFragmentVersion(nil), workflow.Versions...)
 	overflowVersionWorkflow.Versions[0].VersionNumber = math.MaxInt
-	if _, err := overflowVersionWorkflow.PublishVersion("workflow-v3", workflow.Current.Definition, 3); !errors.Is(err, ErrVersionNumberOverflow) {
+	if _, err := overflowVersionWorkflow.PublishVersion("workflow-v3", workflow.Current.Definition, 3); !fault.IsCode(err, CodeVersionNumberExhausted) {
 		t.Fatalf("workflow publication version overflow error = %v", err)
 	}
 

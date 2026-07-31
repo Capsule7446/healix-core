@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -15,7 +16,19 @@ type VersionMeta struct {
 	DeletedAt     int64
 }
 
-var ErrVersionNumberOverflow = fmt.Errorf("version number overflow")
+const CodeVersionNumberExhausted fault.Code = "AUTOMATION_VERSION_NUMBER_EXHAUSTED"
+
+func VersionNumberOverflowError() error {
+	err, constructionErr := fault.New(
+		fault.ResourceExhausted,
+		CodeVersionNumberExhausted,
+		"automation version number capacity is exhausted",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func NextVersionNumber(existing []VersionMeta) (int, error) {
 	maximum := 0
@@ -28,7 +41,7 @@ func NextVersionNumber(existing []VersionMeta) (int, error) {
 		}
 	}
 	if maximum == math.MaxInt {
-		return 0, ErrVersionNumberOverflow
+		return 0, VersionNumberOverflowError()
 	}
 	return maximum + 1, nil
 }
