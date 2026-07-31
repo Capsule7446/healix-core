@@ -109,7 +109,7 @@ func (DefaultHealGovernancePlanner) PlanHealGovernance(plan HealGovernancePlan) 
 	previous := cloneHealStreak(plan.Snapshot.Streak)
 	transition, err := previous.Observe(observation)
 	if err != nil {
-		return HealGovernanceDecision{}, fmt.Errorf("observe accepted heal fact: %w", err)
+		return HealGovernanceDecision{}, err
 	}
 	decision := HealGovernanceDecision{
 		Key: plan.Snapshot.Key, FactID: plan.Fact.FactID, Sequence: plan.Fact.Sequence,

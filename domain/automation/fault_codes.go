@@ -13,6 +13,11 @@ const (
 	CodeHealApprovalStatusInvalid         fault.Code = "AUTOMATION_HEAL_APPROVAL_STATUS_INVALID"
 	CodeHealDecisionBandInvalid           fault.Code = "AUTOMATION_HEAL_DECISION_BAND_INVALID"
 	CodeHealConfidenceInvalid             fault.Code = "AUTOMATION_HEAL_CONFIDENCE_INVALID"
+	CodeHealStreakStateInvalid            fault.Code = "AUTOMATION_HEAL_STREAK_STATE_INVALID"
+	CodeHealObservationInvalid            fault.Code = "AUTOMATION_HEAL_OBSERVATION_INVALID"
+	CodeHealSequenceConflict              fault.Code = "AUTOMATION_HEAL_SEQUENCE_CONFLICT"
+	CodeHealProvenanceConflict            fault.Code = "AUTOMATION_HEAL_PROVENANCE_CONFLICT"
+	CodeHealStreakRejectionInvalid        fault.Code = "AUTOMATION_HEAL_STREAK_REJECTION_INVALID"
 )
 
 func persistedRevisionInvalidError() error {
@@ -53,6 +58,34 @@ func healDecisionBandInvalidError() error {
 
 func healConfidenceInvalidError() error {
 	return mustAutomationFault(fault.InvalidArgument, CodeHealConfidenceInvalid, "heal confidence is invalid")
+}
+
+func healStreakStateInvalidError(cause error) error {
+	return wrapAutomationFault(cause, fault.FailedPrecondition, CodeHealStreakStateInvalid, "persisted heal streak state is invalid")
+}
+
+func healObservationInvalidError(cause error) error {
+	return wrapAutomationFault(cause, fault.InvalidArgument, CodeHealObservationInvalid, "heal observation is invalid")
+}
+
+func healSequenceConflictError(cause error) error {
+	return wrapAutomationFault(cause, fault.Conflict, CodeHealSequenceConflict, "heal sequence conflicts with persisted ordering")
+}
+
+func healProvenanceConflictError(cause error) error {
+	return wrapAutomationFault(cause, fault.Conflict, CodeHealProvenanceConflict, "heal observation conflicts with persisted provenance")
+}
+
+func healStreakRejectionInvalidError(cause error) error {
+	return wrapAutomationFault(cause, fault.FailedPrecondition, CodeHealStreakRejectionInvalid, "heal streak cannot be rejected in its current state")
+}
+
+func wrapAutomationFault(cause error, kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.Wrap(cause, kind, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 func mustAutomationFault(kind fault.Kind, code fault.Code, message string) error {

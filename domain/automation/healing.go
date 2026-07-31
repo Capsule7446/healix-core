@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -263,10 +264,10 @@ type HealStreakDecision struct {
 
 func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecision, error) {
 	if err := streak.validate(); err != nil {
-		return HealStreakDecision{}, err
+		return HealStreakDecision{}, healStreakStateInvalidError(err)
 	}
 	if err := observation.validate(); err != nil {
-		return HealStreakDecision{}, err
+		return HealStreakDecision{}, healObservationInvalidError(err)
 	}
 	contribution := observation.contribution()
 	for _, existing := range streak.consumedProvenance() {
@@ -274,11 +275,11 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 			return HealStreakDecision{Next: streak.clone()}, nil
 		}
 		if existing.FactID == contribution.FactID || existing.CommitID == contribution.CommitID || existing.RunID == contribution.RunID || existing.Sequence == contribution.Sequence {
-			return HealStreakDecision{}, fmt.Errorf("heal contribution replay conflicts with persisted provenance")
+			return HealStreakDecision{}, healProvenanceConflictError(errors.New("heal contribution replay conflicts with persisted provenance"))
 		}
 	}
 	if observation.Sequence <= streak.LastSequence {
-		return HealStreakDecision{}, fmt.Errorf("heal observation sequence %d is not newer than %d", observation.Sequence, streak.LastSequence)
+		return HealStreakDecision{}, healSequenceConflictError(fmt.Errorf("heal observation sequence %d is not newer than %d", observation.Sequence, streak.LastSequence))
 	}
 	if streak.Disposition == HealStreakAutoPublish || streak.Disposition == HealStreakAwaitApproval {
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
@@ -337,7 +338,10 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 }
 
 func (streak HealStreak) Validate() error {
-	return streak.validate()
+	if err := streak.validate(); err != nil {
+		return healStreakStateInvalidError(err)
+	}
+	return nil
 }
 
 func (streak HealStreak) validate() error {
@@ -349,6 +353,14 @@ func (streak HealStreak) validate() error {
 		return fmt.Errorf("consumed heal observation exceeds last sequence")
 	}
 	if !streak.Observing && streak.Disposition == "" && len(streak.Contributions) == 0 {
+		if strings.TrimSpace(streak.ElementTargetID) != "" ||
+			strings.TrimSpace(streak.BaseNodeVersionID) != "" ||
+			strings.TrimSpace(streak.CandidateHash) != "" ||
+			streak.Band != "" ||
+			len(streak.ConsumedObservations) != 0 ||
+			streak.LastSequence != 0 {
+			return fmt.Errorf("empty heal streak contains persisted state")
+		}
 		return nil
 	}
 	if streak.Disposition == HealStreakReset || streak.Disposition == HealStreakStale {
@@ -395,13 +407,13 @@ func (streak HealStreak) validate() error {
 
 func (streak HealStreak) Reject(sequence uint64) (HealStreakDecision, error) {
 	if err := streak.validate(); err != nil {
-		return HealStreakDecision{}, err
+		return HealStreakDecision{}, healStreakStateInvalidError(err)
 	}
 	if streak.Disposition != HealStreakAwaitApproval {
-		return HealStreakDecision{}, fmt.Errorf("only an await-approval heal streak can be rejected")
+		return HealStreakDecision{}, healStreakRejectionInvalidError(errors.New("only an await-approval heal streak can be rejected"))
 	}
 	if sequence == 0 || sequence <= streak.LastSequence {
-		return HealStreakDecision{}, fmt.Errorf("heal rejection sequence %d is not newer than %d", sequence, streak.LastSequence)
+		return HealStreakDecision{}, healSequenceConflictError(fmt.Errorf("heal rejection sequence %d is not newer than %d", sequence, streak.LastSequence))
 	}
 	next := streak.clone()
 	next.LastSequence = sequence

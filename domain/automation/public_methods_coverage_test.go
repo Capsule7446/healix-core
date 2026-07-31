@@ -1,9 +1,9 @@
 package automation
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -96,8 +96,8 @@ func TestHealStreakValidateStateAndRuleMatrix(t *testing.T) {
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.wantError)
+			if !fault.IsCode(err, CodeHealStreakStateInvalid) {
+				t.Fatalf("Validate() error = %v, want %q", err, CodeHealStreakStateInvalid)
 			}
 		})
 	}

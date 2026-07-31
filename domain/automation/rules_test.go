@@ -27,6 +27,73 @@ func acceptedHealObservation(runID string, sequence uint64, candidateHash string
 	}
 }
 
+func TestHealStreakRejectsNonzeroResidueInEmptyState(t *testing.T) {
+	fact := acceptedHealObservation("run-secret", 1, "candidate-secret", HealDecisionBandApplied).contribution()
+	for _, streak := range []HealStreak{
+		{ElementTargetID: "node-secret"},
+		{BaseNodeVersionID: "version-secret"},
+		{CandidateHash: "candidate-secret"},
+		{Band: HealDecisionBandApplied},
+		{ConsumedObservations: []ContributingHealFact{fact}, LastSequence: 1},
+		{LastSequence: math.MaxUint64},
+	} {
+		if err := streak.Validate(); !fault.IsCode(err, CodeHealStreakStateInvalid) {
+			t.Fatalf("Validate() error = %v for %#v", err, streak)
+		}
+		decision, err := streak.Observe(acceptedHealObservation("new-run", 2, "candidate", HealDecisionBandApplied))
+		if !fault.IsCode(err, CodeHealStreakStateInvalid) || decision.Next.LastSequence != 0 {
+			t.Fatalf("decision/error = %#v/%v", decision, err)
+		}
+	}
+}
+
+func TestHealStreakAndObservationExposeSafeValidationFaults(t *testing.T) {
+	invalidStreak := HealStreak{ElementTargetID: "node-secret", Observing: true, Disposition: HealStreakObserving}
+	for _, run := range []func() error{
+		invalidStreak.Validate,
+		func() error { _, err := invalidStreak.Reject(1); return err },
+		func() error {
+			_, err := invalidStreak.Observe(acceptedHealObservation("run", 1, "candidate", HealDecisionBandApplied))
+			return err
+		},
+	} {
+		err := run()
+		descriptor, ok := fault.Describe(err)
+		if !fault.IsCode(err, CodeHealStreakStateInvalid) || !ok || descriptor.Kind() != fault.FailedPrecondition || descriptor.Message() != "persisted heal streak state is invalid" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || strings.Contains(err.Error(), "node-secret") {
+			t.Fatalf("streak error/descriptor = %v/%#v", err, descriptor)
+		}
+	}
+
+	observation := acceptedHealObservation("run-secret", 1, "candidate-secret", HealDecisionBandApplied)
+	observation.Outcome = HealOutcome("malicious\noutcome-secret")
+	decision, err := (HealStreak{}).Observe(observation)
+	descriptor, ok := fault.Describe(err)
+	if !fault.IsCode(err, CodeHealObservationInvalid) || !ok || descriptor.Kind() != fault.InvalidArgument || descriptor.Message() != "heal observation is invalid" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || decision.Next.ElementTargetID != "" || decision.Next.LastSequence != 0 {
+		t.Fatalf("decision/error/descriptor = %#v/%v/%#v", decision, err, descriptor)
+	}
+	for _, secret := range []string{"run-secret", "candidate-secret", "malicious", "outcome-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("public error leaked %q: %q", secret, err.Error())
+		}
+	}
+}
+
+func TestHealStreakSequenceConflictsAreSafeAndImmutable(t *testing.T) {
+	streak := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandBelowCap, Contributions: contributions("run-1", "run-2", "run-3"), LastSequence: math.MaxUint64, Disposition: HealStreakAwaitApproval}
+	for _, run := range []func() (HealStreakDecision, error){
+		func() (HealStreakDecision, error) {
+			return streak.Observe(acceptedHealObservation("run-secret", math.MaxUint64-1, "candidate", HealDecisionBandBelowCap))
+		},
+		func() (HealStreakDecision, error) { return streak.Reject(math.MaxUint64) },
+	} {
+		decision, err := run()
+		descriptor, ok := fault.Describe(err)
+		if !fault.IsCode(err, CodeHealSequenceConflict) || !ok || descriptor.Kind() != fault.Conflict || descriptor.Message() != "heal sequence conflicts with persisted ordering" || decision.Next.LastSequence != 0 || streak.LastSequence != math.MaxUint64 || strings.Contains(err.Error(), fmt.Sprint(uint64(math.MaxUint64))) {
+			t.Fatalf("decision/error/descriptor/streak = %#v/%v/%#v/%#v", decision, err, descriptor, streak)
+		}
+	}
+}
+
 func TestHealStreakRetainsCompleteContributionProvenance(t *testing.T) {
 	streak := HealStreak{}
 	for index, sequence := range []uint64{11, 19, 27} {
@@ -59,9 +126,11 @@ func TestHealStreakRejectsConflictingContributionReplay(t *testing.T) {
 		t.Fatalf("exact replay = %#v, %v", replay.Next, err)
 	}
 	conflict := first
-	conflict.CommitID = "other-commit"
-	if _, err := decision.Next.Observe(conflict); err == nil {
-		t.Fatal("conflicting replay was accepted")
+	conflict.CommitID = "other-commit-secret"
+	conflicted, err := decision.Next.Observe(conflict)
+	descriptor, ok := fault.Describe(err)
+	if !fault.IsCode(err, CodeHealProvenanceConflict) || !ok || descriptor.Kind() != fault.Conflict || descriptor.Message() != "heal observation conflicts with persisted provenance" || conflicted.Next.LastSequence != 0 || strings.Contains(err.Error(), "other-commit-secret") {
+		t.Fatalf("conflict/error/descriptor = %#v/%v/%#v", conflicted, err, descriptor)
 	}
 }
 
@@ -149,6 +218,12 @@ func TestHealStreakRejectsStaleReplayAfterIdentityChange(t *testing.T) {
 }
 
 func TestHealStreakRejectIsImmutableAndTerminal(t *testing.T) {
+	invalid, err := (HealStreak{}).Reject(1)
+	descriptor, ok := fault.Describe(err)
+	if !fault.IsCode(err, CodeHealStreakRejectionInvalid) || !ok || descriptor.Kind() != fault.FailedPrecondition || descriptor.Message() != "heal streak cannot be rejected in its current state" || invalid.Next.LastSequence != 0 {
+		t.Fatalf("invalid rejection/error/descriptor = %#v/%v/%#v", invalid, err, descriptor)
+	}
+
 	observing := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandBelowCap, Contributions: contributions("run-1", "run-2", "run-3"), LastSequence: 3, Disposition: HealStreakAwaitApproval}
 	rejected, err := observing.Reject(4)
 	if err != nil {

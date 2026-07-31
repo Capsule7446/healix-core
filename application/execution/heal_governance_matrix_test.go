@@ -7,6 +7,7 @@ import (
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestDefaultHealGovernancePlannerRejectsEveryPlanIdentityBoundary(t *testing.T) {
@@ -127,7 +128,7 @@ func TestDefaultHealGovernancePlannerRejectsFailedCandidateGovernanceEvidence(t 
 		t.Run(string(band), func(t *testing.T) {
 			plan := healGovernancePlan("run-failed", 1, band, domainautomation.HealStreak{})
 			plan.Fact.Observation.Succeeded = false
-			if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan); err == nil || !strings.Contains(err.Error(), "non-success heal observation") {
+			if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan); !fault.IsCode(err, domainautomation.CodeHealObservationInvalid) || err.Error() != "AUTOMATION_HEAL_OBSERVATION_INVALID: heal observation is invalid" {
 				t.Fatalf("failed candidate governance evidence error = %v", err)
 			}
 		})
