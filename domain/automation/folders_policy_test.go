@@ -2,35 +2,95 @@ package automation
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
+
+func assertFolderFault(t *testing.T, err error, code fault.Code, kind fault.Kind, message string) {
+	t.Helper()
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != code || descriptor.Kind() != kind || descriptor.Message() != message {
+		t.Fatalf("descriptor = %#v, ok = %v, error = %v", descriptor, ok, err)
+	}
+	if len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || err.Error() != string(code)+": "+message {
+		t.Fatalf("unsafe folder fault: %#v, error = %v", descriptor, err)
+	}
+}
+
+func TestFolderFaultContractsRejectHostileInputs(t *testing.T) {
+	malformed := []string{
+		" identity ",
+		"identity\x00",
+		"identity‮",
+		string([]byte{0xff}),
+		strings.Repeat("x", parameter.MaxNameBytes+1),
+	}
+	for _, value := range malformed {
+		for _, field := range []struct {
+			name string
+			make func(string) Folder
+		}{
+			{name: "id", make: func(value string) Folder { return Folder{ID: value, Kind: FolderNode, DisplayName: "Nodes"} }},
+			{name: "parent", make: func(value string) Folder {
+				return Folder{ID: "folder", Kind: FolderNode, ParentID: value, DisplayName: "Nodes"}
+			}},
+			{name: "name", make: func(value string) Folder { return Folder{ID: "folder", Kind: FolderNode, DisplayName: value} }},
+		} {
+			t.Run(field.name, func(t *testing.T) {
+				err := field.make(value).Validate()
+				assertFolderFault(t, err, CodeFolderInvalid, fault.InvalidArgument, "automation folder is invalid")
+				if strings.Contains(err.Error(), value) {
+					t.Fatalf("error disclosed rejected value: %q", err.Error())
+				}
+			})
+		}
+	}
+
+	_, err := NewFolderForest([]Folder{{ID: "folder", Kind: FolderNode, ParentID: "missing", DisplayName: "Folder"}})
+	assertFolderFault(t, err, CodeFolderTreeInvalid, fault.FailedPrecondition, "automation folder tree is invalid")
+
+	forest, err := NewFolderForest([]Folder{{ID: "folder", Kind: FolderNode, DisplayName: "Folder"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := forest.Depths()
+	err = forest.RequireEmpty("folder", FolderOccupancy{Assets: 1})
+	assertFolderFault(t, err, CodeFolderNotEmpty, fault.FailedPrecondition, "automation folder must be empty")
+	if !reflect.DeepEqual(before, forest.Depths()) {
+		t.Fatal("RequireEmpty mutated folder forest")
+	}
+}
 
 func TestFolderValidationMatrix(t *testing.T) {
 	tests := []struct {
-		name    string
-		folder  Folder
-		wantErr string
+		name   string
+		folder Folder
+		valid  bool
 	}{
-		{name: "valid root", folder: Folder{ID: "root", Kind: FolderNode, DisplayName: "Nodes"}},
-		{name: "missing id", folder: Folder{Kind: FolderNode, DisplayName: "Nodes"}, wantErr: "folder id is required"},
-		{name: "invalid kind", folder: Folder{ID: "root", Kind: "OTHER", DisplayName: "Nodes"}, wantErr: "unsupported folder kind"},
-		{name: "missing display name", folder: Folder{ID: "root", Kind: FolderNode}, wantErr: "folder display name is required"},
-		{name: "self parent", folder: Folder{ID: "root", Kind: FolderNode, ParentID: "root", DisplayName: "Nodes"}, wantErr: "own parent"},
+		{name: "valid root", folder: Folder{ID: "root", Kind: FolderNode, DisplayName: "Nodes"}, valid: true},
+		{name: "missing id", folder: Folder{Kind: FolderNode, DisplayName: "Nodes"}},
+		{name: "invalid kind", folder: Folder{ID: "root", Kind: "OTHER", DisplayName: "Nodes"}},
+		{name: "missing display name", folder: Folder{ID: "root", Kind: FolderNode}},
+		{name: "self parent", folder: Folder{ID: "root", Kind: FolderNode, ParentID: "root", DisplayName: "Nodes"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.folder.Validate()
-			if tt.wantErr == "" && err != nil {
-				t.Fatalf("Validate() error = %v", err)
+			if tt.valid {
+				if err != nil {
+					t.Fatalf("Validate() error = %v", err)
+				}
+				return
 			}
-			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, tt.wantErr)
-			}
+			assertFolderFault(t, err, CodeFolderInvalid, fault.InvalidArgument, "automation folder is invalid")
 		})
 	}
+
+	assertFolderFault(t, FolderKind("secret-kind").Validate(), CodeFolderInvalid, fault.InvalidArgument, "automation folder is invalid")
 }
 
 func TestValidateFolderTree(t *testing.T) {
@@ -70,13 +130,12 @@ func TestNewFolderForestValidation(t *testing.T) {
 	cases := []struct {
 		name    string
 		folders []Folder
-		wantErr string
 	}{
-		{name: "duplicate id", folders: append(valid, Folder{ID: "child", Kind: FolderWorkflow, DisplayName: "Other"}), wantErr: "duplicate folder id"},
-		{name: "duplicate sibling name ignores case and space", folders: []Folder{{ID: "a", Kind: FolderNode, DisplayName: " Shared "}, {ID: "b", Kind: FolderNode, DisplayName: "shared"}}, wantErr: "sibling folder name"},
-		{name: "missing parent", folders: []Folder{{ID: "a", Kind: FolderNode, ParentID: "missing", DisplayName: "A"}}, wantErr: "does not exist"},
-		{name: "mixed kinds", folders: []Folder{{ID: "a", Kind: FolderNode, DisplayName: "A"}, {ID: "b", Kind: FolderTask, ParentID: "a", DisplayName: "B"}}, wantErr: "same kind"},
-		{name: "cycle", folders: []Folder{{ID: "a", Kind: FolderNode, ParentID: "b", DisplayName: "A"}, {ID: "b", Kind: FolderNode, ParentID: "a", DisplayName: "B"}}, wantErr: "cycle"},
+		{name: "duplicate id", folders: append(valid, Folder{ID: "child", Kind: FolderWorkflow, DisplayName: "Other"})},
+		{name: "duplicate sibling name ignores case", folders: []Folder{{ID: "a", Kind: FolderNode, DisplayName: "Shared"}, {ID: "b", Kind: FolderNode, DisplayName: "shared"}}},
+		{name: "missing parent", folders: []Folder{{ID: "a", Kind: FolderNode, ParentID: "missing", DisplayName: "A"}}},
+		{name: "mixed kinds", folders: []Folder{{ID: "a", Kind: FolderNode, DisplayName: "A"}, {ID: "b", Kind: FolderTask, ParentID: "a", DisplayName: "B"}}},
+		{name: "cycle", folders: []Folder{{ID: "a", Kind: FolderNode, ParentID: "b", DisplayName: "A"}, {ID: "b", Kind: FolderNode, ParentID: "a", DisplayName: "B"}}},
 	}
 	chain := make([]Folder, MaxFolderDepth+1)
 	for i := range chain {
@@ -88,14 +147,11 @@ func TestNewFolderForestValidation(t *testing.T) {
 	cases = append(cases, struct {
 		name    string
 		folders []Folder
-		wantErr string
-	}{name: "too deep", folders: chain, wantErr: "exceeds maximum depth"})
+	}{name: "too deep", folders: chain})
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewFolderForest(tt.folders)
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Fatalf("NewFolderForest() error = %v, want containing %q", err, tt.wantErr)
-			}
+			assertFolderFault(t, err, CodeFolderTreeInvalid, fault.FailedPrecondition, "automation folder tree is invalid")
 		})
 	}
 }
@@ -112,21 +168,20 @@ func TestFolderForestRequireEmpty(t *testing.T) {
 		name      string
 		id        string
 		occupancy FolderOccupancy
-		wantCode  fault.Code
-		text      string
+		code      fault.Code
+		kind      fault.Kind
+		message   string
 	}{
-		{name: "missing id", id: " ", text: "folder id is required"},
-		{name: "unknown folder", id: "missing", wantCode: CodeFolderNotFound},
-		{name: "negative occupancy", id: "child", occupancy: FolderOccupancy{Assets: -1}, text: "cannot be negative"},
-		{name: "folder with child", id: "root", text: "must be empty"},
-		{name: "folder with asset", id: "child", occupancy: FolderOccupancy{Assets: 1}, text: "must be empty"},
+		{name: "missing id", id: " ", code: CodeFolderInvalid, kind: fault.InvalidArgument, message: "automation folder is invalid"},
+		{name: "unknown folder", id: "missing", occupancy: FolderOccupancy{Assets: -1}, code: CodeFolderNotFound, kind: fault.NotFound, message: "automation folder was not found"},
+		{name: "negative occupancy", id: "child", occupancy: FolderOccupancy{Assets: -1}, code: CodeFolderInvalid, kind: fault.InvalidArgument, message: "automation folder is invalid"},
+		{name: "folder with child", id: "root", code: CodeFolderNotEmpty, kind: fault.FailedPrecondition, message: "automation folder must be empty"},
+		{name: "folder with asset", id: "child", occupancy: FolderOccupancy{Assets: 1}, code: CodeFolderNotEmpty, kind: fault.FailedPrecondition, message: "automation folder must be empty"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			err := forest.RequireEmpty(tt.id, tt.occupancy)
-			if err == nil || (tt.wantCode != "" && !fault.IsCode(err, tt.wantCode)) || (tt.text != "" && !strings.Contains(err.Error(), tt.text)) {
-				t.Errorf("RequireEmpty(%q, %+v) error = %v", tt.id, tt.occupancy, err)
-			}
+			assertFolderFault(t, err, tt.code, tt.kind, tt.message)
 		})
 	}
 }

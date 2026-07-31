@@ -64,6 +64,9 @@ This registry defines the stable public error-code contract. A code is immutable
 |---|---|---|---|---|
 | `AUTOMATION_TEST_TASK_INVALID` | `INVALID_ARGUMENT` | `test task input is invalid` | ordered typed violations only | Aggregate validation envelope. |
 | `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
+| `AUTOMATION_FOLDER_INVALID` | `INVALID_ARGUMENT` | `automation folder is invalid` | none | Correct malformed folder identities, names, kinds, or occupancy before retrying; rejected values remain private. |
+| `AUTOMATION_FOLDER_TREE_INVALID` | `FAILED_PRECONDITION` | `automation folder tree is invalid` | none | Repair duplicate, orphaned, mixed-kind, cyclic, or over-depth persisted hierarchy state; folder identities and names remain private. |
+| `AUTOMATION_FOLDER_NOT_EMPTY` | `FAILED_PRECONDITION` | `automation folder must be empty` | none | Remove child folders and assets before deletion; occupancy and folder identities remain private. |
 | `AUTOMATION_AGGREGATE_DELETED` | `FAILED_PRECONDITION` | `automation aggregate has been deleted` | none | Mutations require a restored aggregate; no aggregate identity is exposed. |
 | `AUTOMATION_VERSION_NUMBER_EXHAUSTED` | `RESOURCE_EXHAUSTED` | `automation version number capacity is exhausted` | none | Publishing cannot continue until version capacity is remediated. |
 | `AUTOMATION_PERSISTED_VERSION_NUMBER_INVALID` | `FAILED_PRECONDITION` | `persisted version number must be positive` | none | Reject corrupt persisted version state before deriving the next version; version identities and values remain private. |
