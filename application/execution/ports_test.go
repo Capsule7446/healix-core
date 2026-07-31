@@ -355,8 +355,8 @@ func TestFactCommitterRejectsMissingDependenciesAndDelegatesAuthoritatively(t *t
 	}{
 		{name: "missing transaction", committer: NewFactCommitter(nil, &plannerFixture{}), wantCode: CodeFactCommitterRequired},
 		{name: "typed nil transaction", committer: NewFactCommitter(typedNilTransaction, &plannerFixture{}), wantCode: CodeFactCommitterRequired},
-		{name: "missing planner", committer: NewFactCommitter(&recordingTransaction{}, nil), wantText: "heal governance planner is required"},
-		{name: "typed nil planner", committer: NewFactCommitter(&recordingTransaction{}, typedNilPlanner), wantText: "heal governance planner is required"},
+		{name: "missing planner", committer: NewFactCommitter(&recordingTransaction{}, nil), wantCode: CodeFactCommitterRequired},
+		{name: "typed nil planner", committer: NewFactCommitter(&recordingTransaction{}, typedNilPlanner), wantCode: CodeFactCommitterRequired},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

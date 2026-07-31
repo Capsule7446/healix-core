@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/node"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -99,11 +100,22 @@ func cloneCompiledEntry(entry CompiledEntry) CompiledEntry {
 	return entry
 }
 
+// planUnsealedError reuses the code domain/execution already publishes for this
+// exact condition, rather than minting a second one for the same meaning. The
+// message must stay identical to that row, which the registry guard enforces.
+func planUnsealedError() error {
+	err, constructionErr := fault.New(fault.FailedPrecondition, execution.CodePlanUnsealed, "execution plan must be sealed")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
 // CompilePlan compiles solely from the immutable run snapshot payload. Every
 // returned entry is bound to the snapshot's Run, digest, and Execution ID.
 func CompilePlan(snapshot execution.RunSnapshot) (CompiledRun, error) {
 	if snapshot.Digest() == "" {
-		return CompiledRun{}, fmt.Errorf("compile run snapshot: snapshot is not sealed")
+		return CompiledRun{}, planUnsealedError()
 	}
 	return compileSnapshotDraft(snapshot.Plan(), snapshot)
 }

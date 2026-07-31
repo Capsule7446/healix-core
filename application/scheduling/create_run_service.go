@@ -106,7 +106,7 @@ type CreateRunService struct{ store CreateRunStore }
 
 func NewCreateRunService(store CreateRunStore) (CreateRunService, error) {
 	if isNilCreateRunStore(store) {
-		return CreateRunService{}, fmt.Errorf("create run store is required")
+		return CreateRunService{}, schedulingDependencyRequiredError()
 	}
 	return CreateRunService{store: store}, nil
 }

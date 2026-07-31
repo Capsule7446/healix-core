@@ -140,7 +140,10 @@ func (c FactCommitter) CommitStepTransition(ctx context.Context, fence domainexe
 		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
 	if isNilInterface(c.planner) {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("heal governance planner is required")
+		// Same missing-dependency failure as the branch above, and it already has a
+		// registered code; leaving it bare made one of two identical conditions
+		// unclassifiable.
+		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
 	return c.transaction.CommitStepTransition(ctx, fence, commit, c.planner)
 }
