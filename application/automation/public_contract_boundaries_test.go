@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -24,6 +25,31 @@ func validCapturedHealReviewIntents(t *testing.T) (HealReviewIntent, HealReviewI
 	return cloneHealReviewIntent(approveTransaction.intent), cloneHealReviewIntent(rejectTransaction.intent)
 }
 
+// requireHealReviewCommandRejection asserts the split the contract asks for: the
+// host switches on the code, the detail survives only as a private cause, and
+// nothing of that detail reaches public text. The detail used to be the public
+// message, so asserting its absence there is the point.
+func requireHealReviewCommandRejection(t *testing.T, err error, wantDetail string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("a malformed heal review command was accepted")
+	}
+	if !fault.IsCode(err, domain.CodeHealCandidateReviewCommandInvalid) {
+		t.Fatalf("error = %v, want code %s", err, domain.CodeHealCandidateReviewCommandInvalid)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Kind() != fault.InvalidArgument {
+		t.Fatalf("descriptor = %#v (ok=%v); a caller-fixable command must not be INTERNAL", descriptor, ok)
+	}
+	if strings.Contains(descriptor.Message(), wantDetail) {
+		t.Fatalf("public message %q carries the detail %q", descriptor.Message(), wantDetail)
+	}
+	cause := errors.Unwrap(err)
+	if cause == nil || !strings.Contains(cause.Error(), wantDetail) {
+		t.Fatalf("private cause = %v, want it to retain %q", cause, wantDetail)
+	}
+}
+
 func TestHealReviewRequestRejectsEachPublicIdentityBoundary(t *testing.T) {
 	valid := HealReviewRequest{
 		CommandID: "command", Decision: HealReviewApprove, ElementTargetID: "node", BaseNodeVersionID: "node-v1",
@@ -43,17 +69,23 @@ func TestHealReviewRequestRejectsEachPublicIdentityBoundary(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			request := valid
 			test.mutate(&request)
-			if err := request.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want %q", err, test.want)
+			err := request.Validate()
+			// A revision that is already classified passes through rather than being
+			// relabelled: it names a different problem than the command's shape.
+			if strings.Contains(test.want, "persisted revision") {
+				if !fault.IsCode(err, domain.CodePersistedRevisionInvalid) {
+					t.Fatalf("Validate() error = %v, want the persisted revision code", err)
+				}
+				return
 			}
+			requireHealReviewCommandRejection(t, err, test.want)
 		})
 	}
 
 	invalid := valid
 	invalid.Decision = "UNKNOWN"
-	if _, err := HealReviewRequestIdentityDigest(invalid); err == nil || !strings.Contains(err.Error(), "unsupported heal review decision") {
-		t.Fatalf("HealReviewRequestIdentityDigest() error = %v", err)
-	}
+	_, digestErr := HealReviewRequestIdentityDigest(invalid)
+	requireHealReviewCommandRejection(t, digestErr, "unsupported heal review decision")
 }
 
 func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
@@ -88,23 +120,21 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 			// only differed by which revision it named. Which revision the caller
 			// supplied is a field-level detail and belongs in a violation once this
 			// validator gains an envelope, not in a second unclassified error.
-			if strings.Contains(test.want, "revision") && fault.IsCode(err, domain.CodePersistedRevisionInvalid) {
+			if strings.Contains(test.want, "revision") {
+				if !fault.IsCode(err, domain.CodePersistedRevisionInvalid) {
+					t.Fatalf("Validate() error = %v, want the persisted revision code", err)
+				}
 				return
 			}
-			if !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want %q", err, test.want)
-			}
+			requireHealReviewCommandRejection(t, err, test.want)
 		})
 	}
 
 	invalid := cloneHealReviewIntent(approve)
 	invalid.ReviewedBy = ""
-	if _, err := HealReviewRequestDigest(invalid); err == nil || !strings.Contains(err.Error(), "trusted reviewer metadata") {
-		t.Fatalf("HealReviewRequestDigest() error = %v", err)
-	}
-	if err := ValidateHealReviewIntentDigest(invalid); err == nil || !strings.Contains(err.Error(), "trusted reviewer metadata") {
-		t.Fatalf("ValidateHealReviewIntentDigest() error = %v", err)
-	}
+	_, digestErr := HealReviewRequestDigest(invalid)
+	requireHealReviewCommandRejection(t, digestErr, "trusted reviewer metadata")
+	requireHealReviewCommandRejection(t, ValidateHealReviewIntentDigest(invalid), "trusted reviewer metadata")
 
 	if got := (HealReviewIntent{}).NextNodeValue(); got.ElementTarget.ID != "" || got.Current.ID != "" {
 		t.Fatalf("nil NextNode value = %#v", got)

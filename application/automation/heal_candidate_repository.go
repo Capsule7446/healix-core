@@ -46,6 +46,35 @@ func HealReviewAuthorityConflictError() error {
 	)
 }
 
+// classifyHealReviewCommand gives a malformed review command the caller-facing
+// code that domain/automation already publishes for it, and lets an
+// already-classified failure through — notably the persisted-revision codes,
+// which name a different problem than the command's shape.
+//
+// It deliberately does not reuse AUTOMATION_HEAL_REVIEW_CONTRACT_VIOLATION.
+// That code is INTERNAL and, as its registry row says, describes a malformed
+// adapter outcome. A caller-supplied command that fails validation is
+// INVALID_ARGUMENT: the caller can fix it, and reporting it as INTERNAL would
+// tell the host the opposite.
+func classifyHealReviewCommand(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.InvalidArgument,
+		domain.CodeHealCandidateReviewCommandInvalid,
+		"heal candidate review command is invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
 func healReviewContractViolationError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
@@ -129,6 +158,10 @@ type HealReviewRequest struct {
 }
 
 func (request HealReviewRequest) Validate() error {
+	return classifyHealReviewCommand(request.checkShape())
+}
+
+func (request HealReviewRequest) checkShape() error {
 	if strings.TrimSpace(request.CommandID) == "" || strings.TrimSpace(request.ElementTargetID) == "" || strings.TrimSpace(request.BaseNodeVersionID) == "" || strings.TrimSpace(request.CandidateHash) == "" {
 		return fmt.Errorf("heal review request requires command, node, base version, and candidate identity")
 	}
@@ -166,6 +199,10 @@ func HealReviewStreakDigest(streak domain.HealStreak) (string, error) {
 }
 
 func (intent HealReviewIntent) Validate() error {
+	return classifyHealReviewCommand(intent.checkShape())
+}
+
+func (intent HealReviewIntent) checkShape() error {
 	if strings.TrimSpace(intent.CommandID) == "" || strings.TrimSpace(intent.ElementTargetID) == "" || strings.TrimSpace(intent.BaseNodeVersionID) == "" || strings.TrimSpace(intent.CandidateHash) == "" {
 		return fmt.Errorf("heal review intent requires command, node, base version, and candidate identity")
 	}
