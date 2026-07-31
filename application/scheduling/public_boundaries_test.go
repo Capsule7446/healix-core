@@ -49,9 +49,9 @@ func TestCreateRunCommandInvalidErrorExposesSafeStableContract(t *testing.T) {
 	err := createRunCommandInvalidError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
-		descriptor.Code() != CodeCreateRunCommandInvalid ||
+		descriptor.Code() != CodeCreateInstanceCommandInvalid ||
 		descriptor.Kind() != fault.InvalidArgument ||
-		descriptor.Message() != "create-run command is invalid" ||
+		descriptor.Message() != "create-instance command is invalid" ||
 		len(descriptor.Params()) != 0 ||
 		len(descriptor.Violations()) != 0 ||
 		!errors.Is(err, cause) {
@@ -68,9 +68,9 @@ func TestCreateRunCommandConflictErrorExposesSafeStableContract(t *testing.T) {
 	err := createRunCommandConflictError()
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
-		descriptor.Code() != CodeCreateRunCommandConflict ||
+		descriptor.Code() != CodeCreateInstanceCommandConflict ||
 		descriptor.Kind() != fault.Conflict ||
-		descriptor.Message() != "create-run command conflicts with an existing request" ||
+		descriptor.Message() != "create-instance command conflicts with an existing request" ||
 		len(descriptor.Params()) != 0 ||
 		len(descriptor.Violations()) != 0 {
 		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
@@ -86,9 +86,9 @@ func TestCreateRunSnapshotConflictErrorExposesSafeStableContract(t *testing.T) {
 	err := createRunSnapshotConflictError()
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
-		descriptor.Code() != CodeCreateRunSnapshotConflict ||
+		descriptor.Code() != CodeCreateInstanceSnapshotConflict ||
 		descriptor.Kind() != fault.Conflict ||
-		descriptor.Message() != "create-run snapshot conflicts with the authoritative run" ||
+		descriptor.Message() != "create-instance snapshot conflicts with the authoritative instance" ||
 		len(descriptor.Params()) != 0 ||
 		len(descriptor.Violations()) != 0 {
 		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
@@ -105,9 +105,9 @@ func TestCreateRunAdapterContractViolationExposesSafeStableContract(t *testing.T
 	err := createRunAdapterContractViolationError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
-		descriptor.Code() != CodeCreateRunAdapterContractViolation ||
+		descriptor.Code() != CodeCreateInstanceAdapterContractViolation ||
 		descriptor.Kind() != fault.Internal ||
-		descriptor.Message() != "create-run adapter returned an invalid authoritative result" ||
+		descriptor.Message() != "create-instance adapter returned an invalid authoritative result" ||
 		len(descriptor.Params()) != 0 ||
 		len(descriptor.Violations()) != 0 ||
 		!errors.Is(err, cause) {
@@ -125,9 +125,9 @@ func TestCreateRunCatalogGraphUnresolvableErrorExposesSafeStableContract(t *test
 	err := createRunCatalogGraphUnresolvableError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
-		descriptor.Code() != CodeCreateRunCatalogGraphUnresolvable ||
+		descriptor.Code() != CodeCreateInstanceCatalogGraphUnresolvable ||
 		descriptor.Kind() != fault.FailedPrecondition ||
-		descriptor.Message() != "create-run catalog graph is unavailable or invalid" ||
+		descriptor.Message() != "create-instance catalog graph is unavailable or invalid" ||
 		len(descriptor.Params()) != 0 ||
 		len(descriptor.Violations()) != 0 ||
 		!errors.Is(err, cause) {
@@ -145,9 +145,9 @@ func TestCreateRunRetryableErrorExposesSafeStableContract(t *testing.T) {
 	err := createRunRetryableError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
-		descriptor.Code() != CodeCreateRunRetryable ||
+		descriptor.Code() != CodeCreateInstanceRetryable ||
 		descriptor.Kind() != fault.Unavailable ||
-		descriptor.Message() != "create-run outcome is temporarily unavailable" ||
+		descriptor.Message() != "create-instance outcome is temporarily unavailable" ||
 		len(descriptor.Params()) != 0 ||
 		len(descriptor.Violations()) != 0 ||
 		!errors.Is(err, cause) {

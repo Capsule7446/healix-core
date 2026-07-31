@@ -21,13 +21,13 @@ func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
 		message string
 		cause   error
 	}{
-		{name: "command identity", err: runCommandConflictError(), code: CodeRunCommandIdentityConflict, kind: fault.Conflict, message: "run command identity conflicts with an existing request"},
-		{name: "run identity", err: runIdentityConflictError(), code: CodeRunIdentityConflict, kind: fault.Conflict, message: "run identity conflicts with the authoritative state"},
-		{name: "run revision", err: runRevisionConflictError(), code: CodeRunRevisionConflict, kind: fault.Conflict, message: "run revision conflicts with current state"},
-		{name: "run status", err: runStatusConflictError(), code: CodeRunStatusConflict, kind: fault.Conflict, message: "run status conflicts with current state"},
+		{name: "command identity", err: runCommandConflictError(), code: CodeInstanceCommandIdentityConflict, kind: fault.Conflict, message: "instance command identity conflicts with an existing request"},
+		{name: "run identity", err: runIdentityConflictError(), code: CodeInstanceIdentityConflict, kind: fault.Conflict, message: "instance identity conflicts with the authoritative state"},
+		{name: "run revision", err: runRevisionConflictError(), code: CodeInstanceRevisionConflict, kind: fault.Conflict, message: "instance revision conflicts with current state"},
+		{name: "run status", err: runStatusConflictError(), code: CodeInstanceStatusConflict, kind: fault.Conflict, message: "instance status conflicts with current state"},
 		{name: "queue revision", err: queueRevisionConflictError(), code: CodeQueueRevisionConflict, kind: fault.Conflict, message: "queue revision conflicts with current state"},
 		{name: "queue membership", err: queueMembershipConflictError(), code: CodeQueueMembershipConflict, kind: fault.Conflict, message: "queue membership conflicts with the authoritative state"},
-		{name: "adapter contract", err: runAdapterContractViolationError(cause), code: CodeRunAdapterContractViolation, kind: fault.Internal, message: "run command adapter returned an invalid authoritative result", cause: cause},
+		{name: "adapter contract", err: runAdapterContractViolationError(cause), code: CodeInstanceAdapterContractViolation, kind: fault.Internal, message: "instance command adapter returned an invalid authoritative result", cause: cause},
 	}
 
 	for _, test := range tests {
@@ -50,13 +50,13 @@ func TestRunSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing
 	cause := errors.New("adapter failure: secret-token")
 	err := runSignalRetryableError(cause)
 	descriptor, ok := fault.Describe(err)
-	if !ok || descriptor.Code() != CodeRunSignalRetryable || descriptor.Kind() != fault.Unavailable {
+	if !ok || descriptor.Code() != CodeInstanceSignalRetryable || descriptor.Kind() != fault.Unavailable {
 		t.Fatalf("fault descriptor = %#v, ok = %v", descriptor, ok)
 	}
 	if !errors.Is(err, cause) {
 		t.Fatalf("errors.Is(%v, cause) = false", err)
 	}
-	if got := err.Error(); got != "EXECUTION_RUN_SIGNAL_RETRYABLE: execution cancellation signal must be retried" || strings.Contains(got, "secret-token") {
+	if got := err.Error(); got != "EXECUTION_INSTANCE_SIGNAL_RETRYABLE: execution cancellation signal must be retried" || strings.Contains(got, "secret-token") {
 		t.Fatalf("public retry error = %q", got)
 	}
 }
@@ -82,7 +82,7 @@ func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			test.mutate(&command)
 			store := &commandStoreStub{}
 			result, err := NewCancelRunService(store, nil).CancelRun(context.Background(), command)
-			if !fault.IsCode(err, CodeCancelRunCommandInvalid) {
+			if !fault.IsCode(err, CodeCancelInstanceCommandInvalid) {
 				t.Fatalf("CancelRun() error = %v", err)
 			}
 			if result != (RunCommandResult{}) || len(store.calls) != 0 {
@@ -116,7 +116,7 @@ func TestAbortRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			test.mutate(&command)
 			store := &commandStoreStub{}
 			result, err := NewAbortRunService(store, nil).AbortRun(context.Background(), command)
-			if !fault.IsCode(err, CodeAbortRunCommandInvalid) {
+			if !fault.IsCode(err, CodeAbortInstanceCommandInvalid) {
 				t.Fatalf("AbortRun() error = %v", err)
 			}
 			if result != (RunCommandResult{}) || len(store.calls) != 0 {
@@ -160,10 +160,10 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			} else {
 				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}})
 			}
-			if !fault.IsCode(err, CodeRunSignalRetryable) || !result.WasApplied || result.Revision != 2 {
+			if !fault.IsCode(err, CodeInstanceSignalRetryable) || !result.WasApplied || result.Revision != 2 {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
-			if got := err.Error(); got != "EXECUTION_RUN_SIGNAL_RETRYABLE: execution cancellation signal must be retried" {
+			if got := err.Error(); got != "EXECUTION_INSTANCE_SIGNAL_RETRYABLE: execution cancellation signal must be retried" {
 				t.Fatalf("public error = %q", got)
 			}
 			if strings.Contains(err.Error(), "cancellation signaler is unavailable") {
@@ -264,7 +264,7 @@ func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *te
 			if test.err != nil && !errors.Is(err, test.err) {
 				t.Fatalf("ReorderQueue() error = %v, want dependency error", err)
 			}
-			if test.err == nil && !fault.IsCode(err, CodeRunAdapterContractViolation) {
+			if test.err == nil && !fault.IsCode(err, CodeInstanceAdapterContractViolation) {
 				t.Fatalf("ReorderQueue() malformed-result error = %v", err)
 			}
 		})
@@ -278,8 +278,8 @@ func TestInvalidRunCommandFaultsExposeSafeStableContracts(t *testing.T) {
 		code    fault.Code
 		message string
 	}{
-		{name: "cancel", err: cancelRunCommandInvalidError(errors.New("command=command-secret value=credential-secret")), code: CodeCancelRunCommandInvalid, message: "cancel run command is invalid"},
-		{name: "abort", err: abortRunCommandInvalidError(errors.New("fence=claim-secret value=credential-secret")), code: CodeAbortRunCommandInvalid, message: "abort run command is invalid"},
+		{name: "cancel", err: cancelRunCommandInvalidError(errors.New("command=command-secret value=credential-secret")), code: CodeCancelInstanceCommandInvalid, message: "cancel instance command is invalid"},
+		{name: "abort", err: abortRunCommandInvalidError(errors.New("fence=claim-secret value=credential-secret")), code: CodeAbortInstanceCommandInvalid, message: "abort instance command is invalid"},
 		{name: "reorder", err: reorderQueueCommandInvalidError(errors.New("scope=scope-secret run=run-secret")), code: CodeReorderQueueCommandInvalid, message: "reorder queue command is invalid"},
 	}
 	for _, test := range tests {

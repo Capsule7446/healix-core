@@ -14,24 +14,24 @@ import (
 )
 
 const (
-	CodeRunCommandIdentityConflict  fault.Code = "EXECUTION_RUN_COMMAND_IDENTITY_CONFLICT"
-	CodeRunIdentityConflict         fault.Code = "EXECUTION_RUN_IDENTITY_CONFLICT"
-	CodeRunRevisionConflict         fault.Code = "EXECUTION_RUN_REVISION_CONFLICT"
-	CodeRunStatusConflict           fault.Code = "EXECUTION_RUN_STATUS_CONFLICT"
-	CodeQueueRevisionConflict       fault.Code = "EXECUTION_QUEUE_REVISION_CONFLICT"
-	CodeQueueMembershipConflict     fault.Code = "EXECUTION_QUEUE_MEMBERSHIP_CONFLICT"
-	CodeRunAdapterContractViolation fault.Code = "EXECUTION_RUN_COMMAND_ADAPTER_CONTRACT_VIOLATION"
-	CodeCancelRunCommandInvalid     fault.Code = "EXECUTION_CANCEL_RUN_COMMAND_INVALID"
-	CodeAbortRunCommandInvalid      fault.Code = "EXECUTION_ABORT_RUN_COMMAND_INVALID"
-	CodeReorderQueueCommandInvalid  fault.Code = "EXECUTION_REORDER_QUEUE_COMMAND_INVALID"
+	CodeInstanceCommandIdentityConflict  fault.Code = "EXECUTION_INSTANCE_COMMAND_IDENTITY_CONFLICT"
+	CodeInstanceIdentityConflict         fault.Code = "EXECUTION_INSTANCE_IDENTITY_CONFLICT"
+	CodeInstanceRevisionConflict         fault.Code = "EXECUTION_INSTANCE_REVISION_CONFLICT"
+	CodeInstanceStatusConflict           fault.Code = "EXECUTION_INSTANCE_STATUS_CONFLICT"
+	CodeQueueRevisionConflict            fault.Code = "EXECUTION_QUEUE_REVISION_CONFLICT"
+	CodeQueueMembershipConflict          fault.Code = "EXECUTION_QUEUE_MEMBERSHIP_CONFLICT"
+	CodeInstanceAdapterContractViolation fault.Code = "EXECUTION_INSTANCE_COMMAND_ADAPTER_CONTRACT_VIOLATION"
+	CodeCancelInstanceCommandInvalid     fault.Code = "EXECUTION_CANCEL_INSTANCE_COMMAND_INVALID"
+	CodeAbortInstanceCommandInvalid      fault.Code = "EXECUTION_ABORT_INSTANCE_COMMAND_INVALID"
+	CodeReorderQueueCommandInvalid       fault.Code = "EXECUTION_REORDER_QUEUE_COMMAND_INVALID"
 )
 
 func cancelRunCommandInvalidError(cause error) error {
-	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeCancelRunCommandInvalid, "cancel run command is invalid")
+	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeCancelInstanceCommandInvalid, "cancel instance command is invalid")
 }
 
 func abortRunCommandInvalidError(cause error) error {
-	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeAbortRunCommandInvalid, "abort run command is invalid")
+	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeAbortInstanceCommandInvalid, "abort instance command is invalid")
 }
 
 func reorderQueueCommandInvalidError(cause error) error {
@@ -39,19 +39,19 @@ func reorderQueueCommandInvalidError(cause error) error {
 }
 
 func runCommandConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeRunCommandIdentityConflict, "run command identity conflicts with an existing request")
+	return newRunCommandFault(fault.Conflict, CodeInstanceCommandIdentityConflict, "instance command identity conflicts with an existing request")
 }
 
 func runIdentityConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeRunIdentityConflict, "run identity conflicts with the authoritative state")
+	return newRunCommandFault(fault.Conflict, CodeInstanceIdentityConflict, "instance identity conflicts with the authoritative state")
 }
 
 func runRevisionConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeRunRevisionConflict, "run revision conflicts with current state")
+	return newRunCommandFault(fault.Conflict, CodeInstanceRevisionConflict, "instance revision conflicts with current state")
 }
 
 func runStatusConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeRunStatusConflict, "run status conflicts with current state")
+	return newRunCommandFault(fault.Conflict, CodeInstanceStatusConflict, "instance status conflicts with current state")
 }
 
 func queueRevisionConflictError() error {
@@ -63,7 +63,7 @@ func queueMembershipConflictError() error {
 }
 
 func runAdapterContractViolationError(cause error) error {
-	err, constructionErr := fault.Wrap(cause, fault.Internal, CodeRunAdapterContractViolation, "run command adapter returned an invalid authoritative result")
+	err, constructionErr := fault.Wrap(cause, fault.Internal, CodeInstanceAdapterContractViolation, "instance command adapter returned an invalid authoritative result")
 	if constructionErr != nil {
 		panic(constructionErr)
 	}
@@ -86,13 +86,13 @@ func newRunCommandFault(kind fault.Kind, code fault.Code, message string) error 
 	return err
 }
 
-const CodeRunSignalRetryable fault.Code = "EXECUTION_RUN_SIGNAL_RETRYABLE"
+const CodeInstanceSignalRetryable fault.Code = "EXECUTION_INSTANCE_SIGNAL_RETRYABLE"
 
 func runSignalRetryableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.Unavailable,
-		CodeRunSignalRetryable,
+		CodeInstanceSignalRetryable,
 		"execution cancellation signal must be retried",
 	)
 	if constructionErr != nil {

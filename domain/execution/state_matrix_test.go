@@ -31,8 +31,8 @@ func TestRunStatusTransitionMatrix(t *testing.T) {
 				if wantAllowed && err != nil {
 					t.Fatalf("legal transition rejected: %v", err)
 				}
-				if !wantAllowed && !fault.IsCode(err, CodeRunStatusTransitionInvalid) {
-					t.Fatalf("illegal transition error = %v, want %v", err, CodeRunStatusTransitionInvalid)
+				if !wantAllowed && !fault.IsCode(err, CodeInstanceStatusTransitionInvalid) {
+					t.Fatalf("illegal transition error = %v, want %v", err, CodeInstanceStatusTransitionInvalid)
 				}
 			})
 		}

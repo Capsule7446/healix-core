@@ -71,14 +71,14 @@ type CreateRunIntent struct {
 	Entries       []execution.WorkflowEntry
 }
 
-const CodeCreateRunCommandInvalid fault.Code = "EXECUTION_CREATE_RUN_COMMAND_INVALID"
+const CodeCreateInstanceCommandInvalid fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_INVALID"
 
 func createRunCommandInvalidError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.InvalidArgument,
-		CodeCreateRunCommandInvalid,
-		"create-run command is invalid",
+		CodeCreateInstanceCommandInvalid,
+		"create-instance command is invalid",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -86,13 +86,13 @@ func createRunCommandInvalidError(cause error) error {
 	return err
 }
 
-const CodeCreateRunCommandConflict fault.Code = "EXECUTION_CREATE_RUN_COMMAND_CONFLICT"
+const CodeCreateInstanceCommandConflict fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_CONFLICT"
 
 func createRunCommandConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
-		CodeCreateRunCommandConflict,
-		"create-run command conflicts with an existing request",
+		CodeCreateInstanceCommandConflict,
+		"create-instance command conflicts with an existing request",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -100,13 +100,13 @@ func createRunCommandConflictError() error {
 	return err
 }
 
-const CodeCreateRunSnapshotConflict fault.Code = "EXECUTION_CREATE_RUN_SNAPSHOT_CONFLICT"
+const CodeCreateInstanceSnapshotConflict fault.Code = "EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT"
 
 func createRunSnapshotConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
-		CodeCreateRunSnapshotConflict,
-		"create-run snapshot conflicts with the authoritative run",
+		CodeCreateInstanceSnapshotConflict,
+		"create-instance snapshot conflicts with the authoritative instance",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -114,14 +114,14 @@ func createRunSnapshotConflictError() error {
 	return err
 }
 
-const CodeCreateRunAdapterContractViolation fault.Code = "EXECUTION_CREATE_RUN_ADAPTER_CONTRACT_VIOLATION"
+const CodeCreateInstanceAdapterContractViolation fault.Code = "EXECUTION_CREATE_INSTANCE_ADAPTER_CONTRACT_VIOLATION"
 
 func createRunAdapterContractViolationError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.Internal,
-		CodeCreateRunAdapterContractViolation,
-		"create-run adapter returned an invalid authoritative result",
+		CodeCreateInstanceAdapterContractViolation,
+		"create-instance adapter returned an invalid authoritative result",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -129,14 +129,14 @@ func createRunAdapterContractViolationError(cause error) error {
 	return err
 }
 
-const CodeCreateRunRetryable fault.Code = "EXECUTION_CREATE_RUN_RETRYABLE"
+const CodeCreateInstanceRetryable fault.Code = "EXECUTION_CREATE_INSTANCE_RETRYABLE"
 
 func createRunRetryableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.Unavailable,
-		CodeCreateRunRetryable,
-		"create-run outcome is temporarily unavailable",
+		CodeCreateInstanceRetryable,
+		"create-instance outcome is temporarily unavailable",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -144,14 +144,14 @@ func createRunRetryableError(cause error) error {
 	return err
 }
 
-const CodeCreateRunCatalogGraphUnresolvable fault.Code = "EXECUTION_CREATE_RUN_CATALOG_GRAPH_UNRESOLVABLE"
+const CodeCreateInstanceCatalogGraphUnresolvable fault.Code = "EXECUTION_CREATE_INSTANCE_CATALOG_GRAPH_UNRESOLVABLE"
 
 func createRunCatalogGraphUnresolvableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.FailedPrecondition,
-		CodeCreateRunCatalogGraphUnresolvable,
-		"create-run catalog graph is unavailable or invalid",
+		CodeCreateInstanceCatalogGraphUnresolvable,
+		"create-instance catalog graph is unavailable or invalid",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)

@@ -136,7 +136,7 @@ func TestCreateRunRequestDigestRejectsInvalidBeforeHashing(t *testing.T) {
 	for index, edit := range tests {
 		command := validCreateRunCommand()
 		edit(&command)
-		if digest, err := CreateRunRequestDigest(command); digest != "" || !fault.IsCode(err, CodeCreateRunCommandInvalid) {
+		if digest, err := CreateRunRequestDigest(command); digest != "" || !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 			t.Fatalf("case %d digest=%q err=%v", index, digest, err)
 		}
 	}
@@ -484,7 +484,7 @@ func TestCreateRunServiceRejectsMalformedAuthoritativeOutcomes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, command), mutateInsertOutcome: test.mutate}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -496,7 +496,7 @@ func TestCreateRunServicePreflightRejectsOversizeBeforeStore(t *testing.T) {
 	command.RunID = strings.Repeat("x", execution.MaxStringBytes+1)
 	fake := &createRunFake{resolved: validResolvedCreateRun(t, validCreateRunCommand())}
 	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-	if !fault.IsCode(err, CodeCreateRunCommandInvalid) || fake.transactionCalls != 0 || !isZeroCreateRunResult(result) {
+	if !fault.IsCode(err, CodeCreateInstanceCommandInvalid) || fake.transactionCalls != 0 || !isZeroCreateRunResult(result) {
 		t.Fatalf("result/calls/error=%#v/%d/%v", result, fake.transactionCalls, err)
 	}
 }
@@ -542,17 +542,17 @@ func TestCreateRunRequestBudgetExactAndOneOverLimits(t *testing.T) {
 				t.Fatalf("exact limit rejected: %v", err)
 			}
 			budget = newCreateRunRequestBudget()
-			if err := test.over(&budget); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
+			if err := test.over(&budget); !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 				t.Fatalf("one-over accepted: %v", err)
 			}
 		})
 	}
 	budget := newCreateRunRequestBudget()
-	if err := budget.addElements(-1); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
+	if err := budget.addElements(-1); !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 		t.Fatalf("negative/overflow-like count accepted: %v", err)
 	}
 	budget = newCreateRunRequestBudget()
-	if err := budget.addParameters(-1); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
+	if err := budget.addParameters(-1); !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 		t.Fatalf("negative/overflow-like parameter count accepted: %v", err)
 	}
 }
@@ -589,12 +589,12 @@ func TestCreateRunPreflightStringBoundariesAndZeroStoreAccess(t *testing.T) {
 			}
 			over := validCreateRunCommand()
 			test.edit(&over, execution.MaxStringBytes+1)
-			if digest, err := CreateRunRequestDigest(over); digest != "" || !fault.IsCode(err, CodeCreateRunCommandInvalid) {
+			if digest, err := CreateRunRequestDigest(over); digest != "" || !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 				t.Fatalf("digest/error=%q/%v", digest, err)
 			}
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, validCreateRunCommand())}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), over)
-			if !fault.IsCode(err, CodeCreateRunCommandInvalid) || !isZeroCreateRunResult(result) || fake.transactionCalls != 0 {
+			if !fault.IsCode(err, CodeCreateInstanceCommandInvalid) || !isZeroCreateRunResult(result) || fake.transactionCalls != 0 {
 				t.Fatalf("result/calls/error=%#v/%d/%v", result, fake.transactionCalls, err)
 			}
 		})
@@ -673,7 +673,7 @@ func TestCreateRunDefaultsOmittedFailurePolicyToStop(t *testing.T) {
 func TestCreateRunRejectsInvalidNonzeroFailurePolicy(t *testing.T) {
 	command := validCreateRunCommand()
 	command.FailurePolicy = execution.FailurePolicy("RETRY_FOREVER")
-	if _, err := BuildRunSnapshot(command, validResolvedCreateRun(t, command)); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
+	if _, err := BuildRunSnapshot(command, validResolvedCreateRun(t, command)); !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 		t.Fatalf("invalid policy error=%v", err)
 	}
 }
@@ -794,7 +794,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 				outcome.Result = stored
 			}}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -808,7 +808,7 @@ func TestCreateRunServiceRejectsMalformedReplayWinner(t *testing.T) {
 		outcome.Result.EntryIDs[0] = "cross-run-entry"
 	}}
 	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-	if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
+	if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || !isZeroCreateRunResult(result) {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 }
@@ -839,7 +839,7 @@ func TestCreateRunServiceRejectsMalformedFindCommandReplay(t *testing.T) {
 			test.mutate(&stored)
 			fake := &createRunFake{stored: &stored, resolved: validResolvedCreateRun(t, command)}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -858,7 +858,7 @@ func TestCreateRunServiceRejectsAppliedRunFieldDrift(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, command), mutateInsertOutcome: func(outcome *InsertCreateRunOutcome) { test.mutate(&outcome.Result.Run) }}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -924,7 +924,7 @@ func TestResolvedCreateRunPreflightValidatesEnvironmentVariableNames(t *testing.
 			snapshot, err := BuildRunSnapshot(command, resolved)
 
 			if test.wantError {
-				if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || snapshot.Digest() != "" {
+				if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || snapshot.Digest() != "" {
 					t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
 				}
 				return
@@ -970,7 +970,7 @@ func TestResolvedCreateRunPreflightRejectsAdapterCollectionsBeforeBuild(t *testi
 			resolved := validResolvedCreateRun(t, command)
 			test.mutate(&resolved)
 			snapshot, err := BuildRunSnapshot(command, resolved)
-			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || snapshot.Digest() != "" {
+			if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || snapshot.Digest() != "" {
 				t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
 			}
 		})
@@ -1018,7 +1018,7 @@ func TestResolvedCreateRunPreflightRejectsNestedAdapterPayloads(t *testing.T) {
 			resolved := validResolvedCreateRun(t, command)
 			test.mutate(&resolved)
 			snapshot, err := BuildRunSnapshot(command, resolved)
-			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || snapshot.Digest() != "" {
+			if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || snapshot.Digest() != "" {
 				t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
 			}
 		})
@@ -1043,9 +1043,9 @@ func TestCreateRunServiceAppliesReplaysAndConflicts(t *testing.T) {
 	changed.EnvironmentID = "other"
 	result, err := service.CreateRun(context.Background(), changed)
 	descriptor, ok := fault.Describe(err)
-	if !fault.IsCode(err, CodeCreateRunCommandConflict) || !ok ||
+	if !fault.IsCode(err, CodeCreateInstanceCommandConflict) || !ok ||
 		descriptor.Kind() != fault.Conflict ||
-		descriptor.Message() != "create-run command conflicts with an existing request" ||
+		descriptor.Message() != "create-instance command conflicts with an existing request" ||
 		len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 ||
 		strings.Contains(err.Error(), command.CommandID) ||
 		!isZeroCreateRunResult(result) {
@@ -1062,22 +1062,22 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 		target    error
 		wantCode  fault.Code
 	}{
-		{"invalid command", func() CreateRunCommand { value := base; value.RunID = " bad"; return value }(), func(*createRunFake) {}, nil, CodeCreateRunCommandInvalid},
+		{"invalid command", func() CreateRunCommand { value := base; value.RunID = " bad"; return value }(), func(*createRunFake) {}, nil, CodeCreateInstanceCommandInvalid},
 		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil, ""},
 		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil, ""},
 		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil, ""},
 		{"catalog graph", base, func(f *createRunFake) {
 			f.resolveErr = createRunCatalogGraphUnresolvableError(errors.New("missing child"))
-		}, nil, CodeCreateRunCatalogGraphUnresolvable},
+		}, nil, CodeCreateInstanceCatalogGraphUnresolvable},
 		{"retryable resolver", base, func(f *createRunFake) {
 			f.resolveErr = createRunRetryableError(errors.New("serialization"))
-		}, nil, CodeCreateRunRetryable},
+		}, nil, CodeCreateInstanceRetryable},
 		{"retryable insert", base, func(f *createRunFake) {
 			f.insertErr = createRunRetryableError(errors.New("serialization"))
-		}, nil, CodeCreateRunRetryable},
+		}, nil, CodeCreateInstanceRetryable},
 		{"retryable transaction", base, func(f *createRunFake) {
 			f.transactionErr = createRunRetryableError(errors.New("serialization"))
-		}, nil, CodeCreateRunRetryable},
+		}, nil, CodeCreateInstanceRetryable},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -312,14 +312,14 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 	}
 	changedCommand := base
 	changedCommand.EnvironmentID = "different"
-	if _, err := service.CreateRun(context.Background(), changedCommand); !fault.IsCode(err, CodeCreateRunCommandConflict) {
+	if _, err := service.CreateRun(context.Background(), changedCommand); !fault.IsCode(err, CodeCreateInstanceCommandConflict) {
 		t.Fatalf("command conflict=%v", err)
 	}
 	sameRun := base
 	sameRun.CommandID = "command-2"
 	sameRun.ScreenshotPolicy.Destination = "other"
 	result, err := service.CreateRun(context.Background(), sameRun)
-	if !fault.IsCode(err, CodeCreateRunSnapshotConflict) ||
+	if !fault.IsCode(err, CodeCreateInstanceSnapshotConflict) ||
 		strings.Contains(err.Error(), sameRun.RunID) ||
 		!isZeroCreateRunResult(result) {
 		t.Fatalf("snapshot conflict result/error=%#v/%v", result, err)
@@ -331,11 +331,11 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 
 func TestCopyOnWriteStoreConflictErrorsAreTyped(t *testing.T) {
 	commandErr := createRunCommandConflictError()
-	if !fault.IsCode(commandErr, CodeCreateRunCommandConflict) {
+	if !fault.IsCode(commandErr, CodeCreateInstanceCommandConflict) {
 		t.Fatalf("command conflict classification = %v", commandErr)
 	}
 	snapshotErr := createRunSnapshotConflictError()
-	if !fault.IsCode(snapshotErr, CodeCreateRunSnapshotConflict) {
+	if !fault.IsCode(snapshotErr, CodeCreateInstanceSnapshotConflict) {
 		t.Fatalf("snapshot conflict classification = %v", snapshotErr)
 	}
 }

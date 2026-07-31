@@ -335,7 +335,7 @@ func TestOneViewResolverRejectsCatalogGraphFailuresWithTypedErrors(t *testing.T)
 			view := catalogFromMapperSource()
 			test.mutate(&view)
 			_, err := (newOneViewResolverTx(view)).ResolveCreateRun(context.Background(), validCreateRunCommand())
-			if !fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
+			if !fault.IsCode(err, CodeCreateInstanceCatalogGraphUnresolvable) {
 				t.Fatalf("error=%v", err)
 			}
 		})
@@ -365,7 +365,7 @@ func TestOneViewResolverRejectsConflictingDuplicateEdgeResolution(t *testing.T) 
 	root.Definition.Steps = append(root.Definition.Steps, duplicate)
 	view.versions[root.ID] = root
 	_, err := newOneViewResolverTx(view).ResolveCreateRun(context.Background(), validCreateRunCommand())
-	if !fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
+	if !fault.IsCode(err, CodeCreateInstanceCatalogGraphUnresolvable) {
 		t.Fatalf("error=%v", err)
 	}
 }
@@ -400,7 +400,7 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 			tx := newOneViewResolverTx(catalogFromMapperSource())
 			test.configure(tx)
 			_, err := tx.ResolveCreateRun(context.Background(), validCreateRunCommand())
-			if !fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
+			if !fault.IsCode(err, CodeCreateInstanceCatalogGraphUnresolvable) {
 				t.Fatalf("error=%v", err)
 			}
 		})
@@ -410,7 +410,7 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 func TestOneViewResolverSeparatesRetryableAdapterErrors(t *testing.T) {
 	cause := errors.New("serialization")
 	err := fmt.Errorf("transaction read: %w", createRunRetryableError(cause))
-	if !fault.IsCode(err, CodeCreateRunRetryable) || !errors.Is(err, cause) || fault.IsCode(err, CodeCreateRunCatalogGraphUnresolvable) {
+	if !fault.IsCode(err, CodeCreateInstanceRetryable) || !errors.Is(err, cause) || fault.IsCode(err, CodeCreateInstanceCatalogGraphUnresolvable) {
 		t.Fatalf("error category drifted: %v", err)
 	}
 }

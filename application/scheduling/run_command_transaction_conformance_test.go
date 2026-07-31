@@ -259,7 +259,7 @@ func TestReferenceStoreReplayConflictRollbackAndUnknownCommit(t *testing.T) {
 	}
 	changed := command
 	changed.At++
-	if _, err := store.Cancel(context.Background(), changed); !fault.IsCode(err, CodeRunCommandIdentityConflict) {
+	if _, err := store.Cancel(context.Background(), changed); !fault.IsCode(err, CodeInstanceCommandIdentityConflict) {
 		t.Fatalf("conflict=%v", err)
 	}
 	rollback := newReferenceCommandStore(referenceRun{run: domainexecution.Run{ID: "rollback", Status: domainexecution.Queued}, revision: 1})
@@ -442,7 +442,7 @@ func TestReferenceStoreReorderExactPermutationReplayRollbackAndClaimRace(t *test
 	}
 	changed := command
 	changed.RunIDs = []string{"a", "b"}
-	if _, err := store.Reorder(context.Background(), changed); !fault.IsCode(err, CodeRunCommandIdentityConflict) {
+	if _, err := store.Reorder(context.Background(), changed); !fault.IsCode(err, CodeInstanceCommandIdentityConflict) {
 		t.Fatalf("conflict=%v", err)
 	}
 	for _, invalid := range [][]string{{"a"}, {"a", "foreign"}} {

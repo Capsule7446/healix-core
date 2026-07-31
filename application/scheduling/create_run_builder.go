@@ -355,7 +355,7 @@ func normalizeCreateRunCommand(command CreateRunCommand) CreateRunCommand {
 
 func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
 	defer func() {
-		if resultErr != nil && !fault.IsCode(resultErr, CodeCreateRunCommandInvalid) {
+		if resultErr != nil && !fault.IsCode(resultErr, CodeCreateInstanceCommandInvalid) {
 			resultErr = createRunCommandInvalidError(resultErr)
 		}
 	}()

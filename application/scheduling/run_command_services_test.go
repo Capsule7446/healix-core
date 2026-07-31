@@ -109,7 +109,7 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 					} else {
 						got, err = NewAbortRunService(store, signal).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "token"}})
 					}
-					if !fault.IsCode(err, CodeRunAdapterContractViolation) || got != (RunCommandResult{}) || len(store.calls) != 1 {
+					if !fault.IsCode(err, CodeInstanceAdapterContractViolation) || got != (RunCommandResult{}) || len(store.calls) != 1 {
 						t.Fatalf("operation/result/error/calls=%s/%#v/%v/%v", operation, got, err, store.calls)
 					}
 				}
@@ -121,7 +121,7 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 func TestServicesRejectMalformedAuthoritativeAdapterOutcomes(t *testing.T) {
 	cancelStore := &commandStoreStub{cancelResult: RunCommandResult{Run: domainexecution.Run{ID: "foreign", Status: domainexecution.Canceled}, Revision: 2}}
 	result, err := NewCancelRunService(cancelStore, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "c", RunID: "run", ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2})
-	if !fault.IsCode(err, CodeRunIdentityConflict) || result != (RunCommandResult{}) {
+	if !fault.IsCode(err, CodeInstanceIdentityConflict) || result != (RunCommandResult{}) {
 		t.Fatalf("cancel result/error=%#v/%v", result, err)
 	}
 	abortStore := &commandStoreStub{abortResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2}}
@@ -254,7 +254,7 @@ func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
 				CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2,
 				Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"},
 			})
-			if !fault.IsCode(err, CodeRunSignalRetryable) || !reflect.DeepEqual(result, committed) {
+			if !fault.IsCode(err, CodeInstanceSignalRetryable) || !reflect.DeepEqual(result, committed) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
 			if strings.Contains(err.Error(), "typed nil") || strings.Contains(err.Error(), "unavailable") {
@@ -269,7 +269,7 @@ func TestSignalFailureReturnsAuthoritativeCommittedResultAndRetryableError(t *te
 	store.abortResult.Run.ID = "run"
 	sensitiveCause := errors.New("host signal failure: secret-token")
 	result, err := NewAbortRunService(store, signalStub{store: store, err: sensitiveCause}).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"}})
-	if !fault.IsCode(err, CodeRunSignalRetryable) || !errors.Is(err, sensitiveCause) || result.Run.Status != domainexecution.Aborted || !result.WasApplied {
+	if !fault.IsCode(err, CodeInstanceSignalRetryable) || !errors.Is(err, sensitiveCause) || result.Run.Status != domainexecution.Aborted || !result.WasApplied {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 	if strings.Contains(err.Error(), "sensitive-run-id") || strings.Contains(err.Error(), "secret-token") {

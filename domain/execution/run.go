@@ -28,7 +28,7 @@ func ValidateRunStatusTransition(from, to RunStatus) error {
 	if allowed {
 		return nil
 	}
-	return mustExecutionFault(fault.FailedPrecondition, CodeRunStatusTransitionInvalid, "run status transition is invalid")
+	return mustExecutionFault(fault.FailedPrecondition, CodeInstanceStatusTransitionInvalid, "instance status transition is invalid")
 }
 
 type Run struct {
