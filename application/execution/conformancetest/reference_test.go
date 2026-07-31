@@ -145,7 +145,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 	payload := fmt.Sprintf("%#v", commit)
 	if replay, exists := f.state.replays[commit.CommitID]; exists {
 		if replay.payload != payload {
-			return evidence.StepTransitionCommitResult{}, execution.ErrCommitIdentityConflict
+			return evidence.StepTransitionCommitResult{}, execution.CommitIdentityConflictError()
 		}
 		result := replay.result
 		result.WasApplied = false
@@ -153,7 +153,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 		return result, nil
 	}
 	if commit.ExpectedRevision != f.state.stepRevision {
-		return evidence.StepTransitionCommitResult{}, execution.ErrStepRevisionConflict
+		return evidence.StepTransitionCommitResult{}, execution.StepRevisionConflictError()
 	}
 	next := cloneState(f.state)
 	next.terminalFacts++

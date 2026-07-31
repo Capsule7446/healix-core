@@ -3,7 +3,6 @@ package execution
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -12,12 +11,35 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-var (
-	ErrStepRevisionConflict   = errors.New("step revision conflict")
-	ErrCommitIdentityConflict = errors.New("step transition commit identity conflict")
+const (
+	CodeFactCommitterRequired  fault.Code = "EXECUTION_FACT_COMMITTER_REQUIRED"
+	CodeStepRevisionConflict   fault.Code = "EXECUTION_STEP_REVISION_CONFLICT"
+	CodeCommitIdentityConflict fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT"
 )
 
-const CodeFactCommitterRequired fault.Code = "EXECUTION_FACT_COMMITTER_REQUIRED"
+func StepRevisionConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeStepRevisionConflict,
+		"step transition revision conflicts with current state",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func CommitIdentityConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeCommitIdentityConflict,
+		"step transition commit identity conflicts with the previously accepted commit",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func FactCommitterRequiredError() error {
 	err, constructionErr := fault.New(

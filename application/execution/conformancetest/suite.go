@@ -2,7 +2,6 @@ package conformancetest
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -63,7 +62,7 @@ func Run(t *testing.T, factory Factory) {
 			t.Fatalf("stale fence changed state: before=%#v after=%#v", before, got)
 		}
 		badRevision := commit("commit-revision", before.StepRevision+1, "run-revision", evidence.DecisionApplied)
-		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), badRevision, execution.NewDefaultHealGovernancePlanner()); !errors.Is(err, execution.ErrStepRevisionConflict) {
+		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), badRevision, execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, execution.CodeStepRevisionConflict) {
 			t.Fatalf("stale revision error = %v", err)
 		}
 		if got := fixture.Snapshot(); !reflect.DeepEqual(got, before) {
@@ -88,7 +87,7 @@ func Run(t *testing.T, factory Factory) {
 		}
 		changed := command
 		changed.Event.Timestamp++
-		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), changed, execution.NewDefaultHealGovernancePlanner()); !errors.Is(err, execution.ErrCommitIdentityConflict) {
+		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), changed, execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, execution.CodeCommitIdentityConflict) {
 			t.Fatalf("identity conflict error = %v", err)
 		}
 	})
@@ -161,7 +160,7 @@ func Run(t *testing.T, factory Factory) {
 		for err := range errorsFound {
 			if err == nil {
 				succeeded++
-			} else if !errors.Is(err, execution.ErrStepRevisionConflict) {
+			} else if !fault.IsCode(err, execution.CodeStepRevisionConflict) {
 				t.Fatalf("race error = %v", err)
 			}
 		}

@@ -306,11 +306,31 @@ func TestStepTransitionServiceRejectsNilCommitter(t *testing.T) {
 }
 
 func TestStepTransitionServicePreservesTypedCommitErrors(t *testing.T) {
-	for _, want := range []error{domainexecution.NewStaleWorkerFenceError(), ErrStepRevisionConflict, ErrCommitIdentityConflict} {
+	for _, want := range []error{domainexecution.NewStaleWorkerFenceError()} {
 		committer := &recordingTransaction{err: want}
 		_, err := NewStepTransitionService(NewFactCommitter(committer, NewDefaultHealGovernancePlanner())).Commit(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, validStepTransitionCommit())
 		if !errors.Is(err, want) {
 			t.Fatalf("Commit() error = %v, want %v", err, want)
+		}
+	}
+	for _, test := range []struct {
+		code fault.Code
+		err  error
+	}{
+		{CodeStepRevisionConflict, StepRevisionConflictError()},
+		{CodeCommitIdentityConflict, CommitIdentityConflictError()},
+	} {
+		committer := &recordingTransaction{err: test.err}
+		err := func() error {
+			_, err := NewStepTransitionService(NewFactCommitter(committer, NewDefaultHealGovernancePlanner())).Commit(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, validStepTransitionCommit())
+			return err
+		}()
+		if !fault.IsCode(err, test.code) {
+			t.Fatalf("Commit() error = %v, want code %v", err, test.code)
+		}
+		descriptor, ok := fault.Describe(err)
+		if !ok || descriptor.Kind() != fault.Conflict {
+			t.Fatalf("Commit() descriptor = %#v, ok = %v", descriptor, ok)
 		}
 	}
 }
