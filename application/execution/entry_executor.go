@@ -60,8 +60,10 @@ func NewEntryExecutor(factory BrowserSessionFactory, runner EntryRunner, closeTi
 }
 
 func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.WorkerFence, entries []domainexecution.WorkflowEntry) error {
+	// The fence returns its own classified fault; an uncoded wrapper here would
+	// hide that classification behind an unclassified outer error.
 	if err := fence.Validate(); err != nil {
-		return fmt.Errorf("execute entries: %w", err)
+		return err
 	}
 	for _, entry := range entries {
 		if err := e.executeEntry(ctx, fence, entry); err != nil {

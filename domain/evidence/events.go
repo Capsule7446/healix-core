@@ -1,6 +1,6 @@
 package evidence
 
-import "errors"
+import "github.com/Capsule7446/healix-core/domain/fault"
 
 type ProgressPhase string
 
@@ -24,16 +24,23 @@ type StepProgressEvent struct {
 }
 
 func (e StepProgressEvent) Validate() error {
+	var violations []fault.Violation
 	if e.ID == "" || e.ExecutionID == "" || e.WorkflowStepID == "" || e.DisplayName == "" || e.Kind == "" {
-		return errors.New("step progress event identity is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "event identity is required"))
 	}
 	switch e.Phase {
 	case ProgressRunning, ProgressHealing, ProgressTransitioning, ProgressValidating:
 	default:
-		return errors.New("step progress event requires a non-terminal phase")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "phase", "event phase must be non-terminal"))
 	}
-	if e.Occurrence <= 0 || e.Timestamp <= 0 {
-		return errors.New("step progress event occurrence and timestamp must be positive")
+	if e.Occurrence <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "occurrence", "event occurrence must be positive"))
+	}
+	if e.Timestamp <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "timestamp", "event timestamp must be positive"))
+	}
+	if len(violations) != 0 {
+		return stepProgressEventInvalidError(violations)
 	}
 	return nil
 }

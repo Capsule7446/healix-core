@@ -2,9 +2,9 @@
 package evidence
 
 import (
-	"errors"
-	"fmt"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type Phase string
@@ -29,15 +29,22 @@ type StepFact struct {
 	ObservedAt    int64
 }
 
+// Validate never echoes the phase. Phase is a closed set, so a non-terminal value
+// is either one of the known non-terminal states or arbitrary caller input; the
+// caller can read its own phase back from the fact either way.
 func (f StepFact) Validate() error {
+	var violations []fault.Violation
 	if strings.TrimSpace(f.ID) == "" || strings.TrimSpace(f.RunID) == "" || strings.TrimSpace(f.ExecutionID) == "" || strings.TrimSpace(f.StepExecution) == "" {
-		return errors.New("step fact requires identity")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "step fact identity is required"))
 	}
 	if !f.Phase.IsTerminal() {
-		return fmt.Errorf("step fact phase %q is not terminal", f.Phase)
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "phase", "step fact phase must be terminal"))
 	}
 	if f.ObservedAt <= 0 {
-		return errors.New("step fact requires positive observation time")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "step fact observation time must be positive"))
+	}
+	if len(violations) != 0 {
+		return stepFactInvalidError(violations)
 	}
 	return nil
 }

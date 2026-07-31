@@ -45,6 +45,17 @@ sequenceDiagram
 ## 失败
 缺少身份、非法相位、非正时间/Occurrence、未知审核状态、无效 selector/fingerprint、置信度越界、决策带与候选不一致、提交内部坐标不一致及载荷超限都会失败。存储冲突和可用性错误由实现端口返回，领域不将其自动吞掉。
 
+失败一律以注册的 `EVIDENCE_*` fault 形式返回，共 7 个 code（见 `docs/refactor/business-error-contract/error-code-registry.md`）。多字段校验产出**一个**顶层 fault，携带有序 `fault.Violation`：字段路径是逻辑路径（集合下标 0 基），原因走共享内核的 `VALIDATION_FIELD_*` 词表。
+
+四条边界值得单独记住：
+
+- **子校验失败降级为父封套的 violation，不产出嵌套 fault。** 被包含的观察与分组不再以 `fmt.Errorf("… %s: %w", id, err)` 形式外传 —— 那种写法既回显身份 ID，又迫使宿主递归解包才能分类。
+- **载荷超限单独用 `EVIDENCE_COMMIT_FACT_LIMIT_EXCEEDED`（`OUT_OF_RANGE`）**，因为补救动作是「拆分该 commit」而非「修正某个字段」。它在所有其他 commit 规则**之前**检查，因为它同时限定了 violation 遍历的规模。
+- **封套顺序只由输入决定。** 分组拓扑检查会先消耗各分组声明的成员，再报告剩余成员；剩余部分按源切片顺序遍历，而非遍历 map —— 后者会让同一份 commit 在不同运行中被以不同错误拒绝。
+- **一切身份与观察值都不进公共文本。** commit / execution / step / validation / heal / group / ElementTarget 的 ID 均为调用方所有；expected 与 actual 是被观测的页面内容，正是本领域最不能外泄的东西。
+
+单个封套最多携带 `fault.MaxViolations` 条 violation；超出后保留确定性前缀并丢弃其余，故消费方不得把 violation 条数当作完整清单。
+
 ## 并发、安全与资源
 工作器栅栏、ExpectedRevision 与 CommitID 为防止失效 工作器 和重复终态写入提供协议字段；真正的比较交换和原子事务属于适配器。验证敏感值可由 node 在生成观察时抑制；执行证据 本身不做秘密抓取或通用脱敏。提交对条目数和估算字节数设限，避免无界证据载荷。
 

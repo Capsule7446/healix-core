@@ -2,8 +2,14 @@ package evidence
 
 import (
 	"math"
+	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
+
+// joinLines renders a violation key list one per line so a mismatch reads as a diff.
+func joinLines(keys []string) string { return strings.Join(keys, "\n") }
 
 func validGroupedStepTransitionCommit() StepTransitionCommit {
 	return StepTransitionCommit{CommitID: "commit", ExpectedRevision: 1, Event: StepPhaseEvent{
@@ -240,5 +246,64 @@ func TestValidationGroupTopologyReportsLeftoverMembersDeterministically(t *testi
 				}
 			}
 		})
+	}
+}
+
+// brokenStepTransitionCommit breaks several independent rules at once so the whole
+// violation order is observable in one envelope.
+func brokenStepTransitionCommit() StepTransitionCommit {
+	commit := validGroupedStepTransitionCommit()
+	commit.CommitID = " "
+	commit.ExpectedRevision = 0
+	commit.Event.Phase = "RUNNING"
+	commit.Event.Occurrence = 0
+	commit.Event.Timestamp = 0
+	return commit
+}
+
+func TestStepTransitionCommitOrdersViolationsDeterministically(t *testing.T) {
+	want := []string{
+		violationKey(fault.CodeFieldRequired, "commitId"),
+		violationKey(fault.CodeFieldInvalid, "expectedRevision"),
+		violationKey(fault.CodeFieldInvalid, "event.phase"),
+		violationKey(fault.CodeFieldInvalid, "event.occurrence"),
+		violationKey(fault.CodeFieldInvalid, "event.timestamp"),
+	}
+	descriptor := requireEnvelope(t, brokenStepTransitionCommit().Validate(), CodeStepTransitionCommitInvalid)
+	got := violationKeys(descriptor.Violations())
+	if len(got) < len(want) {
+		t.Fatalf("violations =\n%s\nwant at least\n%s", joinLines(got), joinLines(want))
+	}
+	// The scalar commit and event violations come first, in declaration order,
+	// before any collection walk contributes.
+	if joinLines(got[:len(want)]) != joinLines(want) {
+		t.Fatalf("leading violations =\n%s\nwant\n%s", joinLines(got[:len(want)]), joinLines(want))
+	}
+	// A later map iteration slipping into a walk would show up as instability.
+	for attempt := 0; attempt < 100; attempt++ {
+		repeat := requireEnvelope(t, brokenStepTransitionCommit().Validate(), CodeStepTransitionCommitInvalid)
+		if keys := violationKeys(repeat.Violations()); joinLines(keys) != joinLines(got) {
+			t.Fatalf("violation order is unstable on attempt %d:\n%s", attempt, joinLines(keys))
+		}
+	}
+}
+
+func TestStepTransitionCommitTruncatesViolationsAtCap(t *testing.T) {
+	commit := validGroupedStepTransitionCommit()
+	template := HealObservation{
+		ID: "heal", RunID: "run", ExecutionID: "other-execution", StepExecutionID: "other-step",
+		ElementTargetID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionApplied, ObservedAt: 0,
+	}
+	for index := 0; index < 40; index++ {
+		commit.HealObservations = append(commit.HealObservations, template)
+	}
+
+	first := requireEnvelope(t, commit.Validate(), CodeStepTransitionCommitInvalid)
+	if len(first.Violations()) != fault.MaxViolations {
+		t.Fatalf("violations = %d, want the cap %d", len(first.Violations()), fault.MaxViolations)
+	}
+	second := requireEnvelope(t, commit.Validate(), CodeStepTransitionCommitInvalid)
+	if joinLines(violationKeys(first.Violations())) != joinLines(violationKeys(second.Violations())) {
+		t.Fatal("truncated violation prefix is not deterministic")
 	}
 }

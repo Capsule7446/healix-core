@@ -177,7 +177,10 @@ func TestEntryExecutorRejectsInvalidFenceBeforeAllocatingSession(t *testing.T) {
 
 	err := executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}})
 
-	if err == nil || !strings.Contains(err.Error(), "execute entries") || !strings.Contains(err.Error(), "worker fence run id and claim token are required") {
+	// The fence's own error now propagates unwrapped instead of behind an uncoded
+	// "execute entries" layer. Its identity check is still a bare error — that is
+	// the remaining domain/execution migration, not this boundary's concern.
+	if err == nil || !strings.Contains(err.Error(), "worker fence run id and claim token are required") {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	if !reflect.DeepEqual(events, []string{}) {

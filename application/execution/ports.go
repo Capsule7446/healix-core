@@ -157,11 +157,15 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	if isNilInterface(s.committer.transaction) || isNilInterface(s.committer.planner) {
 		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
+	// Both validators return their own classified faults. Wrapping them in an
+	// uncoded fmt.Errorf put an unclassified layer on the outside of a coded fault
+	// exactly at the public boundary, which is what forced hosts to fall back to a
+	// blanket INTERNAL response.
 	if err := fence.Validate(); err != nil {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("validate worker fence: %w", err)
+		return evidence.StepTransitionCommitResult{}, err
 	}
 	if err := commit.Validate(); err != nil {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("validate step transition commit: %w", err)
+		return evidence.StepTransitionCommitResult{}, err
 	}
 	if err := validateCommitRunBinding(fence.RunID, commit); err != nil {
 		return evidence.StepTransitionCommitResult{}, err
