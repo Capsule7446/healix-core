@@ -175,6 +175,18 @@ func (signaler functionSignaler) SignalRunCancellation(ctx context.Context, runI
 	return signaler(ctx, runID)
 }
 
+type channelSignaler chan struct{}
+
+func (channelSignaler) SignalRunCancellation(context.Context, string) error { return nil }
+
+type mapSignaler map[string]struct{}
+
+func (mapSignaler) SignalRunCancellation(context.Context, string) error { return nil }
+
+type sliceSignaler []string
+
+func (sliceSignaler) SignalRunCancellation(context.Context, string) error { return nil }
+
 func TestCancelRejectsSignalRequirementThatDisagreesWithExpectedStatus(t *testing.T) {
 	for _, test := range []struct {
 		status domainexecution.RunStatus
@@ -216,12 +228,18 @@ func TestRunningCancelAndAbortSignalOnlyAfterAtomicCommit(t *testing.T) {
 func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
 	var pointerSignaler *typedNilSignaler
 	var funcSignaler functionSignaler
+	var channelSignaler channelSignaler
+	var mapSignaler mapSignaler
+	var sliceSignaler sliceSignaler
 	for _, test := range []struct {
 		name     string
 		signaler RunCancellationSignaler
 	}{
 		{name: "pointer", signaler: pointerSignaler},
 		{name: "function", signaler: funcSignaler},
+		{name: "channel", signaler: channelSignaler},
+		{name: "map", signaler: mapSignaler},
+		{name: "slice", signaler: sliceSignaler},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			committed := RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: false, SignalRequired: true}
