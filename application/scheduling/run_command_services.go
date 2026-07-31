@@ -212,7 +212,7 @@ func signalIfRequired(ctx context.Context, signaler RunCancellationSignaler, res
 	if !result.SignalRequired {
 		return result, nil
 	}
-	if signaler == nil {
+	if isNilPort(signaler) {
 		return result, runSignalRetryableError(errors.New("cancellation signaler is unavailable"))
 	}
 	if err := signaler.SignalRunCancellation(ctx, result.Run.ID); err != nil {

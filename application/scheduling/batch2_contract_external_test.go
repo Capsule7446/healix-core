@@ -27,5 +27,6 @@ func TestBatch2PublicCommandContractsCompile(t *testing.T) {
 	var queueMembershipConflict *app.QueueMembershipConflictError
 	var adapterContract *app.RunAdapterContractError
 	_, _, _, _, _, _, _ = commandConflict, identityConflict, revisionConflict, statusConflict, queueRevisionConflict, queueMembershipConflict, adapterContract
+	_ = app.CodeRunSignalRetryable
 	_ = context.Background()
 }

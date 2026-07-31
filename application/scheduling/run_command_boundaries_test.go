@@ -161,6 +161,9 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			if !fault.IsCode(err, CodeRunSignalRetryable) || !result.WasApplied || result.Revision != 2 {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
+			if got := err.Error(); got != "EXECUTION_RUN_SIGNAL_RETRYABLE: execution cancellation signal must be retried" {
+				t.Fatalf("public error = %q", got)
+			}
 			if strings.Contains(err.Error(), "cancellation signaler is unavailable") {
 				t.Fatalf("public error leaked internal details: %v", err)
 			}
