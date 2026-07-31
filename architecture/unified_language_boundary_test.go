@@ -160,3 +160,61 @@ func TestExecutionCoordinatesAreDistinctTypesNotStrings(t *testing.T) {
 		}
 	}
 }
+
+// The refactor is a straight replacement: no compatibility facade, no old name
+// kept alive beside the new one. An exported type alias is the cheapest way to
+// break that — `type OldName = NewName` costs one line, compiles, and leaves the
+// old vocabulary reachable forever. One such alias was already in the tree
+// (NodeExecutionRef, left over from the step-execution rename) before this guard
+// existed, so the failure mode is demonstrated rather than hypothetical.
+//
+// Unexported aliases are allowed: they are internal shorthand and cannot keep an
+// old public name alive.
+func TestNoExportedTypeAliasKeepsAnOldNameAlive(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, decl := range parsed.Decls {
+				generic, ok := decl.(*ast.GenDecl)
+				if !ok {
+					continue
+				}
+				for _, spec := range generic.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok || !typeSpec.Assign.IsValid() || !typeSpec.Name.IsExported() {
+						continue
+					}
+					t.Errorf("%s:%d declares the exported alias %s; the refactor replaces names outright, so an alias keeping an old public name reachable is a compatibility facade",
+						filepath.ToSlash(relative), fset.Position(typeSpec.Pos()).Line, typeSpec.Name.Name)
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+}
+
+// A deprecation marker is the other shape of the same promise: it says an old
+// name still works. The plan offers no deprecation window — the replacement is
+// the migration.
+func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, group := range parsed.Comments {
+				for _, comment := range group.List {
+					if strings.Contains(comment.Text, "Deprecated:") {
+						t.Errorf("%s:%d carries a Deprecated marker; the refactor has no deprecation window, so an old name is either gone or it was never replaced",
+							filepath.ToSlash(relative), fset.Position(comment.Pos()).Line)
+					}
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+}

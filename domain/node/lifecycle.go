@@ -88,8 +88,6 @@ const (
 	NodeOutcomeSkipped   NodeOutcome = "SKIPPED"
 )
 
-type NodeExecutionRef = StepExecutionRef
-
 type ExecutionErrorSnapshot struct {
 	Kind    fault.Kind
 	Code    fault.Code
@@ -97,7 +95,7 @@ type ExecutionErrorSnapshot struct {
 }
 
 type NodeExecutionSnapshot struct {
-	Execution   NodeExecutionRef
+	Execution   StepExecutionRef
 	NodeKind    string
 	Outcome     NodeOutcome
 	StartedAt   time.Time
@@ -302,7 +300,7 @@ func (c *NodeCompletionChain) run(ctx context.Context, input NodeCompletionConte
 }
 
 type NodeCompletionObservation struct {
-	Execution NodeExecutionRef
+	Execution StepExecutionRef
 	Results   []CompletionHandlerResult
 }
 
