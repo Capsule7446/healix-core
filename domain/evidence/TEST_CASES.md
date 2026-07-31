@@ -50,6 +50,10 @@
 | `TestValidationGroupExpectedMembersImmutable` | `Validation Group Expected Members Immutable`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/strict_boundary_test.go`](../../domain/evidence/strict_boundary_test.go) · `TestValidationGroupExpectedMembersImmutable` |
 | `TestStepFactRejectsWhitespaceIdentity` | `Step Fact Rejects Whitespace Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/strict_boundary_test.go`](../../domain/evidence/strict_boundary_test.go) · `TestStepFactRejectsWhitespaceIdentity` |
 
+| `TestValidationGroupTopologyReportsLeftoverMembersDeterministically` | 同一 commit 含两个不同类别的剩余 group 成员，两种排列各跑 200 次。 | 同一输入必得同一错误；遍历源切片而非 map，排除随机 map 迭代顺序。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestValidationGroupTopologyReportsLeftoverMembersDeterministically` |
+| `TestStepTransitionCommitOrdersViolationsDeterministically` | 同时违反 commitId / expectedRevision / event 相位、Occurrence、时间戳五条规则。 | 标量违规按声明顺序位于集合遍历之前；100 次重复运行顺序不变。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestStepTransitionCommitOrdersViolationsDeterministically` |
+| `TestStepTransitionCommitTruncatesViolationsAtCap` | 40 个全部非法的 heal observation（远超 fault.MaxViolations）。 | violation 数恰为上限，且截断前缀在重复运行中确定。 | [`domain/evidence/commits_test.go`](../../domain/evidence/commits_test.go) · `TestStepTransitionCommitTruncatesViolationsAtCap` |
+
 ## Cross-cutting / Conformance Cases
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
