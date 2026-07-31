@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"hash"
 	"math"
 	"reflect"
@@ -138,7 +137,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		attempt := CreateRunResult{}
 		existing, found, err := tx.FindCommand(ctx, owned.CommandID)
 		if err != nil {
-			return fmt.Errorf("find create-run owned: %w", err)
+			return classifySchedulingAdapterFailure(err)
 		}
 		if found {
 			if existing.RequestDigest != digest {
@@ -164,7 +163,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		}
 		run, err := execution.NewRun(execution.Run{ID: owned.RunID, ExecutionFlowID: owned.ExecutionFlowID, TestTaskVersionID: owned.TestTaskVersionID, Status: execution.Queued, EnvironmentID: owned.EnvironmentID, CreatedAt: owned.CreatedAt, QueuedAt: owned.CreatedAt}, snapshot)
 		if err != nil {
-			return fmt.Errorf("create queued run: %w", err)
+			return err // execution.NewRun's own error is being classified by a parallel domain/execution migration; this boundary neither adds an uncoded layer on top nor buries a code that is already there.
 		}
 		entries := snapshot.Plan().Entries
 		entryIDs := make([]string, len(entries))
@@ -173,7 +172,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		}
 		outcome, err := tx.InsertCreateRun(ctx, CreateRunIntent{CommandID: owned.CommandID, RequestDigest: digest, Run: run, Snapshot: snapshot, Entries: entries})
 		if err != nil {
-			return fmt.Errorf("insert create run: %w", err)
+			return classifySchedulingAdapterFailure(err)
 		}
 		if err := validateInsertCreateRunOutcome(outcome, owned, digest, run, snapshot, entryIDs); err != nil {
 			return err

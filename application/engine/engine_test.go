@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
@@ -154,10 +155,18 @@ func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	startFailure := &engineTestRecorder{startErr: errors.New("start failed")}
-	if _, err := runProgramForTest(context.Background(), compiledEntry("run-start-failure", node.Program{Root: root}), Config{
+	_, err := runProgramForTest(context.Background(), compiledEntry("run-start-failure", node.Program{Root: root}), Config{
 		RunID: "run-start-failure", Driver: &engineTestDriver{}, Recorder: startFailure,
-	}); err == nil || !strings.Contains(err.Error(), "start recorder") {
-		t.Fatalf("recorder start error = %v", err)
+	})
+	if err == nil || !fault.IsCode(err, CodeSchedulingAdapterUnavailable) {
+		t.Fatalf("recorder start error = %v, want code %s", err, CodeSchedulingAdapterUnavailable)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || strings.Contains(descriptor.Message(), "start failed") {
+		t.Fatalf("public message = %#v (ok=%v), must not carry the recorder detail", descriptor, ok)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "start failed") {
+		t.Fatalf("private cause = %v, want it to retain the recorder detail", cause)
 	}
 	if root.runs != 0 || startFailure.stopped {
 		t.Fatalf("start failure executed root/stopped recorder: root=%d recorder=%+v", root.runs, startFailure)
@@ -169,7 +178,7 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	recorder := &engineTestRecorder{stopErr: stopFailure}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := runProgramForTest(ctx, compiledEntry("run-cleanup", node.Program{Root: root}), Config{
+	_, err = runProgramForTest(ctx, compiledEntry("run-cleanup", node.Program{Root: root}), Config{
 		RunID: "run-cleanup", Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, rootFailure) || !errors.Is(err, stopFailure) {

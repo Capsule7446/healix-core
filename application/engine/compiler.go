@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -185,7 +186,12 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		for name, value := range environment.Variables {
 			key := "env." + name
 			if _, collision := root.Parameters[key]; collision {
-				return CompiledRun{}, fmt.Errorf("compile execution %s: environment parameter %s collides with workflow scope", entry.ExecutionID, key)
+				// No execution id or parameter name in the message: neither is a code
+				// this batch owns (EXECUTION_CREATE_INSTANCE_PLAN_INVALID belongs to a
+				// parallel domain/execution migration), so this stays an uncoded error
+				// with the identities dropped rather than echoed. The integrator should
+				// route this through that code once it lands.
+				return CompiledRun{}, errors.New("compile execution: environment parameter collides with workflow scope")
 			}
 			root.Parameters[key] = value.Clone()
 		}

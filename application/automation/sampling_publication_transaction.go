@@ -21,7 +21,36 @@ const (
 	CodeSamplingPublicationUnavailable       fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE"
 	CodeSamplingPublicationContractViolation fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION"
 	CodeSamplingPublicationAuthorityConflict fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_AUTHORITY_CONFLICT"
+	// CodeSamplingPublicationCommandInvalid is the boundary code for
+	// validateSamplingPublicationCommand and its callers: a blank publication id,
+	// or a publication whose own content is invalid. It passes an
+	// already-classified content failure (AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID)
+	// through unchanged rather than burying it under a second code.
+	CodeSamplingPublicationCommandInvalid fault.Code = "SAMPLING_PUBLICATION_COMMAND_INVALID"
 )
+
+// classifySamplingPublicationCommand is the boundary classifier shared by
+// validateSamplingPublicationCommand and ValidatePublishSamplingIntentDigest.
+// Command detail (the blank id, or whatever validation text the wrapped cause
+// carries) stays private, reachable only through errors.Unwrap.
+func classifySamplingPublicationCommand(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.InvalidArgument,
+		CodeSamplingPublicationCommandInvalid,
+		"sampling publication command is invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func SamplingPublicationIdentityConflictError() error {
 	err, constructionErr := fault.New(
@@ -128,7 +157,7 @@ func ValidatePublishSamplingIntentDigest(intent PublishSamplingIntent) error {
 		Publication:   intent.Publication,
 	})
 	if err != nil {
-		return fmt.Errorf("validate sampling publication intent: %w", err)
+		return classifySamplingPublicationCommand(err)
 	}
 	if intent.RequestDigest != digest {
 		return SamplingPublicationDigestMismatchError()
@@ -202,10 +231,10 @@ func cloneSamplingPublicationResult(result domain.SamplingPublicationResult) dom
 
 func validateSamplingPublicationCommand(command SamplingPublicationCommand) error {
 	if strings.TrimSpace(command.PublicationID) == "" {
-		return errors.New("sampling publication id is required")
+		return classifySamplingPublicationCommand(errors.New("sampling publication id is required"))
 	}
 	if err := command.Publication.Validate(); err != nil {
-		return fmt.Errorf("validate sampling publication: %w", err)
+		return classifySamplingPublicationCommand(err)
 	}
 	return nil
 }

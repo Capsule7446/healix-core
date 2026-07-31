@@ -170,8 +170,16 @@ func TestPublishSamplingIntentDigestValidation(t *testing.T) {
 		}
 	}
 	intent.PublicationID = ""
-	if err := ValidatePublishSamplingIntentDigest(intent); err == nil || !strings.Contains(err.Error(), "validate sampling publication intent") {
-		t.Fatalf("invalid intent error = %v", err)
+	err = ValidatePublishSamplingIntentDigest(intent)
+	if err == nil || !fault.IsCode(err, CodeSamplingPublicationCommandInvalid) {
+		t.Fatalf("invalid intent error = %v, want code %s", err, CodeSamplingPublicationCommandInvalid)
+	}
+	invalidDescriptor, ok := fault.Describe(err)
+	if !ok || strings.Contains(invalidDescriptor.Message(), "publication id is required") {
+		t.Fatalf("public message = %#v (ok=%v), must not carry the detail", invalidDescriptor, ok)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "publication id is required") {
+		t.Fatalf("private cause = %v, want it to retain the detail", cause)
 	}
 }
 

@@ -131,9 +131,9 @@ func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 		want     error
 	}{
 		{name: "missing token", claims: fakeClaimSource{claim: Claim{Snapshot: plan}, found: true}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingClaimInvalid},
-		{name: "claim failure", claims: fakeClaimSource{err: failure}, writer: &recordingDecisionWriter{}, want: failure},
-		{name: "state failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{err: failure}, writer: &recordingDecisionWriter{}, want: failure},
-		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer: &recordingDecisionWriter{err: failure}, want: failure},
+		{name: "claim failure", claims: fakeClaimSource{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
+		{name: "state failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
+		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer: &recordingDecisionWriter{err: failure}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -144,6 +144,12 @@ func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 			}
 			if test.want != nil && !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+			if test.wantCode == CodeSchedulingAdapterUnavailable {
+				descriptor, ok := fault.Describe(err)
+				if !ok || strings.Contains(descriptor.Message(), "port failure") {
+					t.Fatalf("public message = %#v (ok=%v), must not carry the port detail", descriptor, ok)
+				}
 			}
 		})
 	}

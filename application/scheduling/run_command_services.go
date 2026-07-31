@@ -168,7 +168,7 @@ func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunComman
 	}
 	result, err := s.store.Cancel(ctx, command)
 	if err != nil {
-		return RunCommandResult{}, fmt.Errorf("cancel run transaction: %w", err)
+		return RunCommandResult{}, classifySchedulingAdapterFailure(err)
 	}
 	if err := validateRunResult(command.RunID, domainexecution.Canceled, command.ExpectedRevision, result); err != nil {
 		// validateRunResult already returns
@@ -199,7 +199,7 @@ func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) 
 	}
 	result, err := s.store.Abort(ctx, command)
 	if err != nil {
-		return RunCommandResult{}, fmt.Errorf("abort run transaction: %w", err)
+		return RunCommandResult{}, classifySchedulingAdapterFailure(err)
 	}
 	if err := validateRunResult(command.RunID, domainexecution.Aborted, command.ExpectedRevision, result); err != nil {
 		return RunCommandResult{}, err
@@ -256,7 +256,7 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 	ownedCommand.RunIDs = append([]string(nil), command.RunIDs...)
 	result, err := s.store.Reorder(ctx, ownedCommand)
 	if err != nil {
-		return ReorderQueueResult{}, fmt.Errorf("reorder queue transaction: %w", err)
+		return ReorderQueueResult{}, classifySchedulingAdapterFailure(err)
 	}
 	if result.ScopeID != command.ScopeID || result.Revision != command.ExpectedRevision+1 || len(result.RunIDs) != len(command.RunIDs) {
 		return ReorderQueueResult{}, runAdapterContractViolationError(errors.New("reorder result identity, revision, or membership count is invalid"))

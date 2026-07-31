@@ -132,8 +132,15 @@ func TestStepTransitionServiceRejectsCrossRunFactsBeforeCommit(t *testing.T) {
 				domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
 				test.commit,
 			)
-			if err == nil || !strings.Contains(err.Error(), "does not match worker fence run") || transaction.calls != 0 {
+			if err == nil || !fault.IsCode(err, CodeStepTransitionCommitRunMismatch) || transaction.calls != 0 {
 				t.Fatalf("Commit() error = %v, calls = %d", err, transaction.calls)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || strings.Contains(descriptor.Message(), "other-run") {
+				t.Fatalf("public message = %#v (ok=%v), must not carry the run id", descriptor, ok)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "does not match worker fence run") {
+				t.Fatalf("private cause = %v, want it to retain the detail", cause)
 			}
 		})
 	}
@@ -177,8 +184,11 @@ func TestStepTransitionServiceRejectsExactSerializedPayloadOverLimit(t *testing.
 	commit := validStepTransitionCommit()
 	commit.CommitID = strings.Repeat("\\", MaxStepTransitionPayloadBytes/2)
 	_, err := NewStepTransitionService(NewFactCommitter(committer, NewDefaultHealGovernancePlanner())).Commit(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, commit)
-	if err == nil || !strings.Contains(err.Error(), "byte limit") {
-		t.Fatalf("oversized serialized payload error = %v", err)
+	if err == nil || !fault.IsCode(err, CodeStepTransitionCommitPayloadTooLarge) {
+		t.Fatalf("oversized serialized payload error = %v, want code %s", err, CodeStepTransitionCommitPayloadTooLarge)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "byte limit") {
+		t.Fatalf("private cause = %v, want it to retain the byte limit detail", cause)
 	}
 	if committer.calls != 0 {
 		t.Fatal("oversized payload reached transaction")
@@ -220,8 +230,13 @@ func TestValidateStepTransitionPayloadSizeRejectsOversizedTopLevelAndNestedStrin
 			if (err != nil) != test.wantError {
 				t.Fatalf("ValidateStepTransitionPayloadSize() error = %v, wantError = %v", err, test.wantError)
 			}
-			if test.wantError && !strings.Contains(err.Error(), "string exceeds byte limit") {
-				t.Fatalf("error = %v, want string byte limit", err)
+			if test.wantError {
+				if !fault.IsCode(err, CodeStepTransitionCommitPayloadTooLarge) {
+					t.Fatalf("error = %v, want code %s", err, CodeStepTransitionCommitPayloadTooLarge)
+				}
+				if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "string exceeds byte limit") {
+					t.Fatalf("private cause = %v, want string byte limit detail", cause)
+				}
 			}
 		})
 	}
@@ -245,8 +260,13 @@ func TestValidateStepTransitionPayloadSizeAggregateByteBoundaries(t *testing.T) 
 			if (err != nil) != test.wantError {
 				t.Fatalf("ValidateStepTransitionPayloadSize() error = %v, wantError = %v", err, test.wantError)
 			}
-			if test.wantError && !strings.Contains(err.Error(), "commit exceeds byte limit") {
-				t.Fatalf("error = %v, want aggregate byte limit", err)
+			if test.wantError {
+				if !fault.IsCode(err, CodeStepTransitionCommitPayloadTooLarge) {
+					t.Fatalf("error = %v, want code %s", err, CodeStepTransitionCommitPayloadTooLarge)
+				}
+				if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "commit exceeds byte limit") {
+					t.Fatalf("private cause = %v, want aggregate byte limit detail", cause)
+				}
 			}
 		})
 	}
