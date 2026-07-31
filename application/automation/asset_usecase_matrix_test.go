@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -284,7 +285,7 @@ func TestFolderCreateAndMoveCoverValidationCASAndPersistence(t *testing.T) {
 			}
 			snapshot.Revision = domain.Revision(math.MaxUint64)
 			repository = &folderRepositoryProbe{snapshot: snapshot}
-			if err := operation.invoke(NewFolderService(repository), snapshot.Revision); !errors.Is(err, domain.ErrRevisionOverflow) || repository.saveCalls != 0 {
+			if err := operation.invoke(NewFolderService(repository), snapshot.Revision); !fault.IsCode(err, domain.CodeRevisionExhausted) || repository.saveCalls != 0 {
 				t.Fatalf("overflow/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 		})
@@ -300,6 +301,7 @@ func TestFolderDeleteCoversEveryPrecommitRejectionAndDependency(t *testing.T) {
 		repository *folderRepositoryProbe
 		expected   domain.Revision
 		want       error
+		wantCode   fault.Code
 		wantText   string
 	}{
 		{name: "load failure", repository: &folderRepositoryProbe{snapshot: valid, loadErr: failure}, expected: 1, want: failure},
@@ -308,7 +310,7 @@ func TestFolderDeleteCoversEveryPrecommitRejectionAndDependency(t *testing.T) {
 		{name: "occupancy failure", repository: &folderRepositoryProbe{snapshot: valid, occupancyErr: failure}, expected: 1, want: failure},
 		{name: "negative occupancy", repository: &folderRepositoryProbe{snapshot: valid, occupancy: FolderOccupancySnapshot{Revision: 1, Occupancy: domain.FolderOccupancy{Assets: -1}}}, expected: 1, wantText: "cannot be negative"},
 		{name: "occupied", repository: &folderRepositoryProbe{snapshot: valid, occupancy: FolderOccupancySnapshot{Revision: 1, Occupancy: domain.FolderOccupancy{Assets: 1}}}, expected: 1, wantText: "must be empty"},
-		{name: "revision overflow", repository: &folderRepositoryProbe{snapshot: FolderSnapshot{Revision: domain.Revision(math.MaxUint64), Folders: []domain.Folder{folder}}}, expected: domain.Revision(math.MaxUint64), want: domain.ErrRevisionOverflow},
+		{name: "revision overflow", repository: &folderRepositoryProbe{snapshot: FolderSnapshot{Revision: domain.Revision(math.MaxUint64), Folders: []domain.Folder{folder}}}, expected: domain.Revision(math.MaxUint64), wantCode: domain.CodeRevisionExhausted},
 		{name: "delete failure", repository: &folderRepositoryProbe{snapshot: valid, occupancy: FolderOccupancySnapshot{Revision: 1}, deleteErr: failure}, expected: 1, want: failure},
 	}
 	for _, test := range tests {
@@ -317,7 +319,7 @@ func TestFolderDeleteCoversEveryPrecommitRejectionAndDependency(t *testing.T) {
 			if err == nil || !reflect.DeepEqual(result, FolderSnapshot{}) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
-			if test.want != nil && !errors.Is(err, test.want) || test.wantText != "" && !strings.Contains(err.Error(), test.wantText) {
+			if test.want != nil && !errors.Is(err, test.want) || test.wantCode != "" && !fault.IsCode(err, test.wantCode) || test.wantText != "" && !strings.Contains(err.Error(), test.wantText) {
 				t.Fatalf("error = %v, want target %v or text %q", err, test.want, test.wantText)
 			}
 			if test.name == "delete failure" {

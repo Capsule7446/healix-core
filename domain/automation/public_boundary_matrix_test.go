@@ -430,10 +430,10 @@ func TestVersionHistoryPublicationAndClonePublicBoundaries(t *testing.T) {
 	if clone.ElementTarget.ID != node.ElementTarget.ID || len(clone.Versions) != len(node.Versions) {
 		t.Fatalf("Clone() = %#v", clone)
 	}
-	if next, err := Revision(math.MaxUint64).Next(); next != 0 || !errors.Is(err, ErrRevisionOverflow) {
+	if next, err := Revision(math.MaxUint64).Next(); next != 0 || !fault.IsCode(err, CodeRevisionExhausted) {
 		t.Fatalf("Revision.Next() = %d, %v", next, err)
 	}
-	if next, err := Revision(0).Next(); next != 0 || !errors.Is(err, ErrRevisionZero) {
+	if next, err := Revision(0).Next(); next != 0 || !fault.IsCode(err, CodePersistedRevisionInvalid) {
 		t.Fatalf("zero Revision.Next() = %d, %v", next, err)
 	}
 }
