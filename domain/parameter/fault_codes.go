@@ -7,6 +7,7 @@ const (
 	CodeValueInvalid          fault.Code = "PARAMETER_VALUE_INVALID"
 	CodeConstraintUnsatisfied fault.Code = "PARAMETER_CONSTRAINT_UNSATISFIED"
 	CodeBindingUnresolvable   fault.Code = "PARAMETER_BINDING_UNRESOLVABLE"
+	CodeBindingInvalid        fault.Code = "PARAMETER_BINDING_INVALID"
 )
 
 // These codes carry no violations. Each one reports a single rejected value that
@@ -30,6 +31,15 @@ func wrapValueInvalidError(cause error) error {
 
 func constraintUnsatisfiedError() error {
 	return mustParameterFault(fault.InvalidArgument, CodeConstraintUnsatisfied, "parameter value does not satisfy its constraint")
+}
+
+// bindingInvalidError covers a binding the caller never built usably — a blank
+// parent reference name, or a zero/unknown kind. It is INVALID_ARGUMENT because
+// the caller fixes it by constructing a different binding. That is a different
+// action from CodeBindingUnresolvable, which says the binding is fine and the
+// surrounding scope is what is missing a value.
+func bindingInvalidError() error {
+	return mustParameterFault(fault.InvalidArgument, CodeBindingInvalid, "parameter binding is invalid")
 }
 
 func bindingUnresolvableError() error {

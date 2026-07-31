@@ -79,17 +79,22 @@ func (b Binding) Resolve(parent map[string]Value) (Value, error) {
 		}
 		return b.literal.Clone(), nil
 	case ParentReferenceBindingKind:
-		// The parent parameter name is never echoed: it is caller-declared, and the
-		// parent scope map is the caller's too, so it can locate the gap itself.
+		// A blank parent name is a malformed binding, not a missing parent: the
+		// caller fixes it by constructing the binding differently, which is a
+		// different action from supplying the surrounding scope.
 		if strings.TrimSpace(b.parentName) == "" {
-			return Value{}, bindingUnresolvableError()
+			return Value{}, bindingInvalidError()
 		}
+		// Only here is the binding well-formed and the scope genuinely short of a
+		// value. The parent parameter name is never echoed: it is caller-declared,
+		// and the parent scope map is the caller's too.
 		value, exists := parent[b.parentName]
 		if !exists {
 			return Value{}, bindingUnresolvableError()
 		}
 		return value.Clone(), nil
 	default:
-		return Value{}, bindingUnresolvableError()
+		// A zero or unknown kind means the caller never built a usable binding.
+		return Value{}, bindingInvalidError()
 	}
 }

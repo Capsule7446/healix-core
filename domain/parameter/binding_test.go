@@ -51,14 +51,20 @@ func TestParentReferenceBindingResolvesOnlyNamedTypedParent(t *testing.T) {
 // cannot already read from its own input.
 func TestBindingRejectsInvalidVariantsAndMissingParents(t *testing.T) {
 	const secretParent = "absent-parent-8f21"
+	// The three used to share one code, which told a caller holding a malformed
+	// binding to go fix the surrounding scope. A binding the caller never built
+	// usably is theirs to correct; only a well-formed reference into a scope that
+	// lacks the value is a precondition on something else.
 	tests := []struct {
-		name    string
-		binding Binding
-		parent  map[string]Value
+		name     string
+		binding  Binding
+		parent   map[string]Value
+		wantCode fault.Code
+		wantKind fault.Kind
 	}{
-		{name: "zero", binding: Binding{}},
-		{name: "blank reference", binding: ParentReferenceBinding("")},
-		{name: "missing reference", binding: ParentReferenceBinding(secretParent), parent: map[string]Value{}},
+		{name: "zero", binding: Binding{}, wantCode: CodeBindingInvalid, wantKind: fault.InvalidArgument},
+		{name: "blank reference", binding: ParentReferenceBinding(""), wantCode: CodeBindingInvalid, wantKind: fault.InvalidArgument},
+		{name: "missing reference", binding: ParentReferenceBinding(secretParent), parent: map[string]Value{}, wantCode: CodeBindingUnresolvable, wantKind: fault.FailedPrecondition},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -66,12 +72,12 @@ func TestBindingRejectsInvalidVariantsAndMissingParents(t *testing.T) {
 			if !value.Equal(Value{}) {
 				t.Fatalf("Resolve() returned %#v on failure", value)
 			}
-			if !fault.IsCode(err, CodeBindingUnresolvable) {
-				t.Fatalf("error = %v, want code %s", err, CodeBindingUnresolvable)
+			if !fault.IsCode(err, test.wantCode) {
+				t.Fatalf("error = %v, want code %s", err, test.wantCode)
 			}
 			descriptor, ok := fault.Describe(err)
-			if !ok || descriptor.Kind() != fault.FailedPrecondition || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
-				t.Fatalf("descriptor = %#v (ok=%v)", descriptor, ok)
+			if !ok || descriptor.Kind() != test.wantKind || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("descriptor = %#v (ok=%v), want kind %s", descriptor, ok, test.wantKind)
 			}
 			if strings.Contains(err.Error(), secretParent) {
 				t.Fatalf("public error leaked the parent parameter name: %q", err)
