@@ -68,7 +68,10 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	}
 	steps, err := sampling.RewriteUnpublishedElementTargetReferences(request.Workspace.Steps, mappings)
 	if err != nil {
-		return domainautomation.SamplingPublication{}, fmt.Errorf("rewrite sampled workflow references: %w", err)
+		// The rewrite already returns SAMPLING_PUBLICATION_MAPPING_INVALID with its
+		// own ordered violations. Wrapping it in an unclassified error would put an
+		// uncoded layer on the outside of a coded fault at the public boundary.
+		return domainautomation.SamplingPublication{}, err
 	}
 	workflow, err := domainautomation.NewFlowFragment(
 		domainautomation.FlowFragment{ID: request.FlowFragmentID, DisplayName: request.Workspace.DisplayName, Properties: request.Workspace.Properties.Clone(), CreatedAt: request.PublishedAt, UpdatedAt: request.PublishedAt},

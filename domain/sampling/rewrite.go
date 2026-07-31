@@ -2,22 +2,36 @@ package sampling
 
 import (
 	"fmt"
-	"github.com/Capsule7446/healix-core/domain/parameter"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// RewriteUnpublishedElementTargetReferences validates the mapping set as an
+// aggregate in slice order. Temporary and formal element target identities are the
+// caller's own and never reach public text.
 func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentStep, mappings []automation.SamplingNodeMapping) ([]automation.FlowFragmentStep, error) {
 	mappingByTemporaryID := make(map[string]automation.SamplingNodeMapping, len(mappings))
-	for _, mapping := range mappings {
-		if strings.TrimSpace(mapping.TemporaryElementTargetID) == "" || strings.TrimSpace(mapping.ElementTargetID) == "" || strings.TrimSpace(mapping.ElementTargetVersionID) == "" {
-			return nil, fmt.Errorf("sampling node mapping requires temporary and formal identity")
+	var violations []fault.Violation
+	for index, mapping := range mappings {
+		field := func(name string) string { return fmt.Sprintf("mappings.%d.%s", index, name) }
+		if strings.TrimSpace(mapping.TemporaryElementTargetID) == "" {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field("temporaryElementTargetId"), "temporary element target id is required"))
+		} else if _, exists := mappingByTemporaryID[mapping.TemporaryElementTargetID]; exists {
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field("temporaryElementTargetId"), "temporary element target id is mapped more than once"))
 		}
-		if _, exists := mappingByTemporaryID[mapping.TemporaryElementTargetID]; exists {
-			return nil, fmt.Errorf("duplicate sampling node mapping %q", mapping.TemporaryElementTargetID)
+		if strings.TrimSpace(mapping.ElementTargetID) == "" {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field("elementTargetId"), "formal element target id is required"))
+		}
+		if strings.TrimSpace(mapping.ElementTargetVersionID) == "" {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field("elementTargetVersionId"), "formal element target version id is required"))
 		}
 		mappingByTemporaryID[mapping.TemporaryElementTargetID] = mapping
+	}
+	if len(violations) != 0 {
+		return nil, publicationMappingInvalidError(violations)
 	}
 	used := make(map[string]struct{}, len(mappingByTemporaryID))
 	rewritten, err := rewriteSamplingSteps(steps, mappingByTemporaryID, used)
@@ -25,7 +39,9 @@ func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentSt
 		return nil, err
 	}
 	if len(used) != len(mappingByTemporaryID) {
-		return nil, fmt.Errorf("sampling node mappings must exactly match referenced temporary nodes")
+		return nil, publicationMappingInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldMismatch, "mappings", "mappings must exactly match the referenced temporary element targets"),
+		})
 	}
 	return rewritten, nil
 }
@@ -37,7 +53,11 @@ func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[stri
 		if step.ElementTargetID != "" {
 			mapping, exists := mappings[step.ElementTargetID]
 			if !exists {
-				return nil, fmt.Errorf("sampling step %q references unmapped temporary node %q", step.ID, step.ElementTargetID)
+				// The step id and the temporary element target id are both caller
+				// identities, so neither may appear in the public violation.
+				return nil, publicationMappingInvalidError([]fault.Violation{
+					mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that has no mapping"),
+				})
 			}
 			used[step.ElementTargetID] = struct{}{}
 			step.ElementTargetID = mapping.ElementTargetID

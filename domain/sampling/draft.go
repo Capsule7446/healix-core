@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -21,7 +22,7 @@ func InsertUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, contain
 		return UnpublishedFlowFragment{}, err
 	}
 	if index < 0 || index > len(*steps) {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling insert index %d is out of range", index)
+		return UnpublishedFlowFragment{}, draftIndexOutOfRangeError()
 	}
 	*steps = slices.Insert(*steps, index, cloneSamplingSteps([]automation.FlowFragmentStep{step})[0])
 	return finalizeUnpublishedFlowFragment(next)
@@ -29,7 +30,9 @@ func InsertUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, contain
 
 func UpdateUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, step automation.FlowFragmentStep) (UnpublishedFlowFragment, error) {
 	if strings.TrimSpace(step.ID) == "" {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling step id is required")
+		return UnpublishedFlowFragment{}, draftInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldRequired, "stepId", "step id is required"),
+		})
 	}
 	next := cloneUnpublishedFlowFragment(workflow)
 	found := false
@@ -40,7 +43,7 @@ func UpdateUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, step au
 		}
 	})
 	if !found {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling step %q was not found", step.ID)
+		return UnpublishedFlowFragment{}, draftStepNotFoundError()
 	}
 	return finalizeUnpublishedFlowFragment(next)
 }
@@ -73,7 +76,7 @@ func DeleteUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID 
 	}
 	remove(&next.Steps)
 	if !deleted {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling step %q was not found", stepID)
+		return UnpublishedFlowFragment{}, draftStepNotFoundError()
 	}
 	next.ValidationCapturedActionIDs = slices.DeleteFunc(next.ValidationCapturedActionIDs, func(id string) bool { return id == stepID })
 	return finalizeUnpublishedFlowFragment(next)
@@ -89,7 +92,7 @@ func MoveUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID st
 		}
 	})
 	if !found {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling step %q was not found", stepID)
+		return UnpublishedFlowFragment{}, draftStepNotFoundError()
 	}
 	without, err := DeleteUnpublishedFlowFragmentStep(workflow, stepID)
 	if err != nil {
@@ -109,19 +112,25 @@ func ReorderUnpublishedFlowFragmentSteps(workflow UnpublishedFlowFragment, conta
 		byID[step.ID] = step
 	}
 	if len(orderedIDs) != len(byID) {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling reorder requires an exact step permutation")
+		return UnpublishedFlowFragment{}, draftInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldInvalid, "orderedStepIds", "reorder requires an exact permutation of the container's step ids"),
+		})
 	}
 	reordered := make([]automation.FlowFragmentStep, len(orderedIDs))
 	for index, id := range orderedIDs {
 		step, exists := byID[id]
 		if !exists {
-			return UnpublishedFlowFragment{}, fmt.Errorf("sampling reorder requires an exact step permutation")
+			return UnpublishedFlowFragment{}, draftInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "orderedStepIds", "reorder requires an exact permutation of the container's step ids"),
+			})
 		}
 		reordered[index] = step
 		delete(byID, id)
 	}
 	if len(byID) != 0 {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling reorder requires an exact step permutation")
+		return UnpublishedFlowFragment{}, draftInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldInvalid, "orderedStepIds", "reorder requires an exact permutation of the container's step ids"),
+		})
 	}
 	*steps = reordered
 	return finalizeUnpublishedFlowFragment(next)
@@ -131,13 +140,13 @@ func DeleteUnpublishedElementTarget(workflow UnpublishedFlowFragment, nodeID str
 	next := cloneUnpublishedFlowFragment(workflow)
 	for _, node := range next.Nodes {
 		if node.ID == nodeID && len(node.StepIDs) != 0 {
-			return UnpublishedFlowFragment{}, fmt.Errorf("sampling node %q is still referenced", nodeID)
+			return UnpublishedFlowFragment{}, draftElementTargetInUseError()
 		}
 	}
 	before := len(next.Nodes)
 	next.Nodes = slices.DeleteFunc(next.Nodes, func(node UnpublishedElementTarget) bool { return node.ID == nodeID })
 	if len(next.Nodes) == before {
-		return UnpublishedFlowFragment{}, fmt.Errorf("sampling node %q was not found", nodeID)
+		return UnpublishedFlowFragment{}, draftElementTargetNotFoundError()
 	}
 	return finalizeUnpublishedFlowFragment(next)
 }
@@ -145,7 +154,9 @@ func DeleteUnpublishedElementTarget(workflow UnpublishedFlowFragment, nodeID str
 func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, container FlowFragmentStepContainer) (*[]automation.FlowFragmentStep, error) {
 	if container.ParentStepID == "" {
 		if container.BranchID != "" {
-			return nil, fmt.Errorf("sampling root container cannot select a branch")
+			return nil, draftInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldMismatch, "container.branchId", "the root container cannot select a branch"),
+			})
 		}
 		return &workflow.Steps, nil
 	}
@@ -172,7 +183,7 @@ func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, containe
 		}
 	})
 	if result == nil {
-		return nil, fmt.Errorf("sampling step container was not found")
+		return nil, draftStepNotFoundError()
 	}
 	return result, nil
 }
@@ -200,37 +211,50 @@ func finalizeUnpublishedFlowFragment(workflow UnpublishedFlowFragment) (Unpublis
 	return workflow, nil
 }
 
+// validateUnpublishedFlowFragmentIdentity aggregates identity failures in slice
+// order. Step paths are unindexed because walkSamplingSteps descends into children
+// and validation branches without carrying a path, and inventing a visit ordinal
+// would hand the caller a number it cannot index by.
 func validateUnpublishedFlowFragmentIdentity(workflow UnpublishedFlowFragment) error {
+	var violations []fault.Violation
 	if strings.TrimSpace(workflow.ID) == "" {
-		return fmt.Errorf("temporary sampling workflow id is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "id", "draft flow fragment id is required"))
 	}
-	nodeIDs := make(map[string]struct{}, len(workflow.Nodes))
-	for _, node := range workflow.Nodes {
+	elementTargetIDs := make(map[string]struct{}, len(workflow.Nodes))
+	for index, node := range workflow.Nodes {
+		field := fmt.Sprintf("elementTargets.%d.id", index)
 		if strings.TrimSpace(node.ID) == "" {
-			return fmt.Errorf("temporary sampling node id is required")
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field, "draft element target id is required"))
+		} else if _, exists := elementTargetIDs[node.ID]; exists {
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field, "draft element target id is duplicated"))
 		}
-		if _, exists := nodeIDs[node.ID]; exists {
-			return fmt.Errorf("duplicate temporary sampling node %q", node.ID)
-		}
-		nodeIDs[node.ID] = struct{}{}
+		elementTargetIDs[node.ID] = struct{}{}
 	}
 	stepIDs := map[string]struct{}{}
-	var identityErr error
+	var stepViolation *fault.Violation
 	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
-		if identityErr != nil {
+		if stepViolation != nil {
 			return
 		}
 		if strings.TrimSpace(step.ID) == "" {
-			identityErr = fmt.Errorf("temporary sampling step id is required")
+			violation := mustViolation(fault.CodeFieldRequired, "steps.id", "draft step id is required")
+			stepViolation = &violation
 			return
 		}
 		if _, exists := stepIDs[step.ID]; exists {
-			identityErr = fmt.Errorf("duplicate temporary sampling step %q", step.ID)
+			violation := mustViolation(fault.CodeFieldDuplicate, "steps.id", "draft step id is duplicated")
+			stepViolation = &violation
 			return
 		}
 		stepIDs[step.ID] = struct{}{}
 	})
-	return identityErr
+	if stepViolation != nil {
+		violations = append(violations, *stepViolation)
+	}
+	if len(violations) != 0 {
+		return draftInvalidError(violations)
+	}
+	return nil
 }
 
 func cloneUnpublishedFlowFragment(workflow UnpublishedFlowFragment) UnpublishedFlowFragment {

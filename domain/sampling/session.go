@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -117,21 +118,31 @@ type Session struct {
 }
 
 func NewSession(workflowID, startURL string) (*Session, error) {
+	var violations []fault.Violation
 	if strings.TrimSpace(workflowID) == "" {
-		return nil, fmt.Errorf("sampling: workflow ID is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "flowFragmentId", "flow fragment id is required"))
 	}
 	if strings.TrimSpace(startURL) == "" {
-		return nil, fmt.Errorf("sampling: start URL is required")
+		// Returning here keeps the violation order deterministic: an empty string
+		// parses successfully, so continuing would add a redundant host violation.
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "startUrl", "start url is required"))
+		return nil, sessionInputInvalidError(violations)
 	}
 	parsedStartURL, err := url.Parse(startURL)
 	if err != nil {
-		return nil, fmt.Errorf("sampling: invalid start URL: %w", err)
+		// url.Error formats the whole URL into its own text, so the parse failure
+		// can only be kept as a private cause.
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "startUrl", "start url is not a valid url"))
+		return nil, wrapSessionInputInvalidError(err, violations)
 	}
 	if parsedStartURL.Scheme != "http" && parsedStartURL.Scheme != "https" {
-		return nil, fmt.Errorf("sampling: start URL scheme must be http or https")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "startUrl", "start url scheme must be http or https"))
 	}
 	if parsedStartURL.Host == "" {
-		return nil, fmt.Errorf("sampling: start URL host is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "startUrl", "start url host is required"))
+	}
+	if len(violations) != 0 {
+		return nil, sessionInputInvalidError(violations)
 	}
 	sessionID, err := NewUUID()
 	if err != nil {
@@ -157,10 +168,10 @@ func (s *Session) ID() string {
 
 func (s *Session) Start() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot start")
+		return internalError()
 	}
 	if s.status != StatusCreated {
-		return fmt.Errorf("sampling: session cannot start from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	actionID, err := NewUUID()
 	if err != nil {
@@ -174,11 +185,16 @@ func (s *Session) Start() error {
 }
 
 func (s *Session) Record(c Capture) (CaptureResult, error) {
-	if s == nil || s.status != StatusRecording {
-		return CaptureResult{}, fmt.Errorf("sampling: session is not recording")
+	if s == nil {
+		return CaptureResult{}, internalError()
+	}
+	if s.status != StatusRecording {
+		return CaptureResult{}, sessionStateInvalidError()
 	}
 	if strings.TrimSpace(c.CaptureID) == "" {
-		return CaptureResult{}, fmt.Errorf("sampling: capture ID is required")
+		return CaptureResult{}, captureInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldRequired, "captureId", "capture id is required"),
+		})
 	}
 	if previous, ok := s.byCaptureID[c.CaptureID]; ok {
 		return previous, nil
@@ -186,14 +202,20 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	switch c.Kind {
 	case ActionClick, ActionInput, ActionSelect, ActionValidate:
 		if strings.TrimSpace(c.IdentityKey) == "" {
-			return CaptureResult{}, fmt.Errorf("sampling: node identity key is required")
+			return CaptureResult{}, captureInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldRequired, "identityKey", "capture identity key is required"),
+			})
 		}
 		if c.Kind == ActionValidate && c.Validation == nil {
-			return CaptureResult{}, fmt.Errorf("sampling: validation capture is required")
+			return CaptureResult{}, captureInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldRequired, "validation", "validate capture requires validation detail"),
+			})
 		}
 	case ActionPress:
 		if strings.TrimSpace(c.Value) == "" {
-			return CaptureResult{}, fmt.Errorf("sampling: press action value is required")
+			return CaptureResult{}, captureInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldRequired, "value", "press capture requires a value"),
+			})
 		}
 		actionUUID, err := NewUUID()
 		if err != nil {
@@ -209,7 +231,9 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		s.byCaptureID[c.CaptureID] = result
 		return result, nil
 	default:
-		return CaptureResult{}, fmt.Errorf("sampling: unsupported action kind %q", c.Kind)
+		return CaptureResult{}, captureInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldInvalid, "kind", "capture action kind is not supported"),
+		})
 	}
 	c.Spec.PageURL = c.PageURL
 	c.Spec.Origin = originOf(c.PageURL)
@@ -226,8 +250,11 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		}
 		c.Spec.UUID = nodeUUID
 		c.Spec.ID = "node-" + compactUUID(nodeUUID)[:12]
+		// The spec already carries FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID with its
+		// own ordered violations. Wrapping it in a sampling code would nest two
+		// faults and force the host to unwrap recursively before classifying.
 		if err := c.Spec.Validate(); err != nil {
-			return CaptureResult{}, fmt.Errorf("sampling: invalid captured node: %w", err)
+			return CaptureResult{}, err
 		}
 		nodeIndex = len(s.nodes)
 		s.byIdentity[c.IdentityKey] = nodeIndex
@@ -239,7 +266,7 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		c.Spec.UUID = current.UUID
 		c.Spec.ID = current.Spec.ID
 		if err := c.Spec.Validate(); err != nil {
-			return CaptureResult{}, fmt.Errorf("sampling: invalid captured node update: %w", err)
+			return CaptureResult{}, err
 		}
 		s.nodes[nodeIndex].Spec = cloneSpec(c.Spec)
 	}
@@ -269,10 +296,10 @@ func (s *Session) Complete() error {
 // Pause 暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
 func (s *Session) Pause() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot pause")
+		return internalError()
 	}
 	if s.status != StatusRecording {
-		return fmt.Errorf("sampling: session cannot pause from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	s.status = StatusPaused
 	return nil
@@ -280,10 +307,10 @@ func (s *Session) Pause() error {
 
 func (s *Session) Resume() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot resume")
+		return internalError()
 	}
 	if s.status != StatusPaused {
-		return fmt.Errorf("sampling: session cannot resume from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	s.status = StatusRecording
 	return nil
@@ -292,10 +319,10 @@ func (s *Session) Resume() error {
 // End 是正常的终端生命周期转换。  它有意与暂停不同：结束的会话可以编辑/发布，但永远不会恢复。
 func (s *Session) End() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot complete")
+		return internalError()
 	}
 	if s.status != StatusRecording && s.status != StatusPaused {
-		return fmt.Errorf("sampling: session cannot complete from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	s.status = StatusEnded
 	return nil
@@ -342,7 +369,10 @@ func cloneValidation(input *ValidationSample) *ValidationSample {
 func NewUUID() (string, error) {
 	var value [16]byte
 	if _, err := rand.Read(value[:]); err != nil {
-		return "", fmt.Errorf("sampling: generate UUID: %w", err)
+		// An entropy-source failure has no caller remediation, so it is INTERNAL and
+		// its cause stays private. Every call site forwards this already-classified
+		// fault rather than re-labelling it.
+		return "", wrapInternalError(err)
 	}
 	timestamp := uint64(time.Now().UnixMilli())
 	value[0] = byte(timestamp >> 40)

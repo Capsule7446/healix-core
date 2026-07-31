@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -160,24 +161,30 @@ func TestUpdateUnpublishedFlowFragmentStepCoversEveryNestedContainerAndRebuildsR
 
 func TestUpdateUnpublishedFlowFragmentStepRejectsInvalidIdentityAndReferenceWithoutMutation(t *testing.T) {
 	tests := []struct {
-		name        string
-		replacement automation.FlowFragmentStep
-		wantError   string
+		name          string
+		replacement   automation.FlowFragmentStep
+		wantCode      fault.Code
+		wantViolation fault.Code
+		wantField     string
 	}{
 		{
-			name:        "blank id",
-			replacement: automation.FlowFragmentStep{ID: " \t\n", DisplayName: "blank", Kind: automation.StepAction},
-			wantError:   "id is required",
+			name:          "blank id",
+			replacement:   automation.FlowFragmentStep{ID: " \t\n", DisplayName: "blank", Kind: automation.StepAction},
+			wantCode:      CodeDraftInvalid,
+			wantViolation: fault.CodeFieldRequired,
+			wantField:     "stepId",
 		},
 		{
 			name:        "unknown id",
 			replacement: automation.FlowFragmentStep{ID: "missing", DisplayName: "missing", Kind: automation.StepAction},
-			wantError:   "was not found",
+			wantCode:    CodeDraftStepNotFound,
 		},
 		{
-			name:        "unknown node",
-			replacement: automation.FlowFragmentStep{ID: "a", DisplayName: "invalid", Kind: automation.StepAction, ElementTargetID: "missing"},
-			wantError:   "unknown temporary node",
+			name:          "unknown node",
+			replacement:   automation.FlowFragmentStep{ID: "a", DisplayName: "invalid", Kind: automation.StepAction, ElementTargetID: "missing"},
+			wantCode:      CodeWorkspaceInvalid,
+			wantViolation: fault.CodeFieldMismatch,
+			wantField:     "steps.elementTargetId",
 		},
 	}
 
@@ -186,9 +193,12 @@ func TestUpdateUnpublishedFlowFragmentStepRejectsInvalidIdentityAndReferenceWith
 			workflow := draftFixture()
 			before := draftFixture()
 			got, err := UpdateUnpublishedFlowFragmentStep(workflow, test.replacement)
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("UpdateUnpublishedFlowFragmentStep() error = %v, want containing %q", err, test.wantError)
+			if test.wantField == "" {
+				requireEnvelope(t, err, test.wantCode)
+			} else {
+				requireViolation(t, err, test.wantCode, test.wantViolation, test.wantField)
 			}
+			requireNoPublicLeak(t, err, "missing")
 			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) {
 				t.Fatalf("rejected update returned partial workflow: %#v", got)
 			}
@@ -241,9 +251,8 @@ func TestReorderUnpublishedFlowFragmentStepsRejectsNonPermutations(t *testing.T)
 			workflow := draftFixture()
 			before := draftFixture()
 			got, err := ReorderUnpublishedFlowFragmentSteps(workflow, FlowFragmentStepContainer{}, test.orderedIDs)
-			if err == nil || !strings.Contains(err.Error(), "exact step permutation") {
-				t.Fatalf("ReorderUnpublishedFlowFragmentSteps() error = %v", err)
-			}
+			requireViolation(t, err, CodeDraftInvalid, fault.CodeFieldInvalid, "orderedStepIds")
+			requireNoPublicLeak(t, err, "missing", "extra")
 			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) {
 				t.Fatalf("rejected reorder returned partial workflow: %#v", got)
 			}

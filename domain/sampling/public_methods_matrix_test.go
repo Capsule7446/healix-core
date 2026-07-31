@@ -2,66 +2,66 @@ package sampling
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestDraftCommandsRejectBoundaryIndexesAndMissingTargetsWithoutMutation(t *testing.T) {
 	tests := []struct {
-		name string
-		run  func(UnpublishedFlowFragment) (UnpublishedFlowFragment, error)
-		want string
+		name     string
+		run      func(UnpublishedFlowFragment) (UnpublishedFlowFragment, error)
+		wantCode fault.Code
 	}{
 		{
 			name: "insert index below zero",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, -1, automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, ElementTargetID: "node-a"})
 			},
-			want: "out of range",
+			wantCode: CodeDraftIndexOutOfRange,
 		},
 		{
 			name: "insert index above length",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, len(workflow.Steps)+1, automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, ElementTargetID: "node-a"})
 			},
-			want: "out of range",
+			wantCode: CodeDraftIndexOutOfRange,
 		},
 		{
 			name: "delete missing step",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return DeleteUnpublishedFlowFragmentStep(workflow, "missing")
 			},
-			want: "was not found",
+			wantCode: CodeDraftStepNotFound,
 		},
 		{
 			name: "move missing step",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return MoveUnpublishedFlowFragmentStep(workflow, "missing", FlowFragmentStepContainer{}, 0)
 			},
-			want: "was not found",
+			wantCode: CodeDraftStepNotFound,
 		},
 		{
 			name: "move to invalid destination index",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return MoveUnpublishedFlowFragmentStep(workflow, "a", FlowFragmentStepContainer{ParentStepID: "repeat"}, 2)
 			},
-			want: "out of range",
+			wantCode: CodeDraftIndexOutOfRange,
 		},
 		{
 			name: "reorder missing container",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return ReorderUnpublishedFlowFragmentSteps(workflow, FlowFragmentStepContainer{ParentStepID: "missing"}, nil)
 			},
-			want: "container",
+			wantCode: CodeDraftStepNotFound,
 		},
 		{
 			name: "delete missing node",
 			run: func(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 				return DeleteUnpublishedElementTarget(workflow, "missing")
 			},
-			want: "was not found",
+			wantCode: CodeDraftElementTargetNotFound,
 		},
 	}
 
@@ -70,9 +70,8 @@ func TestDraftCommandsRejectBoundaryIndexesAndMissingTargetsWithoutMutation(t *t
 			workflow := draftFixture()
 			before := draftFixture()
 			got, err := test.run(workflow)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want containing %q", err, test.want)
-			}
+			requireEnvelope(t, err, test.wantCode)
+			requireNoPublicLeak(t, err, "missing", "node-a")
 			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) {
 				t.Fatalf("rejected command returned partial workflow: %#v", got)
 			}
@@ -104,21 +103,28 @@ func TestDraftContainerSelectionRejectsImpossibleBusinessShapes(t *testing.T) {
 	tests := []struct {
 		name      string
 		container FlowFragmentStepContainer
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "root cannot select branch", container: FlowFragmentStepContainer{BranchID: "branch"}},
-		{name: "missing parent", container: FlowFragmentStepContainer{ParentStepID: "missing"}},
-		{name: "action cannot contain children", container: FlowFragmentStepContainer{ParentStepID: "a"}},
-		{name: "repeat cannot select branch", container: FlowFragmentStepContainer{ParentStepID: "repeat", BranchID: "branch"}},
-		{name: "validation group branch must exist", container: FlowFragmentStepContainer{ParentStepID: "group", BranchID: "missing"}},
+		{name: "root cannot select branch", container: FlowFragmentStepContainer{BranchID: "branch"}, wantCode: CodeDraftInvalid, wantField: "container.branchId"},
+		{name: "missing parent", container: FlowFragmentStepContainer{ParentStepID: "missing"}, wantCode: CodeDraftStepNotFound},
+		{name: "action cannot contain children", container: FlowFragmentStepContainer{ParentStepID: "a"}, wantCode: CodeDraftStepNotFound},
+		{name: "repeat cannot select branch", container: FlowFragmentStepContainer{ParentStepID: "repeat", BranchID: "branch"}, wantCode: CodeDraftStepNotFound},
+		{name: "validation group branch must exist", container: FlowFragmentStepContainer{ParentStepID: "group", BranchID: "missing"}, wantCode: CodeDraftStepNotFound},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			workflow := draftFixture()
 			before := draftFixture()
 			got, err := InsertUnpublishedFlowFragmentStep(workflow, test.container, 0, automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, ElementTargetID: "node-a"})
-			if err == nil || !strings.Contains(err.Error(), "container") {
-				t.Fatalf("container error = %v", err)
+			if test.wantField == "" {
+				requireEnvelope(t, err, test.wantCode)
+			} else {
+				requireViolation(t, err, test.wantCode, fault.CodeFieldMismatch, test.wantField)
 			}
+			// "branch" is not usable as a sentinel here: the field path container.branchId
+			// legitimately contains it, and a field name is not caller input.
+			requireNoPublicLeak(t, err, "missing")
 			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) || !reflect.DeepEqual(workflow, before) {
 				t.Fatalf("rejected container changed state: got=%#v source=%#v", got, workflow)
 			}
@@ -128,15 +134,16 @@ func TestDraftContainerSelectionRejectsImpossibleBusinessShapes(t *testing.T) {
 
 func TestDraftCommandsRejectMalformedWorkflowIdentity(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(*UnpublishedFlowFragment)
-		want   string
+		name          string
+		mutate        func(*UnpublishedFlowFragment)
+		wantViolation fault.Code
+		wantField     string
 	}{
-		{name: "blank workflow id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.ID = " \t" }, want: "workflow id"},
-		{name: "blank node id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Nodes[0].ID = " \n" }, want: "node id"},
-		{name: "duplicate node id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Nodes[1].ID = workflow.Nodes[0].ID }, want: "duplicate temporary sampling node"},
-		{name: "blank nested step id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Steps[1].Children[0].ID = " " }, want: "step id"},
-		{name: "duplicate nested step id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Steps[1].Children[0].ID = workflow.Steps[0].ID }, want: "duplicate temporary sampling step"},
+		{name: "blank workflow id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.ID = " \t" }, wantViolation: fault.CodeFieldRequired, wantField: "id"},
+		{name: "blank node id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Nodes[0].ID = " \n" }, wantViolation: fault.CodeFieldRequired, wantField: "elementTargets.0.id"},
+		{name: "duplicate node id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Nodes[1].ID = workflow.Nodes[0].ID }, wantViolation: fault.CodeFieldDuplicate, wantField: "elementTargets.1.id"},
+		{name: "blank nested step id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Steps[1].Children[0].ID = " " }, wantViolation: fault.CodeFieldRequired, wantField: "steps.id"},
+		{name: "duplicate nested step id", mutate: func(workflow *UnpublishedFlowFragment) { workflow.Steps[1].Children[0].ID = workflow.Steps[0].ID }, wantViolation: fault.CodeFieldDuplicate, wantField: "steps.id"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -145,9 +152,8 @@ func TestDraftCommandsRejectMalformedWorkflowIdentity(t *testing.T) {
 			before := draftFixture()
 			test.mutate(&before)
 			got, err := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, len(workflow.Steps), automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, ElementTargetID: "node-c"})
-			if err == nil || !strings.Contains(strings.ToLower(err.Error()), test.want) {
-				t.Fatalf("identity error = %v, want containing %q", err, test.want)
-			}
+			requireViolation(t, err, CodeDraftInvalid, test.wantViolation, test.wantField)
+			requireNoPublicLeak(t, err, "node-a", "node-b", "node-c")
 			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) || !reflect.DeepEqual(workflow, before) {
 				t.Fatalf("rejected identity changed state: got=%#v source=%#v", got, workflow)
 			}
@@ -182,9 +188,8 @@ func TestRebuildUnpublishedElementTargetReferencesDerivesNestedProjectionInEncou
 }
 
 func TestRebuildUnpublishedElementTargetReferencesRejectsNilAndUnknownNode(t *testing.T) {
-	if err := RebuildUnpublishedElementTargetReferences(nil); err == nil || !strings.Contains(err.Error(), "workflow is required") {
-		t.Fatalf("nil workflow error = %v", err)
-	}
+	// A nil draft is a caller code defect, not a business input failure.
+	requireEnvelope(t, RebuildUnpublishedElementTargetReferences(nil), CodeInternal)
 
 	tests := []struct {
 		name   string
@@ -200,10 +205,12 @@ func TestRebuildUnpublishedElementTargetReferencesRejectsNilAndUnknownNode(t *te
 		t.Run(test.name, func(t *testing.T) {
 			workflow := draftFixture()
 			test.mutate(&workflow)
-			if err := RebuildUnpublishedElementTargetReferences(&workflow); err == nil ||
-				!strings.Contains(err.Error(), "step "+test.stepID) || !strings.Contains(err.Error(), "missing") {
-				t.Fatalf("unknown node error = %v", err)
-			}
+			err := RebuildUnpublishedElementTargetReferences(&workflow)
+			requireViolation(t, err, CodeWorkspaceInvalid, fault.CodeFieldMismatch, "steps.elementTargetId")
+			// Both the step id and the temporary element target id were echoed before.
+			// Only the latter is asserted: this fixture's step ids are single characters,
+			// which are contained in almost any text and prove nothing as sentinels.
+			requireNoPublicLeak(t, err, "missing")
 		})
 	}
 }

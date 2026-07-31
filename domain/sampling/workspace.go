@@ -1,10 +1,8 @@
 package sampling
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -104,7 +102,8 @@ type UnpublishedFlowFragment struct {
 // RebuildUnpublishedElementTargetReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
 func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment) error {
 	if workflow == nil {
-		return errors.New("temporary sampling workflow is required")
+		// A nil receiver is a caller code defect with no runtime remediation.
+		return internalError()
 	}
 	stepIDsByNode := make(map[string][]string, len(workflow.Nodes))
 	for _, node := range workflow.Nodes {
@@ -116,7 +115,11 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 			if step.ElementTargetID != "" {
 				stepIDs, ok := stepIDsByNode[step.ElementTargetID]
 				if !ok {
-					return fmt.Errorf("sampling step %s references unknown temporary node %s", step.ID, step.ElementTargetID)
+					// Both the step id and the temporary element target id are caller
+					// identities; neither may appear in the public violation.
+					return workspaceInvalidError([]fault.Violation{
+						mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that the draft does not define"),
+					})
 				}
 				stepIDsByNode[step.ElementTargetID] = append(stepIDs, step.ID)
 			}

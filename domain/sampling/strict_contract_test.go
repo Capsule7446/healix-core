@@ -4,32 +4,33 @@ import (
 	"math"
 	"reflect"
 	"strconv"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestNewSessionURLContract(t *testing.T) {
 	tests := []struct {
-		name    string
-		url     string
-		wantErr string
+		name          string
+		url           string
+		wantViolation fault.Code
 	}{
-		{name: "empty", url: "", wantErr: "start URL"},
-		{name: "whitespace", url: " \t\r\n", wantErr: "start URL"},
-		{name: "malformed", url: "://bad", wantErr: "start URL"},
-		{name: "relative", url: "path/to/page", wantErr: "start URL"},
-		{name: "javascript scheme", url: "javascript:alert(1)", wantErr: "scheme"},
-		{name: "file scheme", url: "file:///tmp/page.html", wantErr: "scheme"},
+		{name: "empty", url: "", wantViolation: fault.CodeFieldRequired},
+		{name: "whitespace", url: " \t\r\n", wantViolation: fault.CodeFieldRequired},
+		{name: "malformed", url: "://bad", wantViolation: fault.CodeFieldInvalid},
+		{name: "relative", url: "path/to/page", wantViolation: fault.CodeFieldInvalid},
+		{name: "javascript scheme", url: "javascript:alert(1)", wantViolation: fault.CodeFieldInvalid},
+		{name: "file scheme", url: "file:///tmp/page.html", wantViolation: fault.CodeFieldInvalid},
 		{name: "http", url: "http://example.test"},
 		{name: "https", url: "https://example.test/path?q=1"},
-		{name: "missing http host", url: "http:///path", wantErr: "host"},
-		{name: "missing https host", url: "https:/path", wantErr: "host"},
-		{name: "control character", url: "https://example.test/\x00path", wantErr: "start URL"},
+		{name: "missing http host", url: "http:///path", wantViolation: fault.CodeFieldRequired},
+		{name: "missing https host", url: "https:/path", wantViolation: fault.CodeFieldRequired},
+		{name: "control character", url: "https://example.test/\x00path", wantViolation: fault.CodeFieldInvalid},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			session, err := NewSession("workflow", test.url)
-			if test.wantErr == "" {
+			if test.wantViolation == "" {
 				if err != nil {
 					t.Fatalf("NewSession() error = %v", err)
 				}
@@ -38,9 +39,9 @@ func TestNewSessionURLContract(t *testing.T) {
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
-				t.Fatalf("NewSession() error = %v, want containing %q", err, test.wantErr)
-			}
+			requireViolation(t, err, CodeSessionInputInvalid, test.wantViolation, "startUrl")
+			// url.Error formats the whole URL into its text; none of it may surface.
+			requireNoPublicLeak(t, err, test.url, "alert(1)", "/tmp/page.html")
 		})
 	}
 }

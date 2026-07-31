@@ -46,6 +46,16 @@ stateDiagram-v2
 ## 失败
 缺少业务身份、非法 URL/动作种类、状态不允许、无效 NodeSpec、捕获字段不兼容、临时引用断裂会失败。`CaptureHandler` 仅是函数类型，不规定 I/O、重试或错误翻译。匹配函数不返回适配器错误。
 
+失败一律以注册的 `SAMPLING_*` fault 形式返回，共 11 个 code（见 `docs/refactor/business-error-contract/error-code-registry.md`）。多字段校验产出**一个**顶层 fault，携带有序 `fault.Violation`：字段路径是逻辑路径（集合下标 0 基），原因走共享内核的 `VALIDATION_FIELD_*` 词表。
+
+三条边界值得单独记住：
+
+- **起始 URL 解析失败只作为私有 cause。** `url.Error` 会把完整 URL（含 path 与 query）格式化进自己的文本，故它绝不进公共文本；公共 violation 只说明 `startUrl` 格式非法。
+- **捕获到的 ElementTargetSpec 校验失败原样上传 `FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID`**，不再套一层 `SAMPLING_CAPTURE_INVALID` —— 嵌套 fault 会迫使宿主递归解包才能分类。
+- **step / 临时 ElementTarget 的身份 ID 一律不进公共文本**；会话状态与动作种类虽是闭集，但被拒的取值按定义就在闭集之外，即任意调用方输入，同样不回显。
+
+`nil` 接收者与 UUID 熵源失败合并为 `SAMPLING_INTERNAL`：两者都没有调用方可执行的补救动作。
+
 ## 并发、安全与资源
 Session 是含 map/slice 的可变对象，未提供锁；调用方必须串行化访问，Snapshot 仅提供副本隔离。ValidationSample 的 `Sensitive` 标识敏感证据，但本领域不实现存储加密或浏览器脱敏。会话数据驻留内存且当前未见容量/时长上限；上层应控制生命周期和输入规模。
 

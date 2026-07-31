@@ -121,7 +121,7 @@ func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testi
 		}, want: "duplicate formal sampling node version"},
 		{name: "unmapped step reference", mutate: func(request *SamplingPublicationRequest) {
 			request.Workspace.Steps[0].Children[0].ElementTargetID = "unknown-temporary-node"
-		}, want: "rewrite sampled workflow references"},
+		}, want: string(sampling.CodePublicationMappingInvalid)},
 		{name: "invalid workflow", mutate: func(request *SamplingPublicationRequest) { request.Workspace.DisplayName = "" }, want: "build sampled workflow"},
 	}
 	for _, test := range tests {
