@@ -450,7 +450,10 @@ func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind stri
 	lifecycle.startedMark = rt.Timeline.Mark()
 	event := StepTimelineEvent{Step: lifecycle.execution, Boundary: StepBoundaryStarted, Mark: lifecycle.startedMark}
 	if err := event.Validate(); err != nil {
-		return nil, fmt.Errorf("validate step timeline start: %w", err)
+		// The finish path already classifies this exact validation failure. Leaving
+		// the start path bare meant one StepTimelineEvent.Validate failure was
+		// classified and the other was not, depending only on which boundary hit it.
+		return nil, stepTimelineStartError(err)
 	}
 	if err := rt.StepTimeline.RecordStepTimelineEvent(ctx, event); err != nil {
 		return nil, stepTimelineStartError(err)

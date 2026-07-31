@@ -88,7 +88,7 @@ func (v *ValidationNode) ID() string { return v.NodeID }
 
 func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
-		return fmt.Errorf("validation %s: wait step interval: %w", v.NodeID, err)
+		return classifyNodeFault(err)
 	}
 	execution := NewStepExecution(v.NodeID)
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseRunning); err != nil {

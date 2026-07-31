@@ -79,7 +79,7 @@ func validateNavigationURL(value string) error {
 
 func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
-		return fmt.Errorf("node %s: wait step interval: %w", s.NodeID, err)
+		return classifyNodeFault(err)
 	}
 	parentCtx := ctx
 	if s.Timeout > 0 {
@@ -151,7 +151,8 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 	if err != nil {
 		if !isExclusiveElementNotFound(err) {
-			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: locate failed: %w", s.NodeID, err))
+			// Mirrors the navigate and press branches above, which already classify.
+			return s.fail(ctx, parentCtx, rt, execution, classifyNodeFault(err))
 		}
 		if s.Optional {
 			if err := s.transition(ctx, rt, execution, PhaseSucceeded); err != nil {

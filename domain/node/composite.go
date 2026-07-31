@@ -76,7 +76,10 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		return fmt.Errorf("wait %s: validate: %w", w.NodeID, err)
 	}
 	if err := rt.waitBeforeStep(ctx); err != nil {
-		return fmt.Errorf("wait %s: wait step interval: %w", w.NodeID, err)
+		// waitBeforeStep fails on cancellation or deadline, both of which have
+		// registered codes. The wrapper this replaces left them unclassified and
+		// echoed the node id.
+		return classifyNodeFault(err)
 	}
 	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
 	if err != nil {
@@ -165,7 +168,7 @@ func (w *WaitNode) waitNetworkIdle(ctx context.Context, rt *Runtime) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout())
 	defer cancel()
 	if err := rt.Driver.WaitNetworkIdle(ctx); err != nil {
-		return fmt.Errorf("network not idle within %s: %w", w.timeout(), err)
+		return classifyNodeFault(err)
 	}
 	return nil
 }
