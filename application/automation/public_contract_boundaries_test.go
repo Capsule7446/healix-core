@@ -50,6 +50,29 @@ func requireHealReviewCommandRejection(t *testing.T, err error, wantDetail strin
 	}
 }
 
+// requireHealReviewIntentRejection is the intent-side counterpart: an intent is
+// built by the review service or replayed from persistence, so its invariant
+// failures are INTERNAL contract violations, never caller-fixable arguments.
+func requireHealReviewIntentRejection(t *testing.T, err error, wantDetail string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("a malformed heal review intent was accepted")
+	}
+	if !fault.IsCode(err, CodeHealReviewContractViolation) {
+		t.Fatalf("error = %v, want code %s", err, CodeHealReviewContractViolation)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Kind() != fault.Internal {
+		t.Fatalf("descriptor = %#v (ok=%v); a Core-built artifact's invariant failure is not caller-fixable", descriptor, ok)
+	}
+	if strings.Contains(descriptor.Message(), wantDetail) {
+		t.Fatalf("public message %q carries the detail %q", descriptor.Message(), wantDetail)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), wantDetail) {
+		t.Fatalf("private cause = %v, want it to retain %q", cause, wantDetail)
+	}
+}
+
 func TestHealReviewRequestRejectsEachPublicIdentityBoundary(t *testing.T) {
 	valid := HealReviewRequest{
 		CommandID: "command", Decision: HealReviewApprove, ElementTargetID: "node", BaseNodeVersionID: "node-v1",
@@ -62,23 +85,17 @@ func TestHealReviewRequestRejectsEachPublicIdentityBoundary(t *testing.T) {
 	}{
 		{name: "missing identity", mutate: func(request *HealReviewRequest) { request.CommandID = " \t" }, want: "requires command"},
 		{name: "unsupported decision", mutate: func(request *HealReviewRequest) { request.Decision = "UNKNOWN" }, want: "unsupported heal review decision"},
-		{name: "zero candidate revision", mutate: func(request *HealReviewRequest) { request.ExpectedCandidateRevision = 0 }, want: "persisted revision"},
-		{name: "zero node revision", mutate: func(request *HealReviewRequest) { request.ExpectedNodeRevision = 0 }, want: "persisted revision"},
+		// A zero expected revision in a request is caller-fixable — the caller reads
+		// the authoritative revision and supplies it — so it is the command code
+		// (INVALID_ARGUMENT), not the persisted-state code (FAILED_PRECONDITION).
+		{name: "zero candidate revision", mutate: func(request *HealReviewRequest) { request.ExpectedCandidateRevision = 0 }, want: "expected candidate revision"},
+		{name: "zero node revision", mutate: func(request *HealReviewRequest) { request.ExpectedNodeRevision = 0 }, want: "expected node revision"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := valid
 			test.mutate(&request)
-			err := request.Validate()
-			// A revision that is already classified passes through rather than being
-			// relabelled: it names a different problem than the command's shape.
-			if strings.Contains(test.want, "persisted revision") {
-				if !fault.IsCode(err, domain.CodePersistedRevisionInvalid) {
-					t.Fatalf("Validate() error = %v, want the persisted revision code", err)
-				}
-				return
-			}
-			requireHealReviewCommandRejection(t, err, test.want)
+			requireHealReviewCommandRejection(t, request.Validate(), test.want)
 		})
 	}
 
@@ -115,26 +132,24 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 			if err == nil {
 				t.Fatal("Validate() accepted an invalid intent")
 			}
-			// The two zero-revision cases now surface the registered code that
-			// ValidatePersisted already produced, instead of an uncoded wrapper that
-			// only differed by which revision it named. Which revision the caller
-			// supplied is a field-level detail and belongs in a violation once this
-			// validator gains an envelope, not in a second unclassified error.
+			// Intent zero-revision failures still surface the persisted-state code:
+			// by the time an intent exists, its revisions describe a captured
+			// transaction artifact, not an argument the command caller supplied.
 			if strings.Contains(test.want, "revision") {
 				if !fault.IsCode(err, domain.CodePersistedRevisionInvalid) {
 					t.Fatalf("Validate() error = %v, want the persisted revision code", err)
 				}
 				return
 			}
-			requireHealReviewCommandRejection(t, err, test.want)
+			requireHealReviewIntentRejection(t, err, test.want)
 		})
 	}
 
 	invalid := cloneHealReviewIntent(approve)
 	invalid.ReviewedBy = ""
 	_, digestErr := HealReviewRequestDigest(invalid)
-	requireHealReviewCommandRejection(t, digestErr, "trusted reviewer metadata")
-	requireHealReviewCommandRejection(t, ValidateHealReviewIntentDigest(invalid), "trusted reviewer metadata")
+	requireHealReviewIntentRejection(t, digestErr, "trusted reviewer metadata")
+	requireHealReviewIntentRejection(t, ValidateHealReviewIntentDigest(invalid), "trusted reviewer metadata")
 
 	if got := (HealReviewIntent{}).NextNodeValue(); got.ElementTarget.ID != "" || got.Current.ID != "" {
 		t.Fatalf("nil NextNode value = %#v", got)

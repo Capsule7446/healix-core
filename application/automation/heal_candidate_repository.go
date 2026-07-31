@@ -168,10 +168,18 @@ func (request HealReviewRequest) checkShape() error {
 	if request.Decision != HealReviewApprove && request.Decision != HealReviewReject {
 		return fmt.Errorf("unsupported heal review decision %q", request.Decision)
 	}
-	if err := request.ExpectedCandidateRevision.ValidatePersisted(); err != nil {
-		return err
+	// A zero expected revision in a REQUEST is caller-fixable: the caller reads
+	// the authoritative revision and supplies it. Routing through
+	// ValidatePersisted here produced the FAILED_PRECONDITION persisted-state
+	// code, which the classifier then let through — telling the caller to repair
+	// persisted state when the fix is to correct its own argument.
+	if request.ExpectedCandidateRevision == 0 {
+		return fmt.Errorf("heal review request requires the expected candidate revision")
 	}
-	return request.ExpectedNodeRevision.ValidatePersisted()
+	if request.ExpectedNodeRevision == 0 {
+		return fmt.Errorf("heal review request requires the expected node revision")
+	}
+	return nil
 }
 
 func HealReviewRequestIdentityDigest(request HealReviewRequest) (string, error) {
@@ -198,8 +206,21 @@ func HealReviewStreakDigest(streak domain.HealStreak) (string, error) {
 	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
+// Validate classifies intent failures as INTERNAL contract violations, not as
+// invalid arguments. An intent is built by the review service from adapter
+// outcomes, or replayed from persistence — the external command caller cannot
+// repair its transition invariants, so reporting them as caller-fixable told the
+// host the opposite of the truth. An already-classified failure (the persisted
+// revision codes) passes through unchanged.
 func (intent HealReviewIntent) Validate() error {
-	return classifyHealReviewCommand(intent.checkShape())
+	err := intent.checkShape()
+	if err == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(err); classified {
+		return err
+	}
+	return healReviewContractViolationError(err)
 }
 
 func (intent HealReviewIntent) checkShape() error {
