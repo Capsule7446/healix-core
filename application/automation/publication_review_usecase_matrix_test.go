@@ -116,7 +116,7 @@ func TestSamplingPublicationReplayValidatesEveryAuthoritativeFieldBeforeReturnin
 			test.mutate(&outcome)
 			transaction := &samplingTransactionProbe{lookupOutcome: outcome, lookupFound: true}
 			result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
-			if !errors.Is(err, ErrSamplingPublicationContract) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.publishCalls != 0 {
+			if !fault.IsCode(err, CodeSamplingPublicationContractViolation) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.publishCalls != 0 {
 				t.Fatalf("result/error/publish calls = %#v/%v/%d", result, err, transaction.publishCalls)
 			}
 		})

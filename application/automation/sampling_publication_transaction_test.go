@@ -2,11 +2,11 @@ package automation
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func samplingOutcomeFor(t testing.TB, command SamplingPublicationCommand, status PublishSamplingStatus) PublishSamplingOutcome {
@@ -91,7 +91,7 @@ func TestSamplingPublicationServiceRejectsMalformedOutcome(t *testing.T) {
 			outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
 			test.mutate(&outcome)
 			_, err := NewSamplingPublicationService(&samplingRepositoryFake{outcome: outcome}).Publish(context.Background(), command)
-			if !errors.Is(err, ErrSamplingPublicationContract) {
+			if !fault.IsCode(err, CodeSamplingPublicationContractViolation) {
 				t.Fatalf("error = %v", err)
 			}
 		})
@@ -101,7 +101,7 @@ func TestSamplingPublicationServiceRejectsMalformedOutcome(t *testing.T) {
 func TestSamplingPublicationServiceReturnsConfigurationErrorWithoutTransaction(t *testing.T) {
 	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 	_, err := NewSamplingPublicationService(nil).Publish(context.Background(), command)
-	if !errors.Is(err, ErrSamplingPublicationConfiguration) {
+	if !fault.IsCode(err, CodeSamplingPublicationUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -151,7 +151,7 @@ func TestSamplingPublicationServiceRejectsMalformedMappings(t *testing.T) {
 			outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
 			test.mutate(&outcome)
 			_, err := NewSamplingPublicationService(&samplingTransactionProbe{publishOutcome: outcome}).Publish(context.Background(), command)
-			if !errors.Is(err, ErrSamplingPublicationContract) {
+			if !fault.IsCode(err, CodeSamplingPublicationContractViolation) {
 				t.Fatalf("error = %v", err)
 			}
 		})

@@ -175,21 +175,31 @@ func TestPublishSamplingIntentDigestValidation(t *testing.T) {
 	}
 }
 
-func TestSamplingPublicationIdentityConflictIsClassifiedAndRedacted(t *testing.T) {
+func TestSamplingPublicationFaultsAreClassifiedAndRedacted(t *testing.T) {
 	identity := SamplingPublicationIdentityConflictError()
 	if !fault.IsCode(identity, CodeSamplingPublicationIdentityConflict) || strings.Contains(identity.Error(), "publication-sensitive-id") {
 		t.Fatalf("identity error = %v", identity)
 	}
-	cause := errors.New("bad outcome")
-	contract := &SamplingPublicationContractError{Cause: cause}
-	if !errors.Is(contract, ErrSamplingPublicationContract) || !errors.Is(contract, cause) || !strings.Contains(contract.Error(), cause.Error()) {
+	cause := errors.New("adapter leaked publication-sensitive-id and sha256:secret")
+	contract := samplingPublicationContractViolationError(cause)
+	descriptor, ok := fault.Describe(contract)
+	if !ok || descriptor.Code() != CodeSamplingPublicationContractViolation || descriptor.Kind() != fault.Internal || descriptor.Message() != "sampling publication adapter returned an invalid outcome" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+		t.Fatalf("contract descriptor = %#v, ok = %v", descriptor, ok)
+	}
+	if !errors.Is(contract, cause) || strings.Contains(contract.Error(), cause.Error()) || strings.Contains(contract.Error(), "publication-sensitive-id") || strings.Contains(contract.Error(), "sha256:secret") {
 		t.Fatalf("contract error = %v", contract)
+	}
+
+	unavailable := SamplingPublicationUnavailableError()
+	descriptor, ok = fault.Describe(unavailable)
+	if !ok || descriptor.Code() != CodeSamplingPublicationUnavailable || descriptor.Kind() != fault.Unavailable || descriptor.Message() != "sampling publication service is unavailable" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+		t.Fatalf("unavailable descriptor = %#v, ok = %v", descriptor, ok)
 	}
 }
 
 func TestSamplingPublicationServiceRejectsMissingTransaction(t *testing.T) {
 	_, err := NewSamplingPublicationService(nil).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
-	if !errors.Is(err, ErrSamplingPublicationConfiguration) {
+	if !fault.IsCode(err, CodeSamplingPublicationUnavailable) {
 		t.Fatalf("Publish() error = %v", err)
 	}
 }
@@ -197,12 +207,11 @@ func TestSamplingPublicationServiceRejectsMissingTransaction(t *testing.T) {
 func TestSamplingPublicationServiceRejectsInvalidAdapterOutcome(t *testing.T) {
 	repository := &samplingRepositoryFake{outcome: PublishSamplingOutcome{Status: "UNKNOWN"}}
 	_, err := NewSamplingPublicationService(repository).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
-	if !errors.Is(err, ErrSamplingPublicationContract) {
+	if !fault.IsCode(err, CodeSamplingPublicationContractViolation) {
 		t.Fatalf("Publish() error = %v", err)
 	}
-	var contract *SamplingPublicationContractError
-	if !errors.As(err, &contract) || !strings.Contains(contract.Error(), "unsupported status") {
-		t.Fatalf("Publish() contract context = %v", err)
+	if !strings.Contains(err.Error(), "AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION: sampling publication adapter returned an invalid outcome") || strings.Contains(err.Error(), "unsupported status") {
+		t.Fatalf("Publish() public contract = %v", err)
 	}
 }
 

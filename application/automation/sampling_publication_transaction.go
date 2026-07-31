@@ -15,16 +15,13 @@ import (
 
 const samplingPublicationDigestV1 = "sampling-publication-v1"
 
-var (
-	ErrSamplingPublicationAuthorityConflict = errors.New("sampling publication authority conflict")
-	ErrSamplingPublicationAuthorization     = errors.New("sampling publication authorization rejected")
-	ErrSamplingPublicationConfiguration     = errors.New("sampling publication service is not configured")
-	ErrSamplingPublicationContract          = errors.New("sampling publication adapter contract violation")
-)
+var ErrSamplingPublicationAuthorityConflict = errors.New("sampling publication authority conflict")
 
 const (
-	CodeSamplingPublicationIdentityConflict fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
-	CodeSamplingPublicationDigestMismatch   fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
+	CodeSamplingPublicationIdentityConflict  fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
+	CodeSamplingPublicationDigestMismatch    fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
+	CodeSamplingPublicationUnavailable       fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE"
+	CodeSamplingPublicationContractViolation fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION"
 )
 
 func SamplingPublicationIdentityConflictError() error {
@@ -51,15 +48,29 @@ func SamplingPublicationDigestMismatchError() error {
 	return err
 }
 
-type SamplingPublicationContractError struct{ Cause error }
-
-func (e *SamplingPublicationContractError) Error() string {
-	return "sampling publication adapter contract violation: " + e.Cause.Error()
+func SamplingPublicationUnavailableError() error {
+	err, constructionErr := fault.New(
+		fault.Unavailable,
+		CodeSamplingPublicationUnavailable,
+		"sampling publication service is unavailable",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
-func (e *SamplingPublicationContractError) Unwrap() error { return e.Cause }
-func (e *SamplingPublicationContractError) Is(target error) bool {
-	return target == ErrSamplingPublicationContract
+func samplingPublicationContractViolationError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.Internal,
+		CodeSamplingPublicationContractViolation,
+		"sampling publication adapter returned an invalid outcome",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 type SamplingPublicationCommand struct {
@@ -134,7 +145,7 @@ func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (strin
 
 func (s SamplingPublicationService) Publish(ctx context.Context, command SamplingPublicationCommand) (domain.SamplingPublicationResult, error) {
 	if isNilDependency(s.transaction) {
-		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
 	}
 	owned := command
 	owned.Publication = command.Publication.Clone()
@@ -143,7 +154,7 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 		return domain.SamplingPublicationResult{}, err
 	}
 	if s.transaction == nil {
-		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
 	}
 	replay, found, err := s.transaction.LookupSamplingPublication(ctx, owned.PublicationID, digest)
 	if err != nil {
@@ -151,12 +162,12 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 	}
 	if found {
 		if err := validatePublishSamplingOutcome(owned, digest, replay); err != nil {
-			return domain.SamplingPublicationResult{}, &SamplingPublicationContractError{Cause: err}
+			return domain.SamplingPublicationResult{}, samplingPublicationContractViolationError(err)
 		}
 		return cloneSamplingPublicationResult(replay.Result), nil
 	}
 	if s.transaction == nil {
-		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
 	}
 	transactionPublication := owned.Publication.Clone()
 	outcome, err := s.transaction.PublishSampling(ctx, PublishSamplingIntent{
@@ -168,7 +179,7 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 		return domain.SamplingPublicationResult{}, fmt.Errorf("publish sampling result: %w", err)
 	}
 	if err := validatePublishSamplingOutcome(owned, digest, outcome); err != nil {
-		return domain.SamplingPublicationResult{}, &SamplingPublicationContractError{Cause: err}
+		return domain.SamplingPublicationResult{}, samplingPublicationContractViolationError(err)
 	}
 	return cloneSamplingPublicationResult(outcome.Result), nil
 }

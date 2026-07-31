@@ -73,7 +73,7 @@ func TestConstructorsAndMethodsRejectTypedNilDependencies(t *testing.T) {
 		{"sampling", func() error {
 			_, err := NewSamplingPublicationService(sampling).Publish(context.Background(), SamplingPublicationCommand{})
 			return err
-		}, "", ErrSamplingPublicationConfiguration},
+		}, CodeSamplingPublicationUnavailable, nil},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
