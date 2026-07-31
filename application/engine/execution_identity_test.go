@@ -193,8 +193,8 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 				if !fault.IsCode(err, test.wantCode) {
 					t.Fatalf("RunProgram() error = %v, want code %v", err, test.wantCode)
 				}
-			} else if !errors.Is(err, ErrExecutionAuthorityRequired) {
-				t.Fatalf("RunProgram() error = %v, want %v", err, ErrExecutionAuthorityRequired)
+			} else if !fault.IsCode(err, CodeExecutionAuthorityVerifierRequired) {
+				t.Fatalf("RunProgram() error = %v, want %v", err, ExecutionAuthorityVerifierRequiredError())
 			}
 			if result.ExecutionOutcome != ExecutionNotStarted || probe.runtimeCalls != 0 || probe.driverCalls != 0 || probe.recorderCalls != 0 || probe.factCalls != 0 {
 				t.Fatalf("authority rejection produced side effects: result=%+v probe=%+v", result, probe)

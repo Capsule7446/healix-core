@@ -6,16 +6,28 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
 // ErrExecutionIdentityMismatch reports that a compiled entry no longer agrees
 // with its sealed Run/snapshot/execution identity or the supplied worker Run.
-var (
-	ErrExecutionIdentityMismatch  = errors.New("engine: execution identity mismatch")
-	ErrExecutionAuthorityRequired = errors.New("engine: execution authority verifier required")
-)
+var ErrExecutionIdentityMismatch = errors.New("engine: execution identity mismatch")
+
+const CodeExecutionAuthorityVerifierRequired fault.Code = "EXECUTION_AUTHORITY_VERIFIER_REQUIRED"
+
+func ExecutionAuthorityVerifierRequiredError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeExecutionAuthorityVerifierRequired,
+		"execution authority verifier is required",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 type ExecutionAuthority struct {
 	RunID          string
@@ -95,7 +107,7 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult
 		return result, ErrExecutionIdentityMismatch
 	}
 	if cfg.AuthorityVerifier == nil {
-		return result, ErrExecutionAuthorityRequired
+		return result, ExecutionAuthorityVerifierRequiredError()
 	}
 	authority := ExecutionAuthority{
 		RunID: cfg.RunID, SnapshotDigest: cfg.SnapshotDigest,
