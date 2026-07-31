@@ -40,7 +40,7 @@ func TestValidationGroupDoesNotLatchSeparateANDPasses(t *testing.T) {
 		case "b":
 			return b, nil
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrElementNotFound, spec.ID)
+			return nil, fmt.Errorf("%w: %s", NewElementNotFoundError(), spec.ID)
 		}
 	}}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond,
@@ -342,7 +342,7 @@ func TestSensitiveSetObservationRedactsTypedValues(t *testing.T) {
 func TestValidationDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 	systemErr := errors.New("browser disconnected")
 	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
-		return nil, errors.Join(ErrElementNotFound, systemErr)
+		return nil, errors.Join(NewElementNotFoundError(), systemErr)
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 	validation := &ValidationNode{NodeID: "field", Target: fingerprint.ElementTargetSpec{ID: "field"}}
@@ -359,7 +359,7 @@ func TestNotExistsRequiresNoApplicableHealCandidate(t *testing.T) {
 		if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 			return testElement{}, nil
 		}
-		return nil, fmt.Errorf("%w: old selector", ErrElementNotFound)
+		return nil, fmt.Errorf("%w: old selector", NewElementNotFoundError())
 	}}
 	healer := &testHealer{decision: validDecision(newSelector)}
 	node := &ValidationNode{NodeID: "missing", Target: fingerprint.ElementTargetSpec{ID: "missing", Selectors: []fingerprint.Selector{old}},
@@ -375,7 +375,7 @@ func TestNotExistsRequiresNoApplicableHealCandidate(t *testing.T) {
 
 func TestNotExistsPassesOnlyAfterNoCandidate(t *testing.T) {
 	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
-		return nil, fmt.Errorf("%w: absent", ErrElementNotFound)
+		return nil, fmt.Errorf("%w: absent", NewElementNotFoundError())
 	}}
 	node := &ValidationNode{NodeID: "missing", Target: fingerprint.ElementTargetSpec{ID: "missing", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#missing"}}},
 		Assertion: ValidationAssertion{Kind: "not_exists"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}

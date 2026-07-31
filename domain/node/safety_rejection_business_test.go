@@ -16,7 +16,7 @@ func TestStepSafetyRejectionIsRecordedBeforeFailure(t *testing.T) {
 	facts := &testFacts{}
 	driver := &testDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 		if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#old" {
-			return nil, fmt.Errorf("missing: %w", ErrElementNotFound)
+			return nil, fmt.Errorf("missing: %w", NewElementNotFoundError())
 		}
 		return testElement{}, nil
 	}}

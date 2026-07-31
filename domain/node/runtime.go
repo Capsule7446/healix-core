@@ -18,8 +18,17 @@ const terminalEventTimeout = 5 * time.Second
 
 const operationObservationTimeout = 5 * time.Second
 
-// ErrElementNotFound 是 Driver 合约的显式业务信号，表明 ElementTargetSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
-var ErrElementNotFound = errors.New("node: element not found")
+// NewElementNotFoundError is the Driver contract's explicit business signal that
+// every selector in an ElementTargetSpec has been exhausted. Cancellation,
+// invalid selectors, and browser failures remain distinguishable.
+func NewElementNotFoundError() error {
+	return mustWrapNodeFault(
+		errors.New("element lookup exhausted"),
+		fault.NotFound,
+		CodeElementNotFound,
+		"element was not found",
+	)
+}
 
 // Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 ElementTargetSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
 type Program struct {

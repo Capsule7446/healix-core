@@ -16,7 +16,7 @@ func TestClassifyNodeFaultPreservesStableDetails(t *testing.T) {
 		wantKind fault.Kind
 		wantCode fault.Code
 	}{
-		{name: "not found", cause: ErrElementNotFound, wantKind: fault.NotFound, wantCode: CodeElementNotFound},
+		{name: "not found", cause: NewElementNotFoundError(), wantKind: fault.NotFound, wantCode: CodeElementNotFound},
 		{name: "unknown", cause: errors.New("driver failed"), wantKind: fault.Internal, wantCode: CodeOperationFailed},
 	}
 	for _, tc := range cases {
@@ -44,11 +44,11 @@ func TestExclusiveElementNotFoundRejectsMixedJoinedErrors(t *testing.T) {
 		want bool
 	}{
 		{name: "nil", err: nil, want: false},
-		{name: "sentinel", err: ErrElementNotFound, want: true},
-		{name: "wrapped", err: fmt.Errorf("all selectors failed: %w", ErrElementNotFound), want: true},
-		{name: "joined not found", err: errors.Join(ErrElementNotFound, fmt.Errorf("fallback: %w", ErrElementNotFound)), want: true},
-		{name: "mixed driver", err: errors.Join(ErrElementNotFound, driverErr), want: false},
-		{name: "mixed transient fault", err: errors.Join(ErrElementNotFound, transient), want: false},
+		{name: "sentinel", err: NewElementNotFoundError(), want: true},
+		{name: "wrapped", err: fmt.Errorf("all selectors failed: %w", NewElementNotFoundError()), want: true},
+		{name: "joined not found", err: errors.Join(NewElementNotFoundError(), fmt.Errorf("fallback: %w", NewElementNotFoundError())), want: true},
+		{name: "mixed driver", err: errors.Join(NewElementNotFoundError(), driverErr), want: false},
+		{name: "mixed transient fault", err: errors.Join(NewElementNotFoundError(), transient), want: false},
 		{name: "driver", err: driverErr, want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,9 +75,9 @@ func TestRetryOnlyRetriesExplicitTransientFaultCode(t *testing.T) {
 	attempts = 0
 	err = Retry(RetryPolicy{Attempts: 3}, func() error {
 		attempts++
-		return ErrElementNotFound
+		return NewElementNotFoundError()
 	})
-	if !errors.Is(err, ErrElementNotFound) || attempts != 1 {
+	if !fault.IsCode(err, CodeElementNotFound) || attempts != 1 {
 		t.Fatalf("non-transient retry result=%v attempts=%d", err, attempts)
 	}
 

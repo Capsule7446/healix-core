@@ -57,7 +57,7 @@ func TestWaitControlBusinessMatrix(t *testing.T) {
 		{name: "present", kind: WaitElement, element: &matrixElement{exists: true}},
 		{name: "visible", kind: WaitElementVisible, element: &matrixElement{exists: true, visible: true}},
 		{name: "invisible", kind: WaitElementInvisible, element: &matrixElement{exists: true, visible: false}},
-		{name: "removed satisfies invisible", kind: WaitElementInvisible, locateErr: ErrElementNotFound},
+		{name: "removed satisfies invisible", kind: WaitElementInvisible, locateErr: NewElementNotFoundError()},
 		{name: "permanent locate error", kind: WaitElement, locateErr: errors.New("selector invalid"), wantErr: true},
 	}
 	for _, tc := range cases {

@@ -47,7 +47,7 @@ func (p Poller) Run(ctx context.Context, timeout time.Duration, condition func(c
 			return nil
 		}
 		if err != nil {
-			if errors.Is(err, ErrElementNotFound) || isExclusiveTransientDriverFault(err) {
+			if fault.IsCode(err, CodeElementNotFound) || isExclusiveTransientDriverFault(err) {
 				lastErr = err
 			} else {
 				return err

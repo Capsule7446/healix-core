@@ -26,7 +26,7 @@ func classifyNodeFault(cause error) error {
 		return mustWrapNodeFault(cause, fault.Canceled, CodeCanceled, "node operation was canceled")
 	case errors.Is(cause, context.DeadlineExceeded):
 		return mustWrapNodeFault(cause, fault.DeadlineExceeded, CodeTimeout, "node operation timed out")
-	case errors.Is(cause, ErrElementNotFound):
+	case fault.IsCode(cause, CodeElementNotFound):
 		return mustWrapNodeFault(cause, fault.NotFound, CodeElementNotFound, "element was not found")
 	default:
 		return mustWrapNodeFault(cause, fault.Internal, CodeOperationFailed, "node operation failed")

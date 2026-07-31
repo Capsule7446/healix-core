@@ -316,7 +316,7 @@ func TestHealedSelectorOverlayIsSharedBySpecID(t *testing.T) {
 		if len(got.Selectors) > 0 && got.Selectors[0].Value == newSelector.Value {
 			return testElement{}, nil
 		}
-		return nil, fmt.Errorf("old selector failed: %w", ErrElementNotFound)
+		return nil, fmt.Errorf("old selector failed: %w", NewElementNotFoundError())
 	}}
 	healer := &testHealer{decision: validDecision(newSelector)}
 	facts := &testFacts{}
@@ -380,7 +380,7 @@ func TestStepDoesNotHealSystemLocateErrors(t *testing.T) {
 func TestStepDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 	systemErr := errors.New("browser disconnected")
 	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
-		return nil, errors.Join(ErrElementNotFound, systemErr)
+		return nil, errors.Join(NewElementNotFoundError(), systemErr)
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 	step := &StepNode{NodeID: "submit", Target: fingerprint.ElementTargetSpec{ID: "submit"}}
@@ -392,7 +392,7 @@ func TestStepDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 
 func TestOptionalStepSkipsMissingTargetWithoutHealing(t *testing.T) {
 	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
-		return nil, ErrElementNotFound
+		return nil, NewElementNotFoundError()
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 	facts := &testFacts{}
@@ -455,7 +455,7 @@ func TestStepPersistsCanceledEventAfterExecutionContextCancellation(t *testing.T
 
 func TestStepRejectsInvalidHealDecision(t *testing.T) {
 	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
-		return nil, ErrElementNotFound
+		return nil, NewElementNotFoundError()
 	}}
 	healer := &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}
 	step := &StepNode{NodeID: "submit", Target: fingerprint.ElementTargetSpec{ID: "submit"}}
@@ -489,7 +489,7 @@ func TestStepPropagatesCriticalFactErrors(t *testing.T) {
 			if got.Selectors[0].Value == "#new" {
 				return testElement{}, nil
 			}
-			return nil, ErrElementNotFound
+			return nil, NewElementNotFoundError()
 		}}
 		healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 		facts := &testFacts{healDecisionErr: auditErr}

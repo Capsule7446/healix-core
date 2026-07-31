@@ -8,6 +8,9 @@ func isExclusiveElementNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
+	if nodeFault, ok := err.(*fault.Error); ok {
+		return nodeFault.Code() == CodeElementNotFound
+	}
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
 		children := joined.Unwrap()
 		if len(children) == 0 {
@@ -23,7 +26,7 @@ func isExclusiveElementNotFound(err error) bool {
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
 		return isExclusiveElementNotFound(wrapped.Unwrap())
 	}
-	return err == ErrElementNotFound
+	return fault.IsCode(err, CodeElementNotFound)
 }
 
 func isExclusiveTransientDriverFault(err error) bool {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -141,7 +142,7 @@ func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime, requireVisible,
 	return rt.poller().Run(ctx, w.timeout(), func(pollCtx context.Context) (bool, error) {
 		el, err := rt.locator().Locate(pollCtx, w.Target)
 		if err != nil {
-			if errors.Is(err, ErrElementNotFound) && requireInvisible {
+			if fault.IsCode(err, CodeElementNotFound) && requireInvisible {
 				return true, nil
 			}
 			return false, err

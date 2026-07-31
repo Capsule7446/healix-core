@@ -49,7 +49,7 @@ func TestRetryWithAttemptsRejectsNonTransientFaults(t *testing.T) {
 		err  error
 	}{
 		{name: "plain error", err: errors.New("driver failed")},
-		{name: "not found", err: classifyNodeFault(ErrElementNotFound)},
+		{name: "not found", err: classifyNodeFault(NewElementNotFoundError())},
 		{name: "canceled", err: classifyNodeFault(context.Canceled)},
 		{name: "timeout", err: classifyNodeFault(context.DeadlineExceeded)},
 	} {

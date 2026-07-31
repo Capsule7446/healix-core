@@ -194,7 +194,7 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 	}
 	exists, err := el.Exists(ctx)
 	if err != nil {
-		if errors.Is(err, ErrElementNotFound) {
+		if fault.IsCode(err, CodeElementNotFound) {
 			return assertion.Kind == "not_exists", "<absent>", nil
 		}
 		return false, "", err

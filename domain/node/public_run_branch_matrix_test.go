@@ -247,7 +247,7 @@ func TestPollerDefaultBoundariesAndRetainedErrors(t *testing.T) {
 		name string
 		err  error
 	}{
-		{name: "element not found", err: ErrElementNotFound},
+		{name: "element not found", err: NewElementNotFoundError()},
 		{name: "transient driver", err: transientDriverFault(errors.New("temporary"))},
 	} {
 		t.Run(test.name+" is retained in timeout", func(t *testing.T) {
@@ -354,8 +354,10 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			name: "optional skip succeeded event rejected",
 			step: &StepNode{NodeID: "step", Optional: true, Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{
-				Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }},
-				Facts:  &nodePhaseFailingFacts{nodeID: "step", phase: PhaseSucceeded, err: persistenceErr},
+				Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+					return nil, NewElementNotFoundError()
+				}},
+				Facts: &nodePhaseFailingFacts{nodeID: "step", phase: PhaseSucceeded, err: persistenceErr},
 			},
 			want: persistenceErr,
 		},
@@ -363,7 +365,9 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			name: "healing event rejected",
 			step: &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime: &Runtime{
-				Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, ErrElementNotFound }},
+				Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+					return nil, NewElementNotFoundError()
+				}},
 				Healer: &testHealer{},
 				Facts:  &nodePhaseFailingFacts{nodeID: "step", phase: PhaseHealing, err: persistenceErr},
 			},

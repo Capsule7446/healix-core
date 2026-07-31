@@ -18,7 +18,7 @@ func TestClassifyNodeFaultPreservesCauseAndCode(t *testing.T) {
 	}{
 		{name: "canceled", err: context.Canceled, kind: fault.Canceled, code: CodeCanceled},
 		{name: "deadline", err: context.DeadlineExceeded, kind: fault.DeadlineExceeded, code: CodeTimeout},
-		{name: "not found", err: fmt.Errorf("locate: %w", ErrElementNotFound), kind: fault.NotFound, code: CodeElementNotFound},
+		{name: "not found", err: fmt.Errorf("locate: %w", NewElementNotFoundError()), kind: fault.NotFound, code: CodeElementNotFound},
 		{name: "unknown", err: errors.New("driver password=secret failed"), kind: fault.Internal, code: CodeOperationFailed},
 	}
 
