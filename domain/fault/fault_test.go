@@ -167,3 +167,23 @@ func TestFaultRejectsInvalidOptionsAndViolationShapes(t *testing.T) {
 		t.Fatal("NewViolation() accepted invalid field")
 	}
 }
+
+func TestFaultRejectsMaliciousTextAtPublicBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		make func() error
+	}{
+		{name: "parameter null byte", make: func() error { _, err := NewParam("field", "safe\x00secret"); return err }},
+		{name: "message null byte", make: func() error { _, err := New(Internal, testCode, "safe\x00secret"); return err }},
+		{name: "message unicode line separator", make: func() error { _, err := New(Internal, testCode, "safe secret"); return err }},
+		{name: "violation message unicode paragraph separator", make: func() error { _, err := NewViolation(testCode, "field", "safe secret"); return err }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.make(); err == nil {
+				t.Fatal("accepted unsafe public text")
+			}
+		})
+	}
+}

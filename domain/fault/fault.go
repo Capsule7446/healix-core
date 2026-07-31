@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Kind describes the general remediation strategy for a business fault.
@@ -60,6 +61,9 @@ func NewParam(key ParamKey, value string) (Param, error) {
 	}
 	if len(value) > maxParamValueLen {
 		return Param{}, errors.New("fault parameter value exceeds maximum length")
+	}
+	if containsUnsafePublicText(value) {
+		return Param{}, errors.New("fault parameter value contains control characters")
 	}
 	return Param{key: key, value: value}, nil
 }
@@ -292,10 +296,19 @@ func validateMessage(message string) error {
 	if len(message) > maxMessageLength {
 		return errors.New("fault message exceeds maximum length")
 	}
-	if strings.ContainsAny(message, "\r\n\t") {
+	if containsUnsafePublicText(message) {
 		return errors.New("fault message contains control characters")
 	}
 	return nil
+}
+
+func containsUnsafePublicText(value string) bool {
+	for _, character := range value {
+		if unicode.IsControl(character) || character == ' ' || character == ' ' {
+			return true
+		}
+	}
+	return false
 }
 func validateViolations(violations []Violation) error {
 	if len(violations) > maxViolations {
@@ -328,6 +341,9 @@ func validateParams(params []Param) error {
 		}
 		if len(param.value) > maxParamValueLen {
 			return errors.New("fault parameter value exceeds maximum length")
+		}
+		if containsUnsafePublicText(param.value) {
+			return errors.New("fault parameter value contains control characters")
 		}
 		if _, duplicate := seen[param.key]; duplicate {
 			return fmt.Errorf("duplicate fault parameter key %q", param.key)
