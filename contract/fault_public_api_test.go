@@ -26,3 +26,21 @@ func TestExternalConsumerCanUseSafeFaultContract(t *testing.T) {
 		t.Fatalf("Describe() = %#v, %v", descriptor, ok)
 	}
 }
+
+func TestExternalConsumerHandlesUnknownAndTypedNilFaultsSafely(t *testing.T) {
+	var typedNil *fault.Error
+	var typedNilError error = typedNil
+	unknown := errors.New("driver token=secret")
+
+	for _, err := range []error{nil, typedNilError, unknown, errors.Join(unknown, typedNilError)} {
+		if code, ok := fault.CodeOf(err); ok || code != "" {
+			t.Fatalf("CodeOf(%v) = %q, %v", err, code, ok)
+		}
+		if descriptor, ok := fault.Describe(err); ok || descriptor.Message() != "" {
+			t.Fatalf("Describe(%v) unexpectedly exposed details: %#v, %v", err, descriptor, ok)
+		}
+		if fault.IsCode(err, "EXECUTION_EXTERNAL_TIMEOUT") {
+			t.Fatalf("IsCode(%v) unexpectedly matched", err)
+		}
+	}
+}
