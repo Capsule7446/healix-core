@@ -275,17 +275,109 @@ func TestHealDecisionBandIsAnExplicitPolicyDecision(t *testing.T) {
 }
 
 func TestHealCandidateReviewCommandValidation(t *testing.T) {
-	command := HealCandidateReviewCommand{CommandID: "review-1", ElementTargetID: "node-1", BaseNodeVersionID: "nv-1",
-		CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
-	if err := command.Validate(HealApprovalApproved); err != nil {
-		t.Fatalf("valid approval rejected: %v", err)
+	valid := HealCandidateReviewCommand{
+		CommandID:                 "command-secret",
+		ElementTargetID:           "node-secret",
+		BaseNodeVersionID:         "version-secret",
+		CandidateHash:             "candidate-secret",
+		ExpectedCandidateRevision: 1,
+		ExpectedNodeRevision:      1,
 	}
-	if err := command.Validate(HealApprovalRejected); err != nil {
-		t.Fatalf("valid rejection rejected: %v", err)
+	for _, approval := range []HealApprovalStatus{HealApprovalApproved, HealApprovalRejected} {
+		if err := valid.Validate(approval); err != nil {
+			t.Fatalf("valid %q decision rejected: %v", approval, err)
+		}
 	}
-	command.ExpectedNodeRevision = 0
-	if err := command.Validate(HealApprovalRejected); err == nil {
-		t.Fatal("rejection without an expected node revision was accepted")
+
+	tests := []struct {
+		name        string
+		command     HealCandidateReviewCommand
+		approval    HealApprovalStatus
+		wantCode    fault.Code
+		wantKind    fault.Kind
+		wantMessage string
+	}{
+		{
+			name: "whitespace identity",
+			command: func() HealCandidateReviewCommand {
+				command := valid
+				command.CommandID = " \t\n"
+				return command
+			}(),
+			approval:    HealApprovalApproved,
+			wantCode:    CodeHealCandidateReviewCommandInvalid,
+			wantKind:    fault.InvalidArgument,
+			wantMessage: "heal candidate review command is invalid",
+		},
+		{
+			name:        "malicious approval",
+			command:     valid,
+			approval:    HealApprovalStatus("malicious\napproval-secret"),
+			wantCode:    CodeHealApprovalStatusInvalid,
+			wantKind:    fault.InvalidArgument,
+			wantMessage: "heal approval status is invalid",
+		},
+		{
+			name: "candidate revision zero",
+			command: func() HealCandidateReviewCommand {
+				command := valid
+				command.ExpectedCandidateRevision = 0
+				return command
+			}(),
+			approval:    HealApprovalRejected,
+			wantCode:    CodePersistedRevisionInvalid,
+			wantKind:    fault.FailedPrecondition,
+			wantMessage: "persisted revision must be non-zero",
+		},
+		{
+			name: "node revision zero",
+			command: func() HealCandidateReviewCommand {
+				command := valid
+				command.ExpectedNodeRevision = 0
+				return command
+			}(),
+			approval:    HealApprovalRejected,
+			wantCode:    CodePersistedRevisionInvalid,
+			wantKind:    fault.FailedPrecondition,
+			wantMessage: "persisted revision must be non-zero",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.command.Validate(test.approval)
+			descriptor, ok := fault.Describe(err)
+			if !fault.IsCode(err, test.wantCode) || !ok || descriptor.Code() != test.wantCode || descriptor.Kind() != test.wantKind || descriptor.Message() != test.wantMessage || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("error/descriptor = %v/%#v", err, descriptor)
+			}
+			for _, secret := range []string{"command-secret", "node-secret", "version-secret", "candidate-secret", "malicious", "approval-secret"} {
+				if strings.Contains(err.Error(), secret) {
+					t.Fatalf("public error leaked %q: %q", secret, err.Error())
+				}
+			}
+		})
+	}
+
+	identitySetters := []struct {
+		name string
+		set  func(*HealCandidateReviewCommand, string)
+	}{
+		{name: "command", set: func(command *HealCandidateReviewCommand, value string) { command.CommandID = value }},
+		{name: "node", set: func(command *HealCandidateReviewCommand, value string) { command.ElementTargetID = value }},
+		{name: "base version", set: func(command *HealCandidateReviewCommand, value string) { command.BaseNodeVersionID = value }},
+		{name: "candidate", set: func(command *HealCandidateReviewCommand, value string) { command.CandidateHash = value }},
+	}
+	malformedIdentities := []string{"", " \t\n", " leading", "trailing ", "line\nfeed", "carriage\rreturn", "tab\tvalue", "nul\x00value", "nextline", "override‮value", "zero​width", strings.Repeat("x", parameter.MaxNameBytes+1), string([]byte{0xff})}
+	for _, field := range identitySetters {
+		for _, malformed := range malformedIdentities {
+			t.Run("malformed "+field.name, func(t *testing.T) {
+				command := valid
+				field.set(&command, malformed)
+				err := command.Validate(HealApprovalApproved)
+				if !fault.IsCode(err, CodeHealCandidateReviewCommandInvalid) || malformed != "" && strings.Contains(err.Error(), malformed) {
+					t.Fatalf("malformed identity error = %v", err)
+				}
+			})
+		}
 	}
 }
 

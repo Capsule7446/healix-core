@@ -7,6 +7,7 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // VersionMeta 是版本生命周期规则所需的最少信息。删除的版本仍然是序列的一部分，因此仍然会影响下一个版本号。
@@ -185,20 +186,26 @@ type HealCandidateReviewCommand struct {
 }
 
 func (command HealCandidateReviewCommand) Validate(approval HealApprovalStatus) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ElementTargetID) == "" || strings.TrimSpace(command.BaseNodeVersionID) == "" ||
-		strings.TrimSpace(command.CandidateHash) == "" {
-		return fmt.Errorf("heal candidate review requires command, node, base version, and candidate hash")
+	for _, identity := range []string{
+		command.CommandID,
+		command.ElementTargetID,
+		command.BaseNodeVersionID,
+		command.CandidateHash,
+	} {
+		if identity != strings.TrimSpace(identity) || parameter.ValidateName(identity) != nil {
+			return healCandidateReviewCommandInvalidError()
+		}
 	}
 	if err := command.ExpectedCandidateRevision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal candidate review requires expected candidate revision: %w", err)
+		return err
 	}
 	if err := command.ExpectedNodeRevision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal candidate review requires expected node revision: %w", err)
+		return err
 	}
 	switch approval {
 	case HealApprovalApproved, HealApprovalRejected:
 	default:
-		return fmt.Errorf("unsupported heal approval status %q", approval)
+		return healApprovalStatusInvalidError()
 	}
 	return nil
 }

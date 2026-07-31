@@ -552,6 +552,26 @@ func TestHealReviewConcurrentReplayReturnsAuthoritativeWinner(t *testing.T) {
 	}
 }
 
+func TestHealReviewUseCasesRejectInvalidCommandsBeforeSideEffects(t *testing.T) {
+	for _, decision := range []HealReviewDecision{HealReviewApprove, HealReviewReject} {
+		t.Run(string(decision), func(t *testing.T) {
+			source, nodes, command := healReviewMatrixFixture(t)
+			command.CommandID = "malicious\ncommand"
+			transaction := &healReviewTransactionProbe{}
+			service := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v2", sequence: 4})
+			var err error
+			if decision == HealReviewApprove {
+				_, err = service.Approve(context.Background(), command)
+			} else {
+				err = service.Reject(context.Background(), command)
+			}
+			if !fault.IsCode(err, domain.CodeHealCandidateReviewCommandInvalid) || transaction.lookupCalls != 0 || transaction.commitCalls != 0 || source.candidateCalls != 0 || source.streakCalls != 0 {
+				t.Fatalf("error/lookup/commit/candidate/streak = %v/%d/%d/%d/%d", err, transaction.lookupCalls, transaction.commitCalls, source.candidateCalls, source.streakCalls)
+			}
+		})
+	}
+}
+
 func TestHealReviewUseCasesRejectInvalidCandidateReviewerAndGeneratedIdentity(t *testing.T) {
 	for _, decision := range []HealReviewDecision{HealReviewApprove, HealReviewReject} {
 		t.Run(string(decision)+"/empty reviewer", func(t *testing.T) {

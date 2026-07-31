@@ -72,6 +72,9 @@ func isNilHealReviewDependency(value any) bool {
 }
 
 func (s HealReviewService) Approve(ctx context.Context, command domain.HealCandidateReviewCommand) (domain.ElementTargetAggregate, error) {
+	if err := command.Validate(domain.HealApprovalApproved); err != nil {
+		return domain.ElementTargetAggregate{}, err
+	}
 	reviewer, err := s.authorizeReviewer(ctx)
 	if err != nil {
 		return domain.ElementTargetAggregate{}, err
@@ -122,6 +125,9 @@ func (s HealReviewService) Approve(ctx context.Context, command domain.HealCandi
 }
 
 func (s HealReviewService) Reject(ctx context.Context, command domain.HealCandidateReviewCommand) error {
+	if err := command.Validate(domain.HealApprovalRejected); err != nil {
+		return err
+	}
 	reviewer, err := s.authorizeReviewer(ctx)
 	if err != nil {
 		return err
