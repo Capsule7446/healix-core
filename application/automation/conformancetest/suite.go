@@ -2,7 +2,6 @@ package conformancetest
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -151,7 +150,7 @@ func Run(t *testing.T, factory Factory) {
 			}
 			test.mutate(fixture, guarded)
 			before := fixture.Snapshot()
-			if _, err := fixture.PublishSampling(context.Background(), intent); !errors.Is(err, application.ErrSamplingPublicationAuthorityConflict) {
+			if _, err := fixture.PublishSampling(context.Background(), intent); !fault.IsCode(err, application.CodeSamplingPublicationAuthorityConflict) {
 				t.Fatalf("stale authority error = %v", err)
 			}
 			if got := fixture.Snapshot(); !reflect.DeepEqual(got, before) {
@@ -202,7 +201,7 @@ func Run(t *testing.T, factory Factory) {
 				winner = got.intent
 				continue
 			}
-			if !errors.Is(got.err, application.ErrSamplingPublicationAuthorityConflict) || loser.PublicationID != "" {
+			if !fault.IsCode(got.err, application.CodeSamplingPublicationAuthorityConflict) || loser.PublicationID != "" {
 				t.Fatalf("competing loser error = %v", got.err)
 			}
 			loser = got.intent

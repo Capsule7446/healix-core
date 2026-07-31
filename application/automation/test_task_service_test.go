@@ -195,6 +195,12 @@ func TestSamplingPublicationFaultsAreClassifiedAndRedacted(t *testing.T) {
 	if !ok || descriptor.Code() != CodeSamplingPublicationUnavailable || descriptor.Kind() != fault.Unavailable || descriptor.Message() != "sampling publication service is unavailable" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
 		t.Fatalf("unavailable descriptor = %#v, ok = %v", descriptor, ok)
 	}
+
+	authority := SamplingPublicationAuthorityConflictError()
+	descriptor, ok = fault.Describe(authority)
+	if !ok || descriptor.Code() != CodeSamplingPublicationAuthorityConflict || descriptor.Kind() != fault.Conflict || descriptor.Message() != "sampling publication authority changed before the publication could be applied" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || strings.Contains(authority.Error(), "publication-sensitive-id") {
+		t.Fatalf("authority descriptor = %#v, ok = %v", descriptor, ok)
+	}
 }
 
 func TestSamplingPublicationServiceRejectsMissingTransaction(t *testing.T) {

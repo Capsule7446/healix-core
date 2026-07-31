@@ -290,7 +290,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 		case "MERGE", "REUSE":
 			current, exists := next.nodes[nodeID]
 			if !exists || current.revision != decision.ExpectedRevision || current.current != decision.ExpectedCurrentVersionID {
-				return application.PublishSamplingOutcome{}, application.ErrSamplingPublicationAuthorityConflict
+				return application.PublishSamplingOutcome{}, application.SamplingPublicationAuthorityConflictError()
 			}
 		}
 		if decision.PublishVersion {

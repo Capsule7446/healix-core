@@ -15,13 +15,12 @@ import (
 
 const samplingPublicationDigestV1 = "sampling-publication-v1"
 
-var ErrSamplingPublicationAuthorityConflict = errors.New("sampling publication authority conflict")
-
 const (
 	CodeSamplingPublicationIdentityConflict  fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
 	CodeSamplingPublicationDigestMismatch    fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
 	CodeSamplingPublicationUnavailable       fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE"
 	CodeSamplingPublicationContractViolation fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION"
+	CodeSamplingPublicationAuthorityConflict fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_AUTHORITY_CONFLICT"
 )
 
 func SamplingPublicationIdentityConflictError() error {
@@ -41,6 +40,18 @@ func SamplingPublicationDigestMismatchError() error {
 		fault.InvalidArgument,
 		CodeSamplingPublicationDigestMismatch,
 		"sampling publication digest does not match the request payload",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func SamplingPublicationAuthorityConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeSamplingPublicationAuthorityConflict,
+		"sampling publication authority changed before the publication could be applied",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)

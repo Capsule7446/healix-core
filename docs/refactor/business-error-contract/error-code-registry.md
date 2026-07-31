@@ -50,6 +50,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH` | `INVALID_ARGUMENT` | `sampling publication digest does not match the request payload` | none | Reject before any sampling-publication transaction operation; request digests, publication identities, and payload values remain private. |
 | `AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE` | `UNAVAILABLE` | `sampling publication service is unavailable` | none | Supply a valid transaction dependency before retrying; dependency details remain private. |
 | `AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION` | `INTERNAL` | `sampling publication adapter returned an invalid outcome` | none | The adapter outcome is malformed; preserve its cause only for diagnostics and do not expose outcome, identity, digest, or payload details. |
+| `AUTOMATION_SAMPLING_PUBLICATION_AUTHORITY_CONFLICT` | `CONFLICT` | `sampling publication authority changed before the publication could be applied` | none | Re-read node authority before retrying; conflict preserves rollback and does not disclose publication or revision details. |
 
 ## Sampling, evidence, fingerprint, interpolation
 
