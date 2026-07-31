@@ -1,10 +1,10 @@
 package scheduling
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -82,7 +82,7 @@ func TestDecideAdvanceRejectsMalformedStateVectors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := DecideAdvance(sealedPlan(t, test.policy), test.states)
-			if !errors.Is(err, ErrInvalidEntryStates) {
+			if !fault.IsCode(err, CodeEntryStatesInvalid) {
 				t.Fatalf("error = %v", err)
 			}
 		})

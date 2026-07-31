@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -63,7 +64,7 @@ func TestCreateRunTypedErrorsCoverNilCauseAndUnwrap(t *testing.T) {
 
 func TestDecideAdvanceRejectsUnsealedSnapshot(t *testing.T) {
 	decision, err := DecideAdvance(execution.RunSnapshot{}, nil)
-	if !errors.Is(err, ErrInvalidEntryStates) || !strings.Contains(err.Error(), "unsealed run snapshot") || decision.FinalStatus != nil || decision.NextExecutionID != "" || len(decision.Transitions) != 0 {
+	if !fault.IsCode(err, CodeEntryStatesInvalid) || strings.Contains(err.Error(), "unsealed run snapshot") || decision.FinalStatus != nil || decision.NextExecutionID != "" || len(decision.Transitions) != 0 {
 		t.Fatalf("DecideAdvance() = (%#v, %v)", decision, err)
 	}
 }

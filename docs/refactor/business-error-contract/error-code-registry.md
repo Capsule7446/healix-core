@@ -23,6 +23,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `EXECUTION_STATUS_TRANSITION_INVALID` | `FAILED_PRECONDITION` | `execution status transition is invalid` | none | The lifecycle state is not itself a fault. |
 | `EXECUTION_RUN_STATUS_TRANSITION_INVALID` | `FAILED_PRECONDITION` | `run status transition is invalid` | none | The containing run lifecycle is not itself a fault. |
 | `EXECUTION_WORKER_FENCE_STALE` | `CONFLICT` | `worker execution authority is stale` | none | Re-read/claim authority; no raw fence value. |
+| `EXECUTION_ENTRY_STATES_INVALID` | `FAILED_PRECONDITION` | `execution entry states are invalid` | none | Scheduling state must match the sealed run plan and serial lifecycle constraints. |
 
 ## Automation
 
