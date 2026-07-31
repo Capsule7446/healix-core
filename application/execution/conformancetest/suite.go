@@ -87,8 +87,12 @@ func Run(t *testing.T, factory Factory) {
 		}
 		changed := command
 		changed.Event.Timestamp++
+		beforeConflict := fixture.Snapshot()
 		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), changed, execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, execution.CodeCommitIdentityConflict) {
 			t.Fatalf("identity conflict error = %v", err)
+		}
+		if got := fixture.Snapshot(); !reflect.DeepEqual(got, beforeConflict) {
+			t.Fatalf("identity conflict changed state: before=%#v after=%#v", beforeConflict, got)
 		}
 	})
 

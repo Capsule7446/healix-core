@@ -314,11 +314,12 @@ func TestStepTransitionServicePreservesTypedCommitErrors(t *testing.T) {
 		}
 	}
 	for _, test := range []struct {
-		code fault.Code
-		err  error
+		code    fault.Code
+		message string
+		err     error
 	}{
-		{CodeStepRevisionConflict, StepRevisionConflictError()},
-		{CodeCommitIdentityConflict, CommitIdentityConflictError()},
+		{CodeStepRevisionConflict, "step transition revision conflicts with current state", StepRevisionConflictError()},
+		{CodeCommitIdentityConflict, "step transition commit identity conflicts with the previously accepted commit", CommitIdentityConflictError()},
 	} {
 		committer := &recordingTransaction{err: test.err}
 		err := func() error {
@@ -329,7 +330,7 @@ func TestStepTransitionServicePreservesTypedCommitErrors(t *testing.T) {
 			t.Fatalf("Commit() error = %v, want code %v", err, test.code)
 		}
 		descriptor, ok := fault.Describe(err)
-		if !ok || descriptor.Kind() != fault.Conflict {
+		if !ok || descriptor.Kind() != fault.Conflict || descriptor.Message() != test.message || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
 			t.Fatalf("Commit() descriptor = %#v, ok = %v", descriptor, ok)
 		}
 	}
