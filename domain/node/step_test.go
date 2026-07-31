@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 )
@@ -460,7 +460,7 @@ func TestStepRejectsInvalidHealDecision(t *testing.T) {
 	healer := &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}
 	step := &StepNode{NodeID: "submit", Target: fingerprint.ElementTargetSpec{ID: "submit"}}
 	err := step.Run(context.Background(), &Runtime{Driver: driver, Healer: healer})
-	if err == nil || !strings.Contains(err.Error(), "invalid heal decision") {
+	if err == nil || !fault.IsCode(err, CodeOperationFailed) {
 		t.Fatalf("Run error = %v, want invalid decision error", err)
 	}
 }

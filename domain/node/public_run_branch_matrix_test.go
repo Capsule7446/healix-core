@@ -64,7 +64,7 @@ func TestWaitNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 			name:     "inconsistent timeline configuration rejects before wait",
 			wait:     &WaitNode{NodeID: "wait", Kind: WaitNetworkIdle},
 			runtime:  &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}},
-			wantText: "recording timeline is required",
+			wantText: "EXECUTION_STEP_PHASE_TRANSITION_INVALID",
 		},
 		{
 			name: "leaf lifecycle and terminal event both fail",
@@ -74,7 +74,7 @@ func TestWaitNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 				Facts:        &nodePhaseFailingFacts{nodeID: "wait", phase: PhaseFailed, err: persistenceErr},
 			},
 			wantCauses: []error{persistenceErr},
-			wantText:   "recording timeline is required",
+			wantText:   "EXECUTION_STEP_PHASE_TRANSITION_INVALID",
 		},
 		{
 			name: "wait operation and terminal event both fail",
@@ -308,7 +308,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			name:     "inconsistent timeline configuration rejects before action",
 			step:     &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}},
 			runtime:  missingTimelineRuntime(),
-			wantText: "recording timeline is required",
+			wantText: "EXECUTION_STEP_PHASE_TRANSITION_INVALID",
 		},
 		{
 			name:     "action value interpolation failure",
@@ -326,7 +326,7 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			name:     "invalid navigation URL",
 			step:     &StepNode{NodeID: "step", Action: Action{Kind: ActionNavigate, Value: "relative/path"}},
 			runtime:  &Runtime{Driver: &matrixDriver{}},
-			wantText: "invalid navigation URL",
+			wantText: "EXECUTION_STEP_CONFIGURATION_INVALID",
 		},
 		{
 			name: "navigate observation is best effort",
@@ -466,7 +466,7 @@ func TestValidationNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T) {
 		{
 			name:     "inconsistent timeline configuration rejects before validation",
 			runtime:  &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}},
-			wantText: "recording timeline is required",
+			wantText: "EXECUTION_STEP_PHASE_TRANSITION_INVALID",
 		},
 		{
 			name: "validating event rejected",
@@ -536,7 +536,7 @@ func TestValidationGroupNodeRunDependencyAndLifecycleFailureMatrix(t *testing.T)
 		{
 			name:     "inconsistent timeline configuration rejects before validation group",
 			runtime:  &Runtime{Driver: misconfiguredTimelineDriver, StepTimeline: &timelineSinkStub{}},
-			wantText: "recording timeline is required",
+			wantText: "EXECUTION_STEP_PHASE_TRANSITION_INVALID",
 		},
 		{
 			name: "validating event rejected",

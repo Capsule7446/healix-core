@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -70,5 +71,47 @@ func TestWorkflowCallShadowsSameNamedParentParameter(t *testing.T) {
 	}
 	if !runtime.Parameters()["region"].Equal(parameter.TextValue("parent")) {
 		t.Fatal("parent scope was not restored")
+	}
+}
+
+// TestWorkflowCallResolveBindingsReportsFirstViolationDeterministically closes
+// a map-iteration nondeterminism defect: resolveBindings used to range over
+// w.Values directly and return on the first problem it found, so which
+// binding was reported when more than one was broken depended on Go's
+// randomized map order. Sorting names first means "aaa" (missing its value)
+// always outranks "ccc" (a constraint violation) alphabetically, regardless of
+// iteration order — repeating the build from scratch each time is what would
+// expose the old bug, since each fresh map literal gets its own random seed.
+func TestWorkflowCallResolveBindingsReportsFirstViolationDeterministically(t *testing.T) {
+	build := func() *WorkflowCallNode {
+		return &WorkflowCallNode{
+			NodeID: "call",
+			Target: &WorkflowNode{NodeID: "child"},
+			Values: map[string]parameter.Value{
+				"bbb": parameter.TextValue("value"),
+				"ccc": parameter.BooleanValue(true),
+			},
+			Constraints: map[string]parameter.Constraint{
+				"aaa": {Type: parameter.Text},
+				"ccc": {Type: parameter.Text},
+			},
+		}
+	}
+	for attempt := 0; attempt < 50; attempt++ {
+		_, err := build().resolveBindings()
+		if err == nil {
+			t.Fatalf("attempt %d: expected a binding violation", attempt)
+		}
+		descriptor, ok := fault.Describe(err)
+		if !ok {
+			t.Fatalf("attempt %d: error = %v is not a classified fault", attempt, err)
+		}
+		violations := descriptor.Violations()
+		if len(violations) != 1 {
+			t.Fatalf("attempt %d: violations = %#v, want exactly one", attempt, violations)
+		}
+		if got := violations[0].Code(); got != fault.CodeFieldRequired {
+			t.Fatalf("attempt %d: violation code = %s, want %s (the alphabetically-first name's missing binding)", attempt, got, fault.CodeFieldRequired)
+		}
 	}
 }

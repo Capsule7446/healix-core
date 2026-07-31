@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -300,9 +301,9 @@ func TestStepActionFailureMatrix(t *testing.T) {
 		want   string
 	}{
 		{name: "missing input variable", action: Action{Kind: ActionInput, Value: "${missing}"}, want: "INTERPOLATION_VARIABLE_UNDEFINED"},
-		{name: "empty select", action: Action{Kind: ActionSelect}, want: "EXECUTION_OPERATION_FAILED"},
-		{name: "empty extract variable", action: Action{Kind: ActionExtract}, want: "EXECUTION_OPERATION_FAILED"},
-		{name: "unknown action", action: Action{Kind: "double_click"}, want: "EXECUTION_OPERATION_FAILED"},
+		{name: "empty select", action: Action{Kind: ActionSelect}, want: "EXECUTION_STEP_CONFIGURATION_INVALID"},
+		{name: "empty extract variable", action: Action{Kind: ActionExtract}, want: "EXECUTION_STEP_CONFIGURATION_INVALID"},
+		{name: "unknown action", action: Action{Kind: "double_click"}, want: "EXECUTION_STEP_CONFIGURATION_INVALID"},
 		{name: "wait stable", action: Action{Kind: ActionClick}, setup: func(element *matrixElement, _ *matrixDriver, _ *Runtime) { element.waitStableErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "element action", action: Action{Kind: ActionClick}, setup: func(element *matrixElement, _ *matrixDriver, _ *Runtime) { element.actionErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "navigate", action: Action{Kind: ActionNavigate, Value: "https://example.test"}, setup: func(_ *matrixElement, driver *matrixDriver, _ *Runtime) { driver.navigateErr = sentinel }, want: "EXECUTION_OPERATION_FAILED"},
@@ -342,13 +343,13 @@ func TestStepHealingFailureMatrix(t *testing.T) {
 		}}, want: "healing disabled"},
 		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
-		}, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
+		}, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
 		}}, healer: &testHealer{err: sentinel}, want: "heal failed"},
 		{name: "no candidate", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
-		}}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, want: "no heal candidate"},
+		}}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, want: "EXECUTION_HEALING_REFUSED"},
 		{name: "relocate failure", driver: &matrixDriver{locate: func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 			if len(spec.Selectors) > 0 && spec.Selectors[0].Value == "#new" {
 				return nil, sentinel
@@ -434,8 +435,14 @@ func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 	t.Run("state capability required", func(t *testing.T) {
 		validation := &ValidationNode{NodeID: "value", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "x"}}
 		_, _, err := validation.evaluate(context.Background(), &Runtime{Driver: &matrixDriver{element: testElement{}}})
-		if err == nil || !strings.Contains(err.Error(), "validation state") {
+		if err == nil || !fault.IsCode(err, CodeStepConfigurationInvalid) {
 			t.Fatalf("error = %v", err)
+		}
+		if descriptor, ok := fault.Describe(err); !ok || strings.Contains(descriptor.Message(), "validation state") {
+			t.Fatalf("public message leaked detail: %v", err)
+		}
+		if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "validation state") {
+			t.Fatalf("private cause = %v, want it to retain %q", cause, "validation state")
 		}
 	})
 	t.Run("invalid expanded regex", func(t *testing.T) {
@@ -523,13 +530,13 @@ func TestValidationHealingMatrix(t *testing.T) {
 	}{
 		{name: "snapshot failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
-		}, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "snapshot for healing"},
+		}, snapshot: func(context.Context) (heal.DOMSnapshot, error) { return nil, sentinel }}, healer: &testHealer{}, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "healer failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
 		}}, healer: &testHealer{err: sentinel}, want: "sentinel"},
 		{name: "invalid decision", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
-		}}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}, want: "invalid heal decision"},
+		}}, healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "fact failure", driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
 		}}, healer: &testHealer{decision: validDecision(newSelector)}, facts: &testFacts{healDecisionErr: sentinel}, want: "re-locate after heal"},

@@ -104,7 +104,11 @@ type runtimeLocator struct{ runtime *Runtime }
 
 func (l runtimeLocator) Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 	if l.runtime == nil || l.runtime.Driver == nil {
-		return nil, errors.New("node: locator driver is required")
+		// Folded into EXECUTION_STEP_CONFIGURATION_INVALID rather than a fifth
+		// code: the remediation is identical to a missing workflow-call target —
+		// supply the missing dependency — and this site can never accumulate a
+		// second violation alongside it.
+		return nil, stepConfigurationInvalidError(mustViolation(fault.CodeFieldRequired, "driver", "node driver is required"))
 	}
 	return l.runtime.Driver.Locate(ctx, l.runtime.effectiveSpec(spec))
 }
