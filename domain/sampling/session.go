@@ -184,6 +184,35 @@ func (s *Session) Start() error {
 	return nil
 }
 
+// shapeViolations reports every shape failure of a capture at once, in a fixed
+// field order. Returning at the first one meant a validate capture missing both
+// its identity key and its validation detail told the caller only about the
+// identity key, so fixing it surfaced the next failure instead of accepting the
+// capture — which is exactly what the one-fault-carrying-every-failure rule
+// exists to prevent.
+func (c Capture) shapeViolations() []fault.Violation {
+	var violations []fault.Violation
+	if strings.TrimSpace(c.CaptureID) == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "captureId", "capture id is required"))
+	}
+	switch c.Kind {
+	case ActionClick, ActionInput, ActionSelect, ActionValidate:
+		if strings.TrimSpace(c.IdentityKey) == "" {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "identityKey", "capture identity key is required"))
+		}
+		if c.Kind == ActionValidate && c.Validation == nil {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "validation", "validate capture requires validation detail"))
+		}
+	case ActionPress:
+		if strings.TrimSpace(c.Value) == "" {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "value", "press capture requires a value"))
+		}
+	default:
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "kind", "capture action kind is not supported"))
+	}
+	return violations
+}
+
 func (s *Session) Record(c Capture) (CaptureResult, error) {
 	if s == nil {
 		return CaptureResult{}, internalError()
@@ -191,32 +220,19 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	if s.status != StatusRecording {
 		return CaptureResult{}, sessionStateInvalidError()
 	}
-	if strings.TrimSpace(c.CaptureID) == "" {
-		return CaptureResult{}, captureInvalidError([]fault.Violation{
-			mustViolation(fault.CodeFieldRequired, "captureId", "capture id is required"),
-		})
+	// The idempotent replay check needs a non-blank id, so it runs before the
+	// shape walk; everything after it accumulates.
+	if strings.TrimSpace(c.CaptureID) != "" {
+		if previous, ok := s.byCaptureID[c.CaptureID]; ok {
+			return previous, nil
+		}
 	}
-	if previous, ok := s.byCaptureID[c.CaptureID]; ok {
-		return previous, nil
+	if violations := c.shapeViolations(); len(violations) != 0 {
+		return CaptureResult{}, captureInvalidError(violations)
 	}
 	switch c.Kind {
 	case ActionClick, ActionInput, ActionSelect, ActionValidate:
-		if strings.TrimSpace(c.IdentityKey) == "" {
-			return CaptureResult{}, captureInvalidError([]fault.Violation{
-				mustViolation(fault.CodeFieldRequired, "identityKey", "capture identity key is required"),
-			})
-		}
-		if c.Kind == ActionValidate && c.Validation == nil {
-			return CaptureResult{}, captureInvalidError([]fault.Violation{
-				mustViolation(fault.CodeFieldRequired, "validation", "validate capture requires validation detail"),
-			})
-		}
 	case ActionPress:
-		if strings.TrimSpace(c.Value) == "" {
-			return CaptureResult{}, captureInvalidError([]fault.Violation{
-				mustViolation(fault.CodeFieldRequired, "value", "press capture requires a value"),
-			})
-		}
 		actionUUID, err := NewUUID()
 		if err != nil {
 			return CaptureResult{}, err
@@ -230,10 +246,6 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		}
 		s.byCaptureID[c.CaptureID] = result
 		return result, nil
-	default:
-		return CaptureResult{}, captureInvalidError([]fault.Violation{
-			mustViolation(fault.CodeFieldInvalid, "kind", "capture action kind is not supported"),
-		})
 	}
 	c.Spec.PageURL = c.PageURL
 	c.Spec.Origin = originOf(c.PageURL)

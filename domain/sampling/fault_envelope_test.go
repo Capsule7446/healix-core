@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
@@ -95,5 +96,68 @@ func requireNoPublicLeak(t *testing.T, err error, secrets ...string) {
 				t.Fatalf("public fault text %q leaks %q", text, secret)
 			}
 		}
+	}
+}
+
+// Each of these used to report only the first failure, so a caller fixed one
+// field and immediately hit the next. The contract asks for one fault carrying
+// every field failure, and that is only worth anything if it is actually every.
+func TestRecordReportsEveryCaptureShapeFailureAtOnce(t *testing.T) {
+	session, err := NewSession("flow", "https://example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A validate capture missing its id, its identity key, and its validation.
+	_, recordErr := session.Record(Capture{Kind: ActionValidate})
+	descriptor := requireEnvelope(t, recordErr, CodeCaptureInvalid)
+	want := []string{
+		violationKey(fault.CodeFieldRequired, "captureId"),
+		violationKey(fault.CodeFieldRequired, "identityKey"),
+		violationKey(fault.CodeFieldRequired, "validation"),
+	}
+	if got := violationKeys(descriptor.Violations()); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("violations =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestDraftIdentityReportsEveryBadStepAtOnce(t *testing.T) {
+	workflow := draftFixture()
+	// Two separate steps with blank ids, in different branches of the tree.
+	workflow.Steps[0].ID = " "
+	workflow.Steps[1].Children[0].ID = " "
+
+	_, err := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, len(workflow.Steps),
+		automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, ElementTargetID: "node-c"})
+	descriptor := requireEnvelope(t, err, CodeDraftInvalid)
+
+	blanks := 0
+	for _, violation := range descriptor.Violations() {
+		if violation.Code() == fault.CodeFieldRequired && violation.Field() == "steps.id" {
+			blanks++
+		}
+	}
+	if blanks != 2 {
+		t.Fatalf("reported %d blank step ids, want both: %v", blanks, violationKeys(descriptor.Violations()))
+	}
+}
+
+// A parent that exists but cannot hold the requested container is a different
+// failure from an absent parent, and has a different fix.
+func TestContainerShapeMismatchIsNotReportedAsAMissingStep(t *testing.T) {
+	workflow := draftFixture()
+	step := automation.FlowFragmentStep{ID: "new", DisplayName: "new", Kind: automation.StepAction, ElementTargetID: "node-a"}
+
+	_, absent := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{ParentStepID: "not-here"}, 0, step)
+	requireEnvelope(t, absent, CodeDraftStepNotFound)
+
+	// "a" is an action step: it exists, but it cannot hold children.
+	_, incompatible := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{ParentStepID: "a"}, 0, step)
+	requireViolation(t, incompatible, CodeDraftInvalid, fault.CodeFieldMismatch, "container")
+	if fault.IsCode(incompatible, CodeDraftStepNotFound) {
+		t.Fatal("an existing parent was reported as a missing step")
 	}
 }

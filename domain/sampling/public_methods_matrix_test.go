@@ -108,9 +108,9 @@ func TestDraftContainerSelectionRejectsImpossibleBusinessShapes(t *testing.T) {
 	}{
 		{name: "root cannot select branch", container: FlowFragmentStepContainer{BranchID: "branch"}, wantCode: CodeDraftInvalid, wantField: "container.branchId"},
 		{name: "missing parent", container: FlowFragmentStepContainer{ParentStepID: "missing"}, wantCode: CodeDraftStepNotFound},
-		{name: "action cannot contain children", container: FlowFragmentStepContainer{ParentStepID: "a"}, wantCode: CodeDraftStepNotFound},
-		{name: "repeat cannot select branch", container: FlowFragmentStepContainer{ParentStepID: "repeat", BranchID: "branch"}, wantCode: CodeDraftStepNotFound},
-		{name: "validation group branch must exist", container: FlowFragmentStepContainer{ParentStepID: "group", BranchID: "missing"}, wantCode: CodeDraftStepNotFound},
+		{name: "action cannot contain children", container: FlowFragmentStepContainer{ParentStepID: "a"}, wantCode: CodeDraftInvalid, wantField: "container"},
+		{name: "repeat cannot select branch", container: FlowFragmentStepContainer{ParentStepID: "repeat", BranchID: "branch"}, wantCode: CodeDraftInvalid, wantField: "container"},
+		{name: "validation group branch must exist", container: FlowFragmentStepContainer{ParentStepID: "group", BranchID: "missing"}, wantCode: CodeDraftInvalid, wantField: "container"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -161,10 +161,12 @@ func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, containe
 		return &workflow.Steps, nil
 	}
 	var result *[]automation.FlowFragmentStep
+	parentFound := false
 	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
 		if result != nil || step.ID != container.ParentStepID {
 			return
 		}
+		parentFound = true
 		if container.BranchID == "" {
 			if step.Kind != automation.StepRepeat {
 				return
@@ -182,10 +184,19 @@ func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, containe
 			}
 		}
 	})
-	if result == nil {
-		return nil, draftStepNotFoundError()
+	if result != nil {
+		return result, nil
 	}
-	return result, nil
+	// A parent that exists but cannot hold the requested container is a different
+	// failure from a parent that is absent, and it has a different fix: pass a
+	// container the parent's kind actually supports, rather than create the step.
+	// Reporting both as not-found sent the caller after a step that was there.
+	if parentFound {
+		return nil, draftInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldMismatch, "container", "the parent step cannot hold the requested container"),
+		})
+	}
+	return nil, draftStepNotFoundError()
 }
 
 func walkSamplingSteps(steps []automation.FlowFragmentStep, visit func(*automation.FlowFragmentStep)) {
@@ -231,26 +242,25 @@ func validateUnpublishedFlowFragmentIdentity(workflow UnpublishedFlowFragment) e
 		elementTargetIDs[node.ID] = struct{}{}
 	}
 	stepIDs := map[string]struct{}{}
-	var stepViolation *fault.Violation
+	// The walk keeps going after the first bad step. Stopping at one meant a draft
+	// with two blank step ids reported a single failure, so the caller fixed it and
+	// immediately hit the next — the report has to be complete to be actionable.
+	// The cap is the only reason to stop early, and the walk order is the tree's
+	// own depth-first order, so the kept prefix is a function of the input.
 	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
-		if stepViolation != nil {
+		if len(violations) >= fault.MaxViolations {
 			return
 		}
 		if strings.TrimSpace(step.ID) == "" {
-			violation := mustViolation(fault.CodeFieldRequired, "steps.id", "draft step id is required")
-			stepViolation = &violation
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.id", "draft step id is required"))
 			return
 		}
 		if _, exists := stepIDs[step.ID]; exists {
-			violation := mustViolation(fault.CodeFieldDuplicate, "steps.id", "draft step id is duplicated")
-			stepViolation = &violation
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, "steps.id", "draft step id is duplicated"))
 			return
 		}
 		stepIDs[step.ID] = struct{}{}
 	})
-	if stepViolation != nil {
-		violations = append(violations, *stepViolation)
-	}
 	if len(violations) != 0 {
 		return draftInvalidError(violations)
 	}
