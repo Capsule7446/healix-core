@@ -88,8 +88,19 @@ func TestSamplingPublicationPublishRejectsInvalidCommandBeforeDependencies(t *te
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transaction := &samplingTransactionProbe{}
-			if _, err := NewSamplingPublicationService(transaction).Publish(context.Background(), test.command); err == nil || !strings.Contains(err.Error(), test.want) || transaction.lookupCalls != 0 || transaction.publishCalls != 0 {
+			_, err := NewSamplingPublicationService(transaction).Publish(context.Background(), test.command)
+			if err == nil || transaction.lookupCalls != 0 || transaction.publishCalls != 0 {
 				t.Fatalf("error/lookup/publish calls = %v/%d/%d", err, transaction.lookupCalls, transaction.publishCalls)
+			}
+			if !fault.IsCode(err, CodeSamplingPublicationCommandInvalid) {
+				t.Fatalf("error = %v, want code %s", err, CodeSamplingPublicationCommandInvalid)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || strings.Contains(descriptor.Message(), test.want) {
+				t.Fatalf("public message = %#v (ok=%v), must not carry %q", descriptor, ok, test.want)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), test.want) {
+				t.Fatalf("private cause = %v, want it to retain %q", cause, test.want)
 			}
 		})
 	}

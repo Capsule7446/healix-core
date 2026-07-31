@@ -128,7 +128,27 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult
 	if err := cfg.AuthorityVerifier.VerifyExecutionAuthority(ctx, authority); err != nil {
 		return result, err
 	}
-	return runProgram(ctx, entry.program, cfg)
+	result, runErr := runProgram(ctx, entry.program, cfg)
+	return result, classifyUnclassifiedRunFailure(runErr)
+}
+
+// classifyUnclassifiedRunFailure is RunProgram's backstop: it guarantees no
+// unclassified error ever leaves RunProgram by giving any bare failure the
+// same code and message domain/node already publishes for an opaque node
+// operation failure, and it lets every already-classified failure through
+// unchanged.
+func classifyUnclassifiedRunFailure(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(cause, fault.Internal, node.CodeOperationFailed, "node operation failed")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 func detachedTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {

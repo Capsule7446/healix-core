@@ -4,8 +4,48 @@ import (
 	"fmt"
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/sampling"
 )
+
+// CodeSamplingPublicationAuthorityInvalid is the boundary code for every
+// caller-supplied shape failure in MapSamplingPublication and mapSamplingNode:
+// missing or duplicate node authority, an authority/temporary-node mismatch, an
+// undecided or unsupported resolution mode, and a merge/reuse authority that
+// does not match the current aggregate. It is distinct from
+// AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID (the publication's own content
+// shape, classified in domain/automation) and from
+// SAMPLING_PUBLICATION_MAPPING_INVALID (the element-target reference rewrite).
+const CodeSamplingPublicationAuthorityInvalid fault.Code = "SAMPLING_PUBLICATION_AUTHORITY_INVALID"
+
+// classifySamplingPublicationAuthority is the single exported-boundary
+// classifier for MapSamplingPublication. The checks inside mapSamplingPublication
+// and mapSamplingNode stay ordinary Go errors — the contract permits that for
+// internal invariants — and travel to this boundary as a private cause; their
+// %q-formatted identities (temporary/formal element target ids, resolution
+// modes) never surface because a fault's public Error() text is its code and
+// safe message only, never its cause. An already-classified failure (the
+// element-target reference rewrite and the flow fragment/publication validation
+// below already return their own domain codes) passes through unchanged rather
+// than being buried under a second code.
+func classifySamplingPublicationAuthority(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.InvalidArgument,
+		CodeSamplingPublicationAuthorityInvalid,
+		"sampling publication authority is invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 type SamplingNodeAuthority struct {
 	TemporaryElementTargetID string
@@ -24,7 +64,19 @@ type SamplingPublicationRequest struct {
 	Nodes             []SamplingNodeAuthority
 }
 
+// MapSamplingPublication is the single exported boundary that turns a sampling
+// workspace and its publication authority into a domain SamplingPublication.
+// Every error crossing it is classified exactly once by
+// classifySamplingPublicationAuthority.
 func MapSamplingPublication(request SamplingPublicationRequest) (domainautomation.SamplingPublication, error) {
+	publication, err := mapSamplingPublication(request)
+	if err != nil {
+		return domainautomation.SamplingPublication{}, classifySamplingPublicationAuthority(err)
+	}
+	return publication, nil
+}
+
+func mapSamplingPublication(request SamplingPublicationRequest) (domainautomation.SamplingPublication, error) {
 	if request.PublishedAt <= 0 || request.FlowFragmentID == "" || request.WorkflowVersionID == "" {
 		return domainautomation.SamplingPublication{}, fmt.Errorf("sampling publication requires workflow identity and publication time")
 	}
@@ -78,7 +130,12 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 		domainautomation.FlowFragmentVersion{ID: request.WorkflowVersionID, Definition: domainautomation.FlowFragmentContent{Steps: steps, Parameters: append([]domainautomation.ParameterDefinition(nil), request.Workspace.Parameters...)}, CreatedAt: request.PublishedAt},
 	)
 	if err != nil {
-		return domainautomation.SamplingPublication{}, fmt.Errorf("build sampled workflow: %w", err)
+		// domainautomation.NewFlowFragment's own errors are classified at its own
+		// package boundary (a parallel migration); this boundary neither adds an
+		// uncoded layer on top nor buries a code that is already there — it passes
+		// through unclassified or classified alike, and the outer
+		// classifySamplingPublicationAuthority call resolves whichever it is.
+		return domainautomation.SamplingPublication{}, err
 	}
 	result := domainautomation.SamplingPublication{Nodes: publications, FlowFragment: workflow}
 	if err := result.Validate(); err != nil {
@@ -109,7 +166,11 @@ func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority Samp
 			domainautomation.ElementTargetVersion{ID: authority.ElementTargetVersionID, PageURL: temporary.PageURL, Origin: temporary.Origin, Selectors: temporary.Selectors, Fingerprint: temporary.Fingerprint, Source: domainautomation.SourceSampling, CreatedAt: at},
 		)
 		if err != nil {
-			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("build sampled node %q: %w", temporary.ID, err)
+			// No %q identity in this wrap: if domain/automation's NewElementTarget is
+			// later classified by a parallel migration, an outer fmt-wrapper that still
+			// echoed the temporary id would leak it even after the boundary classifier
+			// passes an already-classified cause through unchanged.
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("build sampled node: %w", err)
 		}
 		publication.Aggregate, publication.PublishVersion = aggregate, true
 	case sampling.ResolutionModeMerge:
@@ -118,7 +179,7 @@ func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority Samp
 		}
 		aggregate, err := authority.Current.PublishVersion(authority.ElementTargetVersionID, temporary.PageURL, temporary.Origin, temporary.Selectors, temporary.Fingerprint, domainautomation.SourceSampling, at)
 		if err != nil {
-			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("merge sampled node %q: %w", temporary.ID, err)
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("merge sampled node: %w", err)
 		}
 		publication.Aggregate, publication.ExpectedRevision, publication.ExpectedCurrentVersionID, publication.PublishVersion = aggregate, authority.ExpectedRevision, authority.ExpectedCurrentVersionID, true
 	case sampling.ResolutionModeReuse:
@@ -126,7 +187,7 @@ func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority Samp
 			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires exact current aggregate authority", temporary.ID)
 		}
 		if err := authority.Current.ValidateLoadedHistory(); err != nil {
-			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires valid loaded authority history: %w", temporary.ID, err)
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node reuse requires valid loaded authority history: %w", err)
 		}
 		publication.Aggregate = authority.Current.Clone()
 		selected, ok := referenceableElementTargetVersion(publication.Aggregate, authority.ElementTargetVersionID)

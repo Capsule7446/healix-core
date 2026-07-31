@@ -9,6 +9,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type sessionFixture struct {
@@ -51,6 +52,22 @@ func (r *entryRunnerFixture) RunEntry(_ context.Context, _ domainexecution.Worke
 	*r.events = append(*r.events, "run:"+entry.ExecutionID)
 	r.seen = append(r.seen, session)
 	return r.err
+}
+
+// unwrapFaultCause finds the *fault.Error inside err (even when it is nested
+// under errors.Join, which errors.Unwrap's single-error form cannot see
+// through) and returns its own private cause.
+func unwrapFaultCause(t *testing.T, err error) error {
+	t.Helper()
+	var target *fault.Error
+	if !errors.As(err, &target) {
+		t.Fatalf("error = %v, want a *fault.Error in its chain", err)
+	}
+	cause := target.Unwrap()
+	if cause == nil {
+		t.Fatalf("error = %v, want its fault to carry a private cause", err)
+	}
+	return cause
 }
 
 func mustEntryExecutor(t *testing.T, factory BrowserSessionFactory, runner EntryRunner) EntryExecutor {
@@ -151,8 +168,11 @@ func TestEntryExecutorRejectsNormalInvalidSessionAndWrapsRunnerError(t *testing.
 	session := &sessionFixture{id: "entry", events: &events}
 	runner := &entryRunnerFixture{events: &events}
 	err := mustEntryExecutor(t, invalidSessionFactory{session}, runner).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{{ExecutionID: "entry"}})
-	if err == nil || !strings.Contains(err.Error(), "invalid session") || len(runner.seen) != 0 || !reflect.DeepEqual(events, []string{"close:entry"}) {
+	if err == nil || !fault.IsCode(err, CodeEntryBrowserSessionAdapterContractViolation) || len(runner.seen) != 0 || !reflect.DeepEqual(events, []string{"close:entry"}) {
 		t.Fatalf("invalid session error = %v, events = %v", err, events)
+	}
+	if cause := unwrapFaultCause(t, err); !strings.Contains(cause.Error(), "invalid session") {
+		t.Fatalf("private cause = %v, want it to retain the session detail", cause)
 	}
 
 	cause := errors.New("runner failed")
@@ -344,8 +364,15 @@ func TestEntryExecutorRejectsInvalidSessionAndClosesBeforeStopping(t *testing.T)
 		domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
 		[]domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}},
 	)
-	if err == nil || !strings.Contains(err.Error(), "Host returned invalid session") || runnerCalled {
+	if err == nil || !fault.IsCode(err, CodeEntryBrowserSessionAdapterContractViolation) || runnerCalled {
 		t.Fatalf("error/runner = %v/%v", err, runnerCalled)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || strings.Contains(descriptor.Message(), "invalid session") {
+		t.Fatalf("public message = %#v (ok=%v), must not carry the session detail", descriptor, ok)
+	}
+	if cause := unwrapFaultCause(t, err); !strings.Contains(cause.Error(), "invalid session") {
+		t.Fatalf("private cause = %v, want it to retain the session detail", cause)
 	}
 	if !reflect.DeepEqual(events, []string{"create", "close"}) {
 		t.Fatalf("events = %v", events)
@@ -406,8 +433,16 @@ func TestNewEntryExecutorRejectsMissingDependencies(t *testing.T) {
 	}
 	for _, timeout := range []time.Duration{0, -time.Nanosecond} {
 		t.Run("nonpositive timeout "+timeout.String(), func(t *testing.T) {
-			if _, err := NewEntryExecutor(factory, runner, timeout); err == nil || !strings.Contains(err.Error(), "close timeout must be positive") {
-				t.Fatalf("NewEntryExecutor() error = %v", err)
+			_, err := NewEntryExecutor(factory, runner, timeout)
+			if err == nil || !fault.IsCode(err, CodeEntryExecutorConfigurationInvalid) {
+				t.Fatalf("NewEntryExecutor() error = %v, want code %s", err, CodeEntryExecutorConfigurationInvalid)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || strings.Contains(descriptor.Message(), "close timeout must be positive") {
+				t.Fatalf("public message = %#v (ok=%v), must not carry the detail", descriptor, ok)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "close timeout must be positive") {
+				t.Fatalf("private cause = %v, want it to retain the detail", cause)
 			}
 		})
 	}

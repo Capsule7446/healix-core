@@ -30,7 +30,10 @@ type parameterSnapshotInput struct {
 
 func buildExecutionDraft(input buildExecutionPlanInput) (execution.Draft, error) {
 	if err := input.Publication.Validate(); err != nil {
-		return execution.Draft{}, fmt.Errorf("invalid publication: %w", err)
+		// ResolvedExecutionFlow.Validate() always returns nil or its own classified
+		// fault; wrapping it in an uncoded "invalid publication: %w" buried that
+		// classification behind an unpublished code at this boundary.
+		return execution.Draft{}, err
 	}
 	if input.RunID == "" {
 		return execution.Draft{}, errors.New("run id is required")

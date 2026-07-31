@@ -2,12 +2,14 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
@@ -55,8 +57,15 @@ func TestRunProgramRejectsNilContextAndNegativeInterval(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := runProgram(tt.ctx, program, Config{RunID: "run", Driver: &engineTestDriver{}, StepInterval: tt.interval})
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("error = %v, want %q", err, tt.want)
+			if err == nil || !fault.IsCode(err, CodeRuntimeConfigurationInvalid) {
+				t.Fatalf("error = %v, want code %s", err, CodeRuntimeConfigurationInvalid)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || strings.Contains(descriptor.Message(), tt.want) {
+				t.Fatalf("public message = %#v (ok=%v), must not carry %q", descriptor, ok, tt.want)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), tt.want) {
+				t.Fatalf("private cause = %v, want it to retain %q", cause, tt.want)
 			}
 		})
 	}

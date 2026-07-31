@@ -15,7 +15,31 @@ const (
 	CodeFactCommitterRequired  fault.Code = "EXECUTION_FACT_COMMITTER_REQUIRED"
 	CodeStepRevisionConflict   fault.Code = "EXECUTION_STEP_REVISION_CONFLICT"
 	CodeCommitIdentityConflict fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT"
+	// CodeStepTransitionCommitPayloadTooLarge covers both the overall payload
+	// budget and any one string exceeding its own byte limit: the remediation is
+	// always to shrink the commit, never to correct a specific field's value.
+	CodeStepTransitionCommitPayloadTooLarge fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_PAYLOAD_TOO_LARGE"
+	// CodeStepTransitionCommitRunMismatch covers a commit fact whose own RunID
+	// disagrees with the claimed worker fence's RunID. FAILED_PRECONDITION: the
+	// caller must re-read the authoritative claim, not supply a different value.
+	CodeStepTransitionCommitRunMismatch fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_RUN_MISMATCH"
 )
+
+func stepTransitionCommitPayloadTooLargeError(cause error) error {
+	err, constructionErr := fault.Wrap(cause, fault.OutOfRange, CodeStepTransitionCommitPayloadTooLarge, "step transition commit payload is too large")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func stepTransitionCommitRunMismatchError(cause error) error {
+	err, constructionErr := fault.Wrap(cause, fault.FailedPrecondition, CodeStepTransitionCommitRunMismatch, "step transition commit does not match the claimed run")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func StepRevisionConflictError() error {
 	err, constructionErr := fault.New(
@@ -72,7 +96,7 @@ func ownStepTransitionCommit(commit evidence.StepTransitionCommit) (evidence.Ste
 		return evidence.StepTransitionCommit{}, fmt.Errorf("encode step transition commit: %w", err)
 	}
 	if len(payload) > MaxStepTransitionPayloadBytes {
-		return evidence.StepTransitionCommit{}, fmt.Errorf("step transition commit exceeds byte limit %d", MaxStepTransitionPayloadBytes)
+		return evidence.StepTransitionCommit{}, stepTransitionCommitPayloadTooLargeError(fmt.Errorf("step transition commit exceeds byte limit %d", MaxStepTransitionPayloadBytes))
 	}
 	var owned evidence.StepTransitionCommit
 	if err := json.Unmarshal(payload, &owned); err != nil {
@@ -93,7 +117,7 @@ func validateStepTransitionStringBounds(value reflect.Value) error {
 		return validateStepTransitionStringBounds(value.Elem())
 	case reflect.String:
 		if value.Len() > maxStepTransitionStringBytes {
-			return fmt.Errorf("step transition string exceeds byte limit %d", maxStepTransitionStringBytes)
+			return stepTransitionCommitPayloadTooLargeError(fmt.Errorf("step transition string exceeds byte limit %d", maxStepTransitionStringBytes))
 		}
 	case reflect.Struct:
 		for index := 0; index < value.NumField(); index++ {
@@ -188,17 +212,17 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 func validateCommitRunBinding(runID string, commit evidence.StepTransitionCommit) error {
 	for _, observation := range commit.FinalValidations {
 		if observation.RunID != runID {
-			return fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.RunID, runID)
+			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.RunID, runID))
 		}
 	}
 	for _, group := range commit.FinalValidationGroups {
 		if group.RunID != runID {
-			return fmt.Errorf("validation group run %q does not match worker fence run %q", group.RunID, runID)
+			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation group run %q does not match worker fence run %q", group.RunID, runID))
 		}
 	}
 	for _, observation := range commit.HealObservations {
 		if observation.RunID != runID {
-			return fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.RunID, runID)
+			return stepTransitionCommitRunMismatchError(fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.RunID, runID))
 		}
 	}
 	return nil

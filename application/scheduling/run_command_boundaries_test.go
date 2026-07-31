@@ -141,6 +141,12 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			if !errors.Is(err, transactionFailure) || result != (RunCommandResult{}) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
+			if !fault.IsCode(err, CodeSchedulingAdapterUnavailable) {
+				t.Fatalf("error = %v, want code %s", err, CodeSchedulingAdapterUnavailable)
+			}
+			if strings.Contains(err.Error(), "transaction unavailable") {
+				t.Fatalf("public error leaked adapter detail: %v", err)
+			}
 			if len(store.calls) != 1 {
 				t.Fatalf("store calls = %v", store.calls)
 			}
@@ -261,8 +267,16 @@ func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *te
 			if err == nil || !reflect.DeepEqual(result, ReorderQueueResult{}) || store.calls != 1 {
 				t.Fatalf("ReorderQueue() = (%#v, %v), calls = %d", result, err, store.calls)
 			}
-			if test.err != nil && !errors.Is(err, test.err) {
-				t.Fatalf("ReorderQueue() error = %v, want dependency error", err)
+			if test.err != nil {
+				if !errors.Is(err, test.err) {
+					t.Fatalf("ReorderQueue() error = %v, want dependency error", err)
+				}
+				if !fault.IsCode(err, CodeSchedulingAdapterUnavailable) {
+					t.Fatalf("ReorderQueue() error = %v, want code %s", err, CodeSchedulingAdapterUnavailable)
+				}
+				if strings.Contains(err.Error(), "queue transaction failed") {
+					t.Fatalf("public error leaked adapter detail: %v", err)
+				}
 			}
 			if test.err == nil && !fault.IsCode(err, CodeInstanceAdapterContractViolation) {
 				t.Fatalf("ReorderQueue() malformed-result error = %v", err)

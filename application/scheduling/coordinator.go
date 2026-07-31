@@ -3,7 +3,6 @@ package scheduling
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"time"
 
@@ -16,7 +15,30 @@ const claimReleaseTimeout = 5 * time.Second
 const (
 	CodeSchedulingDependencyRequired fault.Code = "EXECUTION_SCHEDULING_DEPENDENCY_REQUIRED"
 	CodeSchedulingClaimInvalid       fault.Code = "EXECUTION_SCHEDULING_CLAIM_INVALID"
+	// CodeSchedulingAdapterUnavailable covers every claim/release/state/decision
+	// port failure below: the host adapter, not the caller, needs to become
+	// reachable again, so the remediation is retry rather than a different
+	// argument.
+	CodeSchedulingAdapterUnavailable fault.Code = "EXECUTION_SCHEDULING_ADAPTER_UNAVAILABLE"
 )
+
+// classifySchedulingAdapterFailure gives a bare scheduling port failure its
+// registered code, and lets an already-classified failure (for example
+// DecideAdvance's own EXECUTION_ENTRY_STATES_INVALID) through unchanged so this
+// boundary never buries a code a dependency already produced.
+func classifySchedulingAdapterFailure(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(cause, fault.Unavailable, CodeSchedulingAdapterUnavailable, "scheduling adapter is unavailable")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func schedulingClaimInvalidError() error {
 	err, constructionErr := fault.New(
@@ -92,7 +114,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 	}
 	claim, found, err := c.claims.ClaimNext(ctx, workerID, occurredAt)
 	if err != nil {
-		return false, fmt.Errorf("claim next run: %w", err)
+		return false, classifySchedulingAdapterFailure(err)
 	}
 	if !found {
 		return false, nil
@@ -101,7 +123,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 		releaseContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), claimReleaseTimeout)
 		defer cancel()
 		if err := c.claims.Release(releaseContext, claim); err != nil {
-			resultErr = errors.Join(resultErr, fmt.Errorf("release run claim: %w", err))
+			resultErr = errors.Join(resultErr, classifySchedulingAdapterFailure(err))
 		}
 	}()
 	if claim.Fence.Validate() != nil || claim.Fence.RunID != claim.Snapshot.RunID() || claim.Snapshot.Digest() == "" {
@@ -109,7 +131,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 	}
 	states, err := c.states.LoadEntryStates(ctx, claim)
 	if err != nil {
-		return true, fmt.Errorf("load entry states: %w", err)
+		return true, classifySchedulingAdapterFailure(err)
 	}
 	decision, err := DecideAdvance(claim.Snapshot, states)
 	if err != nil {
@@ -121,7 +143,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 	}
 	applied, err := c.writer.ApplyDecision(ctx, claim, decision, occurredAt)
 	if err != nil {
-		return true, fmt.Errorf("apply scheduling decision: %w", err)
+		return true, classifySchedulingAdapterFailure(err)
 	}
 	if !applied.Applied || applied.Fence != claim.Fence {
 		return true, execution.NewStaleWorkerFenceError()

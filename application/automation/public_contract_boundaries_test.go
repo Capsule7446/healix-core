@@ -156,6 +156,30 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 	}
 }
 
+// requireSamplingPublicationAuthorityRejection asserts the boundary split for
+// MapSamplingPublication's own uncoded checks: the host switches on
+// CodeSamplingPublicationAuthorityInvalid, and the identity-bearing detail
+// (temporary/formal element target ids) survives only on the private cause.
+func requireSamplingPublicationAuthorityRejection(t *testing.T, err error, wantDetail string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("an invalid sampling publication authority was accepted")
+	}
+	if !fault.IsCode(err, CodeSamplingPublicationAuthorityInvalid) {
+		t.Fatalf("error = %v, want code %s", err, CodeSamplingPublicationAuthorityInvalid)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Kind() != fault.InvalidArgument {
+		t.Fatalf("descriptor = %#v (ok=%v)", descriptor, ok)
+	}
+	if strings.Contains(descriptor.Message(), wantDetail) {
+		t.Fatalf("public message %q carries the detail %q", descriptor.Message(), wantDetail)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), wantDetail) {
+		t.Fatalf("private cause = %v, want it to retain %q", cause, wantDetail)
+	}
+}
+
 func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testing.T) {
 	newRequest := func() SamplingPublicationRequest {
 		return SamplingPublicationRequest{
@@ -177,18 +201,41 @@ func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testi
 		{name: "duplicate formal version", mutate: func(request *SamplingPublicationRequest) {
 			request.Nodes = append(request.Nodes, SamplingNodeAuthority{TemporaryElementTargetID: "other", ElementTargetID: "other", ElementTargetVersionID: "node-v1"})
 		}, want: "duplicate formal sampling node version"},
-		{name: "unmapped step reference", mutate: func(request *SamplingPublicationRequest) {
-			request.Workspace.Steps[0].Children[0].ElementTargetID = "unknown-temporary-node"
-		}, want: string(sampling.CodePublicationMappingInvalid)},
-		{name: "invalid workflow", mutate: func(request *SamplingPublicationRequest) { request.Workspace.DisplayName = "" }, want: "build sampled workflow"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := newRequest()
 			test.mutate(&request)
-			if _, err := MapSamplingPublication(request); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("MapSamplingPublication() error = %v, want %q", err, test.want)
-			}
+			_, err := MapSamplingPublication(request)
+			requireSamplingPublicationAuthorityRejection(t, err, test.want)
 		})
 	}
+
+	t.Run("unmapped step reference", func(t *testing.T) {
+		request := newRequest()
+		request.Workspace.Steps[0].Children[0].ElementTargetID = "unknown-temporary-node"
+		// RewriteUnpublishedElementTargetReferences already returns its own coded
+		// fault; MapSamplingPublication's boundary classifier must pass it through
+		// unchanged rather than burying it under CodeSamplingPublicationAuthorityInvalid.
+		_, err := MapSamplingPublication(request)
+		if err == nil || !fault.IsCode(err, sampling.CodePublicationMappingInvalid) {
+			t.Fatalf("MapSamplingPublication() error = %v, want code %s", err, sampling.CodePublicationMappingInvalid)
+		}
+	})
+
+	// domainautomation.NewFlowFragment's own errors are classified at its own
+	// package boundary by a parallel migration, so this only asserts that SOME
+	// fault code crosses MapSamplingPublication — never a specific one, since
+	// which code that is depends on work outside this package.
+	t.Run("invalid workflow", func(t *testing.T) {
+		request := newRequest()
+		request.Workspace.DisplayName = ""
+		_, err := MapSamplingPublication(request)
+		if err == nil {
+			t.Fatal("an invalid sampled workflow was accepted")
+		}
+		if _, ok := fault.CodeOf(err); !ok {
+			t.Fatalf("MapSamplingPublication() error = %v, want it to carry some fault code", err)
+		}
+	})
 }

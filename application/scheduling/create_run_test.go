@@ -1063,7 +1063,7 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 		wantCode  fault.Code
 	}{
 		{"invalid command", func() CreateRunCommand { value := base; value.RunID = " bad"; return value }(), func(*createRunFake) {}, nil, CodeCreateInstanceCommandInvalid},
-		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil, ""},
+		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil, CodeSchedulingAdapterUnavailable},
 		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil, ""},
 		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil, ""},
 		{"catalog graph", base, func(f *createRunFake) {
@@ -1086,6 +1086,15 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), test.command)
 			if err == nil || (test.target != nil && !errors.Is(err, test.target)) || (test.wantCode != "" && !fault.IsCode(err, test.wantCode)) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result=%#v err=%v", result, err)
+			}
+			if test.wantCode == CodeSchedulingAdapterUnavailable {
+				descriptor, ok := fault.Describe(err)
+				if !ok || strings.Contains(descriptor.Message(), "read failed") {
+					t.Fatalf("public message = %#v (ok=%v), must not carry the adapter detail", descriptor, ok)
+				}
+				if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "read failed") {
+					t.Fatalf("private cause = %v, want it to retain the adapter detail", cause)
+				}
 			}
 		})
 	}
