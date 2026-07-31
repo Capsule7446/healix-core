@@ -63,6 +63,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
 | `AUTOMATION_AGGREGATE_DELETED` | `FAILED_PRECONDITION` | `automation aggregate has been deleted` | none | Mutations require a restored aggregate; no aggregate identity is exposed. |
 | `AUTOMATION_VERSION_NUMBER_EXHAUSTED` | `RESOURCE_EXHAUSTED` | `automation version number capacity is exhausted` | none | Publishing cannot continue until version capacity is remediated. |
+| `AUTOMATION_PERSISTED_VERSION_NUMBER_INVALID` | `FAILED_PRECONDITION` | `persisted version number must be positive` | none | Reject corrupt persisted version state before deriving the next version; version identities and values remain private. |
 | `AUTOMATION_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `automation service is not configured` | none | The caller must provide valid service dependencies; no dependency identity is exposed. |
 | `AUTOMATION_HEAL_CANDIDATE_STALE_BASE` | `CONFLICT` | `heal candidate base version is no longer current` | none | Refresh the candidate and current element target before retrying; no candidate/version identifiers are exposed. |
 | `AUTOMATION_REVISION_CONFLICT` | `CONFLICT` | `automation revision conflicts with current state` | none | Re-read authoritative automation state before retrying; aggregate identities and revision values remain private. |

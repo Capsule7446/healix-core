@@ -3,12 +3,17 @@ package automation
 import "github.com/Capsule7446/healix-core/domain/fault"
 
 const (
-	CodePersistedRevisionInvalid fault.Code = "AUTOMATION_PERSISTED_REVISION_INVALID"
-	CodeRevisionExhausted        fault.Code = "AUTOMATION_REVISION_EXHAUSTED"
+	CodePersistedRevisionInvalid      fault.Code = "AUTOMATION_PERSISTED_REVISION_INVALID"
+	CodeRevisionExhausted             fault.Code = "AUTOMATION_REVISION_EXHAUSTED"
+	CodePersistedVersionNumberInvalid fault.Code = "AUTOMATION_PERSISTED_VERSION_NUMBER_INVALID"
 )
 
 func persistedRevisionInvalidError() error {
 	return mustAutomationFault(fault.FailedPrecondition, CodePersistedRevisionInvalid, "persisted revision must be non-zero")
+}
+
+func persistedVersionNumberInvalidError() error {
+	return mustAutomationFault(fault.FailedPrecondition, CodePersistedVersionNumberInvalid, "persisted version number must be positive")
 }
 
 func revisionExhaustedError() error {

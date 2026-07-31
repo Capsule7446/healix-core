@@ -34,7 +34,7 @@ func NextVersionNumber(existing []VersionMeta) (int, error) {
 	maximum := 0
 	for _, version := range existing {
 		if version.VersionNumber <= 0 {
-			return 0, fmt.Errorf("persisted version %q requires a positive version number", version.ID)
+			return 0, persistedVersionNumberInvalidError()
 		}
 		if version.VersionNumber > maximum {
 			maximum = version.VersionNumber

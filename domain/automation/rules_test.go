@@ -3,8 +3,10 @@ package automation
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -72,9 +74,12 @@ func TestVersionRulesIncludeDeletedVersions(t *testing.T) {
 	if id, ok := ResolveCurrentVersion(versions); !ok || id != "v1" {
 		t.Fatalf("ResolveCurrentVersion() = %q, %v; want v1, true", id, ok)
 	}
-	for _, invalid := range []int{0, -1} {
-		if _, err := NextVersionNumber([]VersionMeta{{ID: "invalid", VersionNumber: invalid}}); err == nil {
-			t.Fatalf("invalid version number %d was accepted", invalid)
+	for _, invalid := range []int{0, -1, math.MinInt} {
+		versionID := "version-secret"
+		_, err := NextVersionNumber([]VersionMeta{{ID: versionID, VersionNumber: invalid}})
+		descriptor, ok := fault.Describe(err)
+		if !fault.IsCode(err, CodePersistedVersionNumberInvalid) || !ok || descriptor.Code() != CodePersistedVersionNumberInvalid || descriptor.Kind() != fault.FailedPrecondition || descriptor.Message() != "persisted version number must be positive" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || strings.Contains(err.Error(), versionID) {
+			t.Fatalf("invalid version number %d error/descriptor = %v/%#v", invalid, err, descriptor)
 		}
 	}
 	versions[0].DeletedAt = 11
