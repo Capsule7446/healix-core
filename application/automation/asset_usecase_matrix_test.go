@@ -148,7 +148,7 @@ func TestEnvironmentTransitionUseCasesRejectDomainNoOpsBeforePersist(t *testing.
 		invoke  func(EnvironmentService, domain.Revision) error
 		want    string
 	}{
-		{name: "update deleted", current: deleted, want: domain.ErrDeletedAggregate.Error(), invoke: func(service EnvironmentService, revision domain.Revision) error {
+		{name: "update deleted", current: deleted, want: domain.DeletedAggregateError().Error(), invoke: func(service EnvironmentService, revision domain.Revision) error {
 			_, err := service.Update(context.Background(), "environment", "Updated", "https://updated.test", domain.EnvironmentVariables{}, revision, 3)
 			return err
 		}},

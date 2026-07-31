@@ -3,11 +3,25 @@ package automation
 import (
 	"errors"
 	"fmt"
-	"github.com/Capsule7446/healix-core/domain/parameter"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-var ErrDeletedAggregate = errors.New("deleted aggregate cannot be mutated")
+const CodeDeletedAggregate fault.Code = "AUTOMATION_AGGREGATE_DELETED"
+
+func DeletedAggregateError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeDeletedAggregate,
+		"automation aggregate has been deleted",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func validateTransitionTime(at, updatedAt int64) error {
 	if at <= 0 {
@@ -33,7 +47,7 @@ func NewEnvironment(value Environment) (Environment, error) {
 
 func (e Environment) UpdateMetadata(displayName, baseURL string, variables EnvironmentVariables, at int64) (Environment, error) {
 	if e.DeletedAt != 0 {
-		return Environment{}, ErrDeletedAggregate
+		return Environment{}, DeletedAggregateError()
 	}
 	if err := validateTransitionTime(at, e.UpdatedAt); err != nil {
 		return Environment{}, err
@@ -101,7 +115,7 @@ func NewElementTarget(node ElementTarget, initial ElementTargetVersion) (Element
 
 func (a ElementTargetAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (ElementTargetAggregate, error) {
 	if a.ElementTarget.DeletedAt != 0 {
-		return ElementTargetAggregate{}, ErrDeletedAggregate
+		return ElementTargetAggregate{}, DeletedAggregateError()
 	}
 	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
 		return ElementTargetAggregate{}, err
@@ -167,7 +181,7 @@ func NewFlowFragment(workflow FlowFragment, initial FlowFragmentVersion) (FlowFr
 }
 func (a FlowFragmentAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (FlowFragmentAggregate, error) {
 	if a.FlowFragment.DeletedAt != 0 {
-		return FlowFragmentAggregate{}, ErrDeletedAggregate
+		return FlowFragmentAggregate{}, DeletedAggregateError()
 	}
 	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
 		return FlowFragmentAggregate{}, err
@@ -222,7 +236,7 @@ func (a ExecutionFlowAggregate) PublishVersion(publication ExecutionFlowVersionP
 		return ExecutionFlowAggregate{}, err
 	}
 	if a.Task.DeletedAt != 0 {
-		return ExecutionFlowAggregate{}, ErrDeletedAggregate
+		return ExecutionFlowAggregate{}, DeletedAggregateError()
 	}
 	if strings.TrimSpace(publication.ID) == "" || publication.CreatedAt <= 0 || publication.CreatedAt < a.Task.UpdatedAt {
 		return ExecutionFlowAggregate{}, errors.New("test task publication requires a new version identity and monotonic timestamp")

@@ -236,7 +236,7 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 	}
 	deletedEnvironment := createdEnvironment
 	deletedEnvironment.DeletedAt = 2
-	if _, err := deletedEnvironment.UpdateMetadata("Environment", "", EnvironmentVariables{}, 3); !errors.Is(err, ErrDeletedAggregate) {
+	if _, err := deletedEnvironment.UpdateMetadata("Environment", "", EnvironmentVariables{}, 3); !errors.Is(err, DeletedAggregateError()) {
 		t.Fatalf("deleted environment update error = %v", err)
 	}
 	for _, test := range []struct {
@@ -305,7 +305,7 @@ func TestLifecyclePublicMethodsRejectSingleFactorFailures(t *testing.T) {
 	}
 	deletedWorkflow := workflow
 	deletedWorkflow.FlowFragment.DeletedAt = 2
-	if _, err := deletedWorkflow.UpdateMetadata("FlowFragment", "", Properties{}, 3); !errors.Is(err, ErrDeletedAggregate) {
+	if _, err := deletedWorkflow.UpdateMetadata("FlowFragment", "", Properties{}, 3); !errors.Is(err, DeletedAggregateError()) {
 		t.Fatalf("deleted workflow update error = %v", err)
 	}
 	for _, test := range []struct {

@@ -1,10 +1,12 @@
 package automation
 
 import (
-	"github.com/Capsule7446/healix-core/domain/parameter"
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
@@ -163,7 +165,7 @@ func TestNodeLifecycleRejectsInvalidTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := deleted.UpdateMetadata("node", "", Properties{}, 4); err != ErrDeletedAggregate {
+	if _, err := deleted.UpdateMetadata("node", "", Properties{}, 4); !fault.IsCode(err, CodeDeletedAggregate) {
 		t.Fatalf("deleted update error = %v", err)
 	}
 	if _, err := deleted.Delete(4); err == nil {

@@ -192,7 +192,7 @@ func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at 
 		return errors.New("node current version pointer is inconsistent")
 	}
 	if a.ElementTarget.DeletedAt != 0 {
-		return ErrDeletedAggregate
+		return DeletedAggregateError()
 	}
 	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
 		return err
@@ -208,7 +208,7 @@ func validateWorkflowPublicationBase(a FlowFragmentAggregate, versionID string, 
 		return errors.New("workflow current version pointer is inconsistent")
 	}
 	if a.FlowFragment.DeletedAt != 0 {
-		return ErrDeletedAggregate
+		return DeletedAggregateError()
 	}
 	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
 		return err
