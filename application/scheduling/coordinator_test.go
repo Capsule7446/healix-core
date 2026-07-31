@@ -106,17 +106,31 @@ func TestCoordinatorDoesNotWriteWithoutClaimOrAdvance(t *testing.T) {
 	}
 }
 
+func TestSchedulingClaimInvalidErrorExposesSafeStableContract(t *testing.T) {
+	err := schedulingClaimInvalidError()
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeSchedulingClaimInvalid || descriptor.Kind() != fault.FailedPrecondition || descriptor.Message() != "scheduling claim is invalid" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+		t.Fatalf("descriptor = %#v, ok = %v", descriptor, ok)
+	}
+	for _, sensitive := range []string{"run-sensitive-id", "claim-sensitive-token", "sha256:secret"} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("public error leaked %q: %q", sensitive, err.Error())
+		}
+	}
+}
+
 func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
 	failure := errors.New("port failure")
 	tests := []struct {
-		name   string
-		claims fakeClaimSource
-		states fakeStateReader
-		writer *recordingDecisionWriter
-		want   error
+		name     string
+		claims   fakeClaimSource
+		states   fakeStateReader
+		writer   *recordingDecisionWriter
+		wantCode fault.Code
+		want     error
 	}{
-		{name: "missing token", claims: fakeClaimSource{claim: Claim{Snapshot: plan}, found: true}, writer: &recordingDecisionWriter{}, want: ErrInvalidClaim},
+		{name: "missing token", claims: fakeClaimSource{claim: Claim{Snapshot: plan}, found: true}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingClaimInvalid},
 		{name: "claim failure", claims: fakeClaimSource{err: failure}, writer: &recordingDecisionWriter{}, want: failure},
 		{name: "state failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{err: failure}, writer: &recordingDecisionWriter{}, want: failure},
 		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer: &recordingDecisionWriter{err: failure}, want: failure},
@@ -125,10 +139,34 @@ func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			coordinator := NewCoordinator(test.claims, test.states, test.writer)
 			_, err := coordinator.ProcessNext(context.Background(), "worker", 10)
-			if !errors.Is(err, test.want) {
+			if test.wantCode != "" && !fault.IsCode(err, test.wantCode) {
+				t.Fatalf("error = %v, want code %v", err, test.wantCode)
+			}
+			if test.want != nil && !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+func TestCoordinatorReleasesInvalidClaimAndJoinsReleaseFailure(t *testing.T) {
+	plan := sealedCoordinatorPlan(t)
+	releaseFailure := errors.New("release failed")
+	released := 0
+	coordinator := NewCoordinator(
+		fakeClaimSource{
+			claim:      Claim{Snapshot: plan},
+			found:      true,
+			releaseErr: releaseFailure,
+			released:   &released,
+		},
+		fakeStateReader{},
+		&recordingDecisionWriter{},
+	)
+
+	claimed, err := coordinator.ProcessNext(context.Background(), "worker", 10)
+	if !claimed || released != 1 || !fault.IsCode(err, CodeSchedulingClaimInvalid) || !errors.Is(err, releaseFailure) {
+		t.Fatalf("claimed/released/error = %v/%d/%v", claimed, released, err)
 	}
 }
 

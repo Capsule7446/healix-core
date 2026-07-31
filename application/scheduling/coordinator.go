@@ -13,9 +13,22 @@ import (
 
 const claimReleaseTimeout = 5 * time.Second
 
-var ErrInvalidClaim = errors.New("invalid scheduling claim")
+const (
+	CodeSchedulingDependencyRequired fault.Code = "EXECUTION_SCHEDULING_DEPENDENCY_REQUIRED"
+	CodeSchedulingClaimInvalid       fault.Code = "EXECUTION_SCHEDULING_CLAIM_INVALID"
+)
 
-const CodeSchedulingDependencyRequired fault.Code = "EXECUTION_SCHEDULING_DEPENDENCY_REQUIRED"
+func schedulingClaimInvalidError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeSchedulingClaimInvalid,
+		"scheduling claim is invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func schedulingDependencyRequiredError() error {
 	err, constructionErr := fault.New(fault.FailedPrecondition, CodeSchedulingDependencyRequired, "execution scheduling dependency is required")
@@ -92,7 +105,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 		}
 	}()
 	if claim.Fence.Validate() != nil || claim.Fence.RunID != claim.Snapshot.RunID() || claim.Snapshot.Digest() == "" {
-		return true, ErrInvalidClaim
+		return true, schedulingClaimInvalidError()
 	}
 	states, err := c.states.LoadEntryStates(ctx, claim)
 	if err != nil {
