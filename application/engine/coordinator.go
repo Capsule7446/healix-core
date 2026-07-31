@@ -6,13 +6,30 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
-var (
-	ErrTimelineConfiguration   = errors.New("engine: invalid timeline configuration")
-	ErrCompletionConfiguration = errors.New("engine: invalid completion configuration")
+const (
+	CodeTimelineConfigurationInvalid   fault.Code = "EXECUTION_TIMELINE_CONFIGURATION_INVALID"
+	CodeCompletionConfigurationInvalid fault.Code = "EXECUTION_COMPLETION_CONFIGURATION_INVALID"
 )
+
+func timelineConfigurationError() error {
+	err, constructionErr := fault.New(fault.FailedPrecondition, CodeTimelineConfigurationInvalid, "execution timeline configuration is invalid")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func completionConfigurationError() error {
+	err, constructionErr := fault.New(fault.FailedPrecondition, CodeCompletionConfigurationInvalid, "execution completion configuration is invalid")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func runProgram(ctx context.Context, program node.Program, cfg Config) (result RunResult, runErr error) {
 	result = RunResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
@@ -47,7 +64,7 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result R
 	if cfg.StepTimeline != nil {
 		if timeline == nil {
 			result.TimelineOutcome = TimelineStartFailed
-			return result, fmt.Errorf("%w: recorder returned nil timeline", ErrTimelineConfiguration)
+			return result, timelineConfigurationError()
 		}
 		result.TimelineOutcome = TimelineComplete
 	}
@@ -84,10 +101,10 @@ func validateConfig(program node.Program, cfg Config) error {
 		return fmt.Errorf("program root is required")
 	}
 	if cfg.StepTimeline != nil && cfg.Recorder == nil {
-		return fmt.Errorf("%w: recorder is required when step timeline is enabled", ErrTimelineConfiguration)
+		return timelineConfigurationError()
 	}
 	if cfg.CompletionChain.HasHandlers() && cfg.ReadOnlyBrowser == nil {
-		return fmt.Errorf("%w: read-only browser is required when completion handlers are enabled", ErrCompletionConfiguration)
+		return completionConfigurationError()
 	}
 	return nil
 }

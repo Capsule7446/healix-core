@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
@@ -101,7 +102,7 @@ func TestRunProgramRejectsTimelineWithoutRecorder(t *testing.T) {
 	result, err := runProgramForTest(context.Background(), compiledEntry("run", node.Program{Root: root}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, StepTimeline: &resultTimelineSink{},
 	})
-	if !errors.Is(err, ErrTimelineConfiguration) {
+	if !fault.IsCode(err, CodeTimelineConfigurationInvalid) {
 		t.Fatalf("error = %v, want timeline configuration error", err)
 	}
 	if root.runs != 0 || result.ExecutionOutcome != ExecutionNotStarted {
@@ -141,7 +142,7 @@ func TestRunProgramRejectsNilRecorderTimelineBeforeExecution(t *testing.T) {
 	result, err := runProgramForTest(context.Background(), compiledEntry("run", node.Program{Root: root}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, Recorder: recorder, StepTimeline: &resultTimelineSink{},
 	})
-	if !errors.Is(err, ErrTimelineConfiguration) || !strings.Contains(err.Error(), "nil timeline") {
+	if !fault.IsCode(err, CodeTimelineConfigurationInvalid) || strings.Contains(err.Error(), "nil timeline") {
 		t.Fatalf("error = %v, want nil timeline configuration error", err)
 	}
 	if root.runs != 0 || !recorder.stopped || !recorder.retained {
@@ -193,7 +194,7 @@ func TestRunProgramClassifiesMissingCompletionBrowser(t *testing.T) {
 	result, err := runProgramForTest(context.Background(), compiledEntry("run", node.Program{Root: root}), Config{
 		RunID: "run", Driver: &engineTestDriver{}, CompletionChain: chain,
 	})
-	if !errors.Is(err, ErrCompletionConfiguration) {
+	if !fault.IsCode(err, CodeCompletionConfigurationInvalid) {
 		t.Fatalf("error = %v, want completion configuration error", err)
 	}
 	if root.runs != 0 || result.ExecutionOutcome != ExecutionNotStarted {

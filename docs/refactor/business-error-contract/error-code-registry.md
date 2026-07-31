@@ -27,6 +27,8 @@ This registry defines the stable public error-code contract. A code is immutable
 | `EXECUTION_FACT_COMMITTER_REQUIRED` | `FAILED_PRECONDITION` | `execution fact committer is required` | none | The caller must provide both transaction and governance dependencies. |
 | `EXECUTION_AUTHORITY_VERIFIER_REQUIRED` | `FAILED_PRECONDITION` | `execution authority verifier is required` | none | Execution requires an authority verifier before it can run side effects. |
 | `EXECUTION_IDENTITY_MISMATCH` | `FAILED_PRECONDITION` | `execution identity does not match the sealed entry` | none | Rebuild execution configuration from the authoritative sealed entry; no identity/token values are exposed. |
+| `EXECUTION_TIMELINE_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `execution timeline configuration is invalid` | none | Provide a recorder and a non-nil recorder timeline when step timeline recording is enabled. |
+| `EXECUTION_COMPLETION_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `execution completion configuration is invalid` | none | Provide a read-only browser before enabling completion handlers. |
 
 ## Automation
 
