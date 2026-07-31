@@ -56,7 +56,11 @@ sequenceDiagram
 ```
 
 ## 失败
-未知 selector/framework/evidence 类型、空值、非法 priority/confidence、畸形 URL/origin/UUID、无 selector 或 detector 返回无效结果会失败。Detector 错误原样形成调用失败；领域不重试或降级伪造结果。
+未知 selector/framework/evidence 类型、空值、非法 priority/confidence、畸形 URL/origin/UUID、无 selector 或 detector 返回无效结果会失败。领域不重试或降级伪造结果。
+
+失败一律以注册的 `FINGERPRINT_*` fault 形式返回，共 5 个 code（见 `docs/refactor/business-error-contract/error-code-registry.md`）。多字段校验产出**一个**顶层 fault，携带有序 `fault.Violation`：字段路径是逻辑路径（集合下标 0 基），原因走共享内核的 `VALIDATION_FIELD_*` 词表。子校验失败降级为父 fault 的 violation，**不产出嵌套 fault**，故宿主无需递归解包即可分类。
+
+被拒的 selector 值、UUID、framework/evidence 取值一律不进公共文本 —— 闭集之外的取值按定义就是任意调用方输入。Detector 错误**不再原样外传**：宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED`（`INTERNAL`）上，经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。
 
 ## 并发、安全与资源
 模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone` 提供浅值复制，Fingerprint map/path 的深拷贝由聚合边界负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正注入安全由 Driver 适配器负责。当前没有显式 selector/attribute/path 数量上限；执行 `Seal` 对计划聚合输入设限。

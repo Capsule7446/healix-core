@@ -1,7 +1,6 @@
 package fingerprint
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
@@ -58,17 +57,18 @@ func TestNodeSpecValidateInvariantMatrix(t *testing.T) {
 			Fingerprint: Fingerprint{Tag: "button", Attributes: map[string]string{}, SiblingIndex: 0}}
 	}
 	tests := []struct {
-		name   string
-		mutate func(*ElementTargetSpec)
-		want   string
+		name      string
+		mutate    func(*ElementTargetSpec)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "bad uuid", mutate: func(spec *ElementTargetSpec) { spec.UUID = "bad" }, want: "canonical UUID"},
-		{name: "blank id", mutate: func(spec *ElementTargetSpec) { spec.ID = "  " }, want: "id is required"},
-		{name: "no selectors", mutate: func(spec *ElementTargetSpec) { spec.Selectors = nil }, want: "at least 1"},
-		{name: "bad selector", mutate: func(spec *ElementTargetSpec) { spec.Selectors[0].Priority = -1 }, want: "selectors[0]"},
-		{name: "blank tag", mutate: func(spec *ElementTargetSpec) { spec.Fingerprint.Tag = " " }, want: "tag is required"},
-		{name: "nil attributes", mutate: func(spec *ElementTargetSpec) { spec.Fingerprint.Attributes = nil }, want: "attributes is required"},
-		{name: "negative sibling", mutate: func(spec *ElementTargetSpec) { spec.Fingerprint.SiblingIndex = -1 }, want: "sibling_index"},
+		{name: "bad uuid", mutate: func(spec *ElementTargetSpec) { spec.UUID = "bad" }, wantCode: fault.CodeFieldInvalid, wantField: "uuid"},
+		{name: "blank id", mutate: func(spec *ElementTargetSpec) { spec.ID = "  " }, wantCode: fault.CodeFieldRequired, wantField: "id"},
+		{name: "no selectors", mutate: func(spec *ElementTargetSpec) { spec.Selectors = nil }, wantCode: fault.CodeFieldRequired, wantField: "selectors"},
+		{name: "bad selector", mutate: func(spec *ElementTargetSpec) { spec.Selectors[0].Priority = -1 }, wantCode: fault.CodeFieldInvalid, wantField: "selectors.0"},
+		{name: "blank tag", mutate: func(spec *ElementTargetSpec) { spec.Fingerprint.Tag = " " }, wantCode: fault.CodeFieldRequired, wantField: "fingerprint.tag"},
+		{name: "nil attributes", mutate: func(spec *ElementTargetSpec) { spec.Fingerprint.Attributes = nil }, wantCode: fault.CodeFieldRequired, wantField: "fingerprint.attributes"},
+		{name: "negative sibling", mutate: func(spec *ElementTargetSpec) { spec.Fingerprint.SiblingIndex = -1 }, wantCode: fault.CodeFieldInvalid, wantField: "fingerprint.siblingIndex"},
 	}
 	if err := valid().Validate(); err != nil {
 		t.Fatalf("valid spec: %v", err)
@@ -77,9 +77,7 @@ func TestNodeSpecValidateInvariantMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			spec := valid()
 			test.mutate(&spec)
-			if err := spec.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error=%v want containing %q", err, test.want)
-			}
+			requireViolation(t, spec.Validate(), CodeElementTargetSpecInvalid, test.wantCode, test.wantField)
 		})
 	}
 }

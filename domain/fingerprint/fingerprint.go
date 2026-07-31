@@ -3,22 +3,11 @@ package fingerprint
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
-
-const CodeSelectorInvalid fault.Code = "FINGERPRINT_SELECTOR_INVALID"
-
-func newFingerprintFault(code fault.Code, message string) error {
-	err, constructionErr := fault.New(fault.InvalidArgument, code, message)
-	if constructionErr != nil {
-		panic(constructionErr)
-	}
-	return err
-}
 
 // SelectorType 是一种定位策略，按 Playwright 推荐的稳定性阶梯排序
 // （role > testid > css > xpath/text）。
@@ -40,22 +29,20 @@ type Selector struct {
 	Priority int
 }
 
-// Validate 验证拒绝任何 Driver 适配器无法解析的选择器。
-func (s Selector) Validate() error {
-	var problems []string
-	switch s.Type {
+func (t SelectorType) isSupported() bool {
+	switch t {
 	case SelectorRole, SelectorTestID, SelectorCSS, SelectorXPath, SelectorText:
+		return true
 	default:
-		problems = append(problems, fmt.Sprintf("unsupported type %q", s.Type))
+		return false
 	}
-	if strings.TrimSpace(s.Value) == "" {
-		problems = append(problems, "value is required")
-	}
-	if s.Priority < 0 {
-		problems = append(problems, "priority must be >= 0")
-	}
-	if len(problems) != 0 {
-		return newFingerprintFault(CodeSelectorInvalid, "element selector is invalid")
+}
+
+// Validate 验证拒绝任何 Driver 适配器无法解析的选择器。
+// 选择器值是用户输入，任何失败细节都不得进入公共文本。
+func (s Selector) Validate() error {
+	if !s.Type.isSupported() || strings.TrimSpace(s.Value) == "" || s.Priority < 0 {
+		return selectorInvalidError()
 	}
 	return nil
 }
@@ -98,17 +85,29 @@ type Fingerprint struct {
 }
 
 // Validate enforces the shared identity invariants used by matching and healing.
+// It carries its own code rather than folding into the element target spec,
+// because domain/heal validates descriptors directly without going through a spec.
 func (f Fingerprint) Validate() error {
+	violations := f.appendViolations(nil, "")
+	if len(violations) != 0 {
+		return descriptorInvalidError(violations)
+	}
+	return nil
+}
+
+// appendViolations degrades framework failures into violations of the aggregate
+// that owns this descriptor, so no fault is ever nested inside another.
+func (f Fingerprint) appendViolations(violations []fault.Violation, prefix string) []fault.Violation {
 	if strings.TrimSpace(f.Tag) == "" {
-		return errors.New("fingerprint.tag is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, joinField(prefix, "tag"), "fingerprint tag is required"))
 	}
 	if f.Attributes == nil {
-		return errors.New("fingerprint.attributes is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, joinField(prefix, "attributes"), "fingerprint attributes are required"))
 	}
 	if f.SiblingIndex < 0 {
-		return errors.New("fingerprint.sibling_index must be >= 0")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "siblingIndex"), "fingerprint sibling index must not be negative"))
 	}
-	return f.Framework.Validate()
+	return f.Framework.appendViolations(violations, joinField(prefix, "framework"))
 }
 
 // 优先尝试选择器，只有全部选择器失败后才会用到指纹。
@@ -123,27 +122,26 @@ type ElementTargetSpec struct {
 }
 
 // Validate 验证保护所有配置源和 Driver 实现共享的最小身份和定位器不变量。
+// 子校验失败降级为本聚合的有序 Violation，不产出嵌套 fault、不拼接文本。
 func (s ElementTargetSpec) Validate() error {
-	var problems []string
+	var violations []fault.Violation
 	if s.UUID != "" && !validUUID(s.UUID) {
-		problems = append(problems, "uuid must be a canonical UUID")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "uuid", "uuid must be a canonical UUID"))
 	}
 	if strings.TrimSpace(s.ID) == "" {
-		problems = append(problems, "id is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "id", "id is required"))
 	}
 	if len(s.Selectors) == 0 {
-		problems = append(problems, "selectors must contain at least 1 item")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "selectors", "selectors must contain at least one entry"))
 	}
-	for i, selector := range s.Selectors {
-		if err := selector.Validate(); err != nil {
-			problems = append(problems, fmt.Sprintf("selectors[%d]: %v", i, err))
+	for index, selector := range s.Selectors {
+		if selector.Validate() != nil {
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, fmt.Sprintf("selectors.%d", index), "element selector is invalid"))
 		}
 	}
-	if err := s.Fingerprint.Validate(); err != nil {
-		problems = append(problems, err.Error())
-	}
-	if len(problems) != 0 {
-		return errors.New(strings.Join(problems, "; "))
+	violations = s.Fingerprint.appendViolations(violations, "fingerprint")
+	if len(violations) != 0 {
+		return elementTargetSpecInvalidError(violations)
 	}
 	return nil
 }

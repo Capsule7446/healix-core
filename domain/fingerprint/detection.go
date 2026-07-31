@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 // PageObservation is the safe browser-to-domain projection used for framework detection.
@@ -28,17 +30,21 @@ type FrameworkDetector interface {
 // DetectFrameworks runs detectors and returns a validated, deterministic stack.
 func DetectFrameworks(ctx context.Context, observation PageObservation, detectors []FrameworkDetector) (FrameworkStack, error) {
 	stack := make(FrameworkStack, 0)
-	for i, detector := range detectors {
+	for index, detector := range detectors {
 		if isNilDetector(detector) {
-			return nil, fmt.Errorf("framework detector[%d] is required", i)
+			return nil, frameworkStackInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldRequired, fmt.Sprintf("detectors.%d", index), "framework detector is required"),
+			})
 		}
 		matches, err := detector.Detect(ctx, observation)
 		if err != nil {
-			return nil, err
+			return nil, frameworkDetectorFailedError(err)
 		}
 		stack = append(stack, matchInfos(matches)...)
 	}
 	stack = mergeFrameworkStack(SortFrameworkStack(stack))
+	// stack.Validate already returns a classified fault; re-wrapping it here would
+	// force the host to unwrap recursively before it could classify the failure.
 	if err := stack.Validate(); err != nil {
 		return nil, err
 	}

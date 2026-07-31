@@ -64,13 +64,14 @@ func TestWorkflowSnapshotValidateRejectsMalformedExecutionContracts(t *testing.T
 func TestDraftValidateRejectsInvalidNodeSnapshots(t *testing.T) {
 	validNode := validNodeSnapshot("00000000-0000-0000-0000-000000000001", "node-v1")
 	tests := []struct {
-		name string
-		edit func(*NodeSnapshot)
-		want string
+		name      string
+		edit      func(*NodeSnapshot)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{"selector", func(node *NodeSnapshot) { node.Selectors[0].Value = " " }, "selectors[0]"},
-		{"fingerprint", func(node *NodeSnapshot) { node.Fingerprint.Tag = "" }, "fingerprint.tag"},
-		{"spec identity", func(node *NodeSnapshot) { node.ElementTargetID = "not-a-uuid" }, "uuid must be a canonical UUID"},
+		{"selector", func(node *NodeSnapshot) { node.Selectors[0].Value = " " }, fault.CodeFieldInvalid, "selectors.0"},
+		{"fingerprint", func(node *NodeSnapshot) { node.Fingerprint.Tag = "" }, fault.CodeFieldRequired, "fingerprint.tag"},
+		{"spec identity", func(node *NodeSnapshot) { node.ElementTargetID = "not-a-uuid" }, fault.CodeFieldInvalid, "uuid"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -78,8 +79,22 @@ func TestDraftValidateRejectsInvalidNodeSnapshots(t *testing.T) {
 			node.Selectors = append([]fingerprint.Selector(nil), validNode.Selectors...)
 			test.edit(&node)
 			draft := validDraftWithNodes(node)
-			if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
+			err := draft.Validate()
+			if !fault.IsCode(err, fingerprint.CodeElementTargetSpecInvalid) {
+				t.Fatalf("Validate() error = %v, want code %s", err, fingerprint.CodeElementTargetSpecInvalid)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok {
+				t.Fatalf("Validate() error is not a fault: %v", err)
+			}
+			found := false
+			for _, violation := range descriptor.Violations() {
+				if violation.Code() == test.wantCode && violation.Field() == test.wantField {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("Validate() violations = %#v, want %s at %q", descriptor.Violations(), test.wantCode, test.wantField)
 			}
 		})
 	}
