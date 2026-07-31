@@ -22,7 +22,9 @@ func (s EnvironmentService) Create(ctx context.Context, value domain.Environment
 	}
 	created, err := domain.NewEnvironment(value)
 	if err != nil {
-		return domain.Environment{}, fmt.Errorf("create environment: %w", err)
+		// The domain constructor already returns a registered code; wrapping it
+		// here would bury that code under an unclassified layer.
+		return domain.Environment{}, err
 	}
 	result, err := s.repository.Create(ctx, created)
 	if err != nil {

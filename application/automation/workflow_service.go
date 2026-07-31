@@ -20,7 +20,9 @@ func (s FlowFragmentService) Create(ctx context.Context, workflow domain.FlowFra
 	}
 	aggregate, err := domain.NewFlowFragment(workflow, initial)
 	if err != nil {
-		return domain.FlowFragmentAggregate{}, fmt.Errorf("create workflow: %w", err)
+		// The domain constructor already returns a registered code; wrapping it
+		// here would bury that code under an unclassified layer.
+		return domain.FlowFragmentAggregate{}, err
 	}
 	result, err := s.repository.Create(ctx, aggregate)
 	if err != nil {

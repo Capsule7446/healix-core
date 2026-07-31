@@ -12,6 +12,9 @@ import (
 )
 
 func TestPrimitiveAssetValidatorsRejectBusinessBoundaries(t *testing.T) {
+	// These four stay bare, internal Go errors: they are reachable only through
+	// an aggregate's own Validate, which degrades the failure into its own
+	// violation. Direct callers still get a stable substring.
 	tests := []struct {
 		name string
 		run  func() error
@@ -20,15 +23,6 @@ func TestPrimitiveAssetValidatorsRejectBusinessBoundaries(t *testing.T) {
 		{name: "blank property key", run: func() error { return Properties{" \t": "value"}.Validate() }, want: "property key"},
 		{name: "unknown version source", run: func() error { return VersionSource("UNKNOWN").Validate() }, want: "unsupported version source"},
 		{name: "unknown workflow version policy", run: func() error { return FlowFragmentVersionPolicy("UNKNOWN").Validate() }, want: "unsupported workflow version policy"},
-		{name: "non select options", run: func() error {
-			return (ParameterDefinition{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true, Options: []string{"forbidden"}}).Validate()
-		}, want: "cannot declare options"},
-		{name: "invalid parameter value", run: func() error {
-			return (ParameterDefinition{Type: parameter.Text}).ValidateValue(parameter.Value{})
-		}, want: string(parameter.CodeValueInvalid)},
-		{name: "unknown multi select option", run: func() error {
-			return (ParameterDefinition{Type: parameter.MultiSelect, Options: []string{"east"}}).ValidateValue(parameter.MultiSelectValue([]string{"west"}))
-		}, want: "unknown option"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -37,29 +31,45 @@ func TestPrimitiveAssetValidatorsRejectBusinessBoundaries(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("non select options", func(t *testing.T) {
+		err := (ParameterDefinition{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true, Options: []string{"forbidden"}}).Validate()
+		requireViolationOf(t, err, CodeFlowFragmentInvalid, fault.CodeFieldInvalid, "definition.options")
+	})
+	t.Run("invalid parameter value", func(t *testing.T) {
+		// A failing parameter.Value keeps its own PARAMETER_* code and passes
+		// through unwrapped rather than being restated.
+		err := (ParameterDefinition{Type: parameter.Text}).ValidateValue(parameter.Value{})
+		if !fault.IsCode(err, parameter.CodeValueInvalid) {
+			t.Fatalf("ValidateValue() error = %v, want code %s", err, parameter.CodeValueInvalid)
+		}
+	})
+	t.Run("unknown multi select option", func(t *testing.T) {
+		err := (ParameterDefinition{Type: parameter.MultiSelect, Options: []string{"east"}}).ValidateValue(parameter.MultiSelectValue([]string{"west"}))
+		requireViolationOf(t, err, CodeFlowFragmentInvalid, fault.CodeFieldInvalid, "value")
+	})
 }
 
 func TestNodeAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(*ElementTargetAggregate)
-		want   string
+		name      string
+		mutate    func(*ElementTargetAggregate)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "invalid properties", mutate: func(a *ElementTargetAggregate) { a.ElementTarget.Properties = Properties{" ": "value"} }, want: "property key"},
-		{name: "missing version id", mutate: func(a *ElementTargetAggregate) { a.Current.ID, a.ElementTarget.CurrentVersionID = "", "" }, want: "version id"},
-		{name: "version number below boundary", mutate: func(a *ElementTargetAggregate) { a.Current.VersionNumber = 0 }, want: "version number"},
-		{name: "invalid selector", mutate: func(a *ElementTargetAggregate) { a.Current.Selectors[0].Type = fingerprint.SelectorType("UNKNOWN") }, want: "selector 1"},
-		{name: "missing fingerprint tag", mutate: func(a *ElementTargetAggregate) { a.Current.Fingerprint.Tag = " " }, want: "fingerprint tag"},
-		{name: "nil fingerprint attributes", mutate: func(a *ElementTargetAggregate) { a.Current.Fingerprint.Attributes = nil }, want: "fingerprint attributes"},
-		{name: "unknown source", mutate: func(a *ElementTargetAggregate) { a.Current.Source = "UNKNOWN" }, want: "unsupported version source"},
+		{name: "invalid properties", mutate: func(a *ElementTargetAggregate) { a.ElementTarget.Properties = Properties{" ": "value"} }, wantCode: fault.CodeFieldInvalid, wantField: "properties"},
+		{name: "missing version id", mutate: func(a *ElementTargetAggregate) { a.Current.ID, a.ElementTarget.CurrentVersionID = "", "" }, wantCode: fault.CodeFieldRequired, wantField: "currentVersionId"},
+		{name: "version number below boundary", mutate: func(a *ElementTargetAggregate) { a.Current.VersionNumber = 0 }, wantCode: fault.CodeFieldInvalid, wantField: "current.versionNumber"},
+		{name: "invalid selector", mutate: func(a *ElementTargetAggregate) { a.Current.Selectors[0].Type = fingerprint.SelectorType("UNKNOWN") }, wantCode: fault.CodeFieldInvalid, wantField: "current.selectors.0"},
+		{name: "missing fingerprint tag", mutate: func(a *ElementTargetAggregate) { a.Current.Fingerprint.Tag = " " }, wantCode: fault.CodeFieldRequired, wantField: "current.fingerprint.tag"},
+		{name: "nil fingerprint attributes", mutate: func(a *ElementTargetAggregate) { a.Current.Fingerprint.Attributes = nil }, wantCode: fault.CodeFieldRequired, wantField: "current.fingerprint.attributes"},
+		{name: "unknown source", mutate: func(a *ElementTargetAggregate) { a.Current.Source = "UNKNOWN" }, wantCode: fault.CodeFieldInvalid, wantField: "current.source"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			value := versionedNodeAggregate()
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireViolationOf(t, value.Validate(), CodeElementTargetInvalid, test.wantCode, test.wantField)
 		})
 	}
 }
@@ -67,61 +77,59 @@ func TestNodeAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 func TestEnvironmentValidateSingleFactorRuleMatrix(t *testing.T) {
 	valid := Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: EnvironmentVariables{}}
 	tests := []struct {
-		name   string
-		mutate func(*Environment)
-		want   string
+		name      string
+		mutate    func(*Environment)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "missing id", mutate: func(e *Environment) { e.ID = " " }, want: "environment id"},
-		{name: "missing display name", mutate: func(e *Environment) { e.DisplayName = "\n" }, want: "display name"},
-		{name: "relative base url", mutate: func(e *Environment) { e.BaseURL = "/relative" }, want: "absolute HTTP"},
-		{name: "unsupported base url scheme", mutate: func(e *Environment) { e.BaseURL = "ftp://example.test" }, want: "HTTP or HTTPS"},
+		{name: "missing id", mutate: func(e *Environment) { e.ID = " " }, wantCode: fault.CodeFieldRequired, wantField: "id"},
+		{name: "missing display name", mutate: func(e *Environment) { e.DisplayName = "\n" }, wantCode: fault.CodeFieldRequired, wantField: "displayName"},
+		{name: "relative base url", mutate: func(e *Environment) { e.BaseURL = "/relative" }, wantCode: fault.CodeFieldInvalid, wantField: "baseUrl"},
+		{name: "unsupported base url scheme", mutate: func(e *Environment) { e.BaseURL = "ftp://example.test" }, wantCode: fault.CodeFieldInvalid, wantField: "baseUrl"},
 		{name: "invalid variables", mutate: func(e *Environment) {
 			e.Variables = EnvironmentVariables{" ": parameter.TextValue("value")}
-		}, want: "environment variable name"},
+		}, wantCode: fault.CodeFieldInvalid, wantField: "variables"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			value := valid
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireViolationOf(t, value.Validate(), CodeEnvironmentInvalid, test.wantCode, test.wantField)
 		})
 	}
 }
 
 func TestWorkflowAggregateValidateSingleFactorRuleMatrix(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(*FlowFragmentAggregate)
-		want   string
+		name      string
+		mutate    func(*FlowFragmentAggregate)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "missing workflow id", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.ID = " " }, want: "workflow id"},
-		{name: "missing display name", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.DisplayName = "\t" }, want: "display name"},
-		{name: "invalid properties", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.Properties = Properties{" ": "value"} }, want: "property key"},
-		{name: "version number below boundary", mutate: func(a *FlowFragmentAggregate) { a.Current.VersionNumber = 0 }, want: "version number"},
-		{name: "missing step identity", mutate: func(a *FlowFragmentAggregate) { a.Current.Definition.Steps[0].ID = " " }, want: "step id and display name"},
+		{name: "missing workflow id", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.ID = " " }, wantCode: fault.CodeFieldRequired, wantField: "id"},
+		{name: "missing display name", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.DisplayName = "\t" }, wantCode: fault.CodeFieldRequired, wantField: "displayName"},
+		{name: "invalid properties", mutate: func(a *FlowFragmentAggregate) { a.FlowFragment.Properties = Properties{" ": "value"} }, wantCode: fault.CodeFieldInvalid, wantField: "properties"},
+		{name: "version number below boundary", mutate: func(a *FlowFragmentAggregate) { a.Current.VersionNumber = 0 }, wantCode: fault.CodeFieldInvalid, wantField: "current.versionNumber"},
+		{name: "missing step identity", mutate: func(a *FlowFragmentAggregate) { a.Current.Definition.Steps[0].ID = " " }, wantCode: fault.CodeFieldRequired, wantField: "steps.identity"},
 		{name: "action carries validation", mutate: func(a *FlowFragmentAggregate) {
 			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "action", DisplayName: "Action", Kind: StepAction, Action: "navigate", Value: "https://example.test", Validation: &ValidationConfig{}}
-		}, want: "ACTION cannot carry validation"},
-		{name: "wait carries validation", mutate: func(a *FlowFragmentAggregate) { a.Current.Definition.Steps[0].Validation = &ValidationConfig{} }, want: "WAIT cannot carry validation"},
+		}, wantCode: fault.CodeFieldInvalid, wantField: "steps.action"},
+		{name: "wait carries validation", mutate: func(a *FlowFragmentAggregate) { a.Current.Definition.Steps[0].Validation = &ValidationConfig{} }, wantCode: fault.CodeFieldInvalid, wantField: "steps.wait"},
 		{name: "repeat carries validation", mutate: func(a *FlowFragmentAggregate) {
 			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Validation: &ValidationConfig{}, Children: []FlowFragmentStep{{ID: "child", DisplayName: "Child", Kind: StepAction, Action: "navigate", Value: "https://example.test"}}}
-		}, want: "REPEAT cannot carry validation"},
+		}, wantCode: fault.CodeFieldInvalid, wantField: "steps.repeat"},
 		{name: "reference carries validation", mutate: func(a *FlowFragmentAggregate) {
 			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "reference", DisplayName: "Reference", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", LatestPublished: true}, Validation: &ValidationConfig{}}
-		}, want: "WORKFLOW_REF cannot carry validation"},
+		}, wantCode: fault.CodeFieldInvalid, wantField: "steps.reference"},
 		{name: "nested validation group", mutate: func(a *FlowFragmentAggregate) {
 			a.Current.Definition.Steps[0] = FlowFragmentStep{ID: "repeat", DisplayName: "Repeat", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{{ID: "group", DisplayName: "Group", Kind: StepValidationGroup}}}
-		}, want: "must be a root step"},
+		}, wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			value := versionedWorkflowAggregate()
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireViolationOf(t, value.Validate(), CodeFlowFragmentInvalid, test.wantCode, test.wantField)
 		})
 	}
 }

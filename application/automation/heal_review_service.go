@@ -102,7 +102,9 @@ func (s HealReviewService) Approve(ctx context.Context, command domain.HealCandi
 	candidate := intent.NextCandidate
 	node, err := intent.NextNodeValue().PublishVersion(versionID, candidate.PageURL, candidate.Origin, candidate.Selectors, candidate.Fingerprint, domain.SourceAutoHeal, intent.ReviewedAt)
 	if err != nil {
-		return domain.ElementTargetAggregate{}, fmt.Errorf("publish approved heal candidate: %w", err)
+		// PublishVersion already returns a registered code; wrapping it here
+		// would bury that code under an unclassified layer.
+		return domain.ElementTargetAggregate{}, err
 	}
 	intent.NextNode = &node
 	intent.RequestDigest, err = HealReviewRequestDigest(intent)

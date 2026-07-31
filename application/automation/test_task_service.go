@@ -20,7 +20,9 @@ func (s ExecutionFlowService) Create(ctx context.Context, task domain.ExecutionF
 	}
 	aggregate, err := domain.NewExecutionFlow(task, initial)
 	if err != nil {
-		return domain.ExecutionFlowAggregate{}, fmt.Errorf("create test task: %w", err)
+		// The domain constructor already returns a registered code; wrapping it
+		// here would bury that code under an unclassified layer.
+		return domain.ExecutionFlowAggregate{}, err
 	}
 	result, err := s.repository.Create(ctx, aggregate)
 	if err != nil {

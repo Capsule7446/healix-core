@@ -65,7 +65,10 @@ func (p SamplingPublication) Validate() error {
 
 func (p SamplingPublication) validateContent() error {
 	if err := p.FlowFragment.Validate(); err != nil {
-		return fmt.Errorf("sampled workflow: %w", err)
+		// FlowFragmentAggregate.Validate already returns
+		// AUTOMATION_FLOW_FRAGMENT_INVALID; wrapping it here would bury that code
+		// under an unclassified layer.
+		return err
 	}
 	seen := make(map[string]struct{}, len(p.Nodes))
 	formalNodes := make(map[string]struct{}, len(p.Nodes))
@@ -90,7 +93,10 @@ func (p SamplingPublication) validateContent() error {
 		seen[node.TemporaryElementTargetID] = struct{}{}
 		if node.ResolutionMode != "REUSE" {
 			if err := node.Aggregate.Validate(); err != nil {
-				return fmt.Errorf("sampled node %d: %w", index, err)
+				// ElementTargetAggregate.Validate already returns
+				// AUTOMATION_ELEMENT_TARGET_INVALID; wrapping it here would bury that
+				// code under an unclassified layer.
+				return err
 			}
 		}
 		if strings.TrimSpace(node.Aggregate.ElementTarget.ID) == "" || node.Aggregate.Current.ElementTargetID != node.Aggregate.ElementTarget.ID || node.Aggregate.Current.DeletedAt != 0 {

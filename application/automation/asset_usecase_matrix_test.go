@@ -147,17 +147,17 @@ func TestEnvironmentTransitionUseCasesRejectDomainNoOpsBeforePersist(t *testing.
 		name    string
 		current domain.Environment
 		invoke  func(EnvironmentService, domain.Revision) error
-		want    string
+		want    fault.Code
 	}{
-		{name: "update deleted", current: deleted, want: domain.DeletedAggregateError().Error(), invoke: func(service EnvironmentService, revision domain.Revision) error {
+		{name: "update deleted", current: deleted, want: domain.CodeDeletedAggregate, invoke: func(service EnvironmentService, revision domain.Revision) error {
 			_, err := service.Update(context.Background(), "environment", "Updated", "https://updated.test", domain.EnvironmentVariables{}, revision, 3)
 			return err
 		}},
-		{name: "delete twice", current: deleted, want: "lifecycle transition is a no-op", invoke: func(service EnvironmentService, revision domain.Revision) error {
+		{name: "delete twice", current: deleted, want: domain.CodeAggregateTransitionInvalid, invoke: func(service EnvironmentService, revision domain.Revision) error {
 			_, err := service.Delete(context.Background(), "environment", revision, 3)
 			return err
 		}},
-		{name: "restore active", current: active, want: "lifecycle transition is a no-op", invoke: func(service EnvironmentService, revision domain.Revision) error {
+		{name: "restore active", current: active, want: domain.CodeAggregateTransitionInvalid, invoke: func(service EnvironmentService, revision domain.Revision) error {
 			_, err := service.Restore(context.Background(), "environment", revision, 3)
 			return err
 		}},
@@ -165,8 +165,12 @@ func TestEnvironmentTransitionUseCasesRejectDomainNoOpsBeforePersist(t *testing.
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &environmentRepositoryProbe{current: test.current}
-			if err := test.invoke(NewEnvironmentService(repository), test.current.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.updateCalls != 0 {
+			err := test.invoke(NewEnvironmentService(repository), test.current.Revision)
+			if err == nil || repository.updateCalls != 0 {
 				t.Fatalf("error/update calls = %v/%d", err, repository.updateCalls)
+			}
+			if !fault.IsCode(err, test.want) {
+				t.Fatalf("error = %v, want code %s", err, test.want)
 			}
 		})
 	}
@@ -460,17 +464,17 @@ func TestNodePublishDeleteRestoreRejectDomainRulesBeforeSave(t *testing.T) {
 		name    string
 		current domain.ElementTargetAggregate
 		invoke  func(NodeService, domain.Revision) error
-		want    string
+		want    fault.Code
 	}{
-		{name: "publish duplicate version", current: active, want: "new version id must differ from the current version", invoke: func(service NodeService, revision domain.Revision) error {
+		{name: "publish duplicate version", current: active, want: domain.CodeElementTargetHistoryInvalid, invoke: func(service NodeService, revision domain.Revision) error {
 			_, err := service.PublishVersion(context.Background(), "node", "node-v1", "https://example.test", "https://example.test", active.Current.Selectors, active.Current.Fingerprint, domain.SourceManual, revision, 2)
 			return err
 		}},
-		{name: "delete twice", current: deleted, want: "lifecycle transition is a no-op", invoke: func(service NodeService, revision domain.Revision) error {
+		{name: "delete twice", current: deleted, want: domain.CodeAggregateTransitionInvalid, invoke: func(service NodeService, revision domain.Revision) error {
 			_, err := service.Delete(context.Background(), "node", revision, 3)
 			return err
 		}},
-		{name: "restore active", current: active, want: "lifecycle transition is a no-op", invoke: func(service NodeService, revision domain.Revision) error {
+		{name: "restore active", current: active, want: domain.CodeAggregateTransitionInvalid, invoke: func(service NodeService, revision domain.Revision) error {
 			_, err := service.Restore(context.Background(), "node", revision, 2)
 			return err
 		}},
@@ -478,8 +482,12 @@ func TestNodePublishDeleteRestoreRejectDomainRulesBeforeSave(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &nodeRepositoryMatrix{current: test.current}
-			if err := test.invoke(NewNodeService(repository), test.current.ElementTarget.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.saveCalls != 0 {
+			err := test.invoke(NewNodeService(repository), test.current.ElementTarget.Revision)
+			if err == nil || repository.saveCalls != 0 {
 				t.Fatalf("error/save calls = %v/%d", err, repository.saveCalls)
+			}
+			if !fault.IsCode(err, test.want) {
+				t.Fatalf("error = %v, want code %s", err, test.want)
 			}
 		})
 	}
@@ -548,6 +556,7 @@ func TestTestTaskUseCasesCoverDependencyFailuresAndPrecommitRejections(t *testin
 		repository  *testTaskRepositoryMatrix
 		want        error
 		wantText    string
+		wantCode    fault.Code
 	}{
 		{name: "blank task id", taskID: " ", expected: 1, publication: publication, repository: &testTaskRepositoryMatrix{current: current}, wantText: "test task ID is required"},
 		{name: "blank version id", taskID: "task", expected: 1, publication: func() domain.ExecutionFlowVersionPublication { value := publication; value.ID = " "; return value }(), repository: &testTaskRepositoryMatrix{current: current}, wantText: "test task version ID is required"},
@@ -557,13 +566,15 @@ func TestTestTaskUseCasesCoverDependencyFailuresAndPrecommitRejections(t *testin
 			value := publication
 			value.ID = "task-v1"
 			return value
-		}(), repository: &testTaskRepositoryMatrix{current: current}, wantText: "version id already exists"},
+		}(), repository: &testTaskRepositoryMatrix{current: current}, wantCode: domain.CodeAggregateTransitionInvalid},
 		{name: "save failure", taskID: "task", expected: 1, publication: publication, repository: &testTaskRepositoryMatrix{current: current, saveErr: failure}, want: failure},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			result, err := NewExecutionFlowService(test.repository).PublishVersion(context.Background(), test.taskID, test.expected, test.publication)
-			if err == nil || !reflect.DeepEqual(result, domain.ExecutionFlowAggregate{}) || test.want != nil && !errors.Is(err, test.want) || test.wantText != "" && !strings.Contains(err.Error(), test.wantText) {
+			if err == nil || !reflect.DeepEqual(result, domain.ExecutionFlowAggregate{}) || test.want != nil && !errors.Is(err, test.want) ||
+				test.wantText != "" && !strings.Contains(err.Error(), test.wantText) ||
+				test.wantCode != "" && !fault.IsCode(err, test.wantCode) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
 			if test.name != "save failure" && test.repository.saveCalls != 0 {
@@ -713,21 +724,21 @@ func TestWorkflowTransitionsRejectDomainRulesBeforeSave(t *testing.T) {
 		name    string
 		current domain.FlowFragmentAggregate
 		invoke  func(FlowFragmentService, domain.Revision) error
-		want    string
+		want    fault.Code
 	}{
-		{name: "invalid update", current: active, want: "display name is required", invoke: func(service FlowFragmentService, revision domain.Revision) error {
+		{name: "invalid update", current: active, want: domain.CodeFlowFragmentInvalid, invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.Update(context.Background(), "workflow", "", "", domain.Properties{}, revision, 2)
 			return err
 		}},
-		{name: "duplicate publication", current: active, want: "new version id must differ from the current version", invoke: func(service FlowFragmentService, revision domain.Revision) error {
+		{name: "duplicate publication", current: active, want: domain.CodeFlowFragmentHistoryInvalid, invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.PublishVersion(context.Background(), "workflow", "workflow-v1", active.Current.Definition, revision, 2)
 			return err
 		}},
-		{name: "delete twice", current: deleted, want: "lifecycle transition is a no-op", invoke: func(service FlowFragmentService, revision domain.Revision) error {
+		{name: "delete twice", current: deleted, want: domain.CodeAggregateTransitionInvalid, invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.Delete(context.Background(), "workflow", revision, 3)
 			return err
 		}},
-		{name: "restore active", current: active, want: "lifecycle transition is a no-op", invoke: func(service FlowFragmentService, revision domain.Revision) error {
+		{name: "restore active", current: active, want: domain.CodeAggregateTransitionInvalid, invoke: func(service FlowFragmentService, revision domain.Revision) error {
 			_, err := service.Restore(context.Background(), "workflow", revision, 2)
 			return err
 		}},
@@ -735,8 +746,12 @@ func TestWorkflowTransitionsRejectDomainRulesBeforeSave(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			repository := &workflowRepositoryMatrix{current: test.current}
-			if err := test.invoke(NewFlowFragmentService(repository), test.current.FlowFragment.Revision); err == nil || !strings.Contains(err.Error(), test.want) || repository.saveCalls != 0 {
+			err := test.invoke(NewFlowFragmentService(repository), test.current.FlowFragment.Revision)
+			if err == nil || repository.saveCalls != 0 {
 				t.Fatalf("error/save calls = %v/%d", err, repository.saveCalls)
+			}
+			if !fault.IsCode(err, test.want) {
+				t.Fatalf("error = %v, want code %s", err, test.want)
 			}
 		})
 	}
