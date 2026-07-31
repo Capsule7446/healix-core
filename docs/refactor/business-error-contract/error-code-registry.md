@@ -91,7 +91,6 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_HEAL_REVIEW_DECISION_CONFLICT` | `FAILED_PRECONDITION` | `heal candidate is no longer available for review` | none | Refresh the candidate before attempting another decision; candidate identity and state remain private. |
 | `AUTOMATION_HEAL_REVIEW_AUTHORITY_CONFLICT` | `CONFLICT` | `heal review authority changed before the operation completed` | none | Re-read candidate, node, and streak authority before reconciling; identities, revisions, and streak state remain private. |
 | `AUTOMATION_HEAL_REVIEW_CONTRACT_VIOLATION` | `INTERNAL` | `heal review could not be completed` | none | The adapter outcome is malformed; retain causes privately and expose no review identities, payloads, authority state, or adapter details. |
-| `SAMPLING_PUBLICATION_IDENTITY_CONFLICT` | `CONFLICT` | `sampling publication identity conflicts with an existing request` | none | A replay with the same publication identity but a different request digest is rejected without exposing identity or digest values. |
 | `AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH` | `INVALID_ARGUMENT` | `sampling publication digest does not match the request payload` | none | Reject before any sampling-publication transaction operation; request digests, publication identities, and payload values remain private. |
 | `AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE` | `UNAVAILABLE` | `sampling publication service is unavailable` | none | Supply a valid transaction dependency before retrying; dependency details remain private. |
 | `AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION` | `INTERNAL` | `sampling publication adapter returned an invalid outcome` | none | The adapter outcome is malformed; preserve its cause only for diagnostics and do not expose outcome, identity, digest, or payload details. |
@@ -101,6 +100,7 @@ This registry defines the stable public error-code contract. A code is immutable
 
 | Code | Kind | Safe message | Allowed params / violations | Notes |
 |---|---|---|---|---|
+| `SAMPLING_PUBLICATION_IDENTITY_CONFLICT` | `CONFLICT` | `sampling publication identity conflicts with an existing request` | none | A replay with the same publication identity but a different request digest is rejected without exposing identity or digest values. Produced from `application/automation`; the `SAMPLING_*` prefix is authoritative per `v0.5-error-inventory.md:37` — producer package and code prefix are intentionally not aligned. |
 | `FINGERPRINT_SELECTOR_INVALID` | `INVALID_ARGUMENT` | `element selector is invalid` | none | Selector source values are never exposed in the public message. |
 | `INTERPOLATION_RESOLVER_REQUIRED` | `FAILED_PRECONDITION` | `variable resolver is required` | none | A resolver is needed only when interpolation syntax is present. |
 | `INTERPOLATION_EXPRESSION_INVALID` | `INVALID_ARGUMENT` | `variable expression is invalid` | none | Source expression and variable name never enter the public message. |
