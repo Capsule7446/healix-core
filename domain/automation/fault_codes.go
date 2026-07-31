@@ -3,7 +3,9 @@ package automation
 import "github.com/Capsule7446/healix-core/domain/fault"
 
 const (
-	CodeExecutionFlowInvalid fault.Code = "AUTOMATION_EXECUTION_FLOW_INVALID"
+	CodeExecutionFlowInvalid           fault.Code = "AUTOMATION_EXECUTION_FLOW_INVALID"
+	CodeExecutionFlowHistoryInvalid    fault.Code = "AUTOMATION_EXECUTION_FLOW_HISTORY_INVALID"
+	CodeExecutionFlowDependencyInvalid fault.Code = "AUTOMATION_EXECUTION_FLOW_DEPENDENCY_INVALID"
 
 	CodePersistedRevisionInvalid          fault.Code = "AUTOMATION_PERSISTED_REVISION_INVALID"
 	CodeRevisionExhausted                 fault.Code = "AUTOMATION_REVISION_EXHAUSTED"
@@ -95,6 +97,31 @@ func executionFlowInvalidError(violations []fault.Violation) error {
 		violations = violations[:fault.MaxViolations]
 	}
 	return mustAutomationFault(fault.InvalidArgument, CodeExecutionFlowInvalid, "execution flow input is invalid", fault.WithViolations(violations...))
+}
+
+// executionFlowHistoryInvalidError covers the version history itself — ordering,
+// uniqueness, and the source chain — rather than the shape of any one version.
+// It is FAILED_PRECONDITION because the remediation is to repair persisted
+// history, not to correct a field the caller just supplied.
+func executionFlowHistoryInvalidError(violations []fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeExecutionFlowHistoryInvalid, "execution flow version history is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// executionFlowDependencyInvalidError covers dependency resolution: the snapshot
+// set, the reference graph, and the bindings between them. Kept separate from the
+// field-level execution flow envelope because a caller fixes a broken dependency
+// graph by re-resolving the catalog, not by editing a field.
+func executionFlowDependencyInvalidError(violations []fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeExecutionFlowDependencyInvalid, "execution flow dependency resolution is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// capViolations keeps the deterministic leading prefix when an aggregate exceeds
+// the envelope cap, so untrusted input cannot turn validation into a panic.
+func capViolations(violations []fault.Violation) []fault.Violation {
+	if len(violations) > fault.MaxViolations {
+		return violations[:fault.MaxViolations]
+	}
+	return violations
 }
 
 func mustViolation(code fault.Code, field, message string) fault.Violation {

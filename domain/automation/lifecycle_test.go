@@ -356,7 +356,7 @@ func TestTestTaskVersionPlanUsesRevisionForPublicationConcurrency(t *testing.T) 
 	plan.Version.SourceVersionID = "task-v1"
 	plan.Version.Items[0].TestTaskVersionID = plan.Version.ID
 	plan.Task.CurrentVersionID = plan.Version.ID
-	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "expected revision") {
+	if err := plan.Validate(); !fault.IsCode(err, CodeExecutionFlowDependencyInvalid) {
 		t.Fatalf("missing expected revision error = %v", err)
 	}
 	plan.ExpectedExecutionFlowRevision = 1

@@ -2,8 +2,9 @@ package automation
 
 import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func validTestTaskVersionPlan() ResolvedExecutionFlow {
@@ -39,7 +40,7 @@ func TestTestTaskAggregateOwnsCurrentAndHistoryConsistency(t *testing.T) {
 		t.Fatalf("valid aggregate: %v", err)
 	}
 	aggregate.Task.CurrentVersionID = v1.ID
-	if err := aggregate.Validate(); err == nil || !strings.Contains(err.Error(), "current version") {
+	if err := aggregate.Validate(); !fault.IsCode(err, CodeExecutionFlowHistoryInvalid) {
 		t.Fatalf("inconsistent current error = %v", err)
 	}
 }
@@ -50,7 +51,7 @@ func TestTestTaskVersionPlanValidatesResolvedTopLevelDependency(t *testing.T) {
 		t.Fatalf("valid plan: %v", err)
 	}
 	plan.Workflows[0].ResolvedFromLatest = false
-	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "matching workflow dependency") {
+	if err := plan.Validate(); !fault.IsCode(err, CodeExecutionFlowDependencyInvalid) {
 		t.Fatalf("unresolved latest error = %v", err)
 	}
 }

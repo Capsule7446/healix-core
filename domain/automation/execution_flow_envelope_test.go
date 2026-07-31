@@ -44,6 +44,28 @@ func requireExecutionFlowEnvelope(t *testing.T, err error) fault.Descriptor {
 	return descriptor
 }
 
+// requireViolationOf is the general form: it names the envelope code explicitly,
+// for the codes that are not AUTOMATION_EXECUTION_FLOW_INVALID.
+func requireViolationOf(t *testing.T, err error, wantEnvelope, wantViolation fault.Code, wantField string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("Validate() accepted invalid input")
+	}
+	if !fault.IsCode(err, wantEnvelope) {
+		t.Fatalf("error = %v, want code %s", err, wantEnvelope)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok {
+		t.Fatalf("error is not a fault: %v", err)
+	}
+	for _, violation := range descriptor.Violations() {
+		if violation.Code() == wantViolation && violation.Field() == wantField {
+			return
+		}
+	}
+	t.Fatalf("violations = [%s], want one with %s", strings.Join(violationKeys(descriptor.Violations()), ", "), violationKey(wantViolation, wantField))
+}
+
 func requireExecutionFlowViolation(t *testing.T, err error, wantCode fault.Code, wantField string) {
 	t.Helper()
 	descriptor := requireExecutionFlowEnvelope(t, err)

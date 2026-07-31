@@ -1,7 +1,6 @@
 package automation
 
 import (
-	"errors"
 	"fmt"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 	"reflect"
@@ -11,47 +10,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
 )
-
-const (
-	IssueInvalidTask       = "INVALID_TEST_TASK"
-	IssueInvalidItem       = "INVALID_TEST_TASK_ITEM"
-	IssueWorkflowMissing   = "WORKFLOW_UNAVAILABLE"
-	IssueVersionMissing    = "WORKFLOW_VERSION_UNAVAILABLE"
-	IssueNodeVersion       = "NODE_VERSION_UNAVAILABLE"
-	IssueWorkflowCycle     = "WORKFLOW_CYCLE"
-	IssueParameter         = "PARAMETER_INCOMPATIBLE"
-	IssueEnvironment       = "ENVIRONMENT_KEY_MISSING"
-	IssueDependencyChanged = "DEPENDENCY_CHANGED"
-)
-
-// ValidationIssue 可以安全地返回到 UI：它标识键和路径，但从不包含参数或环境值。
-type ValidationIssue struct {
-	Code           string
-	ItemSequence   int
-	WorkflowPath   string
-	Location       string
-	Recommendation string
-}
-
-type ValidationIssues []ValidationIssue
-
-func (issues ValidationIssues) Error() string {
-	if len(issues) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(issues))
-	for _, issue := range issues {
-		message := issue.Code
-		if issue.Location != "" {
-			message += " at " + issue.Location
-		}
-		if issue.Recommendation != "" {
-			message += ": " + issue.Recommendation
-		}
-		parts = append(parts, message)
-	}
-	return strings.Join(parts, "; ")
-}
 
 // Validate reports every field failure through one aggregate envelope. Field
 // paths are logical and locale-neutral, and item indexes are 0-based so they
@@ -154,26 +112,32 @@ func (v ExecutionFlowVersion) Validate() error {
 	return nil
 }
 
+// Validate checks the history itself — ordering, uniqueness, and the source
+// chain. A version's own shape failure propagates unwrapped under its own code
+// rather than nesting inside this envelope. Version indexes are 0-based and
+// address the slice the caller passed; no version identity reaches public text.
 func (a ExecutionFlowAggregate) Validate() error {
 	if err := a.Task.Validate(); err != nil {
 		return err
 	}
+	var violations []fault.Violation
 	if len(a.Versions) == 0 {
-		return errors.New("test task requires version history")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "versions", "execution flow requires version history"))
 	}
 	seenIDs := map[string]bool{}
 	seenNumbers := map[int]bool{}
 	byID := map[string]ExecutionFlowVersion{}
 	highest := ExecutionFlowVersion{}
-	for _, version := range a.Versions {
+	for index, version := range a.Versions {
 		if err := version.Validate(); err != nil {
 			return err
 		}
+		field := func(name string) string { return fmt.Sprintf("versions.%d.%s", index, name) }
 		if version.ExecutionFlowID != a.Task.ID {
-			return errors.New("test task version belongs to another task")
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field("executionFlowId"), "version belongs to another execution flow"))
 		}
 		if seenIDs[version.ID] || seenNumbers[version.VersionNumber] {
-			return errors.New("test task history contains duplicate version identity")
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, fmt.Sprintf("versions.%d", index), "version identity is duplicated in history"))
 		}
 		seenIDs[version.ID] = true
 		seenNumbers[version.VersionNumber] = true
@@ -184,26 +148,30 @@ func (a ExecutionFlowAggregate) Validate() error {
 	}
 	for number := 1; number <= len(a.Versions); number++ {
 		if !seenNumbers[number] {
-			return errors.New("test task version numbers must be contiguous from 1")
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "versions", "version numbers must be contiguous from 1"))
+			break
 		}
 	}
-	for _, version := range a.Versions {
+	for index, version := range a.Versions {
+		field := fmt.Sprintf("versions.%d.sourceVersionId", index)
 		if version.VersionNumber == 1 {
 			if version.SourceVersionID != "" {
-				return errors.New("test task version 1 cannot have a source version")
+				violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "the first version must not declare a source version"))
 			}
 			continue
 		}
 		source, ok := byID[version.SourceVersionID]
 		if !ok || source.VersionNumber >= version.VersionNumber {
-			return fmt.Errorf("test task version %s source must be an earlier version", version.ID)
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "a version's source must be an earlier version"))
 		}
 	}
 	if a.Current.ID != a.Task.CurrentVersionID || a.Current.ID != highest.ID {
-		return errors.New("test task current version must match the latest history version")
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, "current.id", "current version must be the latest history version"))
+	} else if !reflect.DeepEqual(a.Current, highest) {
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, "current", "current version content must match history"))
 	}
-	if !reflect.DeepEqual(a.Current, highest) {
-		return errors.New("test task current version content must match history")
+	if len(violations) != 0 {
+		return executionFlowHistoryInvalidError(violations)
 	}
 	return nil
 }
@@ -296,24 +264,34 @@ func (p ResolvedExecutionFlow) Validate() error {
 		return err
 	}
 	if p.Version.ExecutionFlowID != p.Task.ID {
-		return errors.New("test task publication candidate identity is inconsistent")
+		return executionFlowDependencyInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldMismatch, "version.executionFlowId", "resolved version does not belong to the execution flow"),
+		})
 	}
 	if p.Version.VersionNumber == 1 {
 		if p.ExpectedExecutionFlowRevision != 0 || p.Version.SourceVersionID != "" {
-			return errors.New("new test task must publish version 1 without a source version")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldMismatch, "expectedExecutionFlowRevision", "a first version must not expect a prior revision or declare a source version"),
+			})
 		}
 	} else if err := p.ExpectedExecutionFlowRevision.ValidatePersisted(); err != nil || strings.TrimSpace(p.Version.SourceVersionID) == "" {
-		return errors.New("subsequent test task version requires source and expected revision")
+		return executionFlowDependencyInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldRequired, "version.sourceVersionId", "a subsequent version requires a source version and a persisted expected revision"),
+		})
 	}
 	workflows := map[string]FlowFragmentDependencySnapshot{}
 	for _, dependency := range p.Workflows {
 		if dependency.FlowFragment.ID == "" || dependency.Version.ID == "" ||
 			dependency.Version.FlowFragmentID != dependency.FlowFragment.ID || dependency.Version.VersionNumber < 1 {
-			return errors.New("workflow dependency snapshot identity is invalid")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "workflows", "workflow dependency snapshot identity is invalid"),
+			})
 		}
 		key := dependency.FlowFragment.ID + "\x00" + dependency.Version.ID
 		if _, exists := workflows[key]; exists {
-			return errors.New("duplicate workflow dependency snapshot")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldDuplicate, "workflows", "workflow dependency snapshot is duplicated"),
+			})
 		}
 		workflows[key] = dependency
 	}
@@ -321,11 +299,15 @@ func (p ResolvedExecutionFlow) Validate() error {
 	for _, dependency := range p.Nodes {
 		if dependency.ElementTarget.ID == "" || dependency.Version.ID == "" ||
 			dependency.Version.ElementTargetID != dependency.ElementTarget.ID || dependency.Version.VersionNumber < 1 {
-			return errors.New("node dependency snapshot identity is invalid")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "nodes", "element target dependency snapshot identity is invalid"),
+			})
 		}
 		key := ElementTargetDependencyIdentity(dependency.ElementTarget.ID, dependency.Version.ID)
 		if nodes[key] {
-			return errors.New("duplicate node dependency snapshot")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldDuplicate, "nodes", "element target dependency snapshot is duplicated"),
+			})
 		}
 		nodes[key] = true
 	}
@@ -346,12 +328,21 @@ func (p ResolvedExecutionFlow) Validate() error {
 			}
 		}
 		if !matched {
-			return fmt.Errorf("test task item %d has no matching workflow dependency", item.SequenceNumber)
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "version.items.flowFragmentId", "an item has no matching workflow dependency"),
+			})
 		}
 		for _, dependency := range p.Workflows {
 			if dependency.FlowFragment.ID == item.FlowFragmentID && (item.VersionPolicy == FlowFragmentVersionLatest && dependency.ResolvedFromLatest || item.VersionPolicy == FlowFragmentVersionFixed && dependency.Version.ID == item.WorkflowVersionID) {
 				if _, err := ResolveParameterValues(dependency.Version.Definition.Parameters, item.Parameters); err != nil {
-					return fmt.Errorf("test task item %d parameters: %w", item.SequenceNumber, err)
+					// A PARAMETER_* fault is more precise than anything this envelope
+					// could say, so it travels on unchanged rather than being replaced.
+					if _, classified := fault.CodeOf(err); classified {
+						return err
+					}
+					return executionFlowDependencyInvalidError([]fault.Violation{
+						mustViolation(fault.CodeFieldInvalid, "version.items.parameters", "item parameters are incompatible with the dependency"),
+					})
 				}
 				break
 			}
@@ -364,7 +355,9 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 	byVersion := map[string]FlowFragmentDependencySnapshot{}
 	for _, dependency := range p.Workflows {
 		if _, duplicate := byVersion[dependency.Version.ID]; duplicate {
-			return errors.New("duplicate workflow version dependency")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldDuplicate, "workflows", "workflow version dependency is duplicated"),
+			})
 		}
 		byVersion[dependency.Version.ID] = dependency
 	}
@@ -373,10 +366,14 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 		key := resolution.ParentFlowFragmentVersionID + "\x00" + resolution.StepID
 		if resolution.ParentFlowFragmentVersionID == "" || resolution.StepID == "" ||
 			resolution.FlowFragmentID == "" || resolution.WorkflowVersionID == "" {
-			return errors.New("workflow reference resolution identity is incomplete")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "references", "workflow reference resolution identity is incomplete"),
+			})
 		}
 		if _, duplicate := references[key]; duplicate {
-			return errors.New("duplicate workflow reference resolution")
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldDuplicate, "references", "workflow reference resolution is duplicated"),
+			})
 		}
 		references[key] = resolution
 	}
@@ -388,10 +385,14 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 	visit = func(versionID string) error {
 		dependency, exists := byVersion[versionID]
 		if !exists {
-			return fmt.Errorf("workflow dependency %s is missing", versionID)
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "dependencyGraph.workflowVersion", "a referenced workflow version is outside the resolved set"),
+			})
 		}
 		if visiting[versionID] {
-			return fmt.Errorf("workflow dependency cycle includes %s", versionID)
+			return executionFlowDependencyInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldInvalid, "dependencyGraph.workflowVersion", "workflow dependencies contain a cycle"),
+			})
 		}
 		if usedWorkflows[versionID] {
 			return nil
@@ -404,7 +405,9 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 				if step.ElementTargetID != "" {
 					key := ElementTargetDependencyIdentity(step.ElementTargetID, step.ElementTargetVersionID)
 					if !nodes[key] {
-						return fmt.Errorf("step %s has no exact node dependency", step.ID)
+						return executionFlowDependencyInvalidError([]fault.Violation{
+							mustViolation(fault.CodeFieldInvalid, "dependencyGraph.step.elementTarget", "a step references an element target version outside the resolved set"),
+						})
 					}
 					usedNodes[key] = true
 				}
@@ -412,21 +415,34 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 					key := versionID + "\x00" + step.ID
 					resolution, ok := references[key]
 					if !ok {
-						return fmt.Errorf("step %s has no workflow reference resolution", step.ID)
+						return executionFlowDependencyInvalidError([]fault.Violation{
+							mustViolation(fault.CodeFieldInvalid, "dependencyGraph.step.reference", "a step has no matching workflow reference resolution"),
+						})
 					}
 					target, ok := byVersion[resolution.WorkflowVersionID]
 					if !ok || target.FlowFragment.ID != resolution.FlowFragmentID || resolution.FlowFragmentID != step.Reference.FlowFragmentID {
-						return fmt.Errorf("step %s workflow reference target is inconsistent", step.ID)
+						return executionFlowDependencyInvalidError([]fault.Violation{
+							mustViolation(fault.CodeFieldMismatch, "dependencyGraph.step.reference", "a step workflow reference target is inconsistent with its resolution"),
+						})
 					}
 					if step.Reference.LatestPublished {
 						if !resolution.ResolvedFromLatest {
-							return fmt.Errorf("step %s latest workflow reference was not resolved from current", step.ID)
+							return executionFlowDependencyInvalidError([]fault.Violation{
+								mustViolation(fault.CodeFieldMismatch, "dependencyGraph.step.reference.workflowVersionId", "a latest workflow reference was not resolved from the current version"),
+							})
 						}
 					} else if resolution.ResolvedFromLatest || step.Reference.WorkflowVersionID != target.Version.ID {
-						return fmt.Errorf("step %s fixed workflow reference changed version", step.ID)
+						return executionFlowDependencyInvalidError([]fault.Violation{
+							mustViolation(fault.CodeFieldMismatch, "dependencyGraph.step.reference.workflowVersionId", "a fixed workflow reference no longer matches the resolved version"),
+						})
 					}
 					if err := validateReferenceBindings(dependency.Version.Definition.Parameters, target.Version.Definition.Parameters, step.Reference.ParameterBindings); err != nil {
-						return fmt.Errorf("step %s parameter bindings: %w", step.ID, err)
+						if _, classified := fault.CodeOf(err); classified {
+							return err
+						}
+						return executionFlowDependencyInvalidError([]fault.Violation{
+							mustViolation(fault.CodeFieldInvalid, "dependencyGraph.step.reference.parameterBindings", "workflow reference parameter bindings are incompatible"),
+						})
 					}
 					usedReferences[key] = true
 					if err := visit(target.Version.ID); err != nil {
@@ -470,7 +486,9 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 		}
 	}
 	if len(usedWorkflows) != len(byVersion) || len(usedReferences) != len(references) || len(usedNodes) != len(nodes) {
-		return errors.New("publication dependency graph contains orphan snapshots or resolutions")
+		return executionFlowDependencyInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldInvalid, "dependencyGraph", "the dependency graph contains unused snapshots or resolutions"),
+		})
 	}
 	return nil
 }

@@ -205,20 +205,6 @@ func TestSamplingPublicationRejectsInvalidMergeAuthority(t *testing.T) {
 	}
 }
 
-func TestValidationIssuesErrorReportsSafeContext(t *testing.T) {
-	if got := (ValidationIssues{}).Error(); got != "" {
-		t.Fatalf("empty Error() = %q", got)
-	}
-	issues := ValidationIssues{
-		{Code: IssueEnvironment, Location: "workflow.step", Recommendation: "provide env.region"},
-		{Code: IssueWorkflowMissing},
-	}
-	want := "ENVIRONMENT_KEY_MISSING at workflow.step: provide env.region; WORKFLOW_UNAVAILABLE"
-	if got := issues.Error(); got != want {
-		t.Fatalf("Error() = %q, want %q", got, want)
-	}
-}
-
 func TestNodeDependencyIdentitySeparatesAmbiguousPairs(t *testing.T) {
 	first := ElementTargetDependencyIdentity("ab", "c")
 	second := ElementTargetDependencyIdentity("a", "bc")

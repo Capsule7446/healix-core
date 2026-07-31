@@ -152,22 +152,23 @@ func TestTestTaskAggregateValidateHistoryRuleMatrix(t *testing.T) {
 	twoVersions.Versions = []ExecutionFlowVersion{cloneTestTaskVersion(base.Current), cloneTestTaskVersion(versionTwo)}
 
 	tests := []struct {
-		name   string
-		mutate func(*ExecutionFlowAggregate)
-		want   string
+		name          string
+		mutate        func(*ExecutionFlowAggregate)
+		wantViolation fault.Code
+		wantField     string
 	}{
-		{name: "missing history", mutate: func(value *ExecutionFlowAggregate) { value.Versions = nil }, want: "requires version history"},
-		{name: "version belongs elsewhere", mutate: func(value *ExecutionFlowAggregate) { value.Versions[0].ExecutionFlowID = "other" }, want: "another task"},
+		{name: "missing history", mutate: func(value *ExecutionFlowAggregate) { value.Versions = nil }, wantViolation: fault.CodeFieldRequired, wantField: "versions"},
+		{name: "version belongs elsewhere", mutate: func(value *ExecutionFlowAggregate) { value.Versions[0].ExecutionFlowID = "other" }, wantViolation: fault.CodeFieldMismatch, wantField: "versions.0.executionFlowId"},
 		{name: "duplicate identity", mutate: func(value *ExecutionFlowAggregate) {
 			value.Versions = append(value.Versions, cloneTestTaskVersion(value.Versions[0]))
-		}, want: "duplicate version identity"},
+		}, wantViolation: fault.CodeFieldDuplicate, wantField: "versions.1"},
 		{name: "noncontiguous versions", mutate: func(value *ExecutionFlowAggregate) {
 			value.Versions[1].VersionNumber = 3
 			value.Current.VersionNumber = 3
-		}, want: "contiguous"},
-		{name: "version one has source", mutate: func(value *ExecutionFlowAggregate) { value.Versions[0].SourceVersionID = "source" }, want: "version 1"},
-		{name: "later version has missing source", mutate: func(value *ExecutionFlowAggregate) { value.Versions[1].SourceVersionID = "missing" }, want: "source must be an earlier version"},
-		{name: "current content mismatch", mutate: func(value *ExecutionFlowAggregate) { value.Current.Items[0].FlowFragmentID = "changed" }, want: "content must match history"},
+		}, wantViolation: fault.CodeFieldInvalid, wantField: "versions"},
+		{name: "version one has source", mutate: func(value *ExecutionFlowAggregate) { value.Versions[0].SourceVersionID = "source" }, wantViolation: fault.CodeFieldMismatch, wantField: "versions.0.sourceVersionId"},
+		{name: "later version has missing source", mutate: func(value *ExecutionFlowAggregate) { value.Versions[1].SourceVersionID = "missing" }, wantViolation: fault.CodeFieldMismatch, wantField: "versions.1.sourceVersionId"},
+		{name: "current content mismatch", mutate: func(value *ExecutionFlowAggregate) { value.Current.Items[0].FlowFragmentID = "changed" }, wantViolation: fault.CodeFieldMismatch, wantField: "current"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -176,9 +177,7 @@ func TestTestTaskAggregateValidateHistoryRuleMatrix(t *testing.T) {
 				value = cloneTestTaskAggregate(base)
 			}
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireViolationOf(t, value.Validate(), CodeExecutionFlowHistoryInvalid, test.wantViolation, test.wantField)
 		})
 	}
 }
@@ -203,20 +202,20 @@ func TestTestTaskVersionPlanValidateDependencyBoundaryMatrix(t *testing.T) {
 	}{
 		{name: "invalid task", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = " " }, want: string(CodeExecutionFlowInvalid)},
 		{name: "invalid version", mutate: func(plan *ResolvedExecutionFlow) { plan.Version.ID = " " }, want: string(CodeExecutionFlowInvalid)},
-		{name: "inconsistent candidate identity", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = "other" }, want: "candidate identity"},
-		{name: "version one carries expected revision", mutate: func(plan *ResolvedExecutionFlow) { plan.ExpectedExecutionFlowRevision = 1 }, want: "without a source version"},
-		{name: "invalid workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows[0].Version.FlowFragmentID = "other" }, want: "workflow dependency snapshot identity"},
-		{name: "duplicate workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, want: "duplicate workflow dependency"},
-		{name: "invalid node dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Nodes = []ElementTargetDependencySnapshot{{}} }, want: "node dependency snapshot identity"},
+		{name: "inconsistent candidate identity", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = "other" }, want: string(CodeExecutionFlowDependencyInvalid)},
+		{name: "version one carries expected revision", mutate: func(plan *ResolvedExecutionFlow) { plan.ExpectedExecutionFlowRevision = 1 }, want: string(CodeExecutionFlowDependencyInvalid)},
+		{name: "invalid workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows[0].Version.FlowFragmentID = "other" }, want: string(CodeExecutionFlowDependencyInvalid)},
+		{name: "duplicate workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, want: string(CodeExecutionFlowDependencyInvalid)},
+		{name: "invalid node dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Nodes = []ElementTargetDependencySnapshot{{}} }, want: string(CodeExecutionFlowDependencyInvalid)},
 		{name: "duplicate node dependency", mutate: func(plan *ResolvedExecutionFlow) {
 			node := versionedNodeAggregate()
 			dependency := ElementTargetDependencySnapshot{ElementTarget: node.ElementTarget, Version: node.Current}
 			plan.Nodes = []ElementTargetDependencySnapshot{dependency, dependency}
-		}, want: "duplicate node dependency"},
+		}, want: string(CodeExecutionFlowDependencyInvalid)},
 		{name: "invalid item parameter", mutate: func(plan *ResolvedExecutionFlow) {
 			plan.Workflows[0].Version.Definition.Parameters = []ParameterDefinition{{Name: "value", DisplayName: "Value", Type: parameter.Text, Required: true}}
 			plan.Version.Items[0].Parameters = map[string]parameter.Value{"value": parameter.BooleanValue(true)}
-		}, want: "parameters"},
+		}, want: string(CodeExecutionFlowDependencyInvalid)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
