@@ -1,9 +1,9 @@
 package automation
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -40,9 +40,7 @@ func TestNodeAggregateValidateLoadedHistoryRejectsMissingCurrent(t *testing.T) {
 		Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: SourceManual}
 	aggregate := ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node", DisplayName: "节点", Properties: Properties{},
 		CurrentVersionID: "node-v1"}, Current: base, Versions: nil}
-	if err := aggregate.ValidateLoadedHistory(); err == nil || !strings.Contains(err.Error(), "missing from loaded history") {
-		t.Fatalf("missing current history error = %v", err)
-	}
+	requireViolationOf(t, aggregate.ValidateLoadedHistory(), CodeElementTargetHistoryInvalid, fault.CodeFieldMismatch, "currentVersionId")
 	aggregate.Versions = []ElementTargetVersion{base}
 	if err := aggregate.ValidateLoadedHistory(); err != nil {
 		t.Fatalf("valid loaded history: %v", err)

@@ -2,7 +2,6 @@ package automation
 
 import (
 	"math"
-	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
@@ -17,9 +16,8 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 		}
 		invalid := base
 		invalid.ID = ""
-		if _, err := invalid.Delete(10); err == nil || !strings.Contains(err.Error(), "environment id") {
-			t.Fatalf("invalid source Delete error = %v", err)
-		}
+		_, err = invalid.Delete(10)
+		requireViolationOf(t, err, CodeEnvironmentInvalid, fault.CodeFieldRequired, "id")
 		overflow := base
 		overflow.Revision = Revision(math.MaxUint64)
 		if _, err := overflow.Delete(10); err == nil {
@@ -34,9 +32,8 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 		deleted.ID = ""
-		if _, err := deleted.Restore(11); err == nil || !strings.Contains(err.Error(), "environment id") {
-			t.Fatalf("invalid source Restore error = %v", err)
-		}
+		_, err = deleted.Restore(11)
+		requireViolationOf(t, err, CodeEnvironmentInvalid, fault.CodeFieldRequired, "id")
 	})
 
 	t.Run("node", func(t *testing.T) {
@@ -272,9 +269,8 @@ func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.
 func TestNewTestTaskRejectsInvalidCreation(t *testing.T) {
 	plan := validTestTaskVersionPlan()
 	plan.Version.CreatedAt = 2
-	if _, err := NewExecutionFlow(plan.Task, plan.Version); err == nil || !strings.Contains(err.Error(), "timestamps") {
-		t.Fatalf("creation error = %v", err)
-	}
+	_, err := NewExecutionFlow(plan.Task, plan.Version)
+	requireViolationOf(t, err, CodeAggregateTransitionInvalid, fault.CodeFieldInvalid, "createdAt")
 }
 
 func TestEnvironmentAcceptsAllVariableKindsAndOwnsValues(t *testing.T) {

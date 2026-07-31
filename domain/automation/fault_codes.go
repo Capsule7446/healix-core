@@ -23,6 +23,13 @@ const (
 	CodeHealSequenceConflict              fault.Code = "AUTOMATION_HEAL_SEQUENCE_CONFLICT"
 	CodeHealProvenanceConflict            fault.Code = "AUTOMATION_HEAL_PROVENANCE_CONFLICT"
 	CodeHealStreakRejectionInvalid        fault.Code = "AUTOMATION_HEAL_STREAK_REJECTION_INVALID"
+
+	CodeElementTargetInvalid        fault.Code = "AUTOMATION_ELEMENT_TARGET_INVALID"
+	CodeElementTargetHistoryInvalid fault.Code = "AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID"
+	CodeFlowFragmentInvalid         fault.Code = "AUTOMATION_FLOW_FRAGMENT_INVALID"
+	CodeFlowFragmentHistoryInvalid  fault.Code = "AUTOMATION_FLOW_FRAGMENT_HISTORY_INVALID"
+	CodeEnvironmentInvalid          fault.Code = "AUTOMATION_ENVIRONMENT_INVALID"
+	CodeAggregateTransitionInvalid  fault.Code = "AUTOMATION_AGGREGATE_TRANSITION_INVALID"
 )
 
 func persistedRevisionInvalidError() error {
@@ -143,6 +150,53 @@ func capViolations(violations []fault.Violation) []fault.Violation {
 		return violations[:fault.MaxViolations]
 	}
 	return violations
+}
+
+// elementTargetInvalidError is the aggregate validation envelope for element
+// target input: selectors, fingerprint, properties, and version source. One
+// top-level fault carries every field failure as an ordered violation, never one
+// code per failing field and never a joined message.
+func elementTargetInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeElementTargetInvalid, "element target content is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// elementTargetHistoryInvalidError covers the version history itself — ordering,
+// uniqueness, and ownership — rather than the shape of any one version. It is
+// FAILED_PRECONDITION because the remediation is to repair persisted history,
+// not to correct a field the caller just supplied.
+func elementTargetHistoryInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeElementTargetHistoryInvalid, "element target version history is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// flowFragmentInvalidError is the aggregate validation envelope for flow
+// fragment input: metadata, the step tree, and parameter definitions. Parameter
+// definitions are flow fragment content, so their own structural failures
+// degrade into this same envelope rather than minting a separate code.
+func flowFragmentInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeFlowFragmentInvalid, "flow fragment content is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// flowFragmentHistoryInvalidError covers the version history itself, mirroring
+// elementTargetHistoryInvalidError for the flow fragment aggregate family.
+func flowFragmentHistoryInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeFlowFragmentHistoryInvalid, "flow fragment version history is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// environmentInvalidError is the aggregate validation envelope for environment
+// input: identity, base URL, and typed variables.
+func environmentInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeEnvironmentInvalid, "environment content is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// aggregateTransitionInvalidError is the single shared helper for the
+// empty-transition and bad-timestamp checks common to every automation
+// aggregate — environment, element target, flow fragment, and execution flow —
+// mirroring how DeletedAggregateError is one cross-aggregate helper rather than
+// four copies. It is FAILED_PRECONDITION because the remediation is to reach a
+// valid prior state (a fresh timestamp, a non-terminal lifecycle state, a new
+// version identity) before retrying, not to correct a field's shape.
+func aggregateTransitionInvalidError(violation fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeAggregateTransitionInvalid, "automation aggregate transition is invalid", fault.WithViolations(violation))
 }
 
 func mustViolation(code fault.Code, field, message string) fault.Violation {

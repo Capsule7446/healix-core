@@ -610,7 +610,7 @@ func TestHealReviewUseCasesRejectInvalidCandidateReviewerAndGeneratedIdentity(t 
 		source, nodes, command := healReviewMatrixFixture(t)
 		transaction := &healReviewTransactionProbe{}
 		_, err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v1"}).Approve(context.Background(), command)
-		if err == nil || !strings.Contains(err.Error(), "new version id must differ from the current version") || transaction.commitCalls != 0 {
+		if !fault.IsCode(err, domain.CodeElementTargetHistoryInvalid) || transaction.commitCalls != 0 {
 			t.Fatalf("error/commit = %v/%d", err, transaction.commitCalls)
 		}
 	})

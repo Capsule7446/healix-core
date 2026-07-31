@@ -1,84 +1,94 @@
 package automation
 
 import (
-	"errors"
-	"fmt"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 	"sort"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
 // ValidateLoadedHistory 验证细节/水合作用形状。列表查询故意允许省略版本，因此不调用它。
+// It returns a single-violation AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID
+// envelope: the short-circuit is deterministic (the walk is over the versions
+// slice in order, never a map), and no version identity reaches public text.
 func (a ElementTargetAggregate) ValidateLoadedHistory() error {
 	if a.ElementTarget.CurrentVersionID == "" {
 		if a.Current.ID != "" {
-			return errors.New("node without a current pointer cannot carry a current version")
+			return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "an element target without a current pointer cannot carry a current version"))
 		}
 		for _, version := range a.Versions {
 			if version.ElementTargetID != a.ElementTarget.ID {
-				return errors.New("node history version belongs to another node")
+				return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another element target"))
 			}
 			if version.DeletedAt == 0 {
-				return errors.New("node with an available version requires a current pointer")
+				return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldRequired, "currentVersionId", "an element target with an available version requires a current pointer"))
 			}
 		}
-		return validateVersionIdentity(a.ElementTarget.ID, nodeVersionIdentities(a.Versions))
+		if violation, invalid := validateVersionIdentity(nodeVersionIdentities(a.Versions)); invalid {
+			return elementTargetHistoryInvalidError(violation)
+		}
+		return nil
 	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
-	if err := validateVersionIdentity(a.ElementTarget.ID, nodeVersionIdentities(a.Versions)); err != nil {
-		return err
+	if violation, invalid := validateVersionIdentity(nodeVersionIdentities(a.Versions)); invalid {
+		return elementTargetHistoryInvalidError(violation)
 	}
 	found := false
 	for _, version := range a.Versions {
 		if version.ElementTargetID != a.ElementTarget.ID {
-			return errors.New("node history version belongs to another node")
+			return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another element target"))
 		}
 		if version.ID == a.Current.ID {
 			found = true
 		}
 	}
 	if !found {
-		return errors.New("node current version is missing from loaded history")
+		return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "the current version is missing from the loaded history"))
 	}
 	return nil
 }
 
+// ValidateLoadedHistory mirrors ElementTargetAggregate.ValidateLoadedHistory
+// for the flow fragment aggregate family.
 func (a FlowFragmentAggregate) ValidateLoadedHistory() error {
 	if a.FlowFragment.CurrentVersionID == "" {
 		if a.Current.ID != "" {
-			return errors.New("workflow without a current pointer cannot carry a current version")
+			return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "a flow fragment without a current pointer cannot carry a current version"))
 		}
 		for _, version := range a.Versions {
 			if version.FlowFragmentID != a.FlowFragment.ID {
-				return errors.New("workflow history version belongs to another workflow")
+				return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another flow fragment"))
 			}
 			if version.DeletedAt == 0 {
-				return errors.New("workflow with an available version requires a current pointer")
+				return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldRequired, "currentVersionId", "a flow fragment with an available version requires a current pointer"))
 			}
 		}
-		return validateVersionIdentity(a.FlowFragment.ID, workflowVersionIdentities(a.Versions))
+		if violation, invalid := validateVersionIdentity(workflowVersionIdentities(a.Versions)); invalid {
+			return flowFragmentHistoryInvalidError(violation)
+		}
+		return nil
 	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
-	if err := validateVersionIdentity(a.FlowFragment.ID, workflowVersionIdentities(a.Versions)); err != nil {
-		return err
+	if violation, invalid := validateVersionIdentity(workflowVersionIdentities(a.Versions)); invalid {
+		return flowFragmentHistoryInvalidError(violation)
 	}
 	found := false
 	for _, version := range a.Versions {
 		if version.FlowFragmentID != a.FlowFragment.ID {
-			return errors.New("workflow history version belongs to another workflow")
+			return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another flow fragment"))
 		}
 		if version.ID == a.Current.ID {
 			found = true
 		}
 	}
 	if !found {
-		return errors.New("workflow current version is missing from loaded history")
+		return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "the current version is missing from the loaded history"))
 	}
 	return nil
 }
@@ -104,16 +114,19 @@ func workflowVersionIdentities(versions []FlowFragmentVersion) []versionIdentity
 	return result
 }
 
-func validateVersionIdentity(owner string, versions []versionIdentity) error {
+// validateVersionIdentity reports the first identity problem found by walking
+// the versions slice in order — never a map — so the result is a function of
+// the input alone. No version id reaches public text.
+func validateVersionIdentity(versions []versionIdentity) (fault.Violation, bool) {
 	seenIDs := map[string]bool{}
 	seenNumbers := map[int]bool{}
 	numbers := make([]int, 0, len(versions))
 	for _, version := range versions {
 		if strings.TrimSpace(version.id) == "" || version.number < 1 {
-			return fmt.Errorf("%s history contains an invalid version identity", owner)
+			return mustViolation(fault.CodeFieldInvalid, "versions", "history contains an invalid version identity"), true
 		}
 		if seenIDs[version.id] || seenNumbers[version.number] {
-			return fmt.Errorf("%s history contains duplicate version identity", owner)
+			return mustViolation(fault.CodeFieldDuplicate, "versions", "history contains a duplicate version identity"), true
 		}
 		seenIDs[version.id] = true
 		seenNumbers[version.number] = true
@@ -122,10 +135,10 @@ func validateVersionIdentity(owner string, versions []versionIdentity) error {
 	sort.Ints(numbers)
 	for index, number := range numbers {
 		if number != index+1 {
-			return fmt.Errorf("%s history version numbers must be contiguous from 1", owner)
+			return mustViolation(fault.CodeFieldInvalid, "versions", "history version numbers must be contiguous from 1"), true
 		}
 	}
-	return nil
+	return fault.Violation{}, false
 }
 
 // PublishVersion 创建一个新的不可变 ElementTargetVersion 并返回一个新的聚合值。现有的历史和接收者永远不会改变。
@@ -144,7 +157,8 @@ func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string
 	}
 	versionNumber, err := nextNodeVersion(a)
 	if err != nil {
-		return ElementTargetAggregate{}, fmt.Errorf("publish node version: %w", err)
+		// NextVersionNumber already returns AUTOMATION_VERSION_NUMBER_EXHAUSTED.
+		return ElementTargetAggregate{}, err
 	}
 	version := ElementTargetVersion{ID: versionID, ElementTargetID: a.ElementTarget.ID, VersionNumber: versionNumber,
 		PageURL: pageURL, Origin: origin, Selectors: append([]fingerprint.Selector(nil), selectors...),
@@ -155,7 +169,8 @@ func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string
 	next.Current = cloneNodeVersion(version)
 	next.Versions = append(next.Versions, cloneNodeVersion(version))
 	if err := next.Validate(); err != nil {
-		return ElementTargetAggregate{}, fmt.Errorf("publish node version: %w", err)
+		// Validate already returns AUTOMATION_ELEMENT_TARGET_INVALID.
+		return ElementTargetAggregate{}, err
 	}
 	return next, nil
 }
@@ -172,7 +187,8 @@ func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowF
 	}
 	versionNumber, err := nextWorkflowVersion(a)
 	if err != nil {
-		return FlowFragmentAggregate{}, fmt.Errorf("publish workflow version: %w", err)
+		// NextVersionNumber already returns AUTOMATION_VERSION_NUMBER_EXHAUSTED.
+		return FlowFragmentAggregate{}, err
 	}
 	version := FlowFragmentVersion{ID: versionID, FlowFragmentID: a.FlowFragment.ID,
 		VersionNumber: versionNumber, Definition: cloneWorkflowDefinition(definition), CreatedAt: at}
@@ -182,17 +198,24 @@ func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowF
 	next.Current = cloneWorkflowVersion(version)
 	next.Versions = append(next.Versions, cloneWorkflowVersion(version))
 	if err := next.Validate(); err != nil {
-		return FlowFragmentAggregate{}, fmt.Errorf("publish workflow version: %w", err)
+		// Validate already returns AUTOMATION_FLOW_FRAGMENT_INVALID.
+		return FlowFragmentAggregate{}, err
 	}
 	return next, nil
 }
 
+// validateNodePublicationBase reports the shared publication preconditions.
+// A content failure from a.Validate() and a timing failure from
+// validateTransitionTime already carry their own registered code and pass
+// through unwrapped; only the pointer-consistency and identity checks that are
+// specific to publication mint their own AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID
+// violation.
 func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at int64) error {
 	if err := a.Validate(); err != nil {
-		return fmt.Errorf("invalid current node aggregate: %w", err)
+		return err
 	}
 	if a.ElementTarget.CurrentVersionID != a.Current.ID {
-		return errors.New("node current version pointer is inconsistent")
+		return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "current version pointer is inconsistent"))
 	}
 	if a.ElementTarget.DeletedAt != 0 {
 		return DeletedAggregateError()
@@ -200,15 +223,17 @@ func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at 
 	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
 		return err
 	}
-	return validateNewVersionIdentity(versionID, at, a.Current.ID, nodeVersionIDs(a.Versions))
+	return validateNewVersionIdentity(versionID, at, a.Current.ID, nodeVersionIDs(a.Versions), elementTargetHistoryInvalidError)
 }
 
+// validateWorkflowPublicationBase mirrors validateNodePublicationBase for the
+// flow fragment aggregate family.
 func validateWorkflowPublicationBase(a FlowFragmentAggregate, versionID string, at int64) error {
 	if err := a.Validate(); err != nil {
-		return fmt.Errorf("invalid current workflow aggregate: %w", err)
+		return err
 	}
 	if a.FlowFragment.CurrentVersionID != a.Current.ID {
-		return errors.New("workflow current version pointer is inconsistent")
+		return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "current version pointer is inconsistent"))
 	}
 	if a.FlowFragment.DeletedAt != 0 {
 		return DeletedAggregateError()
@@ -216,22 +241,24 @@ func validateWorkflowPublicationBase(a FlowFragmentAggregate, versionID string, 
 	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
 		return err
 	}
-	return validateNewVersionIdentity(versionID, at, a.Current.ID, workflowVersionIDs(a.Versions))
+	return validateNewVersionIdentity(versionID, at, a.Current.ID, workflowVersionIDs(a.Versions), flowFragmentHistoryInvalidError)
 }
 
-func validateNewVersionIdentity(versionID string, at int64, currentID string, existing []string) error {
+// validateNewVersionIdentity is shared by both aggregate families; wrap builds
+// the family-specific history envelope around the single violation found.
+func validateNewVersionIdentity(versionID string, at int64, currentID string, existing []string, wrap func(...fault.Violation) error) error {
 	if strings.TrimSpace(versionID) == "" {
-		return errors.New("new version id is required")
+		return wrap(mustViolation(fault.CodeFieldRequired, "versionId", "new version id is required"))
 	}
 	if at <= 0 {
-		return errors.New("publication time must be positive")
+		return wrap(mustViolation(fault.CodeFieldInvalid, "publishedAt", "publication time must be positive"))
 	}
 	if versionID == currentID {
-		return errors.New("new version id must differ from the current version")
+		return wrap(mustViolation(fault.CodeFieldInvalid, "versionId", "new version id must differ from the current version"))
 	}
 	for _, id := range existing {
 		if versionID == id {
-			return errors.New("new version id already exists in history")
+			return wrap(mustViolation(fault.CodeFieldDuplicate, "versionId", "new version id already exists in history"))
 		}
 	}
 	return nil

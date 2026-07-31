@@ -2,8 +2,9 @@ package automation
 
 import (
 	"fmt"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestWorkflowAggregateValidateAcceptsStandaloneValidation(t *testing.T) {
@@ -64,30 +65,28 @@ func TestWorkflowAggregateValidateRejectsInvalidValidationConfiguration(t *testi
 		},
 	}
 	cases := []struct {
-		name string
-		step FlowFragmentStep
-		want string
+		name      string
+		step      FlowFragmentStep
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "missing one assertion config", step: func() FlowFragmentStep { s := valid; s.Validation = nil; return s }(), want: "requires validation configuration"},
-		{name: "missing exact node version", step: func() FlowFragmentStep { s := valid; s.ElementTargetVersionID = ""; return s }(), want: "exact node reference"},
+		{name: "missing one assertion config", step: func() FlowFragmentStep { s := valid; s.Validation = nil; return s }(), wantCode: fault.CodeFieldRequired, wantField: "steps.validation"},
+		{name: "missing exact node version", step: func() FlowFragmentStep { s := valid; s.ElementTargetVersionID = ""; return s }(), wantCode: fault.CodeFieldRequired, wantField: "steps.validation.elementTarget"},
 		{name: "invalid wait", step: func() FlowFragmentStep {
 			s := valid
 			s.Validation = &ValidationConfig{Assertion: s.Validation.Assertion, Wait: ValidationWait{MaxWaitMS: 999, StabilityMS: 200}}
 			return s
-		}(), want: "maximum wait"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validation.wait"},
 		{name: "invalid regex", step: func() FlowFragmentStep {
 			s := valid
 			s.Validation = &ValidationConfig{Assertion: ValidationAssertion{Kind: ValidationTextMatches, Expected: "["}, Wait: s.Validation.Wait}
 			return s
-		}(), want: "invalid regular expression"},
-		{name: "nested in repeat", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{valid}}, want: "must be a root step"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validation.assertion"},
+		{name: "nested in repeat", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1, Children: []FlowFragmentStep{valid}}, wantCode: fault.CodeFieldInvalid, wantField: "steps.validation"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validationWorkflow(tc.step).Validate()
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Validate() error = %v, want %q", err, tc.want)
-			}
+			requireViolationOf(t, validationWorkflow(tc.step).Validate(), CodeFlowFragmentInvalid, tc.wantCode, tc.wantField)
 		})
 	}
 }
@@ -99,33 +98,34 @@ func TestWorkflowAggregateValidateRejectsInvalidValidationGroup(t *testing.T) {
 				Branches: []ValidationBranch{{ID: "branch-a", Name: "分支 A", Steps: []FlowFragmentStep{validationMember("member-a", "条件 A")}}}}}
 	}
 	cases := []struct {
-		name string
-		step FlowFragmentStep
-		want string
+		name      string
+		step      FlowFragmentStep
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "empty branch", step: func() FlowFragmentStep { s := validGroup(); s.ValidationGroup.Branches[0].Steps = nil; return s }(), want: "requires 1-10 validation steps"},
+		{name: "empty branch", step: func() FlowFragmentStep { s := validGroup(); s.ValidationGroup.Branches[0].Steps = nil; return s }(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup.branches"},
 		{name: "member action", step: func() FlowFragmentStep {
 			s := validGroup()
 			s.ValidationGroup.Branches[0].Steps[0].Kind = StepAction
 			return s
-		}(), want: "only accepts VALIDATION"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup.branches.member"},
 		{name: "member wait", step: func() FlowFragmentStep {
 			s := validGroup()
 			s.ValidationGroup.Branches[0].Steps[0].Validation.Wait = ValidationWait{MaxWaitMS: 10_000, StabilityMS: 500}
 			return s
-		}(), want: "must inherit the group wait"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup.branches.member.wait"},
 		{name: "nested group", step: func() FlowFragmentStep {
 			s := validGroup()
 			s.ValidationGroup.Branches[0].Steps[0].ValidationGroup = &ValidationGroup{}
 			return s
-		}(), want: "contains unsupported action or child configuration"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup.branches.member"},
 		{name: "too many branches", step: func() FlowFragmentStep {
 			s := validGroup()
 			for index := 0; index < 5; index++ {
 				s.ValidationGroup.Branches = append(s.ValidationGroup.Branches, ValidationBranch{ID: "extra-" + string(rune('a'+index)), Name: "额外", Steps: []FlowFragmentStep{validationMember("extra-member-"+string(rune('a'+index)), "额外条件")}})
 			}
 			return s
-		}(), want: "requires 1-5 branches"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup.branches"},
 		{name: "too many total members", step: func() FlowFragmentStep {
 			s := validGroup()
 			s.ValidationGroup.Branches = nil
@@ -137,14 +137,11 @@ func TestWorkflowAggregateValidateRejectsInvalidValidationGroup(t *testing.T) {
 				s.ValidationGroup.Branches = append(s.ValidationGroup.Branches, ValidationBranch{ID: "branch-" + string(rune('a'+branch)), Name: "分支", Steps: members})
 			}
 			return s
-		}(), want: "maximum is 20"},
+		}(), wantCode: fault.CodeFieldInvalid, wantField: "steps.validationGroup.branches"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validationWorkflow(tc.step).Validate()
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Validate() error = %v, want %q", err, tc.want)
-			}
+			requireViolationOf(t, validationWorkflow(tc.step).Validate(), CodeFlowFragmentInvalid, tc.wantCode, tc.wantField)
 		})
 	}
 }
@@ -161,10 +158,7 @@ func TestWorkflowAggregateValidateRejectsOversizedStepTrees(t *testing.T) {
 				Children:    []FlowFragmentStep{step},
 			}
 		}
-		err := validationWorkflow(step).Validate()
-		if err == nil || !strings.Contains(err.Error(), "maximum nesting depth") {
-			t.Fatalf("Validate() error = %v, want depth limit", err)
-		}
+		requireViolationOf(t, validationWorkflow(step).Validate(), CodeFlowFragmentInvalid, fault.CodeFieldInvalid, "steps")
 	})
 
 	t.Run("count", func(t *testing.T) {
@@ -174,10 +168,7 @@ func TestWorkflowAggregateValidateRejectsOversizedStepTrees(t *testing.T) {
 		}
 		aggregate := validationWorkflow(steps[0])
 		aggregate.Current.Definition.Steps = steps
-		err := aggregate.Validate()
-		if err == nil || !strings.Contains(err.Error(), "maximum step count") {
-			t.Fatalf("Validate() error = %v, want step count limit", err)
-		}
+		requireViolationOf(t, aggregate.Validate(), CodeFlowFragmentInvalid, fault.CodeFieldInvalid, "steps")
 	})
 }
 

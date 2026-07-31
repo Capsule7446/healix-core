@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -109,7 +110,7 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	t.Run("invalid aggregate is rejected before create", func(t *testing.T) {
 		repository := &nodeRepositoryFake{}
 		_, err := NewNodeService(repository).Create(context.Background(), domain.ElementTarget{}, domain.ElementTargetVersion{})
-		if err == nil || !strings.Contains(err.Error(), "create node") {
+		if !fault.IsCode(err, domain.CodeAggregateTransitionInvalid) {
 			t.Fatalf("Create() error = %v", err)
 		}
 		if repository.createCalls != 0 {
@@ -143,10 +144,9 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 		}
 		repository := &nodeRepositoryFake{current: aggregate}
 		_, err = NewNodeService(repository).Update(context.Background(), "node", "", "", domain.Properties{}, aggregate.ElementTarget.Revision, 2)
-		// The aggregate's own failure now propagates unwrapped; the "transition node"
-		// layer also welded the element target id into public text. Its inner text is
-		// still a bare error, which is the remaining domain/automation migration.
-		if err == nil || !strings.Contains(err.Error(), "display name is required") {
+		// The aggregate's own failure now propagates unwrapped as its registered
+		// AUTOMATION_ELEMENT_TARGET_INVALID code, carrying a displayName violation.
+		if !fault.IsCode(err, domain.CodeElementTargetInvalid) {
 			t.Fatalf("Update() error = %v", err)
 		}
 		if repository.saveCalls != 0 {

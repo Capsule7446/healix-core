@@ -1,8 +1,8 @@
 package automation
 
 import (
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
-	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
@@ -16,17 +16,18 @@ func TestNodeAggregateValidateLoadedHistoryMatrix(t *testing.T) {
 		Versions:      []ElementTargetVersion{current, versionedNodeVersion("node-v1", "node", 1, 2)},
 	}
 	tests := []struct {
-		name   string
-		mutate func(*ElementTargetAggregate)
-		want   string
+		name      string
+		mutate    func(*ElementTargetAggregate)
+		wantCode  fault.Code
+		wantField string
 	}{
 		{name: "unsorted complete history"},
-		{name: "current absent from history", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions = aggregate.Versions[1:] }, want: "missing from loaded history"},
-		{name: "history owner mismatch", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ElementTargetID = "other" }, want: "belongs to another node"},
-		{name: "blank history version id", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ID = "" }, want: "invalid version identity"},
-		{name: "duplicate history id", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ID = aggregate.Versions[0].ID }, want: "duplicate version identity"},
-		{name: "duplicate history number", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].VersionNumber = 2 }, want: "duplicate version identity"},
-		{name: "gap in history numbers", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[0].VersionNumber = 3 }, want: "contiguous from 1"},
+		{name: "current absent from history", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions = aggregate.Versions[1:] }, wantCode: fault.CodeFieldMismatch, wantField: "currentVersionId"},
+		{name: "history owner mismatch", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ElementTargetID = "other" }, wantCode: fault.CodeFieldMismatch, wantField: "versions"},
+		{name: "blank history version id", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ID = "" }, wantCode: fault.CodeFieldInvalid, wantField: "versions"},
+		{name: "duplicate history id", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].ID = aggregate.Versions[0].ID }, wantCode: fault.CodeFieldDuplicate, wantField: "versions"},
+		{name: "duplicate history number", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[1].VersionNumber = 2 }, wantCode: fault.CodeFieldDuplicate, wantField: "versions"},
+		{name: "gap in history numbers", mutate: func(aggregate *ElementTargetAggregate) { aggregate.Versions[0].VersionNumber = 3 }, wantCode: fault.CodeFieldInvalid, wantField: "versions"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -36,21 +37,24 @@ func TestNodeAggregateValidateLoadedHistoryMatrix(t *testing.T) {
 				test.mutate(&aggregate)
 			}
 			err := aggregate.ValidateLoadedHistory()
-			if test.want == "" && err != nil {
-				t.Fatalf("valid history rejected: %v", err)
+			if test.wantField == "" {
+				if err != nil {
+					t.Fatalf("valid history rejected: %v", err)
+				}
+				return
 			}
-			if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
-				t.Fatalf("ValidateLoadedHistory() error = %v, want substring %q", err, test.want)
-			}
+			requireViolationOf(t, err, CodeElementTargetHistoryInvalid, test.wantCode, test.wantField)
 		})
 	}
 }
 
 func TestLoadedHistoryWithoutCurrentRequiresAllVersionsDeleted(t *testing.T) {
 	tests := []struct {
-		name string
-		run  func() error
-		want string
+		name      string
+		run       func() error
+		wantCode  fault.Code
+		wantField string
+		envelope  fault.Code
 	}{
 		{name: "node all deleted", run: func() error {
 			return (ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node"}, Versions: []ElementTargetVersion{
@@ -59,10 +63,10 @@ func TestLoadedHistoryWithoutCurrentRequiresAllVersionsDeleted(t *testing.T) {
 		}},
 		{name: "node available version", run: func() error {
 			return (ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node"}, Versions: []ElementTargetVersion{versionedNodeVersion("node-v1", "node", 1, 0)}}).ValidateLoadedHistory()
-		}, want: "requires a current pointer"},
+		}, envelope: CodeElementTargetHistoryInvalid, wantCode: fault.CodeFieldRequired, wantField: "currentVersionId"},
 		{name: "node carries current value", run: func() error {
 			return (ElementTargetAggregate{ElementTarget: ElementTarget{ID: "node"}, Current: versionedNodeVersion("node-v1", "node", 1, 2)}).ValidateLoadedHistory()
-		}, want: "cannot carry a current version"},
+		}, envelope: CodeElementTargetHistoryInvalid, wantCode: fault.CodeFieldMismatch, wantField: "currentVersionId"},
 		{name: "workflow all deleted", run: func() error {
 			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Versions: []FlowFragmentVersion{
 				versionedWorkflowVersion("workflow-v2", "workflow", 2, 3), versionedWorkflowVersion("workflow-v1", "workflow", 1, 2),
@@ -70,20 +74,21 @@ func TestLoadedHistoryWithoutCurrentRequiresAllVersionsDeleted(t *testing.T) {
 		}},
 		{name: "workflow available version", run: func() error {
 			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Versions: []FlowFragmentVersion{versionedWorkflowVersion("workflow-v1", "workflow", 1, 0)}}).ValidateLoadedHistory()
-		}, want: "requires a current pointer"},
+		}, envelope: CodeFlowFragmentHistoryInvalid, wantCode: fault.CodeFieldRequired, wantField: "currentVersionId"},
 		{name: "workflow carries current value", run: func() error {
 			return (FlowFragmentAggregate{FlowFragment: FlowFragment{ID: "workflow"}, Current: versionedWorkflowVersion("workflow-v1", "workflow", 1, 2)}).ValidateLoadedHistory()
-		}, want: "cannot carry a current version"},
+		}, envelope: CodeFlowFragmentHistoryInvalid, wantCode: fault.CodeFieldMismatch, wantField: "currentVersionId"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.run()
-			if test.want == "" && err != nil {
-				t.Fatalf("valid all-deleted history rejected: %v", err)
+			if test.wantField == "" {
+				if err != nil {
+					t.Fatalf("valid all-deleted history rejected: %v", err)
+				}
+				return
 			}
-			if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
-				t.Fatalf("ValidateLoadedHistory() error = %v, want substring %q", err, test.want)
-			}
+			requireViolationOf(t, err, test.envelope, test.wantCode, test.wantField)
 		})
 	}
 }
@@ -96,16 +101,17 @@ func TestWorkflowAggregateValidateLoadedHistoryIdentityMatrix(t *testing.T) {
 		Versions:     []FlowFragmentVersion{versionedWorkflowVersion("workflow-v1", "workflow", 1, 2), current},
 	}
 	tests := []struct {
-		name   string
-		mutate func(*FlowFragmentAggregate)
-		want   string
+		name      string
+		mutate    func(*FlowFragmentAggregate)
+		wantCode  fault.Code
+		wantField string
 	}{
 		{name: "complete history"},
-		{name: "current absent", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions = aggregate.Versions[:1] }, want: "missing from loaded history"},
-		{name: "owner mismatch", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].FlowFragmentID = "other" }, want: "belongs to another workflow"},
-		{name: "duplicate id", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].ID = aggregate.Versions[1].ID }, want: "duplicate version identity"},
-		{name: "duplicate number", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].VersionNumber = 2 }, want: "duplicate version identity"},
-		{name: "gap", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[1].VersionNumber = 3 }, want: "contiguous from 1"},
+		{name: "current absent", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions = aggregate.Versions[:1] }, wantCode: fault.CodeFieldMismatch, wantField: "currentVersionId"},
+		{name: "owner mismatch", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].FlowFragmentID = "other" }, wantCode: fault.CodeFieldMismatch, wantField: "versions"},
+		{name: "duplicate id", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].ID = aggregate.Versions[1].ID }, wantCode: fault.CodeFieldDuplicate, wantField: "versions"},
+		{name: "duplicate number", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[0].VersionNumber = 2 }, wantCode: fault.CodeFieldDuplicate, wantField: "versions"},
+		{name: "gap", mutate: func(aggregate *FlowFragmentAggregate) { aggregate.Versions[1].VersionNumber = 3 }, wantCode: fault.CodeFieldInvalid, wantField: "versions"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -115,12 +121,13 @@ func TestWorkflowAggregateValidateLoadedHistoryIdentityMatrix(t *testing.T) {
 				test.mutate(&aggregate)
 			}
 			err := aggregate.ValidateLoadedHistory()
-			if test.want == "" && err != nil {
-				t.Fatalf("valid history rejected: %v", err)
+			if test.wantField == "" {
+				if err != nil {
+					t.Fatalf("valid history rejected: %v", err)
+				}
+				return
 			}
-			if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
-				t.Fatalf("ValidateLoadedHistory() error = %v, want substring %q", err, test.want)
-			}
+			requireViolationOf(t, err, CodeFlowFragmentHistoryInvalid, test.wantCode, test.wantField)
 		})
 	}
 }
@@ -132,24 +139,25 @@ func TestWorkflowVersionValidateForUsesSelectedHistoricalVersion(t *testing.T) {
 		t.Fatalf("historical selected version rejected: %v", err)
 	}
 	historical.FlowFragmentID = "other"
-	if err := historical.ValidateFor(workflow); err == nil || !strings.Contains(err.Error(), "belong to workflow") {
-		t.Fatalf("wrong historical owner error = %v", err)
-	}
+	requireViolationOf(t, historical.ValidateFor(workflow), CodeFlowFragmentInvalid, fault.CodeFieldMismatch, "current")
 }
 
 func TestPublishVersionRejectsNewVersionIdentityMatrix(t *testing.T) {
 	node := versionedNodeAggregate()
 	workflow := versionedWorkflowAggregate()
 	tests := []struct {
-		name      string
-		versionID string
-		at        int64
-		want      string
+		name           string
+		versionID      string
+		at             int64
+		envelope       fault.Code
+		wantCode       fault.Code
+		wantField      string
+		crossAggregate bool
 	}{
-		{name: "blank id", versionID: " ", at: 2, want: "version id is required"},
-		{name: "non-positive timestamp", versionID: "v2", at: 0, want: "time must be positive"},
-		{name: "same as current", versionID: "current", at: 2, want: "differ from the current"},
-		{name: "already in history", versionID: "old", at: 2, want: "already exists in history"},
+		{name: "blank id", versionID: " ", at: 2, wantCode: fault.CodeFieldRequired, wantField: "versionId"},
+		{name: "non-positive timestamp", versionID: "v2", at: 0, crossAggregate: true, wantCode: fault.CodeFieldInvalid, wantField: "at"},
+		{name: "same as current", versionID: "current", at: 2, wantCode: fault.CodeFieldInvalid, wantField: "versionId"},
+		{name: "already in history", versionID: "old", at: 2, wantCode: fault.CodeFieldDuplicate, wantField: "versionId"},
 	}
 	for _, test := range tests {
 		t.Run("node "+test.name, func(t *testing.T) {
@@ -161,9 +169,11 @@ func TestPublishVersionRejectsNewVersionIdentityMatrix(t *testing.T) {
 				versionID = node.Versions[0].ID
 			}
 			_, err := node.PublishVersion(versionID, "", "", node.Current.Selectors, node.Current.Fingerprint, SourceManual, test.at)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("PublishVersion() error = %v, want substring %q", err, test.want)
+			envelope := CodeElementTargetHistoryInvalid
+			if test.crossAggregate {
+				envelope = CodeAggregateTransitionInvalid
 			}
+			requireViolationOf(t, err, envelope, test.wantCode, test.wantField)
 		})
 		t.Run("workflow "+test.name, func(t *testing.T) {
 			versionID := test.versionID
@@ -174,9 +184,11 @@ func TestPublishVersionRejectsNewVersionIdentityMatrix(t *testing.T) {
 				versionID = workflow.Versions[0].ID
 			}
 			_, err := workflow.PublishVersion(versionID, workflow.Current.Definition, test.at)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("PublishVersion() error = %v, want substring %q", err, test.want)
+			envelope := CodeFlowFragmentHistoryInvalid
+			if test.crossAggregate {
+				envelope = CodeAggregateTransitionInvalid
 			}
+			requireViolationOf(t, err, envelope, test.wantCode, test.wantField)
 		})
 	}
 }
@@ -185,24 +197,18 @@ func TestPublishVersionRejectsInvalidPublishedContentAndCurrentAggregate(t *test
 	t.Run("invalid node publication content", func(t *testing.T) {
 		aggregate := versionedNodeAggregate()
 		_, err := aggregate.PublishVersion("node-v3", "", "", nil, fingerprint.Fingerprint{}, SourceManual, 3)
-		if err == nil || !strings.Contains(err.Error(), "at least one selector") {
-			t.Fatalf("invalid node version error = %v", err)
-		}
+		requireViolationOf(t, err, CodeElementTargetInvalid, fault.CodeFieldRequired, "current.selectors")
 	})
 	t.Run("invalid workflow publication content", func(t *testing.T) {
 		aggregate := versionedWorkflowAggregate()
 		_, err := aggregate.PublishVersion("workflow-v3", FlowFragmentContent{}, 3)
-		if err == nil || !strings.Contains(err.Error(), "requires at least one step") {
-			t.Fatalf("invalid workflow version error = %v", err)
-		}
+		requireViolationOf(t, err, CodeFlowFragmentInvalid, fault.CodeFieldRequired, "steps")
 	})
 	t.Run("invalid workflow current aggregate", func(t *testing.T) {
 		aggregate := versionedWorkflowAggregate()
 		aggregate.FlowFragment.CurrentVersionID = "other"
 		_, err := aggregate.PublishVersion("workflow-v3", aggregate.Current.Definition, 3)
-		if err == nil || !strings.Contains(err.Error(), "invalid current workflow aggregate") {
-			t.Fatalf("invalid current workflow error = %v", err)
-		}
+		requireViolationOf(t, err, CodeFlowFragmentInvalid, fault.CodeFieldMismatch, "currentVersionId")
 	})
 }
 

@@ -1,9 +1,9 @@
 package automation
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -21,9 +21,7 @@ func TestNodeAggregateValidate(t *testing.T) {
 		t.Fatalf("expected valid aggregate: %v", err)
 	}
 	aggregate.ElementTarget.DisplayName = " "
-	if err := aggregate.Validate(); err == nil || !strings.Contains(err.Error(), "display name") {
-		t.Fatalf("expected display name error, got %v", err)
-	}
+	requireViolationOf(t, aggregate.Validate(), CodeElementTargetInvalid, fault.CodeFieldRequired, "displayName")
 }
 
 func TestEnvironmentValidateURL(t *testing.T) {

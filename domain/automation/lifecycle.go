@@ -1,7 +1,6 @@
 package automation
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
@@ -22,12 +21,17 @@ func DeletedAggregateError() error {
 	return err
 }
 
+// validateTransitionTime is the shared cross-aggregate check for every
+// automation aggregate's lifecycle and publication transitions: it returns
+// AUTOMATION_AGGREGATE_TRANSITION_INVALID directly so every caller — across
+// environment, element target, flow fragment, and execution flow — passes the
+// result through unwrapped instead of restating it.
 func validateTransitionTime(at, updatedAt int64) error {
 	if at <= 0 {
-		return errors.New("transition time must be positive")
+		return aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "at", "transition time must be positive"))
 	}
 	if at < updatedAt {
-		return errors.New("transition time cannot precede updated time")
+		return aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "at", "transition time cannot precede the aggregate's updated time"))
 	}
 	return nil
 }
@@ -35,7 +39,7 @@ func validateTransitionTime(at, updatedAt int64) error {
 func NewEnvironment(value Environment) (Environment, error) {
 	value.Revision = 1
 	if value.CreatedAt <= 0 || value.UpdatedAt != value.CreatedAt {
-		return Environment{}, errors.New("environment creation time must be positive and equal updated time")
+		return Environment{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "createdAt", "environment creation time must be positive and equal updated time"))
 	}
 	value.Variables = value.Variables.Clone()
 	if err := value.Validate(); err != nil {
@@ -73,7 +77,7 @@ func (e Environment) Restore(at int64) (Environment, error) {
 }
 func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, error) {
 	if (e.DeletedAt != 0) == deleted {
-		return Environment{}, errors.New("environment lifecycle transition is a no-op")
+		return Environment{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "deletedAt", "environment lifecycle transition is a no-op"))
 	}
 	if err := validateTransitionTime(at, e.UpdatedAt); err != nil {
 		return Environment{}, err
@@ -102,7 +106,7 @@ func NewElementTarget(node ElementTarget, initial ElementTargetVersion) (Element
 	initial.ElementTargetID = node.ID
 	initial.VersionNumber = 1
 	if node.CreatedAt <= 0 || node.UpdatedAt != node.CreatedAt || initial.CreatedAt != node.CreatedAt {
-		return ElementTargetAggregate{}, errors.New("node creation timestamps must be positive and equal")
+		return ElementTargetAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "createdAt", "element target creation timestamps must be positive and equal"))
 	}
 	a := ElementTargetAggregate{ElementTarget: node, Current: initial, Versions: []ElementTargetVersion{initial}}
 	a = cloneNodeAggregate(a)
@@ -142,7 +146,7 @@ func (a ElementTargetAggregate) Restore(at int64) (ElementTargetAggregate, error
 }
 func (a ElementTargetAggregate) setDeleted(deleted bool, at int64) (ElementTargetAggregate, error) {
 	if (a.ElementTarget.DeletedAt != 0) == deleted {
-		return ElementTargetAggregate{}, errors.New("node lifecycle transition is a no-op")
+		return ElementTargetAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "deletedAt", "element target lifecycle transition is a no-op"))
 	}
 	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
 		return ElementTargetAggregate{}, err
@@ -170,7 +174,7 @@ func NewFlowFragment(workflow FlowFragment, initial FlowFragmentVersion) (FlowFr
 	initial.FlowFragmentID = workflow.ID
 	initial.VersionNumber = 1
 	if workflow.CreatedAt <= 0 || workflow.UpdatedAt != workflow.CreatedAt || initial.CreatedAt != workflow.CreatedAt {
-		return FlowFragmentAggregate{}, errors.New("workflow creation timestamps must be positive and equal")
+		return FlowFragmentAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "createdAt", "flow fragment creation timestamps must be positive and equal"))
 	}
 	a := cloneWorkflowAggregate(FlowFragmentAggregate{FlowFragment: workflow, Current: initial, Versions: []FlowFragmentVersion{initial}})
 	if err := a.ValidateLoadedHistory(); err != nil {
@@ -208,7 +212,7 @@ func (a FlowFragmentAggregate) Restore(at int64) (FlowFragmentAggregate, error) 
 }
 func (a FlowFragmentAggregate) setDeleted(deleted bool, at int64) (FlowFragmentAggregate, error) {
 	if (a.FlowFragment.DeletedAt != 0) == deleted {
-		return FlowFragmentAggregate{}, errors.New("workflow lifecycle transition is a no-op")
+		return FlowFragmentAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "deletedAt", "flow fragment lifecycle transition is a no-op"))
 	}
 	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
 		return FlowFragmentAggregate{}, err
@@ -238,11 +242,11 @@ func (a ExecutionFlowAggregate) PublishVersion(publication ExecutionFlowVersionP
 		return ExecutionFlowAggregate{}, DeletedAggregateError()
 	}
 	if strings.TrimSpace(publication.ID) == "" || publication.CreatedAt <= 0 || publication.CreatedAt < a.Task.UpdatedAt {
-		return ExecutionFlowAggregate{}, errors.New("test task publication requires a new version identity and monotonic timestamp")
+		return ExecutionFlowAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "publication", "publication requires a new version identity and a monotonic timestamp"))
 	}
 	for _, existing := range a.Versions {
 		if existing.ID == publication.ID {
-			return ExecutionFlowAggregate{}, errors.New("test task version id already exists")
+			return ExecutionFlowAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldDuplicate, "publication.id", "publication version id already exists"))
 		}
 	}
 	next := cloneTestTaskAggregate(a)
@@ -282,7 +286,7 @@ func NewExecutionFlow(task ExecutionFlow, initial ExecutionFlowVersion) (Executi
 	initial.VersionNumber = 1
 	initial.SourceVersionID = ""
 	if task.CreatedAt <= 0 || task.UpdatedAt != task.CreatedAt || initial.CreatedAt != task.CreatedAt {
-		return ExecutionFlowAggregate{}, errors.New("test task creation timestamps must be positive and equal")
+		return ExecutionFlowAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "createdAt", "execution flow creation timestamps must be positive and equal"))
 	}
 	aggregate := cloneTestTaskAggregate(ExecutionFlowAggregate{Task: task, Current: initial, Versions: []ExecutionFlowVersion{initial}})
 	if err := aggregate.Validate(); err != nil {

@@ -14,7 +14,7 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 		mutate func(*SamplingPublication)
 		want   string
 	}{
-		{name: "invalid workflow", mutate: func(p *SamplingPublication) { p.FlowFragment.FlowFragment.ID = " " }, want: "sampled workflow"},
+		{name: "invalid workflow", mutate: func(p *SamplingPublication) { p.FlowFragment.FlowFragment.ID = " " }, want: string(CodeFlowFragmentInvalid)},
 		{name: "merge invalid expected revision", mutate: func(p *SamplingPublication) {
 			p.Nodes[0].ResolutionMode = "MERGE"
 			p.Nodes[0].Aggregate = versionedNodeAggregate()

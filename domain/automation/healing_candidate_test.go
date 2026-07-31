@@ -155,10 +155,10 @@ func TestSamplingPublicationValidation(t *testing.T) {
 		{name: "missing temporary id", mutate: func(p *SamplingPublication) { p.Nodes[0].TemporaryElementTargetID = " " }, want: "temporary id is required"},
 		{name: "unsupported resolution", mutate: func(p *SamplingPublication) { p.Nodes[0].ResolutionMode = "COPY" }, want: "unsupported resolution mode"},
 		{name: "duplicate temporary id", mutate: func(p *SamplingPublication) { p.Nodes = append(p.Nodes, p.Nodes[0]) }, want: "duplicate sampled node"},
-		// The previous expectation matched the temporary element target id itself,
-		// which is precisely the value that must not reach the message. Nodes are now
-		// addressed by their position in the caller's own slice.
-		{name: "invalid aggregate", mutate: func(p *SamplingPublication) { p.Nodes[0].Aggregate.ElementTarget.ID = "" }, want: "sampled node 0"},
+		// An invalid node aggregate now carries its own registered code
+		// (AUTOMATION_ELEMENT_TARGET_INVALID) and surfaces directly instead of being
+		// buried inside an unclassified "sampled node" wrapper.
+		{name: "invalid aggregate", mutate: func(p *SamplingPublication) { p.Nodes[0].Aggregate.ElementTarget.ID = "" }, want: string(CodeElementTargetInvalid)},
 		{name: "create has authority", mutate: func(p *SamplingPublication) { p.Nodes[0].ExpectedRevision = 1 }, want: "new ownership"},
 		{name: "duplicate formal node", mutate: func(p *SamplingPublication) {
 			second := p.Nodes[0]
@@ -170,7 +170,14 @@ func TestSamplingPublicationValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			publication := valid.Clone()
 			tt.mutate(&publication)
-			requireSamplingPublicationRejection(t, publication.Validate(), tt.want)
+			err := publication.Validate()
+			if strings.HasPrefix(tt.want, "AUTOMATION_") {
+				if !fault.IsCode(err, fault.Code(tt.want)) {
+					t.Fatalf("Validate() error = %v, want code %s", err, tt.want)
+				}
+				return
+			}
+			requireSamplingPublicationRejection(t, err, tt.want)
 		})
 	}
 }

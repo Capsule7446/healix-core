@@ -21,7 +21,9 @@ func (s NodeService) Create(ctx context.Context, node domain.ElementTarget, init
 	}
 	aggregate, err := domain.NewElementTarget(node, initial)
 	if err != nil {
-		return domain.ElementTargetAggregate{}, fmt.Errorf("create node: %w", err)
+		// The domain constructor already returns a registered code; wrapping it
+		// here would bury that code under an unclassified layer.
+		return domain.ElementTargetAggregate{}, err
 	}
 	result, err := s.repository.Create(ctx, aggregate)
 	if err != nil {
