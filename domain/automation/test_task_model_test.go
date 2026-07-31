@@ -54,3 +54,13 @@ func TestTestTaskVersionPlanValidatesResolvedTopLevelDependency(t *testing.T) {
 		t.Fatalf("unresolved latest error = %v", err)
 	}
 }
+
+func TestResolvedExecutionFlowKeepsExactVersionsAfterCurrentPointersAdvance(t *testing.T) {
+	plan := validTestTaskVersionPlan()
+	plan.Task.CurrentVersionID = "task-v2"
+	plan.Workflows[0].FlowFragment.CurrentVersionID = "workflow-v2"
+
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("resolved exact plan rejected after current pointers advanced: %v", err)
+	}
+}

@@ -97,8 +97,8 @@ func validateEntries(input buildExecutionPlanInput) error {
 		if item.VersionPolicy == automation.FlowFragmentVersionFixed && item.WorkflowVersionID != e.WorkflowVersionID {
 			return fmt.Errorf("entry %q fixed version mismatch", e.ExecutionID)
 		}
-		if item.VersionPolicy == automation.FlowFragmentVersionLatest && (!dependency.ResolvedFromLatest || dependency.FlowFragment.CurrentVersionID != e.WorkflowVersionID) {
-			return fmt.Errorf("entry %q latest version mismatch", e.ExecutionID)
+		if item.VersionPolicy == automation.FlowFragmentVersionLatest && !dependency.ResolvedFromLatest {
+			return fmt.Errorf("entry %q latest version resolution is missing provenance", e.ExecutionID)
 		}
 	}
 	return nil

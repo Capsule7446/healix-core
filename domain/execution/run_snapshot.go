@@ -51,8 +51,7 @@ func DefaultHealerPolicySnapshot() HealerPolicySnapshot {
 }
 
 type TestTaskSnapshot struct {
-	ID               string
-	CurrentVersionID string
+	ID string
 }
 
 type ExecutionFlowVersionItemSnapshot struct {
@@ -407,7 +406,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 	if !validString(v.RunID, true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
 		return errors.New("run and test-task version identity is required")
 	}
-	if v.ExecutionFlow.ID != v.ExecutionFlowID || v.ExecutionFlow.CurrentVersionID != v.TestTaskVersionID ||
+	if v.ExecutionFlow.ID != v.ExecutionFlowID ||
 		v.ExecutionFlowVersion.ID != v.TestTaskVersionID || v.ExecutionFlowVersion.ExecutionFlowID != v.ExecutionFlowID ||
 		v.ExecutionFlowVersion.VersionNumber != v.TestTaskVersionNumber {
 		return errors.New("test-task snapshot graph identity is inconsistent")
@@ -708,7 +707,6 @@ func encodeSnapshot(e *canonicalEncoder, v RunSnapshotInput) {
 	e.str(v.TestTaskVersionID)
 	e.u64(uint64(v.TestTaskVersionNumber))
 	e.str(v.ExecutionFlow.ID)
-	e.str(v.ExecutionFlow.CurrentVersionID)
 	e.str(v.ExecutionFlowVersion.ID)
 	e.str(v.ExecutionFlowVersion.ExecutionFlowID)
 	e.u64(uint64(v.ExecutionFlowVersion.VersionNumber))

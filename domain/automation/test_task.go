@@ -276,7 +276,7 @@ func (p ResolvedExecutionFlow) Validate() error {
 	if err := p.Version.Validate(); err != nil {
 		return err
 	}
-	if p.Version.ExecutionFlowID != p.Task.ID || p.Task.CurrentVersionID != p.Version.ID {
+	if p.Version.ExecutionFlowID != p.Task.ID {
 		return errors.New("test task publication candidate identity is inconsistent")
 	}
 	if p.Version.VersionNumber == 1 {
@@ -320,7 +320,7 @@ func (p ResolvedExecutionFlow) Validate() error {
 			case FlowFragmentVersionFixed:
 				matched = dependency.Version.ID == item.WorkflowVersionID
 			case FlowFragmentVersionLatest:
-				matched = dependency.ResolvedFromLatest && dependency.FlowFragment.CurrentVersionID == dependency.Version.ID
+				matched = dependency.ResolvedFromLatest
 			}
 			if matched {
 				break
@@ -400,7 +400,7 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 						return fmt.Errorf("step %s workflow reference target is inconsistent", step.ID)
 					}
 					if step.Reference.LatestPublished {
-						if !resolution.ResolvedFromLatest || target.FlowFragment.CurrentVersionID != target.Version.ID {
+						if !resolution.ResolvedFromLatest {
 							return fmt.Errorf("step %s latest workflow reference was not resolved from current", step.ID)
 						}
 					} else if resolution.ResolvedFromLatest || step.Reference.WorkflowVersionID != target.Version.ID {

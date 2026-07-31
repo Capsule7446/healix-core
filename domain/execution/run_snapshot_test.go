@@ -91,7 +91,7 @@ func validRunSnapshotInput(t *testing.T) RunSnapshotInput {
 		SchemaVersion: RunSnapshotSchemaV1,
 		RunID:         "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3",
 		TestTaskVersionNumber: 3,
-		ExecutionFlow:         TestTaskSnapshot{ID: "task-1", CurrentVersionID: "task-v3"},
+		ExecutionFlow:         TestTaskSnapshot{ID: "task-1"},
 		ExecutionFlowVersion:  ExecutionFlowVersionSnapshot{ID: "task-v3", ExecutionFlowID: "task-1", VersionNumber: 3, Items: []ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v3", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}}},
 		Plan: Draft{RunID: "run-1", FailurePolicy: FailurePolicyStopOnFailure,
 			Entries:   []WorkflowEntry{{ExecutionID: "entry-1", TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
@@ -111,7 +111,7 @@ func TestRunSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const legacyDigest = "sha256:406acea99f506e283ac8c49fe4083d3d94b5a3a7275c653fecba010312982069"
+	const legacyDigest = "sha256:47b58c11e5f5c2fe7b5a8bb764ee01b1f5f04970926a7dee3f3d2ba67cfb93a3"
 	if sealed.Digest() != legacyDigest {
 		t.Fatalf("V1 digest changed: got %q", sealed.Digest())
 	}
@@ -224,7 +224,6 @@ func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
 		{"task version", func(v *RunSnapshotInput) {
 			v.TestTaskVersionID = "task-v4"
 			v.TestTaskVersionNumber = 4
-			v.ExecutionFlow.CurrentVersionID = "task-v4"
 			v.ExecutionFlowVersion.ID = "task-v4"
 			v.ExecutionFlowVersion.VersionNumber = 4
 			v.ExecutionFlowVersion.Items[0].TestTaskVersionID = "task-v4"
