@@ -260,7 +260,7 @@ func (f *referenceFixture) LookupSamplingPublication(_ context.Context, publicat
 		return application.PublishSamplingOutcome{}, false, nil
 	}
 	if f.state.digests[publicationID] != digest {
-		return application.PublishSamplingOutcome{}, false, &application.SamplingPublicationIdentityConflictError{PublicationID: publicationID}
+		return application.PublishSamplingOutcome{}, false, application.SamplingPublicationIdentityConflictError()
 	}
 	existing.Status = application.PublishSamplingReplayed
 	return cloneSamplingOutcome(existing), true, nil
@@ -274,7 +274,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 	defer f.mu.Unlock()
 	if existing, ok := f.state.replays[intent.PublicationID]; ok {
 		if f.state.digests[intent.PublicationID] != intent.RequestDigest {
-			return application.PublishSamplingOutcome{}, &application.SamplingPublicationIdentityConflictError{PublicationID: intent.PublicationID}
+			return application.PublishSamplingOutcome{}, application.SamplingPublicationIdentityConflictError()
 		}
 		existing.Status = application.PublishSamplingReplayed
 		return cloneSamplingOutcome(existing), nil

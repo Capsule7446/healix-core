@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type testTaskRepositoryFake struct {
@@ -164,9 +165,9 @@ func TestPublishSamplingIntentDigestValidation(t *testing.T) {
 	}
 }
 
-func TestSamplingPublicationErrorsExposeStableClassification(t *testing.T) {
-	identity := &SamplingPublicationIdentityConflictError{PublicationID: "publication"}
-	if !errors.Is(identity, ErrSamplingPublicationIdentityConflict) || !strings.Contains(identity.Error(), "publication") {
+func TestSamplingPublicationIdentityConflictIsClassifiedAndRedacted(t *testing.T) {
+	identity := SamplingPublicationIdentityConflictError()
+	if !fault.IsCode(identity, CodeSamplingPublicationIdentityConflict) || strings.Contains(identity.Error(), "publication-sensitive-id") {
 		t.Fatalf("identity error = %v", identity)
 	}
 	cause := errors.New("bad outcome")

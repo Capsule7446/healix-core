@@ -9,6 +9,7 @@ import (
 
 	application "github.com/Capsule7446/healix-core/application/automation"
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type FaultPoint string
@@ -62,7 +63,7 @@ func Run(t *testing.T, factory Factory) {
 			t.Fatalf("lookup = %#v, found=%t, err=%v", lookup, found, err)
 		}
 		lookup.Result.Nodes[0].ElementTargetVersionID = "lookup-mutated"
-		if _, found, err := fixture.LookupSamplingPublication(context.Background(), intent.PublicationID, "sha256:different"); err == nil || found || !errors.Is(err, application.ErrSamplingPublicationIdentityConflict) {
+		if _, found, err := fixture.LookupSamplingPublication(context.Background(), intent.PublicationID, "sha256:different"); err == nil || found || !fault.IsCode(err, application.CodeSamplingPublicationIdentityConflict) {
 			t.Fatalf("conflicting lookup found=%t err=%v", found, err)
 		}
 		if got := fixture.Snapshot(); !reflect.DeepEqual(got, after) {
@@ -95,7 +96,7 @@ func Run(t *testing.T, factory Factory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationIdentityConflict) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationIdentityConflict) {
 			t.Fatalf("identity conflict error = %v", err)
 		}
 		changed = intent

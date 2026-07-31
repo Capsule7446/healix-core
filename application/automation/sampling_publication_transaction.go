@@ -10,12 +10,12 @@ import (
 	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 const samplingPublicationDigestV1 = "sampling-publication-v1"
 
 var (
-	ErrSamplingPublicationIdentityConflict  = errors.New("sampling publication identity conflict")
 	ErrSamplingPublicationAuthorityConflict = errors.New("sampling publication authority conflict")
 	ErrSamplingPublicationDigestMismatch    = errors.New("sampling publication digest does not match payload")
 	ErrSamplingPublicationAuthorization     = errors.New("sampling publication authorization rejected")
@@ -23,14 +23,18 @@ var (
 	ErrSamplingPublicationContract          = errors.New("sampling publication adapter contract violation")
 )
 
-type SamplingPublicationIdentityConflictError struct{ PublicationID string }
+const CodeSamplingPublicationIdentityConflict fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
 
-func (e *SamplingPublicationIdentityConflictError) Error() string {
-	return "sampling publication identity conflict: " + e.PublicationID
-}
-
-func (e *SamplingPublicationIdentityConflictError) Is(target error) bool {
-	return target == ErrSamplingPublicationIdentityConflict
+func SamplingPublicationIdentityConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeSamplingPublicationIdentityConflict,
+		"sampling publication identity conflicts with an existing request",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 type SamplingPublicationContractError struct{ Cause error }

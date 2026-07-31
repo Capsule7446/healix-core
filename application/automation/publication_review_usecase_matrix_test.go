@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/sampling"
 )
 
@@ -68,9 +69,9 @@ func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing
 
 func TestSamplingPublicationLookupIdentityConflictPreventsPublish(t *testing.T) {
 	command := createSamplingCommand(t)
-	transaction := &samplingTransactionProbe{lookupErr: &SamplingPublicationIdentityConflictError{PublicationID: command.PublicationID}}
+	transaction := &samplingTransactionProbe{lookupErr: SamplingPublicationIdentityConflictError()}
 	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
-	if !errors.Is(err, ErrSamplingPublicationIdentityConflict) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 0 {
+	if !fault.IsCode(err, CodeSamplingPublicationIdentityConflict) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 0 {
 		t.Fatalf("result/error/lookup/publish = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
 }
