@@ -2,7 +2,6 @@ package parameter
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,7 +43,7 @@ func MultiSelectValue(value []string) Value {
 func NewNumberValue(value string) (Value, error) {
 	canonical, err := canonicalDecimal(value)
 	if err != nil {
-		return Value{}, err
+		return Value{}, wrapValueInvalidError(err)
 	}
 	return Value{kind: Number, text: canonical}, nil
 }
@@ -88,17 +87,22 @@ func (v Value) Equal(other Value) bool {
 	}
 	return true
 }
+
+// Validate reports one safe code for every rejection. Neither the value nor its
+// type reaches public text: an unsupported type is by definition not one of the
+// closed set, so echoing it would echo arbitrary caller input, and the caller can
+// read its own type back through Type().
 func (v Value) Validate() error {
 	switch v.kind {
 	case Text, SingleSelect:
 		if len(v.text) > MaxValueStringBytes {
-			return fmt.Errorf("%s value exceeds maximum size", v.kind)
+			return valueInvalidError()
 		}
 		return nil
 	case Number:
 		canonical, err := canonicalDecimal(v.text)
 		if err != nil || canonical != v.text {
-			return errors.New("NUMBER value is not canonical")
+			return valueInvalidError()
 		}
 		return nil
 	case Boolean:
@@ -106,12 +110,12 @@ func (v Value) Validate() error {
 	case MultiSelect:
 		for _, item := range v.multi {
 			if len(item) > MaxValueStringBytes {
-				return errors.New("MULTI_SELECT item exceeds maximum size")
+				return valueInvalidError()
 			}
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported parameter value type %q", v.kind)
+		return valueInvalidError()
 	}
 }
 
@@ -125,7 +129,9 @@ func canonicalDecimal(input string) (string, error) {
 	}
 	match := decimalPattern.FindStringSubmatch(input)
 	if match == nil {
-		return "", fmt.Errorf("invalid NUMBER %q", input)
+		// The rejected input is deliberately absent even from this private cause:
+		// hosts are allowed to log causes, and a parameter value must not be logged.
+		return "", errors.New("NUMBER format is invalid")
 	}
 	exponent := 0
 	if match[4] != "" {

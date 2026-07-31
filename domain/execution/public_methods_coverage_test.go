@@ -61,7 +61,7 @@ func TestReferenceValidateConfigurationMatrix(t *testing.T) {
 		{name: "blank workflow", reference: &Reference{}, step: Step{DisplayName: "call"}, want: "requires a workflow reference"},
 		{name: "unsupported residual configuration", reference: &Reference{FlowFragmentID: "workflow"}, step: Step{DisplayName: "call", Action: "click"}, want: "unsupported step configuration"},
 		{name: "blank binding name", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{" ": literal}}, step: Step{DisplayName: "call"}, want: "empty parameter binding"},
-		{name: "invalid binding kind", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": {}}}, step: Step{DisplayName: "call"}, want: "unsupported parameter binding kind"},
+		{name: "invalid binding kind", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": {}}}, step: Step{DisplayName: "call"}, want: string(parameter.CodeBindingUnresolvable)},
 	}
 
 	for _, test := range tests {

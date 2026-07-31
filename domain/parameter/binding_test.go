@@ -3,6 +3,8 @@ package parameter
 import (
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestLiteralBindingPreservesTypedValueAndClonesCollections(t *testing.T) {
@@ -44,21 +46,35 @@ func TestParentReferenceBindingResolvesOnlyNamedTypedParent(t *testing.T) {
 	}
 }
 
+// All three variants share one code on purpose: the caller declared the binding
+// and owns the parent scope, so a per-reason i18n key would tell it nothing it
+// cannot already read from its own input.
 func TestBindingRejectsInvalidVariantsAndMissingParents(t *testing.T) {
+	const secretParent = "absent-parent-8f21"
 	tests := []struct {
 		name    string
 		binding Binding
 		parent  map[string]Value
-		want    string
 	}{
-		{name: "zero", binding: Binding{}, want: "unsupported"},
-		{name: "blank reference", binding: ParentReferenceBinding(""), want: "name is required"},
-		{name: "missing reference", binding: ParentReferenceBinding("absent"), parent: map[string]Value{}, want: "is missing"},
+		{name: "zero", binding: Binding{}},
+		{name: "blank reference", binding: ParentReferenceBinding("")},
+		{name: "missing reference", binding: ParentReferenceBinding(secretParent), parent: map[string]Value{}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := test.binding.Resolve(test.parent); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v", err)
+			value, err := test.binding.Resolve(test.parent)
+			if !value.Equal(Value{}) {
+				t.Fatalf("Resolve() returned %#v on failure", value)
+			}
+			if !fault.IsCode(err, CodeBindingUnresolvable) {
+				t.Fatalf("error = %v, want code %s", err, CodeBindingUnresolvable)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || descriptor.Kind() != fault.FailedPrecondition || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("descriptor = %#v (ok=%v)", descriptor, ok)
+			}
+			if strings.Contains(err.Error(), secretParent) {
+				t.Fatalf("public error leaked the parent parameter name: %q", err)
 			}
 		})
 	}

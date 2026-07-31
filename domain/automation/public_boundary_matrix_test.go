@@ -25,7 +25,7 @@ func TestPrimitiveAssetValidatorsRejectBusinessBoundaries(t *testing.T) {
 		}, want: "cannot declare options"},
 		{name: "invalid parameter value", run: func() error {
 			return (ParameterDefinition{Type: parameter.Text}).ValidateValue(parameter.Value{})
-		}, want: "unsupported parameter value type"},
+		}, want: string(parameter.CodeValueInvalid)},
 		{name: "unknown multi select option", run: func() error {
 			return (ParameterDefinition{Type: parameter.MultiSelect, Options: []string{"east"}}).ValidateValue(parameter.MultiSelectValue([]string{"west"}))
 		}, want: "unknown option"},
