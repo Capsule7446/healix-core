@@ -17,19 +17,33 @@ const samplingPublicationDigestV1 = "sampling-publication-v1"
 
 var (
 	ErrSamplingPublicationAuthorityConflict = errors.New("sampling publication authority conflict")
-	ErrSamplingPublicationDigestMismatch    = errors.New("sampling publication digest does not match payload")
 	ErrSamplingPublicationAuthorization     = errors.New("sampling publication authorization rejected")
 	ErrSamplingPublicationConfiguration     = errors.New("sampling publication service is not configured")
 	ErrSamplingPublicationContract          = errors.New("sampling publication adapter contract violation")
 )
 
-const CodeSamplingPublicationIdentityConflict fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
+const (
+	CodeSamplingPublicationIdentityConflict fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
+	CodeSamplingPublicationDigestMismatch   fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
+)
 
 func SamplingPublicationIdentityConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
 		CodeSamplingPublicationIdentityConflict,
 		"sampling publication identity conflicts with an existing request",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func SamplingPublicationDigestMismatchError() error {
+	err, constructionErr := fault.New(
+		fault.InvalidArgument,
+		CodeSamplingPublicationDigestMismatch,
+		"sampling publication digest does not match the request payload",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -95,7 +109,7 @@ func ValidatePublishSamplingIntentDigest(intent PublishSamplingIntent) error {
 		return fmt.Errorf("validate sampling publication intent: %w", err)
 	}
 	if intent.RequestDigest != digest {
-		return ErrSamplingPublicationDigestMismatch
+		return SamplingPublicationDigestMismatchError()
 	}
 	return nil
 }

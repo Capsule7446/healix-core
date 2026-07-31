@@ -47,6 +47,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `AUTOMATION_REVISION_CONFLICT` | `CONFLICT` | `automation revision conflicts with current state` | none | Re-read authoritative automation state before retrying; aggregate identities and revision values remain private. |
 | `AUTOMATION_HEAL_REVIEW_CAS_CONFLICT` | `CONFLICT` | `heal review state conflicts with the current authoritative state` | none | Re-read candidate, node, and streak state before reconciling; review identities and revisions remain private. |
 | `SAMPLING_PUBLICATION_IDENTITY_CONFLICT` | `CONFLICT` | `sampling publication identity conflicts with an existing request` | none | A replay with the same publication identity but a different request digest is rejected without exposing identity or digest values. |
+| `AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH` | `INVALID_ARGUMENT` | `sampling publication digest does not match the request payload` | none | Reject before any sampling-publication transaction operation; request digests, publication identities, and payload values remain private. |
 
 ## Sampling, evidence, fingerprint, interpolation
 

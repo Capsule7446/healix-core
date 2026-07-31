@@ -156,8 +156,18 @@ func TestPublishSamplingIntentDigestValidation(t *testing.T) {
 		t.Fatalf("valid digest rejected: %v", err)
 	}
 	intent.RequestDigest = "sha256:wrong"
-	if err := ValidatePublishSamplingIntentDigest(intent); !errors.Is(err, ErrSamplingPublicationDigestMismatch) {
-		t.Fatalf("digest mismatch error = %v", err)
+	err = ValidatePublishSamplingIntentDigest(intent)
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeSamplingPublicationDigestMismatch || descriptor.Kind() != fault.InvalidArgument || descriptor.Message() != "sampling publication digest does not match the request payload" {
+		t.Fatalf("digest mismatch descriptor = %#v, ok = %v", descriptor, ok)
+	}
+	if len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+		t.Fatalf("digest mismatch public schema = %#v", descriptor)
+	}
+	for _, sensitive := range []string{intent.RequestDigest, intent.Publication.FlowFragment.FlowFragment.ID} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("digest mismatch error leaked %q: %q", sensitive, err.Error())
+		}
 	}
 	intent.PublicationID = ""
 	if err := ValidatePublishSamplingIntentDigest(intent); err == nil || !strings.Contains(err.Error(), "validate sampling publication intent") {

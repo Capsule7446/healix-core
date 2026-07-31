@@ -78,14 +78,18 @@ func Run(t *testing.T, factory Factory) {
 			t.Fatalf("replay changed state: before=%#v after=%#v", after, got)
 		}
 		changed := intent
+		beforeDigestMismatch := fixture.Snapshot()
 		changed.RequestDigest = "sha256:changed"
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationDigestMismatch) {
 			t.Fatalf("malformed digest error = %v", err)
+		}
+		if got := fixture.Snapshot(); !reflect.DeepEqual(got, beforeDigestMismatch) {
+			t.Fatalf("digest mismatch changed state: before=%#v after=%#v", beforeDigestMismatch, got)
 		}
 		changed = intent
 		changed.Publication = intent.Publication.Clone()
 		changed.Publication.FlowFragment.FlowFragment.DisplayName = "changed payload"
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationDigestMismatch) {
 			t.Fatalf("payload digest mismatch error = %v", err)
 		}
 		changed = intent
@@ -101,7 +105,7 @@ func Run(t *testing.T, factory Factory) {
 		}
 		changed = intent
 		changed.RequestDigest, changed.PublicationID = "sha256:changed", "other-publication"
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationDigestMismatch) {
 			t.Fatalf("arbitrary digest error = %v", err)
 		}
 	})
