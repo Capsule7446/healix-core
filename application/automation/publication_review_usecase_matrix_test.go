@@ -580,7 +580,7 @@ func TestHealReviewUseCasesRejectInvalidCandidateReviewerAndGeneratedIdentity(t 
 			} else {
 				err = service.Reject(context.Background(), command)
 			}
-			if err == nil || !strings.Contains(err.Error(), "not awaiting approval") || transaction.commitCalls != 0 {
+			if !fault.IsCode(err, domain.CodeHealCandidateStateInvalid) || transaction.commitCalls != 0 {
 				t.Fatalf("error/commit = %v/%d", err, transaction.commitCalls)
 			}
 		})

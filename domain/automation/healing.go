@@ -133,7 +133,7 @@ func (candidate HealCandidate) Validate() error {
 		return err
 	}
 	if candidate.Status != HealCandidateAwaitingApproval {
-		return fmt.Errorf("heal candidate %q is not awaiting approval", candidate.Hash)
+		return healCandidateStateInvalidError()
 	}
 	return nil
 }
@@ -143,7 +143,7 @@ func (candidate HealCandidate) ValidateReviewed() error {
 		return err
 	}
 	if candidate.Status != HealCandidatePromoted && candidate.Status != HealCandidateRejected {
-		return fmt.Errorf("heal candidate %q is not reviewed", candidate.Hash)
+		return healCandidateStateInvalidError()
 	}
 	return nil
 }
@@ -151,7 +151,7 @@ func (candidate HealCandidate) ValidateReviewed() error {
 func (candidate HealCandidate) validateIdentity() error {
 	if strings.TrimSpace(candidate.Hash) == "" || strings.TrimSpace(candidate.ElementTargetID) == "" ||
 		strings.TrimSpace(candidate.BaseNodeVersionID) == "" {
-		return fmt.Errorf("heal candidate requires identity")
+		return healCandidateIdentityInvalidError()
 	}
 	return candidate.Revision.ValidatePersisted()
 }
@@ -161,7 +161,7 @@ func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate
 		return HealCandidate{}, err
 	}
 	if status != HealCandidatePromoted && status != HealCandidateRejected {
-		return HealCandidate{}, fmt.Errorf("unsupported reviewed heal candidate status %q", status)
+		return HealCandidate{}, healCandidateReviewStatusInvalidError()
 	}
 	nextRevision, err := candidate.Revision.Next()
 	if err != nil {

@@ -68,27 +68,61 @@ func TestHealCandidateReviewRejectsRevisionExhaustionWithoutMutation(t *testing.
 func TestHealCandidateRejectsInvalidIdentityAndTransitions(t *testing.T) {
 	valid := HealCandidate{Hash: "candidate", ElementTargetID: "node", BaseNodeVersionID: "node-v1", Status: HealCandidateAwaitingApproval, Revision: 1}
 	tests := []struct {
-		name string
-		run  func() error
-		want string
+		name        string
+		run         func() error
+		wantCode    fault.Code
+		wantKind    fault.Kind
+		wantMessage string
 	}{
-		{name: "missing identity", run: func() error { return (HealCandidate{}).Validate() }, want: "requires identity"},
-		{name: "unpersisted revision", run: func() error { candidate := valid; candidate.Revision = 0; return candidate.Validate() }, want: "persisted revision must be non-zero"},
+		{name: "missing identity", run: func() error {
+			return (HealCandidate{
+				Hash:              " \t\n",
+				ElementTargetID:   "node-secret",
+				BaseNodeVersionID: "version-secret",
+				Status:            HealCandidateAwaitingApproval,
+				Revision:          1,
+			}).Validate()
+		}, wantCode: CodeHealCandidateIdentityInvalid, wantKind: fault.InvalidArgument, wantMessage: "heal candidate identity is invalid"},
 		{name: "not awaiting approval", run: func() error {
 			candidate := valid
+			candidate.Hash = "candidate-secret"
 			candidate.Status = HealCandidatePromoted
 			return candidate.Validate()
-		}, want: "not awaiting approval"},
-		{name: "not reviewed", run: func() error { return valid.ValidateReviewed() }, want: "not reviewed"},
-		{name: "unsupported review status", run: func() error { _, err := valid.Review(HealCandidateStale); return err }, want: "unsupported reviewed"},
+		}, wantCode: CodeHealCandidateStateInvalid, wantKind: fault.FailedPrecondition, wantMessage: "heal candidate state does not allow this operation"},
+		{name: "not reviewed", run: func() error {
+			candidate := valid
+			candidate.Hash = "candidate-secret"
+			return candidate.ValidateReviewed()
+		}, wantCode: CodeHealCandidateStateInvalid, wantKind: fault.FailedPrecondition, wantMessage: "heal candidate state does not allow this operation"},
+		{name: "unsupported review status", run: func() error {
+			_, err := valid.Review(HealCandidateStatus("malicious\nstatus-secret"))
+			return err
+		}, wantCode: CodeHealCandidateReviewStatusInvalid, wantKind: fault.InvalidArgument, wantMessage: "heal candidate review status is invalid"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.run(); err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("error = %v, want containing %q", err, tt.want)
+			err := tt.run()
+			descriptor, ok := fault.Describe(err)
+			if !fault.IsCode(err, tt.wantCode) || !ok || descriptor.Code() != tt.wantCode || descriptor.Kind() != tt.wantKind || descriptor.Message() != tt.wantMessage || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("error/descriptor = %v/%#v", err, descriptor)
+			}
+			for _, secret := range []string{"candidate-secret", "node-secret", "version-secret", "status-secret", "malicious"} {
+				if strings.Contains(err.Error(), secret) {
+					t.Fatalf("public error leaked %q: %q", secret, err.Error())
+				}
 			}
 		})
 	}
+
+	t.Run("unpersisted revision retains revision contract", func(t *testing.T) {
+		candidate := valid
+		candidate.Hash = "candidate-secret"
+		candidate.Revision = 0
+		err := candidate.Validate()
+		if !fault.IsCode(err, CodePersistedRevisionInvalid) || strings.Contains(err.Error(), candidate.Hash) {
+			t.Fatalf("error = %v", err)
+		}
+	})
 }
 
 func samplingCreatePublication() SamplingPublication {
