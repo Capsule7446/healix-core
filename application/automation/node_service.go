@@ -66,7 +66,9 @@ func (s NodeService) transition(ctx context.Context, id string, expected domain.
 	}
 	next, err := apply(current)
 	if err != nil {
-		return domain.ElementTargetAggregate{}, fmt.Errorf("transition node %q: %w", id, err)
+		// The aggregate transition already returns a registered code, and the wrapper
+		// this replaces also welded the element target id into public text.
+		return domain.ElementTargetAggregate{}, err
 	}
 	result, err := s.repository.SaveAggregate(ctx, expected, next)
 	if err != nil {

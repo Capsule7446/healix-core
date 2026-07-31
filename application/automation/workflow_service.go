@@ -65,7 +65,7 @@ func (s FlowFragmentService) transition(ctx context.Context, id string, expected
 	}
 	next, err := apply(current)
 	if err != nil {
-		return domain.FlowFragmentAggregate{}, fmt.Errorf("transition workflow %q: %w", id, err)
+		return domain.FlowFragmentAggregate{}, err
 	}
 	result, err := s.repository.SaveAggregate(ctx, expected, next)
 	if err != nil {

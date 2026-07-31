@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/sampling"
 )
 
@@ -78,7 +79,19 @@ func TestHealReviewIntentRejectsEachTransitionInvariant(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			intent := cloneHealReviewIntent(test.base)
 			test.mutate(&intent)
-			if err := intent.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
+			err := intent.Validate()
+			if err == nil {
+				t.Fatal("Validate() accepted an invalid intent")
+			}
+			// The two zero-revision cases now surface the registered code that
+			// ValidatePersisted already produced, instead of an uncoded wrapper that
+			// only differed by which revision it named. Which revision the caller
+			// supplied is a field-level detail and belongs in a violation once this
+			// validator gains an envelope, not in a second unclassified error.
+			if strings.Contains(test.want, "revision") && fault.IsCode(err, domain.CodePersistedRevisionInvalid) {
+				return
+			}
+			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("Validate() error = %v, want %q", err, test.want)
 			}
 		})

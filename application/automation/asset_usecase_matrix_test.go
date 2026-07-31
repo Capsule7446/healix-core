@@ -306,7 +306,7 @@ func TestFolderDeleteCoversEveryPrecommitRejectionAndDependency(t *testing.T) {
 	}{
 		{name: "load failure", repository: &folderRepositoryProbe{snapshot: valid, loadErr: failure}, expected: 1, want: failure},
 		{name: "stale forest", repository: &folderRepositoryProbe{snapshot: valid}, expected: 2, want: CodeAutomationRevisionConflict},
-		{name: "invalid loaded forest", repository: &folderRepositoryProbe{snapshot: FolderSnapshot{Revision: 1, Folders: []domain.Folder{{ID: "", Kind: domain.FolderWorkflow}}}}, expected: 1, wantText: "validate folder forest"},
+		{name: "invalid loaded forest", repository: &folderRepositoryProbe{snapshot: FolderSnapshot{Revision: 1, Folders: []domain.Folder{{ID: "", Kind: domain.FolderWorkflow}}}}, expected: 1, wantCode: domain.CodeFolderInvalid},
 		{name: "occupancy failure", repository: &folderRepositoryProbe{snapshot: valid, occupancyErr: failure}, expected: 1, want: failure},
 		{name: "negative occupancy", repository: &folderRepositoryProbe{snapshot: valid, occupancy: FolderOccupancySnapshot{Revision: 1, Occupancy: domain.FolderOccupancy{Assets: -1}}}, expected: 1, wantCode: domain.CodeFolderInvalid},
 		{name: "occupied", repository: &folderRepositoryProbe{snapshot: valid, occupancy: FolderOccupancySnapshot{Revision: 1, Occupancy: domain.FolderOccupancy{Assets: 1}}}, expected: 1, wantCode: domain.CodeFolderNotEmpty},

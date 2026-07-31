@@ -143,7 +143,10 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 		}
 		repository := &nodeRepositoryFake{current: aggregate}
 		_, err = NewNodeService(repository).Update(context.Background(), "node", "", "", domain.Properties{}, aggregate.ElementTarget.Revision, 2)
-		if err == nil || !strings.Contains(err.Error(), "transition node") {
+		// The aggregate's own failure now propagates unwrapped; the "transition node"
+		// layer also welded the element target id into public text. Its inner text is
+		// still a bare error, which is the remaining domain/automation migration.
+		if err == nil || !strings.Contains(err.Error(), "display name is required") {
 			t.Fatalf("Update() error = %v", err)
 		}
 		if repository.saveCalls != 0 {

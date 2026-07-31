@@ -61,7 +61,7 @@ func (s EnvironmentService) transition(ctx context.Context, id string, expected 
 	}
 	next, err := apply(current)
 	if err != nil {
-		return domain.Environment{}, fmt.Errorf("transition environment %q: %w", id, err)
+		return domain.Environment{}, err
 	}
 	result, err := s.repository.Update(ctx, expected, next)
 	if err != nil {

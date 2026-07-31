@@ -55,7 +55,10 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 	}
 	forest, err := domain.NewFolderForest(snapshot.Folders)
 	if err != nil {
-		return FolderSnapshot{}, fmt.Errorf("validate folder forest: %w", err)
+		// NewFolderForest already returns AUTOMATION_FOLDER_INVALID or
+		// AUTOMATION_FOLDER_TREE_INVALID; an uncoded wrapper here would hide that
+		// classification behind an unclassified outer error.
+		return FolderSnapshot{}, err
 	}
 	occupancy, err := s.repository.Occupancy(ctx, kind, id)
 	if err != nil {
@@ -72,7 +75,8 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 	}
 	revision, err := expected.Next()
 	if err != nil {
-		return FolderSnapshot{}, fmt.Errorf("advance folder forest revision: %w", err)
+		// Revision.Next already returns a registered code.
+		return FolderSnapshot{}, err
 	}
 	result, err := s.repository.DeleteEmptyFolder(ctx, DeleteEmptyFolderCommand{
 		Kind:                      kind,
@@ -104,7 +108,10 @@ func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expec
 		return FolderSnapshot{}, err
 	}
 	if _, err := domain.NewFolderForest(folders); err != nil {
-		return FolderSnapshot{}, fmt.Errorf("validate folder forest: %w", err)
+		// NewFolderForest already returns AUTOMATION_FOLDER_INVALID or
+		// AUTOMATION_FOLDER_TREE_INVALID; an uncoded wrapper here would hide that
+		// classification behind an unclassified outer error.
+		return FolderSnapshot{}, err
 	}
 	return s.persist(ctx, kind, expected, folders)
 }
@@ -112,7 +119,8 @@ func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expec
 func (s FolderService) persist(ctx context.Context, kind domain.FolderKind, expected domain.Revision, folders []domain.Folder) (FolderSnapshot, error) {
 	revision, err := expected.Next()
 	if err != nil {
-		return FolderSnapshot{}, fmt.Errorf("advance folder forest revision: %w", err)
+		// Revision.Next already returns a registered code.
+		return FolderSnapshot{}, err
 	}
 	result, err := s.repository.Save(ctx, kind, expected, FolderSnapshot{Revision: revision, Folders: folders})
 	if err != nil {

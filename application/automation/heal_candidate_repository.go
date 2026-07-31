@@ -173,10 +173,11 @@ func (intent HealReviewIntent) Validate() error {
 		return fmt.Errorf("heal review intent requires trusted reviewer metadata")
 	}
 	if err := intent.ExpectedCandidateRevision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal review expected candidate revision: %w", err)
+		// ValidatePersisted already returns AUTOMATION_PERSISTED_REVISION_INVALID.
+		return err
 	}
 	if err := intent.ExpectedNodeRevision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal review expected node revision: %w", err)
+		return err
 	}
 	if intent.NextCandidate.Hash != intent.CandidateHash || intent.NextCandidate.ElementTargetID != intent.ElementTargetID || intent.NextCandidate.BaseNodeVersionID != intent.BaseNodeVersionID || intent.NextCandidate.Revision != intent.ExpectedCandidateRevision+1 {
 		return fmt.Errorf("heal review candidate transition does not match authority")

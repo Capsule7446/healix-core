@@ -53,7 +53,7 @@ func (s ExecutionFlowService) PublishVersion(
 	}
 	published, err := current.PublishVersion(publication)
 	if err != nil {
-		return domain.ExecutionFlowAggregate{}, fmt.Errorf("publish test task %q version: %w", taskID, err)
+		return domain.ExecutionFlowAggregate{}, err
 	}
 	result, err := s.repository.SaveAggregate(ctx, expected, published)
 	if err != nil {
