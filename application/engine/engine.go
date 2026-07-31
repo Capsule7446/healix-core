@@ -3,7 +3,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
@@ -11,11 +10,24 @@ import (
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
-// ErrExecutionIdentityMismatch reports that a compiled entry no longer agrees
+// ExecutionIdentityMismatchError reports that a compiled entry no longer agrees
 // with its sealed Run/snapshot/execution identity or the supplied worker Run.
-var ErrExecutionIdentityMismatch = errors.New("engine: execution identity mismatch")
+const (
+	CodeExecutionAuthorityVerifierRequired fault.Code = "EXECUTION_AUTHORITY_VERIFIER_REQUIRED"
+	CodeExecutionIdentityMismatch          fault.Code = "EXECUTION_IDENTITY_MISMATCH"
+)
 
-const CodeExecutionAuthorityVerifierRequired fault.Code = "EXECUTION_AUTHORITY_VERIFIER_REQUIRED"
+func ExecutionIdentityMismatchError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeExecutionIdentityMismatch,
+		"execution identity does not match the sealed entry",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func ExecutionAuthorityVerifierRequiredError() error {
 	err, constructionErr := fault.New(
@@ -104,7 +116,7 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult
 		cfg.SnapshotDigest != entry.identity.snapshotDigest ||
 		cfg.ExecutionID != entry.identity.executionID ||
 		cfg.ClaimToken == "" {
-		return result, ErrExecutionIdentityMismatch
+		return result, ExecutionIdentityMismatchError()
 	}
 	if cfg.AuthorityVerifier == nil {
 		return result, ExecutionAuthorityVerifierRequiredError()

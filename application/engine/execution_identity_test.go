@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
@@ -145,7 +144,7 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 			test.mutate(&entry, &cfg)
 
 			result, err := RunProgram(context.Background(), entry, cfg)
-			if !errors.Is(err, ErrExecutionIdentityMismatch) {
+			if !fault.IsCode(err, CodeExecutionIdentityMismatch) {
 				t.Fatalf("RunProgram() error = %v, want stable execution identity mismatch; side effects = %+v", err, probe)
 			}
 			if result.ExecutionOutcome != ExecutionNotStarted {
