@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -58,10 +59,33 @@ type registryRow struct {
 }
 
 type pairing struct {
-	kind    string
-	message string
-	shape   string
-	site    string
+	kind      string
+	message   string
+	shape     string
+	site      string
+	directory string
+}
+
+// prefixOwners is the inventory's explicit prefix-to-producer mapping. It is
+// deliberately a fixed table and not derived from package paths: the inventory
+// assigns SAMPLING_* to application/automation on purpose, so any rule inferring
+// the prefix from the producing package would either reject that row or silently
+// legitimise cross-context prefixes everywhere else.
+var prefixOwners = map[string][]string{
+	// The registry states that EXECUTION_* owns node runtime, engine, scheduling,
+	// and execution-application failures, not just domain/execution.
+	"EXECUTION": {
+		"domain/execution", "domain/node",
+		"application/engine", "application/scheduling", "application/execution",
+	},
+	"AUTOMATION":    {"domain/automation", "application/automation"},
+	"SAMPLING":      {"domain/sampling", "application/automation"},
+	"EVIDENCE":      {"domain/evidence"},
+	"FINGERPRINT":   {"domain/fingerprint"},
+	"INTERPOLATION": {"domain/interpolation"},
+	"PARAMETER":     {"domain/parameter"},
+	// The reason vocabulary belongs to the shared kernel and has no bounded context.
+	"VALIDATION": {"domain/fault"},
 }
 
 func moduleRoot(t *testing.T) string {
@@ -338,7 +362,11 @@ func scanPairings(fileSet *token.FileSet, root string, parsed map[string]*ast.Fi
 		if existing, ok := result.pairings[code]; ok && existing.kind == kind && existing.message != "" {
 			return
 		}
-		result.pairings[code] = pairing{kind: kind, message: message, shape: shape, site: site(pos)}
+		located := site(pos)
+		result.pairings[code] = pairing{
+			kind: kind, message: message, shape: shape, site: located,
+			directory: path.Dir(located[:strings.LastIndex(located, ":")]),
+		}
 	}
 
 	for path, file := range parsed {
@@ -482,6 +510,43 @@ func TestEveryRegisteredCodeIsStaticallyCheckable(t *testing.T) {
 		sort.Strings(unpaired)
 		t.Errorf("%d of %d registered codes have no checkable (Kind, Code) pairing, so their Kind and message are unverified:\n  %s",
 			len(unpaired), len(registry), strings.Join(unpaired, "\n  "))
+	}
+}
+
+// A prefix names the bounded context that owns the meaning of a code, and only
+// that context's producers may mint one. Without this, any package could start
+// emitting another context's codes and the prefix would stop meaning anything.
+func TestCodePrefixesAreProducedOnlyByTheirOwners(t *testing.T) {
+	root := moduleRoot(t)
+	registry, _ := parseRegistry(t, root)
+	fileSet, parsed := parseProductionFiles(t, root)
+	constants, _, _ := collectCodeConstants(parsed)
+	result := scanPairings(fileSet, root, parsed, constants, collectFixedKindHelpers(parsed))
+
+	for code, found := range result.pairings {
+		if _, registered := registry[code]; !registered {
+			continue // already reported as unregistered by the agreement test
+		}
+		prefix := code
+		if index := strings.Index(code, "_"); index > 0 {
+			prefix = code[:index]
+		}
+		owners, known := prefixOwners[prefix]
+		if !known {
+			t.Errorf("%s uses prefix %s, which no context claims in the inventory's mapping", code, prefix)
+			continue
+		}
+		allowed := false
+		for _, owner := range owners {
+			if found.directory == owner {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			t.Errorf("%s is produced from %s at %s, but the %s prefix is owned by %s",
+				code, found.directory, found.site, prefix, strings.Join(owners, ", "))
+		}
 	}
 }
 
