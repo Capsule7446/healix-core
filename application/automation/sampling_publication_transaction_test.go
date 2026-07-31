@@ -107,15 +107,53 @@ func TestSamplingPublicationServiceReturnsConfigurationErrorWithoutTransaction(t
 }
 
 func TestSamplingPublicationServiceReturnsOwnedMappings(t *testing.T) {
-	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
-	outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
-	transaction := &samplingRepositoryFake{outcome: outcome}
-	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
-	if err != nil {
-		t.Fatal(err)
+	command := createSamplingCommand(t)
+	for _, status := range []PublishSamplingStatus{PublishSamplingApplied, PublishSamplingReplayed} {
+		t.Run(string(status), func(t *testing.T) {
+			outcome := samplingOutcomeFor(t, command, status)
+			transaction := &samplingTransactionProbe{publishOutcome: outcome}
+			if status == PublishSamplingReplayed {
+				transaction.lookupOutcome, transaction.lookupFound = outcome, true
+			}
+			result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
+			if err != nil || len(result.Nodes) != 1 {
+				t.Fatalf("publish = %#v, %v", result, err)
+			}
+			if status == PublishSamplingApplied {
+				transaction.publishOutcome.Result.Nodes[0].ElementTargetVersionID = "adapter-mutated"
+			} else {
+				transaction.lookupOutcome.Result.Nodes[0].ElementTargetVersionID = "adapter-mutated"
+			}
+			if result.Nodes[0].ElementTargetVersionID != "forced-v1" {
+				t.Fatalf("returned mapping aliases adapter state: %#v", result.Nodes)
+			}
+		})
 	}
-	transaction.outcome.Result.Nodes = append(transaction.outcome.Result.Nodes, domain.SamplingNodeMapping{TemporaryElementTargetID: "adapter-owned"})
-	if len(result.Nodes) != 0 {
-		t.Fatalf("returned mappings changed with adapter state: %#v", result.Nodes)
+}
+
+func TestSamplingPublicationServiceRejectsMalformedMappings(t *testing.T) {
+	command := createSamplingCommand(t)
+	tests := []struct {
+		name   string
+		mutate func(*PublishSamplingOutcome)
+	}{
+		{name: "missing", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes = nil }},
+		{name: "extra", mutate: func(outcome *PublishSamplingOutcome) {
+			outcome.Result.Nodes = append(outcome.Result.Nodes, outcome.Result.Nodes[0])
+		}},
+		{name: "temporary identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].TemporaryElementTargetID = "other" }},
+		{name: "target identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ElementTargetID = "other" }},
+		{name: "version identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ElementTargetVersionID = "other" }},
+		{name: "resolution mode", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ResolutionMode = "REUSE" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
+			test.mutate(&outcome)
+			_, err := NewSamplingPublicationService(&samplingTransactionProbe{publishOutcome: outcome}).Publish(context.Background(), command)
+			if !errors.Is(err, ErrSamplingPublicationContract) {
+				t.Fatalf("error = %v", err)
+			}
+		})
 	}
 }

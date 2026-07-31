@@ -66,6 +66,15 @@ func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing
 	}
 }
 
+func TestSamplingPublicationLookupIdentityConflictPreventsPublish(t *testing.T) {
+	command := createSamplingCommand(t)
+	transaction := &samplingTransactionProbe{lookupErr: &SamplingPublicationIdentityConflictError{PublicationID: command.PublicationID}}
+	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
+	if !errors.Is(err, ErrSamplingPublicationIdentityConflict) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 0 {
+		t.Fatalf("result/error/lookup/publish = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
+	}
+}
+
 func TestSamplingPublicationPublishRejectsInvalidCommandBeforeDependencies(t *testing.T) {
 	plain := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 	tests := []struct {
