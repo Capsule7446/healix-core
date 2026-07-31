@@ -82,17 +82,17 @@ const (
 func ValidateHealDecisionBand(candidateHash string, band HealDecisionBand) error {
 	hasCandidate := strings.TrimSpace(candidateHash) != ""
 	if !hasCandidate && band != HealDecisionBandUnknown {
-		return fmt.Errorf("heal observation without a candidate must use UNKNOWN decision band")
+		return healDecisionBandInvalidError()
 	}
 	if hasCandidate && band != HealDecisionBandApplied && band != HealDecisionBandBelowCap {
-		return fmt.Errorf("heal observation with a candidate requires APPLIED or BELOW_CAP decision band")
+		return healDecisionBandInvalidError()
 	}
 	return nil
 }
 
 func ValidateHealConfidence(confidence float64) error {
 	if math.IsNaN(confidence) || confidence < 0 || confidence > 1 {
-		return fmt.Errorf("heal confidence must be between 0 and 1")
+		return healConfidenceInvalidError()
 	}
 	return nil
 }

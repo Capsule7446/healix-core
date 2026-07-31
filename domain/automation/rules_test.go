@@ -254,23 +254,53 @@ func TestTerminalHealStreakCannotRestartForAnotherNode(t *testing.T) {
 	}
 }
 
-func TestHealDecisionBandIsAnExplicitPolicyDecision(t *testing.T) {
-	for _, band := range []HealDecisionBand{HealDecisionBandApplied, HealDecisionBandBelowCap} {
-		if err := ValidateHealDecisionBand("candidate", band); err != nil {
-			t.Fatalf("same confidence may belong to policy-selected band %q: %v", band, err)
+func TestHealDecisionInputValidation(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		candidate string
+		band      HealDecisionBand
+	}{
+		{name: "candidate applied", candidate: "candidate", band: HealDecisionBandApplied},
+		{name: "candidate below cap", candidate: "candidate", band: HealDecisionBandBelowCap},
+		{name: "no candidate unknown", candidate: "", band: HealDecisionBandUnknown},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateHealDecisionBand(test.candidate, test.band); err != nil {
+				t.Fatalf("valid decision rejected: %v", err)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name      string
+		candidate string
+		band      HealDecisionBand
+	}{
+		{name: "candidate missing", candidate: " \t\n", band: HealDecisionBandApplied},
+		{name: "candidate unknown", candidate: "candidate-secret", band: HealDecisionBandUnknown},
+		{name: "candidate malformed band", candidate: "candidate-secret", band: HealDecisionBand("malicious\nband-secret")},
+		{name: "candidate-free malformed band", candidate: "", band: HealDecisionBand("malicious\nband-secret")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateHealDecisionBand(test.candidate, test.band)
+			descriptor, ok := fault.Describe(err)
+			if !fault.IsCode(err, CodeHealDecisionBandInvalid) || !ok || descriptor.Kind() != fault.InvalidArgument || descriptor.Message() != "heal decision band is invalid" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || strings.Contains(err.Error(), "candidate-secret") || strings.Contains(err.Error(), "band-secret") || strings.Contains(err.Error(), "malicious") {
+				t.Fatalf("error/descriptor = %v/%#v", err, descriptor)
+			}
+		})
+	}
+
+	for _, confidence := range []float64{0, math.SmallestNonzeroFloat64, 0.5, math.Nextafter(1, 0), 1} {
+		if err := ValidateHealConfidence(confidence); err != nil {
+			t.Fatalf("ValidateHealConfidence(%v) error = %v", confidence, err)
 		}
 	}
-	if err := ValidateHealDecisionBand("candidate", HealDecisionBandUnknown); err == nil {
-		t.Fatal("candidate without an explicit applied/below-cap band was accepted")
-	}
-	if err := ValidateHealDecisionBand("", HealDecisionBandUnknown); err != nil {
-		t.Fatalf("candidate-free observation was rejected: %v", err)
-	}
-	if err := ValidateHealConfidence(1.01); err == nil {
-		t.Fatal("confidence above one was accepted")
-	}
-	if err := ValidateHealConfidence(math.NaN()); err == nil {
-		t.Fatal("NaN confidence was accepted")
+	for _, confidence := range []float64{math.Inf(-1), -math.SmallestNonzeroFloat64, math.Nextafter(1, 2), math.Inf(1), math.NaN()} {
+		err := ValidateHealConfidence(confidence)
+		descriptor, ok := fault.Describe(err)
+		if !fault.IsCode(err, CodeHealConfidenceInvalid) || !ok || descriptor.Kind() != fault.InvalidArgument || descriptor.Message() != "heal confidence is invalid" || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+			t.Fatalf("confidence %v error/descriptor = %v/%#v", confidence, err, descriptor)
+		}
 	}
 }
 

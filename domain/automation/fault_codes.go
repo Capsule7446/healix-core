@@ -11,6 +11,8 @@ const (
 	CodeHealCandidateReviewStatusInvalid  fault.Code = "AUTOMATION_HEAL_CANDIDATE_REVIEW_STATUS_INVALID"
 	CodeHealCandidateReviewCommandInvalid fault.Code = "AUTOMATION_HEAL_CANDIDATE_REVIEW_COMMAND_INVALID"
 	CodeHealApprovalStatusInvalid         fault.Code = "AUTOMATION_HEAL_APPROVAL_STATUS_INVALID"
+	CodeHealDecisionBandInvalid           fault.Code = "AUTOMATION_HEAL_DECISION_BAND_INVALID"
+	CodeHealConfidenceInvalid             fault.Code = "AUTOMATION_HEAL_CONFIDENCE_INVALID"
 )
 
 func persistedRevisionInvalidError() error {
@@ -43,6 +45,14 @@ func healCandidateReviewCommandInvalidError() error {
 
 func healApprovalStatusInvalidError() error {
 	return mustAutomationFault(fault.InvalidArgument, CodeHealApprovalStatusInvalid, "heal approval status is invalid")
+}
+
+func healDecisionBandInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealDecisionBandInvalid, "heal decision band is invalid")
+}
+
+func healConfidenceInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealConfidenceInvalid, "heal confidence is invalid")
 }
 
 func mustAutomationFault(kind fault.Kind, code fault.Code, message string) error {
