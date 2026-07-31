@@ -484,8 +484,7 @@ func TestCreateRunServiceRejectsMalformedAuthoritativeOutcomes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, command), mutateInsertOutcome: test.mutate}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			var typed *CreateRunAdapterContractError
-			if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -795,7 +794,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 				outcome.Result = stored
 			}}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			if !errors.Is(err, ErrCreateRunAdapterContract) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -809,8 +808,7 @@ func TestCreateRunServiceRejectsMalformedReplayWinner(t *testing.T) {
 		outcome.Result.EntryIDs[0] = "cross-run-entry"
 	}}
 	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-	var typed *CreateRunAdapterContractError
-	if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || !isZeroCreateRunResult(result) {
+	if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 }
@@ -841,8 +839,7 @@ func TestCreateRunServiceRejectsMalformedFindCommandReplay(t *testing.T) {
 			test.mutate(&stored)
 			fake := &createRunFake{stored: &stored, resolved: validResolvedCreateRun(t, command)}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			var typed *CreateRunAdapterContractError
-			if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -861,7 +858,7 @@ func TestCreateRunServiceRejectsAppliedRunFieldDrift(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, command), mutateInsertOutcome: func(outcome *InsertCreateRunOutcome) { test.mutate(&outcome.Result.Run) }}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-			if !errors.Is(err, ErrCreateRunAdapterContract) || !isZeroCreateRunResult(result) {
+			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result/error=%#v/%v", result, err)
 			}
 		})
@@ -927,8 +924,7 @@ func TestResolvedCreateRunPreflightValidatesEnvironmentVariableNames(t *testing.
 			snapshot, err := BuildRunSnapshot(command, resolved)
 
 			if test.wantError {
-				var typed *CreateRunAdapterContractError
-				if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || snapshot.Digest() != "" {
+				if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || snapshot.Digest() != "" {
 					t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
 				}
 				return
@@ -974,7 +970,7 @@ func TestResolvedCreateRunPreflightRejectsAdapterCollectionsBeforeBuild(t *testi
 			resolved := validResolvedCreateRun(t, command)
 			test.mutate(&resolved)
 			snapshot, err := BuildRunSnapshot(command, resolved)
-			if !errors.Is(err, ErrCreateRunAdapterContract) || snapshot.Digest() != "" {
+			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || snapshot.Digest() != "" {
 				t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
 			}
 		})
@@ -1022,8 +1018,7 @@ func TestResolvedCreateRunPreflightRejectsNestedAdapterPayloads(t *testing.T) {
 			resolved := validResolvedCreateRun(t, command)
 			test.mutate(&resolved)
 			snapshot, err := BuildRunSnapshot(command, resolved)
-			var typed *CreateRunAdapterContractError
-			if !errors.Is(err, ErrCreateRunAdapterContract) || !errors.As(err, &typed) || snapshot.Digest() != "" {
+			if !fault.IsCode(err, CodeCreateRunAdapterContractViolation) || snapshot.Digest() != "" {
 				t.Fatalf("snapshot/error=%#v/%v", snapshot, err)
 			}
 		})

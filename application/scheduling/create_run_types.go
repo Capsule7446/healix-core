@@ -116,16 +116,19 @@ func createRunSnapshotConflictError() error {
 	return err
 }
 
-type CreateRunAdapterContractError struct {
-	Operation string
-	Reason    string
-}
+const CodeCreateRunAdapterContractViolation fault.Code = "EXECUTION_CREATE_RUN_ADAPTER_CONTRACT_VIOLATION"
 
-func (e *CreateRunAdapterContractError) Error() string {
-	return "create-run adapter contract violation: " + e.Operation + ": " + e.Reason
-}
-func (e *CreateRunAdapterContractError) Is(target error) bool {
-	return target == ErrCreateRunAdapterContract
+func createRunAdapterContractViolationError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.Internal,
+		CodeCreateRunAdapterContractViolation,
+		"create-run adapter returned an invalid authoritative result",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 type CreateRunCatalogGraphError struct {
@@ -157,9 +160,8 @@ func (e *CreateRunRetryableError) Is(target error) bool { return target == ErrCr
 func (e *CreateRunRetryableError) Unwrap() error        { return e.Cause }
 
 var (
-	ErrCreateRunCatalogGraph    = errors.New("create-run catalog graph not found or invalid")
-	ErrCreateRunRetryable       = errors.New("retryable create-run transaction or catalog conflict")
-	ErrCreateRunAdapterContract = errors.New("create-run adapter contract violation")
+	ErrCreateRunCatalogGraph = errors.New("create-run catalog graph not found or invalid")
+	ErrCreateRunRetryable    = errors.New("retryable create-run transaction or catalog conflict")
 )
 
 type CreateRunStore interface {

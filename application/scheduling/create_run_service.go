@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"math"
@@ -144,7 +145,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 				return createRunCommandConflictError()
 			}
 			if existing.CommandID != owned.CommandID {
-				return &CreateRunAdapterContractError{Operation: "find create-run command", Reason: "stored command identity mismatch"}
+				return createRunAdapterContractViolationError(errors.New("stored command identity mismatch"))
 			}
 			if err := validateStoredCreateRunResult(existing.Result, owned); err != nil {
 				return err
@@ -189,7 +190,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 
 func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateRunCommand) error {
 	invalid := func(reason string) error {
-		return &CreateRunAdapterContractError{Operation: "restore create run", Reason: reason}
+		return createRunAdapterContractViolationError(errors.New(reason))
 	}
 	input := stored.Snapshot.Input()
 	if stored.SnapshotDigest == "" || stored.SnapshotDigest != stored.Snapshot.Digest() || stored.Run.SnapshotDigest != stored.SnapshotDigest {
@@ -352,7 +353,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 
 func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Run, snapshot execution.RunSnapshot, entryIDs []string) error {
 	invalid := func(reason string) error {
-		return &CreateRunAdapterContractError{Operation: "insert create run", Reason: reason}
+		return createRunAdapterContractViolationError(errors.New(reason))
 	}
 	if outcome.Status != InsertCreateRunApplied && outcome.Status != InsertCreateRunReplayed {
 		return invalid("invalid status")
@@ -374,7 +375,7 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 	}
 	if outcome.Status == InsertCreateRunReplayed {
 		if err := validateStoredCreateRunResult(outcome.Result, command); err != nil {
-			return invalid(err.Error())
+			return createRunAdapterContractViolationError(err)
 		}
 		return nil
 	}

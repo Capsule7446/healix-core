@@ -100,6 +100,26 @@ func TestCreateRunSnapshotConflictErrorExposesSafeStableContract(t *testing.T) {
 	}
 }
 
+func TestCreateRunAdapterContractViolationExposesSafeStableContract(t *testing.T) {
+	cause := errors.New("operation=insert command=command-secret digest=sha256:secret payload=value-secret")
+	err := createRunAdapterContractViolationError(cause)
+	descriptor, ok := fault.Describe(err)
+	if !ok ||
+		descriptor.Code() != CodeCreateRunAdapterContractViolation ||
+		descriptor.Kind() != fault.Internal ||
+		descriptor.Message() != "create-run adapter returned an invalid authoritative result" ||
+		len(descriptor.Params()) != 0 ||
+		len(descriptor.Violations()) != 0 ||
+		!errors.Is(err, cause) {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
+	}
+	for _, sensitive := range []string{"command-secret", "sha256:secret", "value-secret", cause.Error()} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("public error leaked %q: %q", sensitive, err.Error())
+		}
+	}
+}
+
 func TestCreateRunTypedErrorsCoverNilCauseAndUnwrap(t *testing.T) {
 	catalog := &CreateRunCatalogGraphError{Operation: "resolve"}
 	if got := catalog.Error(); !strings.Contains(got, "resolve") || strings.HasSuffix(got, ": ") {

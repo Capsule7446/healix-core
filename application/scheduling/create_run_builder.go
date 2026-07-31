@@ -123,7 +123,7 @@ func addResolvedBindingsBudget(budget *createRunRequestBudget, bindings map[stri
 func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 	budget := newCreateRunRequestBudget()
 	invalid := func(reason string) error {
-		return &CreateRunAdapterContractError{Operation: "preflight resolved create run", Reason: reason}
+		return createRunAdapterContractViolationError(errors.New(reason))
 	}
 	addStrings := func(values ...string) error {
 		for _, value := range values {
