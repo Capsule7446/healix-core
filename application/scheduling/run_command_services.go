@@ -257,11 +257,11 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 		return ReorderQueueResult{}, fmt.Errorf("reorder queue transaction: %w", err)
 	}
 	if result.ScopeID != command.ScopeID || result.Revision != command.ExpectedRevision+1 || len(result.RunIDs) != len(command.RunIDs) {
-		return ReorderQueueResult{}, errors.New("invalid reorder queue authoritative result")
+		return ReorderQueueResult{}, runAdapterContractViolationError(errors.New("reorder result identity, revision, or membership count is invalid"))
 	}
 	for index := range command.RunIDs {
 		if result.RunIDs[index] != command.RunIDs[index] {
-			return ReorderQueueResult{}, errors.New("invalid reorder queue authoritative result")
+			return ReorderQueueResult{}, runAdapterContractViolationError(errors.New("reorder result membership order is invalid"))
 		}
 	}
 	result.RunIDs = append([]string(nil), result.RunIDs...)

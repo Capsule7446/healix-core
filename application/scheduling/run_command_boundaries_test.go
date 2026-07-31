@@ -264,6 +264,9 @@ func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *te
 			if test.err != nil && !errors.Is(err, test.err) {
 				t.Fatalf("ReorderQueue() error = %v, want dependency error", err)
 			}
+			if test.err == nil && !fault.IsCode(err, CodeRunAdapterContractViolation) {
+				t.Fatalf("ReorderQueue() malformed-result error = %v", err)
+			}
 		})
 	}
 }
