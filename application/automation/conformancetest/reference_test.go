@@ -90,7 +90,21 @@ func newReferenceFixture(t *testing.T) conformancetest.Fixture {
 	}
 }
 
-func (f *referenceFixture) Intent() application.PublishSamplingIntent { return f.intent }
+func cloneSamplingOutcome(outcome application.PublishSamplingOutcome) application.PublishSamplingOutcome {
+	outcome.Result.Nodes = append([]domain.SamplingNodeMapping(nil), outcome.Result.Nodes...)
+	return outcome
+}
+
+func cloneSamplingIntent(intent application.PublishSamplingIntent) application.PublishSamplingIntent {
+	intent.Publication = intent.Publication.Clone()
+	return intent
+}
+
+func (f *referenceFixture) Intent() application.PublishSamplingIntent {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return cloneSamplingIntent(f.intent)
+}
 func (f *referenceFixture) SetFault(point conformancetest.FaultPoint) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -161,6 +175,15 @@ func competingIntent(base application.PublishSamplingIntent, suffix string) appl
 	return application.PublishSamplingIntent{PublicationID: command.PublicationID, RequestDigest: digest, Publication: publication}
 }
 
+func expectedOutbox(publication domain.SamplingPublication) []string {
+	mappings := conformancetest.Result(publication).Nodes
+	events := make([]string, 0, len(mappings)+1)
+	for _, mapping := range mappings {
+		events = append(events, "NODE:"+mapping.ElementTargetID+":"+mapping.ElementTargetVersionID)
+	}
+	return append(events, "WORKFLOW:"+publication.FlowFragment.FlowFragment.ID)
+}
+
 func (f *referenceFixture) AssertOnlyApplied(winner, loser application.PublishSamplingIntent) error {
 	if err := f.AssertApplied(winner); err != nil {
 		return err
@@ -178,7 +201,18 @@ func (f *referenceFixture) AssertOnlyApplied(winner, loser application.PublishSa
 	}
 	loserResult := conformancetest.Result(loser.Publication)
 	for index, mapping := range loserResult.Nodes {
-		if loser.Publication.Nodes[index].ResolutionMode == "REUSE" {
+		decision := loser.Publication.Nodes[index]
+		if decision.ResolutionMode != "REUSE" {
+			if _, exists := f.state.versions[mapping.ElementTargetVersionID]; exists {
+				return errors.New("loser target version exists")
+			}
+		}
+		if decision.ResolutionMode == "CREATE" {
+			if _, exists := f.state.nodes[mapping.ElementTargetID]; exists {
+				return errors.New("loser target exists")
+			}
+		}
+		if decision.ResolutionMode == "REUSE" {
 			continue
 		}
 		for _, stored := range append(append([]domain.SamplingNodeMapping(nil), f.state.mappings...), f.state.audits...) {
@@ -186,6 +220,9 @@ func (f *referenceFixture) AssertOnlyApplied(winner, loser application.PublishSa
 				return errors.New("loser mapping or audit exists")
 			}
 		}
+	}
+	if !reflect.DeepEqual(f.state.outbox, expectedOutbox(winner.Publication)) {
+		return errors.New("outbox does not exactly match winner publication")
 	}
 	return nil
 }
@@ -197,8 +234,8 @@ func (f *referenceFixture) AssertApplied(intent application.PublishSamplingInten
 	if !reflect.DeepEqual(f.state.mappings, expectedMappings) || !reflect.DeepEqual(f.state.audits, expectedMappings) {
 		return errors.New("mappings or mode audit do not match publication")
 	}
-	if len(f.state.outbox) != len(intent.Publication.Nodes)+1 || len(f.state.replays) != 1 {
-		return errors.New("outbox or replay result is incomplete")
+	if !reflect.DeepEqual(f.state.outbox, expectedOutbox(intent.Publication)) || len(f.state.replays) != 1 {
+		return errors.New("outbox or replay result does not exactly match publication")
 	}
 	for _, decision := range intent.Publication.Nodes {
 		stored, exists := f.state.nodes[decision.Aggregate.ElementTarget.ID]
@@ -226,7 +263,7 @@ func (f *referenceFixture) LookupSamplingPublication(_ context.Context, publicat
 		return application.PublishSamplingOutcome{}, false, &application.SamplingPublicationIdentityConflictError{PublicationID: publicationID}
 	}
 	existing.Status = application.PublishSamplingReplayed
-	return existing, true, nil
+	return cloneSamplingOutcome(existing), true, nil
 }
 
 func (f *referenceFixture) PublishSampling(_ context.Context, intent application.PublishSamplingIntent) (application.PublishSamplingOutcome, error) {
@@ -240,7 +277,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 			return application.PublishSamplingOutcome{}, &application.SamplingPublicationIdentityConflictError{PublicationID: intent.PublicationID}
 		}
 		existing.Status = application.PublishSamplingReplayed
-		return existing, nil
+		return cloneSamplingOutcome(existing), nil
 	}
 	next := cloneState(f.state)
 	for _, decision := range intent.Publication.Nodes {
@@ -295,9 +332,9 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 		return application.PublishSamplingOutcome{}, err
 	}
 	outcome := application.PublishSamplingOutcome{Status: application.PublishSamplingApplied, PublicationID: intent.PublicationID, RequestDigest: intent.RequestDigest, Result: conformancetest.Result(intent.Publication)}
-	next.replays[intent.PublicationID], next.digests[intent.PublicationID] = outcome, intent.RequestDigest
+	next.replays[intent.PublicationID], next.digests[intent.PublicationID] = cloneSamplingOutcome(outcome), intent.RequestDigest
 	f.state = next
-	return outcome, nil
+	return cloneSamplingOutcome(outcome), nil
 }
 
 func (f *referenceFixture) fail(point conformancetest.FaultPoint) error {

@@ -52,7 +52,22 @@ func Run(t *testing.T, factory Factory) {
 		if err := fixture.AssertApplied(intent); err != nil {
 			t.Fatalf("materialized publication: %v", err)
 		}
+		if len(first.Result.Nodes) == 0 {
+			t.Fatal("fixture publication requires node mappings")
+		}
+		first.Result.Nodes[0].ElementTargetVersionID = "caller-mutated"
 		after := fixture.Snapshot()
+		lookup, found, err := fixture.LookupSamplingPublication(context.Background(), intent.PublicationID, intent.RequestDigest)
+		if err != nil || !found || lookup.Status != application.PublishSamplingReplayed || !reflect.DeepEqual(lookup.Result, expected.Result) {
+			t.Fatalf("lookup = %#v, found=%t, err=%v", lookup, found, err)
+		}
+		lookup.Result.Nodes[0].ElementTargetVersionID = "lookup-mutated"
+		if _, found, err := fixture.LookupSamplingPublication(context.Background(), intent.PublicationID, "sha256:different"); err == nil || found || !errors.Is(err, application.ErrSamplingPublicationIdentityConflict) {
+			t.Fatalf("conflicting lookup found=%t err=%v", found, err)
+		}
+		if got := fixture.Snapshot(); !reflect.DeepEqual(got, after) {
+			t.Fatalf("lookup changed state: before=%#v after=%#v", after, got)
+		}
 		replay, err := fixture.PublishSampling(context.Background(), intent)
 		expected.Status = application.PublishSamplingReplayed
 		if err != nil || !reflect.DeepEqual(replay, expected) {
