@@ -126,12 +126,12 @@ func isNilCreateRunStore(store CreateRunStore) bool {
 
 func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunCommand) (CreateRunResult, error) {
 	if err := preflightCreateRunCommand(command); err != nil {
-		return CreateRunResult{}, fmt.Errorf("preflight create run command: %w", err)
+		return CreateRunResult{}, err
 	}
 	owned := normalizeCreateRunCommand(cloneCreateRunCommand(command))
 	digest, err := CreateRunRequestDigest(owned)
 	if err != nil {
-		return CreateRunResult{}, fmt.Errorf("validate create run owned: %w", err)
+		return CreateRunResult{}, err
 	}
 	var result CreateRunResult
 	err = s.store.InTransaction(ctx, func(tx CreateRunTx) error {
@@ -156,11 +156,11 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		}
 		resolved, err := tx.ResolveCreateRun(ctx, cloneCreateRunCommand(owned))
 		if err != nil {
-			return fmt.Errorf("resolve create run: %w", err)
+			return err
 		}
 		snapshot, err := BuildRunSnapshot(owned, resolved)
 		if err != nil {
-			return fmt.Errorf("build run snapshot: %w", err)
+			return err
 		}
 		run, err := execution.NewRun(execution.Run{ID: owned.RunID, ExecutionFlowID: owned.ExecutionFlowID, TestTaskVersionID: owned.TestTaskVersionID, Status: execution.Queued, EnvironmentID: owned.EnvironmentID, CreatedAt: owned.CreatedAt, QueuedAt: owned.CreatedAt}, snapshot)
 		if err != nil {
@@ -183,7 +183,11 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		return nil
 	})
 	if err != nil {
-		return CreateRunResult{}, fmt.Errorf("create run transaction: %w", err)
+		// This is the service's only exit, so wrapping here erased the
+		// classification of everything the transaction produced — command
+		// validation, catalog resolution, snapshot conflicts, adapter contract
+		// violations — and left the host a single unclassified error for all of them.
+		return CreateRunResult{}, err
 	}
 	return result, nil
 }
