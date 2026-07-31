@@ -120,3 +120,24 @@ func TestConstraintValidatePropagatesValueCodeUnchanged(t *testing.T) {
 		t.Fatalf("value failure was re-labelled as a constraint failure: %v", err)
 	}
 }
+
+// The sign byte was added after the size checks, so a negative number whose
+// unsigned body was exactly at the limit came back one byte over — accepted by
+// the constructor, then rejected by that same value's own Validate.
+func TestNewNumberValueNeverReturnsAValueItsOwnValidatorRejects(t *testing.T) {
+	for _, input := range []string{"-1e65535", "1e65535", "-1e65534", "1e65534"} {
+		t.Run(input, func(t *testing.T) {
+			value, err := NewNumberValue(input)
+			if err != nil {
+				requireCode(t, err, CodeValueInvalid, fault.InvalidArgument)
+				return
+			}
+			if len(value.Number()) > MaxValueStringBytes {
+				t.Fatalf("constructor returned %d bytes, over the %d limit", len(value.Number()), MaxValueStringBytes)
+			}
+			if validateErr := value.Validate(); validateErr != nil {
+				t.Fatalf("constructor accepted a value its own Validate rejects: %v", validateErr)
+			}
+		})
+	}
+}

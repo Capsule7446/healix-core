@@ -38,15 +38,23 @@ func DetectFrameworks(ctx context.Context, observation PageObservation, detector
 		}
 		matches, err := detector.Detect(ctx, observation)
 		if err != nil {
+			// A detector that already classified its own failure keeps that
+			// classification; wrapping it would nest two faults and make the host
+			// unwrap before it could route.
+			if _, classified := fault.CodeOf(err); classified {
+				return nil, err
+			}
 			return nil, frameworkDetectorFailedError(err)
 		}
 		stack = append(stack, matchInfos(matches)...)
 	}
 	stack = mergeFrameworkStack(SortFrameworkStack(stack))
-	// stack.Validate already returns a classified fault; re-wrapping it here would
-	// force the host to unwrap recursively before it could classify the failure.
+	// The stack here was assembled from detector output, not from caller input, so
+	// a shape failure is the port breaking its contract rather than the caller
+	// passing something wrong. Reporting the caller-facing stack code would tell
+	// the caller to fix data it never supplied.
 	if err := stack.Validate(); err != nil {
-		return nil, err
+		return nil, frameworkDetectorFailedError(err)
 	}
 	return stack, nil
 }

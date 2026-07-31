@@ -146,14 +146,22 @@ func canonicalDecimal(input string) (string, error) {
 		return "0", nil
 	}
 	scale := len(match[3]) - exponent
+	// The sign is prepended after these checks, so it has to be part of the
+	// budget. Without it "-1e65535" produced a body of exactly the maximum, passed,
+	// and then returned a value one byte over — accepted by the constructor and
+	// rejected by that same value's own Validate a moment later.
+	budget := MaxValueStringBytes
+	if match[1] == "-" {
+		budget--
+	}
 	var result string
 	if scale <= 0 {
-		if len(digits)-scale > MaxValueStringBytes {
+		if len(digits)-scale > budget {
 			return "", errors.New("NUMBER canonical form exceeds maximum size")
 		}
 		result = digits + strings.Repeat("0", -scale)
 	} else if scale >= len(digits) {
-		if scale+2 > MaxValueStringBytes {
+		if scale+2 > budget {
 			return "", errors.New("NUMBER canonical form exceeds maximum size")
 		}
 		result = "0." + strings.Repeat("0", scale-len(digits)) + digits
@@ -168,6 +176,10 @@ func canonicalDecimal(input string) (string, error) {
 	}
 	if match[1] == "-" && result != "0" {
 		result = "-" + result
+	}
+	// A constructor must never hand back a value its own validator would reject.
+	if len(result) > MaxValueStringBytes {
+		return "", errors.New("NUMBER canonical form exceeds maximum size")
 	}
 	return result, nil
 }

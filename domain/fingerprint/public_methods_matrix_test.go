@@ -169,7 +169,10 @@ func TestDetectFrameworksPropagatesFailuresAndRejectsInvalidMatches(t *testing.T
 			return []FrameworkMatch{{Info: FrameworkInfo{Kind: "invalid", Confidence: 0.5}}}, nil
 		}),
 	})
-	requireViolation(t, err, CodeFrameworkStackInvalid, fault.CodeFieldInvalid, "frameworks.0.kind")
+	// The stack came from detector output, so an unsupported kind is the port
+	// breaking its contract, not the caller supplying bad data. Reporting the
+	// caller-facing stack code would tell the caller to fix data it never gave.
+	requireEnvelope(t, err, CodeFrameworkDetectorFailed)
 
 	_, err = DetectFrameworks(context.Background(), PageObservation{}, []FrameworkDetector{nil})
 	requireViolation(t, err, CodeFrameworkStackInvalid, fault.CodeFieldRequired, "detectors.0")
