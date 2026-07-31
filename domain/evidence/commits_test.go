@@ -193,3 +193,52 @@ func TestStepTransitionCommitRejectsDuplicateHealAndResetIdentities(t *testing.T
 		})
 	}
 }
+
+// The topology check drains members as their groups consume them, then reports
+// whatever is left over. Ranging over that leftover map made the reported error
+// depend on Go's randomised map iteration order, so the same commit could be
+// rejected with a different error on a different run. The property asserted here
+// is stability, not a particular message: the error must be a function of the
+// input alone.
+func TestValidationGroupTopologyReportsLeftoverMembersDeterministically(t *testing.T) {
+	template := validGroupedStepTransitionCommit().FinalValidations[1]
+
+	grouped := template
+	grouped.ID = "leftover-grouped"
+	grouped.ValidationStepID = "validation-grouped"
+	grouped.BranchID = "branch-extra"
+	grouped.ElementTargetID = "node-extra"
+	grouped.ElementTargetVersionID = "node-extra-v1"
+
+	orphan := template
+	orphan.ID = "leftover-orphan"
+	orphan.ValidationStepID = "validation-orphan"
+	orphan.GroupID = "orphan-group"
+	orphan.BranchID = "branch-orphan"
+	orphan.ElementTargetID = "node-orphan"
+	orphan.ElementTargetVersionID = "node-orphan-v1"
+
+	tests := []struct {
+		name  string
+		extra []ValidationObservation
+	}{
+		{name: "grouped leftover first", extra: []ValidationObservation{grouped, orphan}},
+		{name: "orphan leftover first", extra: []ValidationObservation{orphan, grouped}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			commit := validGroupedStepTransitionCommit()
+			commit.FinalValidations = append(commit.FinalValidations, test.extra...)
+			first := commit.Validate()
+			if first == nil {
+				t.Fatal("leftover grouped validations accepted")
+			}
+			for attempt := 1; attempt < 200; attempt++ {
+				again := commit.Validate()
+				if again == nil || again.Error() != first.Error() {
+					t.Fatalf("attempt %d: error = %v, want the same error as the first run %v", attempt, again, first)
+				}
+			}
+		})
+	}
+}

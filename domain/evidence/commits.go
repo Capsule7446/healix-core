@@ -167,8 +167,20 @@ func validateValidationGroupTopology(event StepPhaseEvent, validations []Validat
 			delete(members, memberKey{GroupID: group.GroupID, BranchID: expected.BranchID, ElementTargetID: expected.ElementTargetID})
 		}
 	}
-	for key := range members {
-		if _, grouped := seenGroups[key.GroupID]; grouped {
+	// members has been drained of every member its group consumed, so whatever is
+	// left is unaccounted for. Ranging over the map would report a random one of
+	// the leftovers, which means the same commit could be rejected with a different
+	// error on a different run. Walking the source slice instead makes the reported
+	// failure a function of the input alone.
+	for _, validation := range validations {
+		if validation.GroupID == "" {
+			continue
+		}
+		key := memberKey{GroupID: validation.GroupID, BranchID: validation.BranchID, ElementTargetID: validation.ElementTargetID}
+		if _, leftover := members[key]; !leftover {
+			continue
+		}
+		if _, grouped := seenGroups[validation.GroupID]; grouped {
 			return errors.New("final validation group contains an unexpected member")
 		}
 		return errors.New("grouped final validation has no terminal group fact")
