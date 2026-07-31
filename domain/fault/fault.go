@@ -42,10 +42,14 @@ var (
 	fieldPattern    = regexp.MustCompile(`^[a-z][A-Za-z0-9.]{0,126}$`)
 )
 
+// MaxViolations bounds how many violations one aggregate envelope may carry.
+// It is exported so that every context can truncate deterministically instead of
+// letting construction fail on hostile input.
+const MaxViolations = 32
+
 const (
 	maxMessageLength = 512
 	maxParams        = 16
-	maxViolations    = 32
 	maxParamValueLen = 256
 )
 
@@ -314,7 +318,7 @@ func containsUnsafePublicText(value string) bool {
 	return false
 }
 func validateViolations(violations []Violation) error {
-	if len(violations) > maxViolations {
+	if len(violations) > MaxViolations {
 		return errors.New("fault violations exceed maximum count")
 	}
 	for _, violation := range violations {

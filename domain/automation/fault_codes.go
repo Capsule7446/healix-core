@@ -3,6 +3,8 @@ package automation
 import "github.com/Capsule7446/healix-core/domain/fault"
 
 const (
+	CodeExecutionFlowInvalid fault.Code = "AUTOMATION_EXECUTION_FLOW_INVALID"
+
 	CodePersistedRevisionInvalid          fault.Code = "AUTOMATION_PERSISTED_REVISION_INVALID"
 	CodeRevisionExhausted                 fault.Code = "AUTOMATION_REVISION_EXHAUSTED"
 	CodePersistedVersionNumberInvalid     fault.Code = "AUTOMATION_PERSISTED_VERSION_NUMBER_INVALID"
@@ -80,16 +82,39 @@ func healStreakRejectionInvalidError(cause error) error {
 	return wrapAutomationFault(cause, fault.FailedPrecondition, CodeHealStreakRejectionInvalid, "heal streak cannot be rejected in its current state")
 }
 
-func wrapAutomationFault(cause error, kind fault.Kind, code fault.Code, message string) error {
-	err, constructionErr := fault.Wrap(cause, kind, code, message)
+// executionFlowInvalidError is the aggregate validation envelope for execution
+// flow input: one top-level fault carrying every field failure as an ordered
+// violation, never one code per failing field and never a joined message.
+//
+// Violations beyond fault.MaxViolations are dropped rather than allowed to fail
+// construction, because the input reaching this envelope is untrusted and a
+// construction failure would surface as a panic. The kept prefix is
+// deterministic: callers build the slice by walking their input in order.
+func executionFlowInvalidError(violations []fault.Violation) error {
+	if len(violations) > fault.MaxViolations {
+		violations = violations[:fault.MaxViolations]
+	}
+	return mustAutomationFault(fault.InvalidArgument, CodeExecutionFlowInvalid, "execution flow input is invalid", fault.WithViolations(violations...))
+}
+
+func mustViolation(code fault.Code, field, message string) fault.Violation {
+	violation, constructionErr := fault.NewViolation(code, field, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return violation
+}
+
+func wrapAutomationFault(cause error, kind fault.Kind, code fault.Code, message string, options ...fault.Option) error {
+	err, constructionErr := fault.Wrap(cause, kind, code, message, options...)
 	if constructionErr != nil {
 		panic(constructionErr)
 	}
 	return err
 }
 
-func mustAutomationFault(kind fault.Kind, code fault.Code, message string) error {
-	err, constructionErr := fault.New(kind, code, message)
+func mustAutomationFault(kind fault.Kind, code fault.Code, message string, options ...fault.Option) error {
+	err, constructionErr := fault.New(kind, code, message, options...)
 	if constructionErr != nil {
 		panic(constructionErr)
 	}

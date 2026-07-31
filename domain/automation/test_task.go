@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
 )
 
@@ -52,85 +53,103 @@ func (issues ValidationIssues) Error() string {
 	return strings.Join(parts, "; ")
 }
 
+// Validate reports every field failure through one aggregate envelope. Field
+// paths are logical and locale-neutral, and item indexes are 0-based so they
+// address the slice the caller passed.
 func (t ExecutionFlow) Validate() error {
-	var problems []string
+	var violations []fault.Violation
 	if strings.TrimSpace(t.ID) == "" {
-		problems = append(problems, "test task id is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "id", "execution flow id is required"))
 	}
 	if strings.TrimSpace(t.DisplayName) == "" {
-		problems = append(problems, "test task display name is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "displayName", "execution flow display name is required"))
 	}
 	if strings.TrimSpace(t.CurrentVersionID) == "" {
-		problems = append(problems, "test task current version id is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "currentVersionId", "execution flow current version id is required"))
 	}
-	if t.CreatedAt <= 0 || t.UpdatedAt <= 0 {
-		problems = append(problems, "test task timestamps are required")
+	if t.CreatedAt <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "createdAt", "execution flow created timestamp is required"))
 	}
-	if len(problems) > 0 {
-		return errors.New(strings.Join(problems, "; "))
+	if t.UpdatedAt <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "updatedAt", "execution flow updated timestamp is required"))
+	}
+	if len(violations) > 0 {
+		return executionFlowInvalidError(violations)
 	}
 	return nil
 }
 
+// Validate reports every field failure through one aggregate envelope. Sub
+// validation failures degrade into violations of this version rather than
+// nesting another fault, and no identity, key or enum value reaches public text.
 func (v ExecutionFlowVersion) Validate() error {
-	var problems []string
-	if strings.TrimSpace(v.ID) == "" || strings.TrimSpace(v.ExecutionFlowID) == "" {
-		problems = append(problems, "test task version id and owner are required")
+	var violations []fault.Violation
+	if strings.TrimSpace(v.ID) == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "id", "execution flow version id is required"))
+	}
+	if strings.TrimSpace(v.ExecutionFlowID) == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "executionFlowId", "execution flow version owner id is required"))
 	}
 	if v.VersionNumber < 1 {
-		problems = append(problems, "test task version number must be >= 1")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "versionNumber", "execution flow version number must be positive"))
 	}
 	if v.CreatedAt <= 0 {
-		problems = append(problems, "test task version created timestamp is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "createdAt", "execution flow version created timestamp is required"))
 	}
 	if !v.FailurePolicy.IsValid() {
-		problems = append(problems, fmt.Sprintf("invalid failure policy %q", v.FailurePolicy))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "failurePolicy", "execution flow version failure policy is not supported"))
 	}
 	if len(v.Items) == 0 {
-		problems = append(problems, "test task version requires at least one item")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "items", "execution flow version requires at least one item"))
 	}
-	seenIDs := map[string]bool{}
-	seenSequences := map[int]bool{}
 	seenEnvironmentKeys := map[string]bool{}
-	for _, key := range v.RequiredEnvironmentKeys {
-		if strings.TrimSpace(key) == "" || seenEnvironmentKeys[key] {
-			problems = append(problems, "required environment keys must be non-empty and unique")
+	for index, key := range v.RequiredEnvironmentKeys {
+		field := fmt.Sprintf("requiredEnvironmentKeys.%d", index)
+		switch {
+		case strings.TrimSpace(key) == "":
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field, "required environment key must not be blank"))
+		case seenEnvironmentKeys[key]:
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field, "required environment key is duplicated"))
 		}
 		seenEnvironmentKeys[key] = true
 	}
+	seenIDs := map[string]bool{}
+	seenSequences := map[int]bool{}
 	for index, item := range v.Items {
-		if strings.TrimSpace(item.ID) == "" {
-			problems = append(problems, fmt.Sprintf("item %d id is required", index+1))
-		} else if seenIDs[item.ID] {
-			problems = append(problems, fmt.Sprintf("duplicate item id %s", item.ID))
+		field := func(name string) string { return fmt.Sprintf("items.%d.%s", index, name) }
+		switch {
+		case strings.TrimSpace(item.ID) == "":
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field("id"), "execution flow item id is required"))
+		case seenIDs[item.ID]:
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field("id"), "execution flow item id is duplicated"))
 		}
 		seenIDs[item.ID] = true
 		if item.TestTaskVersionID != v.ID {
-			problems = append(problems, fmt.Sprintf("item %d belongs to another version", index+1))
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field("executionFlowVersionId"), "execution flow item belongs to another version"))
 		}
 		if item.SequenceNumber != index+1 || seenSequences[item.SequenceNumber] {
-			problems = append(problems, "item sequence numbers must be unique and contiguous from 1")
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field("sequenceNumber"), "execution flow item sequence numbers must be unique and contiguous from 1"))
 		}
 		seenSequences[item.SequenceNumber] = true
 		if strings.TrimSpace(item.FlowFragmentID) == "" {
-			problems = append(problems, fmt.Sprintf("item %d workflow id is required", index+1))
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field("flowFragmentId"), "execution flow item flow fragment id is required"))
 		}
-		if err := item.VersionPolicy.Validate(); err != nil {
-			problems = append(problems, fmt.Sprintf("item %d: %v", index+1, err))
+		if item.VersionPolicy.Validate() != nil {
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field("versionPolicy"), "execution flow item version policy is not supported"))
 		}
 		switch item.VersionPolicy {
 		case FlowFragmentVersionFixed:
 			if strings.TrimSpace(item.WorkflowVersionID) == "" {
-				problems = append(problems, fmt.Sprintf("item %d fixed version id is required", index+1))
+				violations = append(violations, mustViolation(fault.CodeFieldRequired, field("flowFragmentVersionId"), "fixed version policy requires a flow fragment version id"))
 			}
 		case FlowFragmentVersionLatest:
 			if strings.TrimSpace(item.WorkflowVersionID) != "" {
-				problems = append(problems, fmt.Sprintf("item %d latest policy cannot persist a version id", index+1))
+				violations = append(violations, mustViolation(fault.CodeFieldMismatch, field("flowFragmentVersionId"), "latest version policy must not persist a flow fragment version id"))
 			}
 		}
 	}
-	if len(problems) > 0 {
-		return errors.New(strings.Join(problems, "; "))
+	if len(violations) > 0 {
+		return executionFlowInvalidError(violations)
 	}
 	return nil
 }
@@ -148,7 +167,7 @@ func (a ExecutionFlowAggregate) Validate() error {
 	highest := ExecutionFlowVersion{}
 	for _, version := range a.Versions {
 		if err := version.Validate(); err != nil {
-			return fmt.Errorf("test task version %s: %w", version.ID, err)
+			return err
 		}
 		if version.ExecutionFlowID != a.Task.ID {
 			return errors.New("test task version belongs to another task")

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -70,21 +71,22 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 func TestTestTaskValidateSingleFactorRuleMatrix(t *testing.T) {
 	base := validTestTaskVersionPlan().Task
 	tests := []struct {
-		name   string
-		mutate func(*ExecutionFlow)
-		want   string
+		name      string
+		mutate    func(*ExecutionFlow)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "missing display name", mutate: func(value *ExecutionFlow) { value.DisplayName = " " }, want: "display name"},
-		{name: "missing current version", mutate: func(value *ExecutionFlow) { value.CurrentVersionID = "" }, want: "current version"},
-		{name: "missing timestamp", mutate: func(value *ExecutionFlow) { value.CreatedAt = 0 }, want: "timestamps"},
+		{name: "missing id", mutate: func(value *ExecutionFlow) { value.ID = " " }, wantCode: fault.CodeFieldRequired, wantField: "id"},
+		{name: "missing display name", mutate: func(value *ExecutionFlow) { value.DisplayName = " " }, wantCode: fault.CodeFieldRequired, wantField: "displayName"},
+		{name: "missing current version", mutate: func(value *ExecutionFlow) { value.CurrentVersionID = "" }, wantCode: fault.CodeFieldRequired, wantField: "currentVersionId"},
+		{name: "missing created timestamp", mutate: func(value *ExecutionFlow) { value.CreatedAt = 0 }, wantCode: fault.CodeFieldRequired, wantField: "createdAt"},
+		{name: "missing updated timestamp", mutate: func(value *ExecutionFlow) { value.UpdatedAt = 0 }, wantCode: fault.CodeFieldRequired, wantField: "updatedAt"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			value := base
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireExecutionFlowViolation(t, value.Validate(), test.wantCode, test.wantField)
 		})
 	}
 }
@@ -92,35 +94,39 @@ func TestTestTaskValidateSingleFactorRuleMatrix(t *testing.T) {
 func TestTestTaskVersionValidateSingleFactorRuleMatrix(t *testing.T) {
 	base := validTestTaskVersionPlan().Version
 	tests := []struct {
-		name   string
-		mutate func(*ExecutionFlowVersion)
-		want   string
+		name      string
+		mutate    func(*ExecutionFlowVersion)
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "missing identity", mutate: func(value *ExecutionFlowVersion) { value.ID = " " }, want: "id and owner"},
-		{name: "version below boundary", mutate: func(value *ExecutionFlowVersion) { value.VersionNumber = 0 }, want: "version number"},
-		{name: "missing created timestamp", mutate: func(value *ExecutionFlowVersion) { value.CreatedAt = 0 }, want: "created timestamp"},
-		{name: "missing items", mutate: func(value *ExecutionFlowVersion) { value.Items = nil }, want: "at least one item"},
-		{name: "invalid environment key", mutate: func(value *ExecutionFlowVersion) { value.RequiredEnvironmentKeys = []string{" "} }, want: "environment keys"},
-		{name: "missing item id", mutate: func(value *ExecutionFlowVersion) { value.Items[0].ID = " " }, want: "item 1 id"},
+		{name: "missing identity", mutate: func(value *ExecutionFlowVersion) { value.ID = " " }, wantCode: fault.CodeFieldRequired, wantField: "id"},
+		{name: "missing owner", mutate: func(value *ExecutionFlowVersion) { value.ExecutionFlowID = " " }, wantCode: fault.CodeFieldRequired, wantField: "executionFlowId"},
+		{name: "version below boundary", mutate: func(value *ExecutionFlowVersion) { value.VersionNumber = 0 }, wantCode: fault.CodeFieldInvalid, wantField: "versionNumber"},
+		{name: "missing created timestamp", mutate: func(value *ExecutionFlowVersion) { value.CreatedAt = 0 }, wantCode: fault.CodeFieldRequired, wantField: "createdAt"},
+		{name: "unsupported failure policy", mutate: func(value *ExecutionFlowVersion) { value.FailurePolicy = "UNKNOWN" }, wantCode: fault.CodeFieldInvalid, wantField: "failurePolicy"},
+		{name: "missing items", mutate: func(value *ExecutionFlowVersion) { value.Items = nil }, wantCode: fault.CodeFieldRequired, wantField: "items"},
+		{name: "blank environment key", mutate: func(value *ExecutionFlowVersion) { value.RequiredEnvironmentKeys = []string{" "} }, wantCode: fault.CodeFieldRequired, wantField: "requiredEnvironmentKeys.0"},
+		{name: "duplicate environment key", mutate: func(value *ExecutionFlowVersion) {
+			value.RequiredEnvironmentKeys = []string{"region", "region"}
+		}, wantCode: fault.CodeFieldDuplicate, wantField: "requiredEnvironmentKeys.1"},
+		{name: "missing item id", mutate: func(value *ExecutionFlowVersion) { value.Items[0].ID = " " }, wantCode: fault.CodeFieldRequired, wantField: "items.0.id"},
 		{name: "duplicate item id", mutate: func(value *ExecutionFlowVersion) {
 			second := value.Items[0]
 			second.SequenceNumber = 2
 			value.Items = append(value.Items, second)
-		}, want: "duplicate item id"},
-		{name: "wrong item owner", mutate: func(value *ExecutionFlowVersion) { value.Items[0].TestTaskVersionID = "other" }, want: "another version"},
-		{name: "noncontiguous sequence", mutate: func(value *ExecutionFlowVersion) { value.Items[0].SequenceNumber = 2 }, want: "contiguous"},
-		{name: "missing workflow id", mutate: func(value *ExecutionFlowVersion) { value.Items[0].FlowFragmentID = " " }, want: "workflow id"},
-		{name: "invalid workflow policy", mutate: func(value *ExecutionFlowVersion) { value.Items[0].VersionPolicy = "UNKNOWN" }, want: "unsupported workflow version policy"},
-		{name: "fixed policy missing version", mutate: func(value *ExecutionFlowVersion) { value.Items[0].VersionPolicy = FlowFragmentVersionFixed }, want: "fixed version id"},
-		{name: "latest policy persists version", mutate: func(value *ExecutionFlowVersion) { value.Items[0].WorkflowVersionID = "workflow-v1" }, want: "latest policy"},
+		}, wantCode: fault.CodeFieldDuplicate, wantField: "items.1.id"},
+		{name: "wrong item owner", mutate: func(value *ExecutionFlowVersion) { value.Items[0].TestTaskVersionID = "other" }, wantCode: fault.CodeFieldMismatch, wantField: "items.0.executionFlowVersionId"},
+		{name: "noncontiguous sequence", mutate: func(value *ExecutionFlowVersion) { value.Items[0].SequenceNumber = 2 }, wantCode: fault.CodeFieldInvalid, wantField: "items.0.sequenceNumber"},
+		{name: "missing flow fragment id", mutate: func(value *ExecutionFlowVersion) { value.Items[0].FlowFragmentID = " " }, wantCode: fault.CodeFieldRequired, wantField: "items.0.flowFragmentId"},
+		{name: "unsupported version policy", mutate: func(value *ExecutionFlowVersion) { value.Items[0].VersionPolicy = "UNKNOWN" }, wantCode: fault.CodeFieldInvalid, wantField: "items.0.versionPolicy"},
+		{name: "fixed policy missing version", mutate: func(value *ExecutionFlowVersion) { value.Items[0].VersionPolicy = FlowFragmentVersionFixed }, wantCode: fault.CodeFieldRequired, wantField: "items.0.flowFragmentVersionId"},
+		{name: "latest policy persists version", mutate: func(value *ExecutionFlowVersion) { value.Items[0].WorkflowVersionID = "workflow-v1" }, wantCode: fault.CodeFieldMismatch, wantField: "items.0.flowFragmentVersionId"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			value := cloneTestTaskVersion(base)
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireExecutionFlowViolation(t, value.Validate(), test.wantCode, test.wantField)
 		})
 	}
 }
@@ -193,8 +199,8 @@ func TestTestTaskVersionPlanValidateDependencyBoundaryMatrix(t *testing.T) {
 		mutate func(*ResolvedExecutionFlow)
 		want   string
 	}{
-		{name: "invalid task", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = " " }, want: "test task id"},
-		{name: "invalid version", mutate: func(plan *ResolvedExecutionFlow) { plan.Version.ID = " " }, want: "version id"},
+		{name: "invalid task", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = " " }, want: string(CodeExecutionFlowInvalid)},
+		{name: "invalid version", mutate: func(plan *ResolvedExecutionFlow) { plan.Version.ID = " " }, want: string(CodeExecutionFlowInvalid)},
 		{name: "inconsistent candidate identity", mutate: func(plan *ResolvedExecutionFlow) { plan.Task.ID = "other" }, want: "candidate identity"},
 		{name: "version one carries expected revision", mutate: func(plan *ResolvedExecutionFlow) { plan.ExpectedExecutionFlowRevision = 1 }, want: "without a source version"},
 		{name: "invalid workflow dependency", mutate: func(plan *ResolvedExecutionFlow) { plan.Workflows[0].Version.FlowFragmentID = "other" }, want: "workflow dependency snapshot identity"},

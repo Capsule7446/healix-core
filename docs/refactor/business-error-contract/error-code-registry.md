@@ -8,7 +8,24 @@ This registry defines the stable public error-code contract. A code is immutable
 - `EXECUTION_*` owns node runtime, engine, scheduling, and execution-application failures.
 - Allowed parameters are fixed per code, lower-camel-case, locale-neutral, bounded, and never secrets, selectors, environment/parameter values, URLs, command payloads, stack traces, or causes.
 - Violations are allowed only on aggregate input codes and are ordered deterministically.
+- Violation reason codes are owned by the shared kernel and listed under "Violation codes". They are the only codes without a bounded-context prefix, and they may appear only as a `Violation` code, never as a top-level `Error` code.
 - Unregistered production fault codes, duplicate codes, cross-context prefixes, and public `errors.New` sentinels are contract violations.
+
+## Violation codes
+
+Owned by `domain/fault` and shared by every context's aggregate validation envelope. A violation's `field` says *which* input failed; its code says *why*. The vocabulary stays closed and small on purpose: minting a code per failing field would multiply frontend i18n keys without adding meaning, which is exactly what the aggregate envelope exists to prevent.
+
+| Code | Kind of failure | Notes |
+|---|---|---|
+| `VALIDATION_FIELD_REQUIRED` | A mandatory input is absent or blank. | Remediation is to supply the field named by `field`. |
+| `VALIDATION_FIELD_INVALID` | A present input holds an unacceptable value. | Covers range, format, enum, and ordering rules. The rejected value stays private. |
+| `VALIDATION_FIELD_DUPLICATE` | An input repeats a value required to be unique. | `field` points at the later occurrence, not the first. The repeated value stays private. |
+| `VALIDATION_FIELD_MISMATCH` | An input contradicts the aggregate holding it. | Covers wrong owner, wrong parent, and policy/value contradictions. |
+
+- `field` is a logical, locale-neutral path matching `^[a-z][A-Za-z0-9.]{0,126}$`. It names the public contract vocabulary, not internal struct fields.
+- Collection indexes in `field` are **0-based** and address the collection the caller passed.
+- Violation `message` and `params` obey the same safety rules as top-level codes: no identities, keys, enum values, causes, or user input.
+- One envelope carries at most `fault.MaxViolations` violations. Past the cap the deterministic leading prefix is kept and the remainder dropped, so a consumer must not read the violation count as complete.
 
 ## Execution
 
@@ -62,7 +79,7 @@ This registry defines the stable public error-code contract. A code is immutable
 
 | Code | Kind | Safe message | Allowed params / violations | Notes |
 |---|---|---|---|---|
-| `AUTOMATION_EXECUTION_FLOW_INVALID` | `INVALID_ARGUMENT` | `execution flow input is invalid` | ordered typed violations only | Aggregate validation envelope: one top-level fault carrying every field failure as an ordered violation. Never one code per failing field, never a joined message. |
+| `AUTOMATION_EXECUTION_FLOW_INVALID` | `INVALID_ARGUMENT` | `execution flow input is invalid` | ordered typed violations only | Aggregate validation envelope: one top-level fault carrying every field failure as an ordered violation. Never one code per failing field, never a joined message. Covers the execution flow, its versions, and their items; version failures reaching it through the aggregate propagate unwrapped rather than nesting. Violation order follows the caller's declaration order with 0-based indexes, and is capped per the "Violation codes" rules. |
 | `AUTOMATION_FOLDER_NOT_FOUND` | `NOT_FOUND` | `automation folder was not found` | none | Do not expose authorization-sensitive detail. |
 | `AUTOMATION_FOLDER_INVALID` | `INVALID_ARGUMENT` | `automation folder is invalid` | none | Correct malformed folder identities, names, kinds, or occupancy before retrying; rejected values remain private. |
 | `AUTOMATION_FOLDER_TREE_INVALID` | `FAILED_PRECONDITION` | `automation folder tree is invalid` | none | Repair duplicate, orphaned, mixed-kind, cyclic, or over-depth persisted hierarchy state; folder identities and names remain private. |
