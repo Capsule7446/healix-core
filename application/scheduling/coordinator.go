@@ -113,7 +113,8 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 	}
 	decision, err := DecideAdvance(claim.Snapshot, states)
 	if err != nil {
-		return true, fmt.Errorf("decide run advance: %w", err)
+		// DecideAdvance already returns EXECUTION_ENTRY_STATES_INVALID.
+		return true, err
 	}
 	if decision.NextExecutionID == "" && len(decision.Transitions) == 0 && decision.FinalStatus == nil {
 		return true, nil

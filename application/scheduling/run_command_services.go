@@ -171,7 +171,9 @@ func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunComman
 		return RunCommandResult{}, fmt.Errorf("cancel run transaction: %w", err)
 	}
 	if err := validateRunResult(command.RunID, domainexecution.Canceled, command.ExpectedRevision, result); err != nil {
-		return RunCommandResult{}, fmt.Errorf("cancel run authoritative result: %w", err)
+		// validateRunResult already returns
+		// EXECUTION_INSTANCE_COMMAND_ADAPTER_CONTRACT_VIOLATION.
+		return RunCommandResult{}, err
 	}
 	shouldSignal := command.ExpectedStatus == domainexecution.Running
 	if result.SignalRequired != shouldSignal {
@@ -200,7 +202,7 @@ func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) 
 		return RunCommandResult{}, fmt.Errorf("abort run transaction: %w", err)
 	}
 	if err := validateRunResult(command.RunID, domainexecution.Aborted, command.ExpectedRevision, result); err != nil {
-		return RunCommandResult{}, fmt.Errorf("abort run authoritative result: %w", err)
+		return RunCommandResult{}, err
 	}
 	if !result.SignalRequired {
 		return RunCommandResult{}, runAdapterContractViolationError(errors.New("abort must require cancellation signal"))

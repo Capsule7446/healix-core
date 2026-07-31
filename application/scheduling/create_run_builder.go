@@ -36,7 +36,9 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 			return execution.RunSnapshot{}, fmt.Errorf("test-task item %q root invocation is missing", item.ID)
 		}
 		if err := validateSuppliedRootValues(values, resolvedRoot.WorkflowVersionID, resolved.Plan); err != nil {
-			return execution.RunSnapshot{}, fmt.Errorf("test-task item %q values: %w", item.ID, err)
+			// Constraint.Validate already returns PARAMETER_CONSTRAINT_UNSATISFIED or
+			// PARAMETER_VALUE_INVALID; the wrapper also echoed the item id.
+			return execution.RunSnapshot{}, err
 		}
 		if err := validateResolvedRootValues(values, resolvedRoot, resolved.Plan); err != nil {
 			return execution.RunSnapshot{}, fmt.Errorf("test-task item %q resolution: %w", item.ID, err)

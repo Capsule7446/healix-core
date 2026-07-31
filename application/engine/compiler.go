@@ -157,7 +157,9 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		rootPath := encodeRuntimeComponent(entry.ExecutionID)
 		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, entry.ExecutionID, 1)
 		if err != nil {
-			return CompiledRun{}, fmt.Errorf("compile execution %s: %w", entry.ExecutionID, err)
+			// The inner failure is already a classified fault. This wrapper both hid
+			// that classification and welded the execution id into public text.
+			return CompiledRun{}, err
 		}
 		root.OwnsParameterScope = true
 		invocation, exists := invocationsByPath[entry.ExecutionID]
@@ -239,7 +241,7 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath, scopeP
 			if step.ElementTargetID != "" {
 				target, err = c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 				if err != nil {
-					return nil, fmt.Errorf("step %s: %w", step.ID, err)
+					return nil, err
 				}
 			}
 			compiled = &node.StepNode{NodeID: runtimeID, Target: target,
@@ -275,7 +277,7 @@ func (c *executionCompiler) compileValidation(runtimeID string, step execution.S
 	}
 	target, err := c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 	if err != nil {
-		return nil, fmt.Errorf("validation step %s: %w", step.ID, err)
+		return nil, err
 	}
 	wait := *step.Validation
 	if inherited != nil {
@@ -333,14 +335,14 @@ func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (
 	case "element":
 		target, err := c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 		if err != nil {
-			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
+			return nil, err
 		}
 		return &node.WaitNode{NodeID: runtimeID, Kind: node.WaitElement, Target: target,
 			Timeout: duration}, nil
 	case "element_visible", "element_invisible":
 		target, err := c.spec(step.ElementTargetID, step.ElementTargetVersionID)
 		if err != nil {
-			return nil, fmt.Errorf("wait step %s: %w", step.ID, err)
+			return nil, err
 		}
 		kind := node.WaitElementVisible
 		if step.WaitKind == "element_invisible" {
@@ -439,7 +441,9 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 			ARIA: fp.ARIA, Path: append([]string(nil), fp.Path...), SiblingIndex: fp.SiblingIndex,
 			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID, Framework: fp.Framework.Clone()}}
 	if err := spec.Validate(); err != nil {
-		return fingerprint.ElementTargetSpec{}, fmt.Errorf("node %s version %s: %w", nodeID, versionID, err)
+		// spec.Validate returns FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID with its own
+		// ordered violations; this wrapper hid it behind two echoed identities.
+		return fingerprint.ElementTargetSpec{}, err
 	}
 	c.programSpecs[versionID] = spec
 	c.runtimeNodes[versionID] = RuntimeNodeIdentity{ElementTargetID: nodeID, ElementTargetVersionID: versionID}

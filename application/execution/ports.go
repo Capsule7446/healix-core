@@ -176,7 +176,7 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	}
 	result, err := s.committer.CommitStepTransition(ctx, fence, owned)
 	if err != nil {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("commit step transition: %w", err)
+		return evidence.StepTransitionCommitResult{}, err
 	}
 	result.Promotions = append([]evidence.NodeVersionPromotion(nil), result.Promotions...)
 	return result, nil

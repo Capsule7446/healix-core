@@ -187,7 +187,9 @@ func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
 		if !claimed || err == nil || released != 1 {
 			t.Fatalf("claimed/error/released = %v/%v/%d", claimed, err, released)
 		}
-		if !strings.Contains(err.Error(), "decide run advance") {
+		// The decision failure now arrives as its own classified fault instead of
+		// behind an uncoded "decide run advance" wrapper.
+		if !fault.IsCode(err, CodeEntryStatesInvalid) {
 			t.Fatalf("error = %v", err)
 		}
 	})
@@ -212,7 +214,9 @@ func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
 			&recordingDecisionWriter{},
 		)
 		_, err := coordinator.ProcessNext(context.Background(), "worker", 10)
-		if !errors.Is(err, releaseFailure) || !strings.Contains(err.Error(), "decide run advance") {
+		// Joining must preserve both: the release adapter's own error and the
+		// decision's classification.
+		if !errors.Is(err, releaseFailure) || !fault.IsCode(err, CodeEntryStatesInvalid) {
 			t.Fatalf("joined error = %v", err)
 		}
 	})

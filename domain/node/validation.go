@@ -162,11 +162,12 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, lastActualValues, reason, true); err != nil {
 			return err
 		}
-		actual := lastActual
-		if validationEvidenceIsSensitive(v.Target, v.Assertion) {
-			actual = "••••••••"
-		}
-		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, actual, pollErr)
+		// The observed value does not belong in error text at all. Masking it by
+		// field name only covered password/file/token/secret/api_key patterns, so any
+		// other business field — a confirmation number, arbitrary page text — was
+		// echoed in full. The value already reaches the caller through the evidence
+		// record above, which applies the masking policy on the channel built for it.
+		return fmt.Errorf("assertion was not continuously satisfied within %s: %w", maxWait, pollErr)
 	}
 	return nil
 }
