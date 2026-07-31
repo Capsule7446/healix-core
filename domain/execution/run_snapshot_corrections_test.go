@@ -20,9 +20,7 @@ func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
 
 	snapshot, err := SealRunSnapshot(input)
 
-	if err == nil || !strings.Contains(err.Error(), "root invocation cannot have bindings") {
-		t.Fatalf("root invocation binding accepted with digest %q: %v", snapshot.Digest(), err)
-	}
+	requireCreateInstanceSnapshotRejection(t, err, "root invocation cannot have bindings")
 	if snapshot.Digest() != "" {
 		t.Fatalf("rejected snapshot has digest %q", snapshot.Digest())
 	}

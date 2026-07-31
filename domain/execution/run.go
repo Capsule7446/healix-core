@@ -47,7 +47,19 @@ type Run struct {
 	sealedSnapshotDigest  string
 }
 
+// NewRun classifies its own validation failure at this exported boundary: an
+// uncoded identity or lifecycle-shape defect becomes
+// EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, with the bare detail retained
+// only on the private cause.
 func NewRun(run Run, snapshot RunSnapshot) (Run, error) {
+	sealed, err := newRun(run, snapshot)
+	if err != nil {
+		return Run{}, classifyCreateInstanceSnapshot(err)
+	}
+	return sealed, nil
+}
+
+func newRun(run Run, snapshot RunSnapshot) (Run, error) {
 	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.ExecutionFlowID != snapshot.ExecutionFlowID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() {
 		return Run{}, errors.New("run identity must match sealed snapshot")
 	}

@@ -3,13 +3,10 @@ package execution
 import (
 	"errors"
 	"fmt"
-	"net/url"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
-	"github.com/Capsule7446/healix-core/domain/interpolation"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -168,7 +165,9 @@ func validateBindings(parent, child []Parameter, bindings map[string]parameter.B
 		}
 		if value, exists := values[definition.Name]; exists {
 			if err := definition.validateValue(value); err != nil {
-				return fmt.Errorf("parameter %q: %w", definition.Name, err)
+				return wrapOrPropagate(err, func(cause error) error {
+					return fmt.Errorf("parameter %q: %w", definition.Name, cause)
+				})
 			}
 		}
 	}
@@ -185,7 +184,9 @@ func validateSnapshotValues(definitions []Parameter, values map[string]parameter
 	byName := make(map[string]Parameter, len(definitions))
 	for _, definition := range definitions {
 		if err := definition.Validate(); err != nil {
-			return fmt.Errorf("parameter %q: %w", definition.Name, err)
+			return wrapOrPropagate(err, func(cause error) error {
+				return fmt.Errorf("parameter %q: %w", definition.Name, cause)
+			})
 		}
 		if _, duplicate := byName[definition.Name]; duplicate {
 			return fmt.Errorf("duplicate parameter %q", definition.Name)
@@ -203,13 +204,25 @@ func validateSnapshotValues(definitions []Parameter, values map[string]parameter
 			return fmt.Errorf("parameter %q is missing", definition.Name)
 		}
 		if err := definition.validateValue(value); err != nil {
-			return fmt.Errorf("parameter %q: %w", definition.Name, err)
+			return wrapOrPropagate(err, func(cause error) error {
+				return fmt.Errorf("parameter %q: %w", definition.Name, cause)
+			})
 		}
 	}
 	return nil
 }
 
+// Validate classifies an execution plan's validation failure at this one
+// exported boundary: an uncoded internal-invariant failure becomes
+// EXECUTION_CREATE_INSTANCE_PLAN_INVALID with the bare detail retained only on
+// the private cause, while a failure already classified by a workflow
+// snapshot's own step-shape envelope, a node's fingerprint spec, or a
+// parameter contract passes through unchanged.
 func (p Draft) Validate() error {
+	return classifyCreateInstancePlan(p.validateShape())
+}
+
+func (p Draft) validateShape() error {
 	if err := validateAggregateInputBounds(p); err != nil {
 		return err
 	}
@@ -255,7 +268,7 @@ func (p Draft) Validate() error {
 		}
 		workflows[workflow.VersionID] = workflow
 		if err := workflow.Validate(); err != nil {
-			return fmt.Errorf("workflow version %q failed execution preflight: %w", workflow.VersionID, err)
+			return err
 		}
 	}
 	for _, entry := range p.Entries {
@@ -275,7 +288,9 @@ func (p Draft) Validate() error {
 				return fmt.Errorf("entry %q parameter snapshot identity is invalid", entry.ExecutionID)
 			}
 			if err := validateSnapshotValues(workflow.Parameters, entry.Parameters.Values); err != nil {
-				return fmt.Errorf("entry %q parameter snapshot: %w", entry.ExecutionID, err)
+				return wrapOrPropagate(err, func(cause error) error {
+					return fmt.Errorf("entry %q parameter snapshot: %w", entry.ExecutionID, cause)
+				})
 			}
 		}
 	}
@@ -291,7 +306,7 @@ func (p Draft) Validate() error {
 			Selectors: snapshot.Selectors, Fingerprint: snapshot.Fingerprint,
 		}
 		if err := spec.Validate(); err != nil {
-			return fmt.Errorf("node version %q failed execution preflight: %w", snapshot.VersionID, err)
+			return err
 		}
 		if owner, exists := versionOwners[snapshot.VersionID]; exists && owner != snapshot.ElementTargetID {
 			return fmt.Errorf("node version %q is owned by different nodes %q and %q", snapshot.VersionID, owner, snapshot.ElementTargetID)
@@ -319,7 +334,7 @@ func (p Draft) Validate() error {
 		return err
 	}
 	if err := validateExecutionBudget(roots, workflows, resolutions); err != nil {
-		return fmt.Errorf("execution plan exceeds execution budget: %w", err)
+		return err
 	}
 	for _, workflow := range p.Workflows {
 		if err := validateDependencies(workflow, workflows, nodes, resolutions); err != nil {
@@ -587,45 +602,6 @@ func validateAggregateInputBounds(p Draft) error {
 	return nil
 }
 
-func (w WorkflowSnapshot) Validate() error {
-	var problems []string
-	if strings.TrimSpace(w.FlowFragmentID) == "" || strings.TrimSpace(w.VersionID) == "" || (w.ID != "" && w.ID != w.FlowFragmentID) {
-		problems = append(problems, "workflow version does not belong to workflow")
-	}
-	if strings.TrimSpace(w.DisplayName) == "" {
-		problems = append(problems, "display name is required")
-	}
-	if w.VersionNumber < 1 {
-		problems = append(problems, "version number must be >= 1")
-	}
-	if len(w.Steps) == 0 {
-		problems = append(problems, "workflow requires at least one step")
-	}
-	seen := make(map[string]struct{})
-	if err := validateStepBounds(w.Steps); err != nil {
-		problems = append(problems, err.Error())
-	} else {
-		problems = append(problems, validateSteps(w.Steps, true, seen)...)
-	}
-	parameterNames := make([]string, 0, len(w.Parameters))
-	for _, parameter := range w.Parameters {
-		if err := parameter.Validate(); err != nil {
-			problems = append(problems, fmt.Sprintf("parameter %q: %v", parameter.Name, err))
-		}
-		parameterNames = append(parameterNames, parameter.Name)
-	}
-	sort.Strings(parameterNames)
-	for i := 1; i < len(parameterNames); i++ {
-		if parameterNames[i] == parameterNames[i-1] {
-			problems = append(problems, fmt.Sprintf("duplicate parameter %q", parameterNames[i]))
-		}
-	}
-	if len(problems) != 0 {
-		return errors.New(strings.Join(problems, "; "))
-	}
-	return nil
-}
-
 func validateStepBounds(steps []Step) error {
 	type entry struct {
 		steps []Step
@@ -757,321 +733,10 @@ func validateDependencies(workflow WorkflowSnapshot, workflows map[string]Workfl
 			return fmt.Errorf("workflow reference step %q targets missing workflow version", step.ID)
 		}
 		if err := validateBindings(workflow.Parameters, target.Parameters, step.Reference.ParameterBindings); err != nil {
-			return fmt.Errorf("workflow reference step %q parameter bindings: %w", step.ID, err)
+			return wrapOrPropagate(err, func(cause error) error {
+				return fmt.Errorf("workflow reference step %q parameter bindings: %w", step.ID, cause)
+			})
 		}
 	}
 	return nil
-}
-
-func validateSteps(steps []Step, root bool, seen map[string]struct{}) []string {
-	var problems []string
-	for _, step := range steps {
-		if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.DisplayName) == "" {
-			problems = append(problems, "step id and display name are required")
-		}
-		if _, exists := seen[step.ID]; exists {
-			problems = append(problems, fmt.Sprintf("duplicate workflow step id %q", step.ID))
-		}
-		seen[step.ID] = struct{}{}
-		if step.Kind != ActionStep && step.Optional {
-			problems = append(problems, fmt.Sprintf("step %q only ACTION can be optional", step.DisplayName))
-		}
-		switch step.Kind {
-		case ActionStep:
-			problems = append(problems, validateAction(step)...)
-		case WaitStep:
-			problems = append(problems, validateWait(step)...)
-		case RepeatStep:
-			problems = append(problems, validateRepeat(step)...)
-			problems = append(problems, validateSteps(step.Children, false, seen)...)
-		case FlowFragmentReference:
-			problems = append(problems, step.Reference.Validate(step)...)
-		case ValidationStep:
-			if !root {
-				problems = append(problems, fmt.Sprintf("validation step %q must be a root step or validation-group member", step.DisplayName))
-			}
-			problems = append(problems, validateValidationStep(step, false)...)
-		case ValidationGroupStep:
-			if !root {
-				problems = append(problems, fmt.Sprintf("validation group %q must be a root step", step.DisplayName))
-			}
-			problems = append(problems, step.ValidationGroup.Validate(step, seen)...)
-		default:
-			problems = append(problems, fmt.Sprintf("step %q has unsupported kind %q", step.DisplayName, step.Kind))
-		}
-	}
-	return problems
-}
-
-func validateAction(s Step) []string {
-	var p []string
-	if s.Validation != nil || s.ValidationGroup != nil || s.Reference != nil || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
-		p = append(p, fmt.Sprintf("step %q ACTION contains unsupported step configuration", s.DisplayName))
-	}
-	switch s.Action {
-	case "click", "input", "select", "hover", "navigate", "press", "noop", "extract":
-	default:
-		p = append(p, fmt.Sprintf("step %q has unsupported action %q", s.DisplayName, s.Action))
-	}
-	if s.Action != "navigate" && s.Action != "press" && strings.TrimSpace(s.ElementTargetID) == "" {
-		p = append(p, fmt.Sprintf("step %q requires a node", s.DisplayName))
-	}
-	if strings.TrimSpace(s.ElementTargetID) != "" && strings.TrimSpace(s.ElementTargetVersionID) == "" {
-		p = append(p, fmt.Sprintf("step %q requires an exact node version", s.DisplayName))
-	}
-	if (s.Action == "navigate" || s.Action == "press" || s.Action == "extract") && strings.TrimSpace(s.Value) == "" {
-		p = append(p, fmt.Sprintf("step %q action %s requires a value", s.DisplayName, s.Action))
-	}
-	if s.Action == "navigate" && strings.TrimSpace(s.Value) != "" {
-		if err := validateSealedNavigationURL(s.Value); err != nil {
-			p = append(p, fmt.Sprintf("step %q navigate URL: %v", s.DisplayName, err))
-		}
-	}
-	if s.Action == "navigate" || s.Action == "input" || s.Action == "select" || s.Action == "press" {
-		for _, value := range append([]string{s.Value}, s.Values...) {
-			if _, err := interpolation.Names(value); err != nil {
-				p = append(p, fmt.Sprintf("step %q action value: %v", s.DisplayName, err))
-			}
-		}
-	}
-	if s.Action == "select" && strings.TrimSpace(s.Value) == "" && len(s.Values) == 0 {
-		p = append(p, fmt.Sprintf("step %q select requires at least one value", s.DisplayName))
-	}
-	return p
-}
-
-func validateSealedNavigationURL(value string) error {
-	if strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
-		return errors.New("control characters are not allowed")
-	}
-	names, err := interpolation.Names(value)
-	if err != nil {
-		return err
-	}
-	authorityEnd := len(value)
-	if scheme := strings.Index(value, "://"); scheme >= 0 {
-		authorityEnd = scheme + 3
-		if slash := strings.IndexAny(value[authorityEnd:], "/?#"); slash >= 0 {
-			authorityEnd += slash
-		}
-	}
-	if strings.Contains(value[:authorityEnd], "${") {
-		return errors.New("interpolation is not allowed in URL scheme or authority")
-	}
-	parseable := value
-	for _, name := range names {
-		parseable = strings.ReplaceAll(parseable, "${"+name+"}", "placeholder")
-	}
-	parsed, err := url.ParseRequestURI(parseable)
-	if err != nil || parsed.Scheme == "" {
-		return errors.New("absolute URL with explicit scheme is required")
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return errors.New("explicit scheme must be HTTP(S)")
-	}
-	if parsed.User != nil {
-		return errors.New("userinfo is not allowed")
-	}
-	if len(names) == 0 && parsed.Host == "" {
-		return errors.New("must be an absolute HTTP(S) URL")
-	}
-	return nil
-}
-
-func validateWait(s Step) []string {
-	var p []string
-	element := s.WaitKind == "element" || s.WaitKind == "element_visible" || s.WaitKind == "element_invisible"
-	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.Value != "" || len(s.Values) != 0 || s.RepeatCount != 0 || s.Reference != nil || len(s.Children) != 0 || (!element && (s.ElementTargetID != "" || s.ElementTargetVersionID != "")) {
-		p = append(p, fmt.Sprintf("step %q WAIT contains unsupported step configuration", s.DisplayName))
-	}
-	switch s.WaitKind {
-	case "", "sleep":
-		if s.WaitMS <= 0 || s.WaitMS > MaxWaitMS {
-			p = append(p, fmt.Sprintf("step %q fixed wait must be 1-%dms", s.DisplayName, MaxWaitMS))
-		}
-	case "element", "element_visible", "element_invisible":
-		if strings.TrimSpace(s.ElementTargetID) == "" {
-			p = append(p, fmt.Sprintf("step %q element wait requires a node", s.DisplayName))
-		}
-		if strings.TrimSpace(s.ElementTargetVersionID) == "" {
-			p = append(p, fmt.Sprintf("step %q element wait requires an exact node version", s.DisplayName))
-		}
-		if s.WaitMS < 0 || s.WaitMS > MaxWaitMS {
-			p = append(p, fmt.Sprintf("step %q timeout must be >= 0", s.DisplayName))
-		}
-	case "network_idle":
-		if s.WaitMS < 0 || s.WaitMS > MaxWaitMS {
-			p = append(p, fmt.Sprintf("step %q timeout must be >= 0", s.DisplayName))
-		}
-	default:
-		p = append(p, fmt.Sprintf("step %q has unsupported wait kind %q", s.DisplayName, s.WaitKind))
-	}
-	return p
-}
-
-func validateRepeat(s Step) []string {
-	var p []string
-	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.Reference != nil {
-		p = append(p, fmt.Sprintf("step %q REPEAT contains unsupported step configuration", s.DisplayName))
-	}
-	if s.RepeatCount < 1 || len(s.Children) == 0 {
-		p = append(p, fmt.Sprintf("step %q repeat requires count and children", s.DisplayName))
-	} else if s.RepeatCount > MaxRepeatCount {
-		p = append(p, fmt.Sprintf("step %q repeat count exceeds maximum %d", s.DisplayName, MaxRepeatCount))
-	}
-	return p
-}
-
-func (r *Reference) Validate(s Step) []string {
-	var p []string
-	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
-		p = append(p, fmt.Sprintf("step %q WORKFLOW_REF contains unsupported step configuration", s.DisplayName))
-	}
-	if r == nil || strings.TrimSpace(r.FlowFragmentID) == "" {
-		p = append(p, fmt.Sprintf("step %q requires a workflow reference", s.DisplayName))
-	}
-	if r != nil {
-		for name, binding := range r.ParameterBindings {
-			if strings.TrimSpace(name) == "" {
-				p = append(p, fmt.Sprintf("step %q has an empty parameter binding", s.DisplayName))
-			}
-			if _, err := binding.Resolve(nil); err != nil {
-				if _, isReference := binding.ParentName(); !isReference {
-					p = append(p, fmt.Sprintf("step %q parameter binding %q: %v", s.DisplayName, name, err))
-				}
-			}
-		}
-	}
-	return p
-}
-
-func (v Validation) Validate(waitRequired bool) error {
-	if _, err := interpolation.Names(v.Expected); err != nil {
-		return fmt.Errorf("validation expected value: %w", err)
-	}
-	for _, value := range v.ExpectedValues {
-		if _, err := interpolation.Names(value); err != nil {
-			return fmt.Errorf("validation expected value: %w", err)
-		}
-	}
-	switch v.Kind {
-	case "exists", "not_exists", "visible", "not_visible", "value_not_empty", "enabled", "disabled", "checked", "unchecked", "mixed", "selected", "unselected", "pressed", "unpressed":
-		if v.Expected != "" || len(v.ExpectedValues) != 0 || v.Attribute != "" || v.IgnoreCase {
-			return fmt.Errorf("validation %q does not accept comparison options", v.Kind)
-		}
-	case "text_equals", "text_contains", "value_equals", "value_contains", "selected_text_equals", "selected_text_contains", "selected_value_equals", "selected_value_contains":
-		if len(v.ExpectedValues) != 0 || v.Attribute != "" {
-			return fmt.Errorf("validation %q accepts one scalar expected value", v.Kind)
-		}
-	case "text_matches", "value_matches":
-		if len(v.ExpectedValues) != 0 || v.Attribute != "" || v.IgnoreCase {
-			return fmt.Errorf("validation %q accepts only a regular expression", v.Kind)
-		}
-		if !strings.Contains(v.Expected, "${") {
-			if _, err := regexp.Compile(v.Expected); err != nil {
-				return fmt.Errorf("validation %q has invalid regular expression: %w", v.Kind, err)
-			}
-		}
-	case "selected_set_equals", "selected_set_contains":
-		if v.Expected != "" || v.Attribute != "" || v.IgnoreCase {
-			return fmt.Errorf("validation %q accepts only expected values", v.Kind)
-		}
-	case "attribute_equals", "attribute_contains":
-		if strings.TrimSpace(v.Attribute) == "" {
-			return errors.New("attribute validation requires an attribute name")
-		}
-		if len(v.ExpectedValues) != 0 {
-			return fmt.Errorf("validation %q accepts one scalar expected value", v.Kind)
-		}
-		if strings.Contains(v.Attribute, "${") {
-			return errors.New("attribute validation does not accept variable expressions")
-		}
-	default:
-		return fmt.Errorf("unsupported validation kind %q", v.Kind)
-	}
-	if waitRequired {
-		return validateValidationWait(v.MaxWaitMS, v.StabilityMS)
-	}
-	if v.MaxWaitMS != 0 || v.StabilityMS != 0 {
-		return errors.New("validation group member must inherit the group wait")
-	}
-	return nil
-}
-
-func validateValidationWait(maxWait, stability int) error {
-	if maxWait < validationMinWaitMS || maxWait > validationMaxWaitMS {
-		return fmt.Errorf("validation maximum wait must be %d-%dms", validationMinWaitMS, validationMaxWaitMS)
-	}
-	if stability < validationMinStabilityMS || stability > validationMaxStabilityMS {
-		return fmt.Errorf("validation stability window must be %d-%dms", validationMinStabilityMS, validationMaxStabilityMS)
-	}
-	if stability >= maxWait {
-		return errors.New("validation stability window must be shorter than maximum wait")
-	}
-	return nil
-}
-
-func validateValidationStep(s Step, member bool) []string {
-	var p []string
-	if s.Validation == nil {
-		return []string{fmt.Sprintf("validation step %q requires validation configuration", s.DisplayName)}
-	}
-	if s.ValidationGroup != nil || s.Action != "" || s.Reference != nil || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 || s.Optional {
-		p = append(p, fmt.Sprintf("validation step %q contains unsupported action or child configuration", s.DisplayName))
-	}
-	if strings.TrimSpace(s.ElementTargetID) == "" || strings.TrimSpace(s.ElementTargetVersionID) == "" {
-		p = append(p, fmt.Sprintf("validation step %q requires an exact node reference", s.DisplayName))
-	}
-	if err := s.Validation.Validate(!member); err != nil {
-		p = append(p, fmt.Sprintf("validation step %q: %v", s.DisplayName, err))
-	}
-	return p
-}
-
-func (g *ValidationGroup) Validate(s Step, seen map[string]struct{}) []string {
-	if g == nil {
-		return []string{fmt.Sprintf("validation group %q requires group configuration", s.DisplayName)}
-	}
-	var p []string
-	if s.Validation != nil || s.Action != "" || s.Reference != nil || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 || s.Optional {
-		p = append(p, fmt.Sprintf("validation group %q contains unsupported step configuration", s.DisplayName))
-	}
-	if err := validateValidationWait(g.MaxWaitMS, g.StabilityMS); err != nil {
-		p = append(p, fmt.Sprintf("validation group %q wait: %v", s.DisplayName, err))
-	}
-	if len(g.Branches) == 0 || len(g.Branches) > validationMaxBranches {
-		p = append(p, fmt.Sprintf("validation group %q requires 1-%d branches", s.DisplayName, validationMaxBranches))
-	}
-	branchIDs, total := map[string]struct{}{}, 0
-	for _, branch := range g.Branches {
-		if strings.TrimSpace(branch.ID) == "" || strings.TrimSpace(branch.Name) == "" {
-			p = append(p, fmt.Sprintf("validation group %q branch id and name are required", s.DisplayName))
-		}
-		if _, ok := branchIDs[branch.ID]; ok && branch.ID != "" {
-			p = append(p, fmt.Sprintf("validation group %q has duplicate branch id %q", s.DisplayName, branch.ID))
-		}
-		branchIDs[branch.ID] = struct{}{}
-		if len(branch.Steps) == 0 || len(branch.Steps) > validationMaxBranchSteps {
-			p = append(p, fmt.Sprintf("validation group %q branch %q requires 1-%d validation steps", s.DisplayName, branch.Name, validationMaxBranchSteps))
-		}
-		total += len(branch.Steps)
-		for _, member := range branch.Steps {
-			if _, ok := seen[member.ID]; ok {
-				p = append(p, fmt.Sprintf("duplicate step id %q", member.ID))
-			}
-			seen[member.ID] = struct{}{}
-			if strings.TrimSpace(member.ID) == "" || strings.TrimSpace(member.DisplayName) == "" {
-				p = append(p, fmt.Sprintf("validation group %q member step id and display name are required", s.DisplayName))
-			}
-			if member.Kind != ValidationStep {
-				p = append(p, fmt.Sprintf("validation group %q branch %q only accepts VALIDATION steps", s.DisplayName, branch.Name))
-				continue
-			}
-			p = append(p, validateValidationStep(member, true)...)
-		}
-	}
-	if total > validationMaxGroupSteps {
-		p = append(p, fmt.Sprintf("validation group %q has %d validation steps; maximum is %d", s.DisplayName, total, validationMaxGroupSteps))
-	}
-	return p
 }
