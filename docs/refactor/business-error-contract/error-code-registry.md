@@ -151,6 +151,29 @@ Owned by `domain/fault` and shared by every context's aggregate validation envel
 
 These families are added only in the atomic bounded-context migration that introduces the corresponding producer. Every addition must include its `Kind`, fixed safe fallback message, allowed parameter/violation schema, retry behavior, public consumer, and any persistence mapping.
 
+## Contexts that deliberately own no code family
+
+### `domain/heal`
+
+`domain/heal` has no `HEAL_*` family, and its remaining internal bare errors are permitted rather than pending. The rule is the same one that sizes every other family: only a business failure that crosses the Core public boundary needs a registered code, and an internal invariant may stay an ordinary Go error.
+
+Verified reachability of its exported error surface:
+
+| Exported | Callers outside `domain/heal` |
+|---|---|
+| `Assess` | 2, both in `domain/node` (`step.go`, `validation.go`) |
+| `Decision.Validate` | `domain/node` only (`step.go`, `validation.go`) |
+| `NewDefaultHealerWithPolicy` | none |
+| `ValidateSamples` | none |
+| `Thresholds.Validate`, `Weights.Validate` | none outside the package |
+
+Nothing reaches a host except through `domain/node`, which owns the `EXECUTION_*` family. Classification therefore belongs at the `domain/node` boundary, not to a family of its own — adding one would mean two codes for one failure and would push heal-internal vocabulary into the published contract.
+
+Two conditions keep that true, and both are load-bearing:
+
+- **`domain/node` must classify at its boundary.** Today `step.go` and `validation.go` wrap heal failures as `fmt.Errorf("invalid heal decision: %w", err)` and `fmt.Errorf("assess heal decision: %w", err)` — uncoded wrappers, so a heal failure currently crosses the public boundary with no code at all. Until those four sites carry `EXECUTION_*` codes, the absence of a heal family is a gap rather than a decision.
+- **Heal text must stay free of observed values.** `domain/heal` echoes no selector, page URL, origin, or fingerprint value in any error. The single dynamic value it formats is `policy.MinimumMargin` (`assessment.go:45`), a caller-supplied configuration float rather than observed page content or user input.
+
 ## Historical execution evidence mapping
 
 Host persistence migration is required for values formerly recorded as node `ErrorKind`:
