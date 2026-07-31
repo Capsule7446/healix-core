@@ -1,6 +1,7 @@
 package architecture_test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -114,8 +115,16 @@ func parseRegistry(t *testing.T, root string) (map[string]registryRow, []string)
 	rows := map[string]registryRow{}
 	var order []string
 	clean := func(s string) string { return strings.Trim(strings.TrimSpace(s), "`") }
+	// GFM permits a table row without the leading pipe; this parser does not. A
+	// row a human reads as a published code must never be silently skipped, so
+	// anything shaped like one is a hard error rather than a formatting nit.
+	pipelessCodeRow := regexp.MustCompile("^`[A-Z][A-Z0-9_]{2,62}`\\s*\\|")
 	for index, line := range strings.Split(string(raw), "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "|") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "|") {
+			if pipelessCodeRow.MatchString(trimmed) {
+				t.Errorf("registry line %d looks like a code row but lacks the leading pipe, so parsing would silently skip it: %s", index+1, trimmed)
+			}
 			continue
 		}
 		columns := strings.Split(line, "|")
@@ -341,15 +350,72 @@ func collectFixedKindHelpers(parsed map[string]*ast.File) map[string]string {
 }
 
 type scanResult struct {
-	pairings         map[string]pairing
+	// pairings keeps EVERY construction site per code. Keeping only one let a
+	// correct site mask a wrong Kind or a leaking message at another site of the
+	// same code, and made the survivor depend on map iteration order.
+	pairings         map[string][]pairing
 	violationPaired  []string
 	topLevelAsReason []string
+	// unresolved lists constructions the scan could not statically verify. If
+	// these were silently skipped, a code routed through a variable, a slice, a
+	// fault.Code("...") conversion, or a non-literal message would simply drop
+	// out of coverage with the suite still green.
+	unresolved []string
+}
+
+// paramRoles maps an enclosing function's parameter names to the fault role they
+// carry. An identifier argument that names such a parameter is not unresolvable —
+// it is a helper body whose pairing is verified at every call site instead.
+func paramRoles(function *ast.FuncDecl) map[string]string {
+	roles := map[string]string{}
+	if function == nil || function.Type.Params == nil {
+		return roles
+	}
+	for _, param := range function.Type.Params.List {
+		role := ""
+		switch {
+		case func() bool { _, ok := faultSelector(param.Type, "Kind"); return ok }():
+			role = "kind"
+		case func() bool { _, ok := faultSelector(param.Type, "Code"); return ok }():
+			role = "code"
+		default:
+			if identifier, ok := param.Type.(*ast.Ident); ok && identifier.Name == "string" {
+				role = "string"
+			}
+		}
+		if role == "" {
+			continue
+		}
+		for _, name := range param.Names {
+			roles[name.Name] = role
+		}
+	}
+	return roles
+}
+
+// messageStatus classifies the argument in a message position: a string literal
+// is verifiable, an identifier naming a string parameter is deferred to call
+// sites, a fault.With* options call means the message was absent (variadic
+// options follow it), anything else cannot be verified.
+func messageStatus(arg ast.Expr, roles map[string]string) (message string, verifiable bool) {
+	if text, ok := stringLiteral(arg); ok {
+		return text, true
+	}
+	if identifier, ok := arg.(*ast.Ident); ok && roles[identifier.Name] == "string" {
+		return "", true
+	}
+	if call, ok := arg.(*ast.CallExpr); ok {
+		if name, isFault := faultSelector(call.Fun, ""); isFault && strings.HasPrefix(name, "With") {
+			return "", true
+		}
+	}
+	return "", false
 }
 
 func scanPairings(fileSet *token.FileSet, root string, parsed map[string]*ast.File,
 	constants codeConstants, fixedHelpers map[string]string) scanResult {
 
-	result := scanResult{pairings: map[string]pairing{}}
+	result := scanResult{pairings: map[string][]pairing{}}
 	site := func(pos token.Pos) string {
 		position := fileSet.Position(pos)
 		relative, err := filepath.Rel(root, position.Filename)
@@ -359,89 +425,154 @@ func scanPairings(fileSet *token.FileSet, root string, parsed map[string]*ast.Fi
 		return filepath.ToSlash(relative) + ":" + strconv.Itoa(position.Line)
 	}
 	record := func(code, kind, message, shape string, pos token.Pos) {
-		if existing, ok := result.pairings[code]; ok && existing.kind == kind && existing.message != "" {
-			return
-		}
 		located := site(pos)
-		result.pairings[code] = pairing{
+		result.pairings[code] = append(result.pairings[code], pairing{
 			kind: kind, message: message, shape: shape, site: located,
 			directory: path.Dir(located[:strings.LastIndex(located, ":")]),
-		}
+		})
 	}
 
-	for path, file := range parsed {
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			callee, isFaultCall := faultSelector(call.Fun, "")
-			direct := isFaultCall && (callee == "New" || callee == "Wrap")
+	paths := make([]string, 0, len(parsed))
+	for filePath := range parsed {
+		paths = append(paths, filePath)
+	}
+	sort.Strings(paths)
 
-			// A violation's reason code is its first argument and takes no Kind.
-			if isFaultCall && callee == "NewViolation" && len(call.Args) > 0 {
-				if name, ok := identifierName(call.Args[0]); ok {
-					if code, known := constants.lookup(path, name); known && !strings.HasPrefix(code, violationCodePrefix) {
-						result.topLevelAsReason = append(result.topLevelAsReason, code+" at "+site(call.Lparen))
+	for _, filePath := range paths {
+		file := parsed[filePath]
+		for _, decl := range file.Decls {
+			roles := map[string]string{}
+			var body ast.Node = decl
+			if function, ok := decl.(*ast.FuncDecl); ok {
+				roles = paramRoles(function)
+				if function.Body == nil {
+					continue
+				}
+				body = function.Body
+			}
+			currentPath := filePath
+			ast.Inspect(body, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				callee, isFaultCall := faultSelector(call.Fun, "")
+				direct := isFaultCall && (callee == "New" || callee == "Wrap")
+
+				// A violation's reason code is its first argument and takes no Kind.
+				if isFaultCall && callee == "NewViolation" && len(call.Args) > 0 {
+					if name, ok := identifierName(call.Args[0]); ok {
+						if code, known := constants.lookup(currentPath, name); known && !strings.HasPrefix(code, violationCodePrefix) {
+							result.topLevelAsReason = append(result.topLevelAsReason, code+" at "+site(call.Lparen))
+						}
 					}
 				}
-			}
 
-			// Shapes 1 and 2: an adjacent (fault.<Kind>, Code<X>) argument pair.
-			for index := 0; index+1 < len(call.Args); index++ {
-				kindName, ok := faultSelector(call.Args[index], "")
-				if !ok {
-					continue
-				}
-				registryKind, valid := kindConstants[kindName]
-				if !valid {
-					continue
-				}
-				name, ok := identifierName(call.Args[index+1])
-				if !ok {
-					continue
-				}
-				code, known := constants.lookup(path, name)
-				if !known {
-					continue
-				}
-				if strings.HasPrefix(code, violationCodePrefix) {
-					result.violationPaired = append(result.violationPaired, code+" at "+site(call.Lparen))
-					continue
-				}
-				message := ""
-				if index+2 < len(call.Args) {
-					message, _ = stringLiteral(call.Args[index+2])
-				}
-				shape := "helper"
+				// Direct fault.New / fault.Wrap: the signature fixes every position,
+				// so each one must be statically verifiable or explicitly deferred to
+				// a helper's call sites. Silently skipping an unresolvable argument is
+				// exactly how a construction escapes coverage.
 				if direct {
-					shape = "direct"
-				}
-				record(code, registryKind, message, shape, call.Lparen)
-			}
-
-			// Shape 3: a fixed-Kind helper invoked with a code constant.
-			if name, ok := identifierName(call.Fun); ok {
-				if kind, isFixed := fixedHelpers[name]; isFixed {
-					for index, arg := range call.Args {
-						identifier, ok := identifierName(arg)
-						if !ok {
-							continue
+					kindIndex := 0
+					if callee == "Wrap" {
+						kindIndex = 1
+					}
+					flag := func(what string) {
+						result.unresolved = append(result.unresolved, fmt.Sprintf("fault.%s at %s: %s", callee, site(call.Lparen), what))
+					}
+					if len(call.Args) < kindIndex+3 {
+						flag("call has fewer arguments than the signature requires")
+					} else {
+						kindArg := call.Args[kindIndex]
+						kindName, isSelector := faultSelector(kindArg, "")
+						_, validKind := kindConstants[kindName]
+						kindDeferred := false
+						if identifier, ok := kindArg.(*ast.Ident); ok && roles[identifier.Name] == "kind" {
+							kindDeferred = true
 						}
-						code, known := constants.lookup(path, identifier)
-						if !known || strings.HasPrefix(code, violationCodePrefix) {
-							continue
+						if !(isSelector && validKind) && !kindDeferred {
+							flag("Kind is not a fault.<Kind> selector and not a fault.Kind parameter")
 						}
-						message := ""
-						if index+1 < len(call.Args) {
-							message, _ = stringLiteral(call.Args[index+1])
+						codeArg := call.Args[kindIndex+1]
+						codeDeferred := false
+						if identifier, ok := codeArg.(*ast.Ident); ok && roles[identifier.Name] == "code" {
+							codeDeferred = true
 						}
-						record(code, kind, message, "fixedHelper", call.Lparen)
+						codeName, hasName := identifierName(codeArg)
+						_, codeKnown := constants.lookup(currentPath, codeName)
+						if !codeDeferred && !(hasName && codeKnown) {
+							flag("Code does not resolve to a declared fault.Code constant (a fault.Code(\"...\") conversion or variable would escape the registry check)")
+						}
+						if _, verifiable := messageStatus(call.Args[kindIndex+2], roles); !verifiable {
+							flag("safe message is not a string literal and not a string parameter, so it cannot be compared with the registry")
+						}
 					}
 				}
-			}
-			return true
-		})
+
+				// Shapes 1 and 2: an adjacent (fault.<Kind>, Code<X>) argument pair.
+				for index := 0; index+1 < len(call.Args); index++ {
+					kindName, ok := faultSelector(call.Args[index], "")
+					if !ok {
+						continue
+					}
+					registryKind, valid := kindConstants[kindName]
+					if !valid {
+						continue
+					}
+					name, ok := identifierName(call.Args[index+1])
+					if !ok {
+						continue
+					}
+					code, known := constants.lookup(currentPath, name)
+					if !known {
+						continue
+					}
+					if strings.HasPrefix(code, violationCodePrefix) {
+						result.violationPaired = append(result.violationPaired, code+" at "+site(call.Lparen))
+						continue
+					}
+					message := ""
+					if index+2 < len(call.Args) {
+						text, verifiable := messageStatus(call.Args[index+2], roles)
+						if !verifiable {
+							result.unresolved = append(result.unresolved, fmt.Sprintf("%s at %s: message after the code is not statically verifiable", code, site(call.Lparen)))
+						}
+						message = text
+					}
+					shape := "helper"
+					if direct {
+						shape = "direct"
+					}
+					record(code, registryKind, message, shape, call.Lparen)
+				}
+
+				// Shape 3: a fixed-Kind helper invoked with a code constant.
+				if name, ok := identifierName(call.Fun); ok {
+					if kind, isFixed := fixedHelpers[name]; isFixed {
+						for index, arg := range call.Args {
+							identifier, ok := identifierName(arg)
+							if !ok {
+								continue
+							}
+							code, known := constants.lookup(currentPath, identifier)
+							if !known || strings.HasPrefix(code, violationCodePrefix) {
+								continue
+							}
+							message := ""
+							if index+1 < len(call.Args) {
+								text, verifiable := messageStatus(call.Args[index+1], roles)
+								if !verifiable {
+									result.unresolved = append(result.unresolved, fmt.Sprintf("%s at %s: message after the code is not statically verifiable", code, site(call.Lparen)))
+								}
+								message = text
+							}
+							record(code, kind, message, "fixedHelper", call.Lparen)
+						}
+					}
+				}
+				return true
+			})
+		}
 	}
 	return result
 }
@@ -463,21 +594,37 @@ func TestRegistryAndProducedFaultsAgree(t *testing.T) {
 
 	declared := constants.all()
 
+	// A construction the scan cannot see is a construction nothing verifies.
+	for _, entry := range result.unresolved {
+		t.Errorf("statically unverifiable fault construction: %s", entry)
+	}
+
 	// A code produced but unregistered is an unpublished contract; a code
-	// registered but never declared is a promise with no implementation.
-	for code, found := range result.pairings {
+	// registered but never declared is a promise with no implementation. EVERY
+	// site is checked: verifying only one would let a correct site mask a wrong
+	// Kind or a divergent message at another site of the same code.
+	for code, sites := range result.pairings {
 		row, registered := registry[code]
 		if !registered {
-			t.Errorf("%s is produced at %s but has no registry row", code, found.site)
+			t.Errorf("%s is produced at %s but has no registry row", code, sites[0].site)
 			continue
 		}
-		if row.kind != found.kind {
-			t.Errorf("%s Kind disagrees: code produces %s at %s (%s), registry line %d declares %s. Fix the code, never the published Kind.",
-				code, found.kind, found.site, found.shape, row.line, row.kind)
+		verifiedMessage := false
+		for _, found := range sites {
+			if row.kind != found.kind {
+				t.Errorf("%s Kind disagrees: code produces %s at %s (%s), registry line %d declares %s. Fix the code, never the published Kind.",
+					code, found.kind, found.site, found.shape, row.line, row.kind)
+			}
+			if found.message != "" {
+				verifiedMessage = true
+				if row.message != "" && found.message != row.message {
+					t.Errorf("%s safe message disagrees: code produces %q at %s, registry line %d declares %q",
+						code, found.message, found.site, row.line, row.message)
+				}
+			}
 		}
-		if found.message != "" && row.message != "" && found.message != row.message {
-			t.Errorf("%s safe message disagrees: code produces %q at %s, registry line %d declares %q",
-				code, found.message, found.site, row.line, row.message)
+		if !verifiedMessage {
+			t.Errorf("%s has %d construction site(s) but not one carries a literal message the registry row can be compared against", code, len(sites))
 		}
 	}
 	for _, code := range order {
@@ -523,7 +670,7 @@ func TestCodePrefixesAreProducedOnlyByTheirOwners(t *testing.T) {
 	constants, _, _ := collectCodeConstants(parsed)
 	result := scanPairings(fileSet, root, parsed, constants, collectFixedKindHelpers(parsed))
 
-	for code, found := range result.pairings {
+	for code, sites := range result.pairings {
 		if _, registered := registry[code]; !registered {
 			continue // already reported as unregistered by the agreement test
 		}
@@ -536,16 +683,18 @@ func TestCodePrefixesAreProducedOnlyByTheirOwners(t *testing.T) {
 			t.Errorf("%s uses prefix %s, which no context claims in the inventory's mapping", code, prefix)
 			continue
 		}
-		allowed := false
-		for _, owner := range owners {
-			if found.directory == owner {
-				allowed = true
-				break
+		for _, found := range sites {
+			allowed := false
+			for _, owner := range owners {
+				if found.directory == owner {
+					allowed = true
+					break
+				}
 			}
-		}
-		if !allowed {
-			t.Errorf("%s is produced from %s at %s, but the %s prefix is owned by %s",
-				code, found.directory, found.site, prefix, strings.Join(owners, ", "))
+			if !allowed {
+				t.Errorf("%s is produced from %s at %s, but the %s prefix is owned by %s",
+					code, found.directory, found.site, prefix, strings.Join(owners, ", "))
+			}
 		}
 	}
 }
