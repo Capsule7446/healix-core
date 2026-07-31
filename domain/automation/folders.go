@@ -9,6 +9,14 @@ import (
 
 const CodeFolderNotFound fault.Code = "AUTOMATION_FOLDER_NOT_FOUND"
 
+func FolderNotFoundError() error {
+	faultErr, err := fault.New(fault.NotFound, CodeFolderNotFound, "automation folder was not found")
+	if err != nil {
+		panic(err)
+	}
+	return faultErr
+}
+
 type FolderKind string
 
 const (
@@ -150,11 +158,7 @@ func (f FolderForest) RequireEmpty(id string, occupancy FolderOccupancy) error {
 		return errors.New("folder id is required")
 	}
 	if _, exists := f.byID[id]; !exists {
-		faultErr, err := fault.New(fault.NotFound, CodeFolderNotFound, "automation folder was not found")
-		if err != nil {
-			panic(err)
-		}
-		return faultErr
+		return FolderNotFoundError()
 	}
 	if occupancy.Assets < 0 {
 		return errors.New("folder occupancy cannot be negative")

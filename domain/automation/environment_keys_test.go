@@ -2,8 +2,10 @@ package automation
 
 import (
 	"reflect"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/interpolation"
 )
 
 func TestEnvironmentKeysReturnsSortedUniqueCaseSensitiveKeys(t *testing.T) {
@@ -29,19 +31,18 @@ func TestEnvironmentKeysPropagatesExpressionGrammarErrors(t *testing.T) {
 	tests := []struct {
 		name  string
 		value string
-		want  string
 	}{
-		{name: "unterminated", value: "${env.host", want: "unterminated"},
-		{name: "empty name", value: "${}", want: "empty variable"},
-		{name: "leading whitespace", value: "${ env.host}", want: "invalid variable name"},
-		{name: "trailing whitespace", value: "${env.host }", want: "invalid variable name"},
-		{name: "nested expression marker", value: "${env.${host}}", want: "invalid variable name"},
+		{name: "unterminated", value: "${env.host"},
+		{name: "empty name", value: "${}"},
+		{name: "leading whitespace", value: "${ env.host}"},
+		{name: "trailing whitespace", value: "${env.host }"},
+		{name: "nested expression marker", value: "${env.${host}}"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := EnvironmentKeys(test.value)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("EnvironmentKeys() error = %v, want %q", err, test.want)
+			if !fault.IsCode(err, interpolation.CodeExpressionInvalid) {
+				t.Fatalf("EnvironmentKeys() error = %v", err)
 			}
 		})
 	}

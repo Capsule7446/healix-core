@@ -35,7 +35,7 @@ func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, par
 				return folders, nil
 			}
 		}
-		return nil, fmt.Errorf("folder %s: %w", id, domain.ErrFolderNotFound)
+		return nil, domain.FolderNotFoundError()
 	})
 }
 

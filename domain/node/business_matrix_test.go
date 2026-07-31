@@ -251,7 +251,7 @@ func TestTypedEnvironmentStringInterpolation(t *testing.T) {
 		{name: "NUMBER uses canonical string", expression: "${env.number}", want: "1.25"},
 		{name: "BOOLEAN", expression: "${env.boolean}", want: "true"},
 		{name: "SINGLE_SELECT", expression: "${env.single}", want: "primary"},
-		{name: "MULTI_SELECT is not an ordinary string", expression: "${env.multi}", wantError: "undefined variable"},
+		{name: "MULTI_SELECT is not an ordinary string", expression: "${env.multi}", wantError: "INTERPOLATION_VARIABLE_UNDEFINED"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -299,7 +299,7 @@ func TestStepActionFailureMatrix(t *testing.T) {
 		setup  func(*matrixElement, *matrixDriver, *Runtime)
 		want   string
 	}{
-		{name: "missing input variable", action: Action{Kind: ActionInput, Value: "${missing}"}, want: "undefined variable"},
+		{name: "missing input variable", action: Action{Kind: ActionInput, Value: "${missing}"}, want: "INTERPOLATION_VARIABLE_UNDEFINED"},
 		{name: "empty select", action: Action{Kind: ActionSelect}, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "empty extract variable", action: Action{Kind: ActionExtract}, want: "EXECUTION_OPERATION_FAILED"},
 		{name: "unknown action", action: Action{Kind: "double_click"}, want: "EXECUTION_OPERATION_FAILED"},

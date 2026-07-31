@@ -314,13 +314,13 @@ func TestStepNodeRunPublicFailureMatrix(t *testing.T) {
 			name:     "action value interpolation failure",
 			step:     &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${missing}"}},
 			runtime:  &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}},
-			wantText: "missing",
+			wantText: "INTERPOLATION_VARIABLE_UNDEFINED",
 		},
 		{
 			name:     "select value interpolation failure",
 			step:     &StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionSelect, Values: []string{"${missing}"}}},
 			runtime:  &Runtime{Driver: &matrixDriver{element: &matrixElement{exists: true}}},
-			wantText: "missing",
+			wantText: "INTERPOLATION_VARIABLE_UNDEFINED",
 		},
 		{
 			name:     "invalid navigation URL",
