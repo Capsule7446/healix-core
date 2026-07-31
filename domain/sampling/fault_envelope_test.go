@@ -161,3 +161,49 @@ func TestContainerShapeMismatchIsNotReportedAsAMissingStep(t *testing.T) {
 		t.Fatal("an existing parent was reported as a missing step")
 	}
 }
+
+// Both walks used to return at the first unresolvable reference, so publishing a
+// workspace with several took one attempt per reference.
+func TestReferenceWalksReportEveryUnresolvableReferenceAtOnce(t *testing.T) {
+	twoBadReferences := []automation.FlowFragmentStep{
+		{ID: "a", DisplayName: "a", Kind: automation.StepAction, ElementTargetID: "absent-one"},
+		{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, RepeatCount: 1, Children: []automation.FlowFragmentStep{
+			{ID: "b", DisplayName: "b", Kind: automation.StepAction, ElementTargetID: "absent-two"},
+		}},
+	}
+
+	t.Run("rewrite", func(t *testing.T) {
+		_, err := RewriteUnpublishedElementTargetReferences(twoBadReferences, nil)
+		descriptor := requireEnvelope(t, err, CodePublicationMappingInvalid)
+		if got := countViolations(descriptor.Violations(), "steps.elementTargetId"); got != 2 {
+			t.Fatalf("reported %d unmapped references, want both: %v", got, violationKeys(descriptor.Violations()))
+		}
+		requireNoPublicLeak(t, err, "absent-one", "absent-two")
+	})
+
+	t.Run("rebuild", func(t *testing.T) {
+		workflow := UnpublishedFlowFragment{ID: "draft", Steps: twoBadReferences}
+		err := RebuildUnpublishedElementTargetReferences(&workflow)
+		descriptor := requireEnvelope(t, err, CodeWorkspaceInvalid)
+		if got := countViolations(descriptor.Violations(), "steps.elementTargetId"); got != 2 {
+			t.Fatalf("reported %d undefined references, want both: %v", got, violationKeys(descriptor.Violations()))
+		}
+		requireNoPublicLeak(t, err, "absent-one", "absent-two")
+		// A rejected rebuild must not leave a partially derived projection behind.
+		for _, node := range workflow.Nodes {
+			if len(node.StepIDs) != 0 {
+				t.Fatalf("rejected rebuild wrote a projection: %#v", node)
+			}
+		}
+	})
+}
+
+func countViolations(violations []fault.Violation, field string) int {
+	total := 0
+	for _, violation := range violations {
+		if violation.Field() == field {
+			total++
+		}
+	}
+	return total
+}

@@ -30,14 +30,15 @@ func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentSt
 		}
 		mappingByTemporaryID[mapping.TemporaryElementTargetID] = mapping
 	}
+	// The reference walk joins the mapping-set violations, so one malformed
+	// mapping and one unmapped reference come back together rather than as two
+	// consecutive rejections.
+	violations = appendUnmappedReferenceViolations(violations, steps, mappingByTemporaryID)
 	if len(violations) != 0 {
 		return nil, publicationMappingInvalidError(violations)
 	}
 	used := make(map[string]struct{}, len(mappingByTemporaryID))
-	rewritten, err := rewriteSamplingSteps(steps, mappingByTemporaryID, used)
-	if err != nil {
-		return nil, err
-	}
+	rewritten := rewriteSamplingSteps(steps, mappingByTemporaryID, used)
 	if len(used) != len(mappingByTemporaryID) {
 		return nil, publicationMappingInvalidError([]fault.Violation{
 			mustViolation(fault.CodeFieldMismatch, "mappings", "mappings must exactly match the referenced temporary element targets"),
@@ -46,39 +47,53 @@ func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentSt
 	return rewritten, nil
 }
 
-func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping, used map[string]struct{}) ([]automation.FlowFragmentStep, error) {
+// appendUnmappedReferenceViolations walks the whole tree before anything is
+// rewritten. Reporting the first unmapped reference and stopping meant a
+// workspace with several of them took one publish attempt per bad reference;
+// validating first also keeps the rewrite from producing a half-transformed tree
+// it then has to throw away. Walk order is the tree's own depth-first order, so
+// the report — and the prefix kept at the cap — is a function of the input.
+func appendUnmappedReferenceViolations(violations []fault.Violation, steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping) []fault.Violation {
+	for _, step := range steps {
+		if len(violations) >= fault.MaxViolations {
+			return violations
+		}
+		if step.ElementTargetID != "" {
+			if _, exists := mappings[step.ElementTargetID]; !exists {
+				// The step id and the temporary element target id are both caller
+				// identities, so neither may appear in the public violation.
+				violations = append(violations, mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that has no mapping"))
+			}
+		}
+		violations = appendUnmappedReferenceViolations(violations, step.Children, mappings)
+		if step.ValidationGroup != nil {
+			for _, branch := range step.ValidationGroup.Branches {
+				violations = appendUnmappedReferenceViolations(violations, branch.Steps, mappings)
+			}
+		}
+	}
+	return violations
+}
+
+// rewriteSamplingSteps runs only after validation, so every reference resolves.
+func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping, used map[string]struct{}) []automation.FlowFragmentStep {
 	rewritten := cloneSamplingSteps(steps)
 	for index := range rewritten {
 		step := &rewritten[index]
 		if step.ElementTargetID != "" {
-			mapping, exists := mappings[step.ElementTargetID]
-			if !exists {
-				// The step id and the temporary element target id are both caller
-				// identities, so neither may appear in the public violation.
-				return nil, publicationMappingInvalidError([]fault.Violation{
-					mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that has no mapping"),
-				})
-			}
+			mapping := mappings[step.ElementTargetID]
 			used[step.ElementTargetID] = struct{}{}
 			step.ElementTargetID = mapping.ElementTargetID
 			step.ElementTargetVersionID = mapping.ElementTargetVersionID
 		}
-		children, err := rewriteSamplingSteps(step.Children, mappings, used)
-		if err != nil {
-			return nil, err
-		}
-		step.Children = children
+		step.Children = rewriteSamplingSteps(step.Children, mappings, used)
 		if step.ValidationGroup != nil {
 			for branchIndex := range step.ValidationGroup.Branches {
-				branchSteps, err := rewriteSamplingSteps(step.ValidationGroup.Branches[branchIndex].Steps, mappings, used)
-				if err != nil {
-					return nil, err
-				}
-				step.ValidationGroup.Branches[branchIndex].Steps = branchSteps
+				step.ValidationGroup.Branches[branchIndex].Steps = rewriteSamplingSteps(step.ValidationGroup.Branches[branchIndex].Steps, mappings, used)
 			}
 		}
 	}
-	return rewritten, nil
+	return rewritten
 }
 
 func cloneSamplingSteps(steps []automation.FlowFragmentStep) []automation.FlowFragmentStep {

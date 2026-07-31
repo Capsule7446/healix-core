@@ -109,6 +109,11 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 	for _, node := range workflow.Nodes {
 		stepIDsByNode[node.ID] = nil
 	}
+	// The walk collects every undefined reference before returning. Stopping at the
+	// first meant a draft with several took one rebuild attempt per reference. Walk
+	// order is the tree's own depth-first order, so the report is a function of the
+	// input, and the cap is the only reason to stop early.
+	var violations []fault.Violation
 	var walk func([]automation.FlowFragmentStep) error
 	walk = func(steps []automation.FlowFragmentStep) error {
 		for _, step := range steps {
@@ -117,11 +122,12 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 				if !ok {
 					// Both the step id and the temporary element target id are caller
 					// identities; neither may appear in the public violation.
-					return workspaceInvalidError([]fault.Violation{
-						mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that the draft does not define"),
-					})
+					if len(violations) < fault.MaxViolations {
+						violations = append(violations, mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that the draft does not define"))
+					}
+				} else {
+					stepIDsByNode[step.ElementTargetID] = append(stepIDs, step.ID)
 				}
-				stepIDsByNode[step.ElementTargetID] = append(stepIDs, step.ID)
 			}
 			if err := walk(step.Children); err != nil {
 				return err
@@ -138,6 +144,11 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 	}
 	if err := walk(workflow.Steps); err != nil {
 		return err
+	}
+	// The projection is only written once every reference resolved, so a rejected
+	// rebuild never leaves a partially derived projection behind.
+	if len(violations) != 0 {
+		return workspaceInvalidError(violations)
 	}
 	for index := range workflow.Nodes {
 		workflow.Nodes[index].StepIDs = stepIDsByNode[workflow.Nodes[index].ID]
