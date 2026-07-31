@@ -268,7 +268,7 @@ func newCreateRunRequestBudget() createRunRequestBudget {
 
 func (b *createRunRequestBudget) addString(value string) error {
 	if len(value) > execution.MaxStringBytes || len(value) > b.remainingBytes {
-		return fmt.Errorf("%w: request string budget exceeded", ErrInvalidCreateRunCommand)
+		return createRunCommandInvalidError(nil)
 	}
 	b.remainingBytes -= len(value)
 	return nil
@@ -276,7 +276,7 @@ func (b *createRunRequestBudget) addString(value string) error {
 
 func (b *createRunRequestBudget) addStringMetrics(totalBytes, maxItemBytes int) error {
 	if totalBytes < 0 || maxItemBytes < 0 || maxItemBytes > execution.MaxStringBytes || totalBytes > b.remainingBytes {
-		return fmt.Errorf("%w: request string budget exceeded", ErrInvalidCreateRunCommand)
+		return createRunCommandInvalidError(nil)
 	}
 	b.remainingBytes -= totalBytes
 	return nil
@@ -284,7 +284,7 @@ func (b *createRunRequestBudget) addStringMetrics(totalBytes, maxItemBytes int) 
 
 func (b *createRunRequestBudget) addParameters(count int) error {
 	if count < 0 || count > b.remainingParameters || count > b.remainingElements {
-		return fmt.Errorf("%w: parameter count exceeds limit", ErrInvalidCreateRunCommand)
+		return createRunCommandInvalidError(nil)
 	}
 	b.remainingParameters -= count
 	b.remainingElements -= count
@@ -293,7 +293,7 @@ func (b *createRunRequestBudget) addParameters(count int) error {
 
 func (b *createRunRequestBudget) addElements(count int) error {
 	if count < 0 || count > b.remainingElements {
-		return fmt.Errorf("%w: collection element budget exceeded", ErrInvalidCreateRunCommand)
+		return createRunCommandInvalidError(nil)
 	}
 	b.remainingElements -= count
 	return nil
@@ -307,7 +307,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 		}
 	}
 	if err := budget.addElements(len(command.Entries)); err != nil {
-		return fmt.Errorf("%w: entry count exceeds limit", ErrInvalidCreateRunCommand)
+		return createRunCommandInvalidError(nil)
 	}
 	for itemID, values := range command.Entries {
 		if err := budget.addString(itemID); err != nil {
@@ -336,7 +336,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 			case parameter.MultiSelect:
 				count, totalBytes, maxItemBytes, ok := value.MultiSelectMetrics()
 				if !ok {
-					return fmt.Errorf("%w: invalid multi-select payload metrics", ErrInvalidCreateRunCommand)
+					return createRunCommandInvalidError(nil)
 				}
 				if err := budget.addElements(count); err != nil {
 					return err

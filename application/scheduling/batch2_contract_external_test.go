@@ -27,5 +27,6 @@ func TestBatch2PublicCommandContractsCompile(t *testing.T) {
 	_ = app.CodeQueueRevisionConflict
 	_ = app.CodeQueueMembershipConflict
 	_ = app.CodeRunAdapterContractViolation
+	_ = app.CodeCreateRunCommandInvalid
 	_ = context.Background()
 }

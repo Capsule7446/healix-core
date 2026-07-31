@@ -8,6 +8,7 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -354,8 +355,8 @@ func normalizeCreateRunCommand(command CreateRunCommand) CreateRunCommand {
 
 func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
 	defer func() {
-		if resultErr != nil && !errors.Is(resultErr, ErrInvalidCreateRunCommand) {
-			resultErr = errors.Join(ErrInvalidCreateRunCommand, resultErr)
+		if resultErr != nil && !fault.IsCode(resultErr, CodeCreateRunCommandInvalid) {
+			resultErr = createRunCommandInvalidError(resultErr)
 		}
 	}()
 	for name, value := range map[string]string{"command id": command.CommandID, "run id": command.RunID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -135,7 +136,7 @@ func TestCreateRunRequestDigestRejectsInvalidBeforeHashing(t *testing.T) {
 	for index, edit := range tests {
 		command := validCreateRunCommand()
 		edit(&command)
-		if digest, err := CreateRunRequestDigest(command); digest != "" || !errors.Is(err, ErrInvalidCreateRunCommand) {
+		if digest, err := CreateRunRequestDigest(command); digest != "" || !fault.IsCode(err, CodeCreateRunCommandInvalid) {
 			t.Fatalf("case %d digest=%q err=%v", index, digest, err)
 		}
 	}
@@ -496,7 +497,7 @@ func TestCreateRunServicePreflightRejectsOversizeBeforeStore(t *testing.T) {
 	command.RunID = strings.Repeat("x", execution.MaxStringBytes+1)
 	fake := &createRunFake{resolved: validResolvedCreateRun(t, validCreateRunCommand())}
 	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
-	if !errors.Is(err, ErrInvalidCreateRunCommand) || fake.transactionCalls != 0 || !isZeroCreateRunResult(result) {
+	if !fault.IsCode(err, CodeCreateRunCommandInvalid) || fake.transactionCalls != 0 || !isZeroCreateRunResult(result) {
 		t.Fatalf("result/calls/error=%#v/%d/%v", result, fake.transactionCalls, err)
 	}
 }
@@ -542,17 +543,17 @@ func TestCreateRunRequestBudgetExactAndOneOverLimits(t *testing.T) {
 				t.Fatalf("exact limit rejected: %v", err)
 			}
 			budget = newCreateRunRequestBudget()
-			if err := test.over(&budget); !errors.Is(err, ErrInvalidCreateRunCommand) {
+			if err := test.over(&budget); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
 				t.Fatalf("one-over accepted: %v", err)
 			}
 		})
 	}
 	budget := newCreateRunRequestBudget()
-	if err := budget.addElements(-1); !errors.Is(err, ErrInvalidCreateRunCommand) {
+	if err := budget.addElements(-1); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
 		t.Fatalf("negative/overflow-like count accepted: %v", err)
 	}
 	budget = newCreateRunRequestBudget()
-	if err := budget.addParameters(-1); !errors.Is(err, ErrInvalidCreateRunCommand) {
+	if err := budget.addParameters(-1); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
 		t.Fatalf("negative/overflow-like parameter count accepted: %v", err)
 	}
 }
@@ -589,12 +590,12 @@ func TestCreateRunPreflightStringBoundariesAndZeroStoreAccess(t *testing.T) {
 			}
 			over := validCreateRunCommand()
 			test.edit(&over, execution.MaxStringBytes+1)
-			if digest, err := CreateRunRequestDigest(over); digest != "" || !errors.Is(err, ErrInvalidCreateRunCommand) {
+			if digest, err := CreateRunRequestDigest(over); digest != "" || !fault.IsCode(err, CodeCreateRunCommandInvalid) {
 				t.Fatalf("digest/error=%q/%v", digest, err)
 			}
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, validCreateRunCommand())}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), over)
-			if !errors.Is(err, ErrInvalidCreateRunCommand) || !isZeroCreateRunResult(result) || fake.transactionCalls != 0 {
+			if !fault.IsCode(err, CodeCreateRunCommandInvalid) || !isZeroCreateRunResult(result) || fake.transactionCalls != 0 {
 				t.Fatalf("result/calls/error=%#v/%d/%v", result, fake.transactionCalls, err)
 			}
 		})
@@ -673,7 +674,7 @@ func TestCreateRunDefaultsOmittedFailurePolicyToStop(t *testing.T) {
 func TestCreateRunRejectsInvalidNonzeroFailurePolicy(t *testing.T) {
 	command := validCreateRunCommand()
 	command.FailurePolicy = execution.FailurePolicy("RETRY_FOREVER")
-	if _, err := BuildRunSnapshot(command, validResolvedCreateRun(t, command)); !errors.Is(err, ErrInvalidCreateRunCommand) {
+	if _, err := BuildRunSnapshot(command, validResolvedCreateRun(t, command)); !fault.IsCode(err, CodeCreateRunCommandInvalid) {
 		t.Fatalf("invalid policy error=%v", err)
 	}
 }
@@ -1059,30 +1060,31 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 		command   CreateRunCommand
 		configure func(*createRunFake)
 		target    error
+		wantCode  fault.Code
 	}{
-		{"invalid command", func() CreateRunCommand { value := base; value.RunID = " bad"; return value }(), func(*createRunFake) {}, ErrInvalidCreateRunCommand},
-		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil},
-		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil},
-		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil},
+		{"invalid command", func() CreateRunCommand { value := base; value.RunID = " bad"; return value }(), func(*createRunFake) {}, nil, CodeCreateRunCommandInvalid},
+		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil, ""},
+		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil, ""},
+		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil, ""},
 		{"catalog graph", base, func(f *createRunFake) {
 			f.resolveErr = &CreateRunCatalogGraphError{Operation: "resolve workflow", Cause: errors.New("missing child")}
-		}, ErrCreateRunCatalogGraph},
+		}, ErrCreateRunCatalogGraph, ""},
 		{"retryable resolver", base, func(f *createRunFake) {
 			f.resolveErr = &CreateRunRetryableError{Operation: "resolve", Cause: errors.New("serialization")}
-		}, ErrCreateRunRetryable},
+		}, ErrCreateRunRetryable, ""},
 		{"retryable insert", base, func(f *createRunFake) {
 			f.insertErr = &CreateRunRetryableError{Operation: "insert", Cause: errors.New("serialization")}
-		}, ErrCreateRunRetryable},
+		}, ErrCreateRunRetryable, ""},
 		{"retryable transaction", base, func(f *createRunFake) {
 			f.transactionErr = &CreateRunRetryableError{Operation: "commit", Cause: errors.New("serialization")}
-		}, ErrCreateRunRetryable},
+		}, ErrCreateRunRetryable, ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fake := &createRunFake{resolved: validResolvedCreateRun(t, base)}
 			test.configure(fake)
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), test.command)
-			if err == nil || (test.target != nil && !errors.Is(err, test.target)) || !isZeroCreateRunResult(result) {
+			if err == nil || (test.target != nil && !errors.Is(err, test.target)) || (test.wantCode != "" && !fault.IsCode(err, test.wantCode)) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result=%#v err=%v", result, err)
 			}
 			switch test.target {

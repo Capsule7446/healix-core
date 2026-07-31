@@ -3,10 +3,11 @@ package scheduling
 import (
 	"context"
 	"errors"
-	"github.com/Capsule7446/healix-core/domain/parameter"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // CreateRunCommand is the sole authority for caller-supplied create data.
@@ -72,6 +73,21 @@ type CreateRunIntent struct {
 	Entries       []execution.WorkflowEntry
 }
 
+const CodeCreateRunCommandInvalid fault.Code = "EXECUTION_CREATE_RUN_COMMAND_INVALID"
+
+func createRunCommandInvalidError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.InvalidArgument,
+		CodeCreateRunCommandInvalid,
+		"create-run command is invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
 type CreateRunAdapterContractError struct {
 	Operation string
 	Reason    string
@@ -131,7 +147,6 @@ func (e *CreateRunSnapshotConflictError) Is(target error) bool {
 }
 
 var (
-	ErrInvalidCreateRunCommand   = errors.New("invalid create-run command")
 	ErrCreateRunCatalogGraph     = errors.New("create-run catalog graph not found or invalid")
 	ErrCreateRunRetryable        = errors.New("retryable create-run transaction or catalog conflict")
 	ErrCreateRunCommandConflict  = errors.New("create-run command identity conflict")

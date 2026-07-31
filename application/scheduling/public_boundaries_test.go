@@ -44,6 +44,26 @@ func TestBuildRunSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
 	}
 }
 
+func TestCreateRunCommandInvalidErrorExposesSafeStableContract(t *testing.T) {
+	cause := errors.New("command-sensitive-id=cmd-secret value=credential-secret")
+	err := createRunCommandInvalidError(cause)
+	descriptor, ok := fault.Describe(err)
+	if !ok ||
+		descriptor.Code() != CodeCreateRunCommandInvalid ||
+		descriptor.Kind() != fault.InvalidArgument ||
+		descriptor.Message() != "create-run command is invalid" ||
+		len(descriptor.Params()) != 0 ||
+		len(descriptor.Violations()) != 0 ||
+		!errors.Is(err, cause) {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
+	}
+	for _, sensitive := range []string{"cmd-secret", "credential-secret", cause.Error()} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("public error leaked %q: %q", sensitive, err.Error())
+		}
+	}
+}
+
 func TestCreateRunTypedErrorsCoverNilCauseAndUnwrap(t *testing.T) {
 	catalog := &CreateRunCatalogGraphError{Operation: "resolve"}
 	if got := catalog.Error(); !strings.Contains(got, "resolve") || strings.HasSuffix(got, ": ") {
