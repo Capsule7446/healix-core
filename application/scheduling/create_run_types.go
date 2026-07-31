@@ -88,6 +88,20 @@ func createRunCommandInvalidError(cause error) error {
 	return err
 }
 
+const CodeCreateRunCommandConflict fault.Code = "EXECUTION_CREATE_RUN_COMMAND_CONFLICT"
+
+func createRunCommandConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeCreateRunCommandConflict,
+		"create-run command conflicts with an existing request",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
 type CreateRunAdapterContractError struct {
 	Operation string
 	Reason    string
@@ -128,15 +142,6 @@ func (e *CreateRunRetryableError) Error() string {
 func (e *CreateRunRetryableError) Is(target error) bool { return target == ErrCreateRunRetryable }
 func (e *CreateRunRetryableError) Unwrap() error        { return e.Cause }
 
-type CreateRunCommandConflictError struct{ CommandID string }
-
-func (e *CreateRunCommandConflictError) Error() string {
-	return "create-run command identity conflict: " + e.CommandID
-}
-func (e *CreateRunCommandConflictError) Is(target error) bool {
-	return target == ErrCreateRunCommandConflict
-}
-
 type CreateRunSnapshotConflictError struct{ RunID string }
 
 func (e *CreateRunSnapshotConflictError) Error() string {
@@ -149,7 +154,6 @@ func (e *CreateRunSnapshotConflictError) Is(target error) bool {
 var (
 	ErrCreateRunCatalogGraph     = errors.New("create-run catalog graph not found or invalid")
 	ErrCreateRunRetryable        = errors.New("retryable create-run transaction or catalog conflict")
-	ErrCreateRunCommandConflict  = errors.New("create-run command identity conflict")
 	ErrCreateRunSnapshotConflict = errors.New("immutable run identity or snapshot conflict")
 	ErrCreateRunAdapterContract  = errors.New("create-run adapter contract violation")
 )

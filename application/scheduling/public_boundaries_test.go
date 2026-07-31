@@ -64,6 +64,24 @@ func TestCreateRunCommandInvalidErrorExposesSafeStableContract(t *testing.T) {
 	}
 }
 
+func TestCreateRunCommandConflictErrorExposesSafeStableContract(t *testing.T) {
+	err := createRunCommandConflictError()
+	descriptor, ok := fault.Describe(err)
+	if !ok ||
+		descriptor.Code() != CodeCreateRunCommandConflict ||
+		descriptor.Kind() != fault.Conflict ||
+		descriptor.Message() != "create-run command conflicts with an existing request" ||
+		len(descriptor.Params()) != 0 ||
+		len(descriptor.Violations()) != 0 {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
+	}
+	for _, sensitive := range []string{"command-sensitive-id", "sha256:request-secret", "payload-secret"} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("public error leaked %q: %q", sensitive, err.Error())
+		}
+	}
+}
+
 func TestCreateRunTypedErrorsCoverNilCauseAndUnwrap(t *testing.T) {
 	catalog := &CreateRunCatalogGraphError{Operation: "resolve"}
 	if got := catalog.Error(); !strings.Contains(got, "resolve") || strings.HasSuffix(got, ": ") {

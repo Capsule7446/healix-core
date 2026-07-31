@@ -1047,8 +1047,13 @@ func TestCreateRunServiceAppliesReplaysAndConflicts(t *testing.T) {
 	changed := command
 	changed.EnvironmentID = "other"
 	result, err := service.CreateRun(context.Background(), changed)
-	var typed *CreateRunCommandConflictError
-	if !errors.Is(err, ErrCreateRunCommandConflict) || !errors.As(err, &typed) || typed.CommandID != command.CommandID || !isZeroCreateRunResult(result) {
+	descriptor, ok := fault.Describe(err)
+	if !fault.IsCode(err, CodeCreateRunCommandConflict) || !ok ||
+		descriptor.Kind() != fault.Conflict ||
+		descriptor.Message() != "create-run command conflicts with an existing request" ||
+		len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 ||
+		strings.Contains(err.Error(), command.CommandID) ||
+		!isZeroCreateRunResult(result) {
 		t.Fatalf("conflict result/error=%#v/%v", result, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type conformanceStage string
@@ -115,7 +116,7 @@ transactionAttempt:
 			if winner, exists := s.state.commands[commandID]; exists {
 				if winner.RequestDigest != command.RequestDigest {
 					s.mu.Unlock()
-					return &CreateRunCommandConflictError{CommandID: commandID}
+					return createRunCommandConflictError()
 				}
 				s.mu.Unlock()
 				continue transactionAttempt
@@ -145,7 +146,7 @@ func (tx *conformanceTx) ResolveCreateRun(context.Context, CreateRunCommand) (Re
 func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunIntent) (InsertCreateRunOutcome, error) {
 	if existing, ok := tx.state.commands[intent.CommandID]; ok {
 		if existing.RequestDigest != intent.RequestDigest {
-			return InsertCreateRunOutcome{}, &CreateRunCommandConflictError{CommandID: intent.CommandID}
+			return InsertCreateRunOutcome{}, createRunCommandConflictError()
 		}
 		return InsertCreateRunOutcome{Status: InsertCreateRunReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: existing.Result}, nil
 	}
@@ -310,7 +311,7 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 	}
 	changedCommand := base
 	changedCommand.EnvironmentID = "different"
-	if _, err := service.CreateRun(context.Background(), changedCommand); !errors.Is(err, ErrCreateRunCommandConflict) {
+	if _, err := service.CreateRun(context.Background(), changedCommand); !fault.IsCode(err, CodeCreateRunCommandConflict) {
 		t.Fatalf("command conflict=%v", err)
 	}
 	sameRun := base
@@ -327,10 +328,9 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 }
 
 func TestCopyOnWriteStoreConflictErrorsAreTyped(t *testing.T) {
-	var commandConflict *CreateRunCommandConflictError
-	commandErr := &CreateRunCommandConflictError{CommandID: "command"}
-	if !errors.Is(commandErr, ErrCreateRunCommandConflict) || !errors.As(commandErr, &commandConflict) {
-		t.Fatal("command conflict is not typed")
+	commandErr := createRunCommandConflictError()
+	if !fault.IsCode(commandErr, CodeCreateRunCommandConflict) {
+		t.Fatalf("command conflict classification = %v", commandErr)
 	}
 	var snapshotConflict *CreateRunSnapshotConflictError
 	snapshotErr := &CreateRunSnapshotConflictError{RunID: "run"}

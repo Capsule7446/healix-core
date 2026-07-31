@@ -141,7 +141,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		}
 		if found {
 			if existing.RequestDigest != digest {
-				return &CreateRunCommandConflictError{CommandID: owned.CommandID}
+				return createRunCommandConflictError()
 			}
 			if existing.CommandID != owned.CommandID {
 				return &CreateRunAdapterContractError{Operation: "find create-run command", Reason: "stored command identity mismatch"}
