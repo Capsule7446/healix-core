@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
@@ -170,14 +171,14 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 	if !ok {
 		t.Fatal("execution-entry is missing")
 	}
-	stale := &domainexecution.StaleWorkerFenceError{Fence: domainexecution.WorkerFence{RunID: entry.RunID, ClaimToken: "stale"}}
+	stale := domainexecution.NewStaleWorkerFenceError()
 	tests := []struct {
 		name     string
 		verifier ExecutionAuthorityVerifier
-		wantErr  error
+		wantCode fault.Code
 	}{
-		{name: "missing verifier", wantErr: ErrExecutionAuthorityRequired},
-		{name: "stale authority", verifier: &executionIdentityProbe{authorityErr: stale}, wantErr: domainexecution.ErrStaleWorkerFence},
+		{name: "missing verifier"},
+		{name: "stale authority", verifier: &executionIdentityProbe{authorityErr: stale}, wantCode: domainexecution.CodeWorkerFenceStale},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -188,8 +189,12 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 				ClaimToken: "claim", AuthorityVerifier: test.verifier, Driver: executionIdentityProbeDriver{probe: probe},
 				Recorder: executionIdentityProbeRecorder{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 			result, err := RunProgram(context.Background(), entryCopy, cfg)
-			if !errors.Is(err, test.wantErr) {
-				t.Fatalf("RunProgram() error = %v, want %v", err, test.wantErr)
+			if test.wantCode != "" {
+				if !fault.IsCode(err, test.wantCode) {
+					t.Fatalf("RunProgram() error = %v, want code %v", err, test.wantCode)
+				}
+			} else if !errors.Is(err, ErrExecutionAuthorityRequired) {
+				t.Fatalf("RunProgram() error = %v, want %v", err, ErrExecutionAuthorityRequired)
 			}
 			if result.ExecutionOutcome != ExecutionNotStarted || probe.runtimeCalls != 0 || probe.driverCalls != 0 || probe.recorderCalls != 0 || probe.factCalls != 0 {
 				t.Fatalf("authority rejection produced side effects: result=%+v probe=%+v", result, probe)

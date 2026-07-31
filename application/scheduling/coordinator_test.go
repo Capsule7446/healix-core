@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -58,8 +59,7 @@ func TestCoordinatorFailsClosedOnStaleDecisionResult(t *testing.T) {
 	writer := &recordingDecisionWriter{result: &ApplyDecisionResult{Fence: execution.WorkerFence{RunID: "run", ClaimToken: "stale"}, Applied: true}}
 	coordinator := NewCoordinator(fakeClaimSource{claim: claim, found: true}, fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer)
 	_, err := coordinator.ProcessNext(context.Background(), "worker", 10)
-	var typed *execution.StaleWorkerFenceError
-	if !errors.Is(err, execution.ErrStaleWorkerFence) || !errors.As(err, &typed) || typed.Fence != claim.Fence {
+	if !fault.IsCode(err, execution.CodeWorkerFenceStale) || strings.Contains(err.Error(), claim.Fence.RunID) || strings.Contains(err.Error(), claim.Fence.ClaimToken) {
 		t.Fatalf("stale result error=%v", err)
 	}
 }

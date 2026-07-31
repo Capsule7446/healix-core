@@ -140,7 +140,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if fence != f.fence {
-		return evidence.StepTransitionCommitResult{}, &domainexecution.StaleWorkerFenceError{Fence: fence}
+		return evidence.StepTransitionCommitResult{}, domainexecution.NewStaleWorkerFenceError()
 	}
 	payload := fmt.Sprintf("%#v", commit)
 	if replay, exists := f.state.replays[commit.CommitID]; exists {

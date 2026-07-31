@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type referenceRun struct {
@@ -138,7 +139,7 @@ func (s *referenceCommandStore) Abort(_ context.Context, command AbortRunCommand
 			return storedCommand{}, &RunIdentityConflictError{RunID: command.RunID}
 		}
 		if record.fence != command.Fence {
-			return storedCommand{}, &domainexecution.StaleWorkerFenceError{Fence: command.Fence}
+			return storedCommand{}, domainexecution.NewStaleWorkerFenceError()
 		}
 		if record.revision != command.ExpectedRevision {
 			return storedCommand{}, &RunRevisionConflictError{RunID: command.RunID, Expected: command.ExpectedRevision, Actual: record.revision}
@@ -292,7 +293,7 @@ func TestReferenceStoreAbortFenceReplayAndCompetingTerminalRaces(t *testing.T) {
 	}
 	stale := command
 	stale.CommandID = "stale"
-	if _, err := store.Abort(context.Background(), stale); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+	if _, err := store.Abort(context.Background(), stale); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("stale=%v", err)
 	}
 

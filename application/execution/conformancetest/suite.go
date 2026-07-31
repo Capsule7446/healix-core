@@ -11,6 +11,7 @@ import (
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type FaultPoint string
@@ -55,7 +56,7 @@ func Run(t *testing.T, factory Factory) {
 		before := fixture.Snapshot()
 		stale := fixture.Fence()
 		stale.ClaimToken += "-stale"
-		if _, err := fixture.CommitStepTransition(context.Background(), stale, commit("commit-stale", 1, "run-stale", evidence.DecisionApplied), execution.NewDefaultHealGovernancePlanner()); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+		if _, err := fixture.CommitStepTransition(context.Background(), stale, commit("commit-stale", 1, "run-stale", evidence.DecisionApplied), execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 			t.Fatalf("stale fence error = %v", err)
 		}
 		if got := fixture.Snapshot(); !reflect.DeepEqual(got, before) {

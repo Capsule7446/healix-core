@@ -305,7 +305,7 @@ func TestStepTransitionServiceRejectsNilCommitter(t *testing.T) {
 }
 
 func TestStepTransitionServicePreservesTypedCommitErrors(t *testing.T) {
-	for _, want := range []error{domainexecution.ErrStaleWorkerFence, ErrStepRevisionConflict, ErrCommitIdentityConflict} {
+	for _, want := range []error{domainexecution.NewStaleWorkerFenceError(), ErrStepRevisionConflict, ErrCommitIdentityConflict} {
 		committer := &recordingTransaction{err: want}
 		_, err := NewStepTransitionService(NewFactCommitter(committer, NewDefaultHealGovernancePlanner())).Commit(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, validStepTransitionCommit())
 		if !errors.Is(err, want) {

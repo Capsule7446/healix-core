@@ -2,12 +2,12 @@ package execution
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/evidence"
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type fencedExecutionStore struct {
@@ -19,7 +19,7 @@ type fencedExecutionStore struct {
 
 func (s *fencedExecutionStore) check(fence domainexecution.WorkerFence) error {
 	if fence != s.active {
-		return &domainexecution.StaleWorkerFenceError{Fence: fence}
+		return domainexecution.NewStaleWorkerFenceError()
 	}
 	return nil
 }
@@ -52,10 +52,10 @@ func TestExecutionWritesRejectStaleWorkerFence(t *testing.T) {
 	winner := domainexecution.WorkerFence{RunID: "run", ClaimToken: "winner"}
 	stale := domainexecution.WorkerFence{RunID: "run", ClaimToken: "stale"}
 	store := &fencedExecutionStore{active: winner}
-	if err := store.RecordStepProgress(context.Background(), stale, evidence.StepProgressEvent{}); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+	if err := store.RecordStepProgress(context.Background(), stale, evidence.StepProgressEvent{}); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("stale progress error=%v", err)
 	}
-	if _, err := store.CommitStepTransition(context.Background(), stale, evidence.StepTransitionCommit{}, NewDefaultHealGovernancePlanner()); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+	if _, err := store.CommitStepTransition(context.Background(), stale, evidence.StepTransitionCommit{}, NewDefaultHealGovernancePlanner()); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("stale terminal error=%v", err)
 	}
 	if err := store.RecordStepProgress(context.Background(), winner, evidence.StepProgressEvent{}); err != nil {
@@ -69,10 +69,10 @@ func TestExecutionWritesRejectStaleWorkerFence(t *testing.T) {
 	}
 	reacquired := domainexecution.WorkerFence{RunID: "run", ClaimToken: "winner-next-acquisition"}
 	store.active = reacquired
-	if err := store.RecordStepProgress(context.Background(), winner, evidence.StepProgressEvent{}); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+	if err := store.RecordStepProgress(context.Background(), winner, evidence.StepProgressEvent{}); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("released ABA progress error=%v", err)
 	}
-	if _, err := store.CommitStepTransition(context.Background(), winner, evidence.StepTransitionCommit{}, NewDefaultHealGovernancePlanner()); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+	if _, err := store.CommitStepTransition(context.Background(), winner, evidence.StepTransitionCommit{}, NewDefaultHealGovernancePlanner()); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("released ABA terminal error=%v", err)
 	}
 	if err := store.RecordStepProgress(context.Background(), reacquired, evidence.StepProgressEvent{}); err != nil {

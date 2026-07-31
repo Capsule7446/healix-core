@@ -97,7 +97,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 		return true, fmt.Errorf("apply scheduling decision: %w", err)
 	}
 	if !applied.Applied || applied.Fence != claim.Fence {
-		return true, &execution.StaleWorkerFenceError{Fence: claim.Fence}
+		return true, execution.NewStaleWorkerFenceError()
 	}
 	return true, nil
 }

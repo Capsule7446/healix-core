@@ -1,7 +1,6 @@
 package execution
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -119,13 +118,13 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 	}
 
 	fence := WorkerFence{RunID: "run-sensitive", ClaimToken: "secret-claim-token"}
-	err := &StaleWorkerFenceError{Fence: fence}
-	var typed *StaleWorkerFenceError
-	if !errors.Is(err, ErrStaleWorkerFence) || !errors.As(err, &typed) || typed.Fence != fence {
-		t.Fatalf("stale fence classification failed: %v", err)
+	err := NewStaleWorkerFenceError()
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeWorkerFenceStale || descriptor.Kind() != fault.Conflict || descriptor.Message() != "worker execution authority is stale" {
+		t.Fatalf("stale fence descriptor = %#v, %v", descriptor, ok)
 	}
-	if !strings.Contains(err.Error(), fence.RunID) || strings.Contains(err.Error(), fence.ClaimToken) {
-		t.Fatalf("stale fence error exposes wrong identity: %q", err)
+	if strings.Contains(err.Error(), fence.RunID) || strings.Contains(err.Error(), fence.ClaimToken) {
+		t.Fatalf("stale fence error exposes identity: %q", err)
 	}
 }
 

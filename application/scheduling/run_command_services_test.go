@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func validCommandRun(t *testing.T, status domainexecution.RunStatus) domainexecution.Run {
@@ -216,9 +217,9 @@ func TestSignalFailureReturnsAuthoritativeCommittedResultAndRetryableError(t *te
 }
 
 func TestTransactionErrorsExposeNoNonAuthoritativeResult(t *testing.T) {
-	store := &commandStoreStub{abortErr: &domainexecution.StaleWorkerFenceError{Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "stale"}}}
+	store := &commandStoreStub{abortErr: domainexecution.NewStaleWorkerFenceError()}
 	result, err := NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "stale"}})
-	if !errors.Is(err, domainexecution.ErrStaleWorkerFence) || result != (RunCommandResult{}) {
+	if !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) || result != (RunCommandResult{}) {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 }

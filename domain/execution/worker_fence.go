@@ -2,7 +2,8 @@ package execution
 
 import (
 	"errors"
-	"fmt"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 // WorkerFence identifies the sole Host worker permitted to mutate one Run.
@@ -21,16 +22,6 @@ func (f WorkerFence) Validate() error {
 	return nil
 }
 
-var ErrStaleWorkerFence = errors.New("stale worker fence")
-
-type StaleWorkerFenceError struct {
-	Fence WorkerFence
-}
-
-func (e *StaleWorkerFenceError) Error() string {
-	return fmt.Sprintf("%v: run %q", ErrStaleWorkerFence, e.Fence.RunID)
-}
-
-func (e *StaleWorkerFenceError) Is(target error) bool {
-	return target == ErrStaleWorkerFence
+func NewStaleWorkerFenceError() error {
+	return mustExecutionFault(fault.Conflict, CodeWorkerFenceStale, "worker execution authority is stale")
 }

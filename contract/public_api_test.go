@@ -31,7 +31,7 @@ type consumerAuthorityVerifier struct {
 
 func (v consumerAuthorityVerifier) VerifyExecutionAuthority(_ context.Context, authority coreengine.ExecutionAuthority) error {
 	if authority != v.want {
-		return execution.ErrStaleWorkerFence
+		return execution.NewStaleWorkerFenceError()
 	}
 	return nil
 }
