@@ -155,7 +155,7 @@ func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
 func TestCancelSignalFailureReturnsCommittedResult(t *testing.T) {
 	store := &commandStoreStub{cancelResult: RunCommandResult{Run: validCommandRun(t, execution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}}
 	result, err := NewCancelRunService(store, signalStub{store: store, err: errors.New("down")}).CancelRun(context.Background(), validCancelCommand())
-	if !errors.Is(err, ErrRunSignalRetryable) || !result.WasApplied {
+	if !fault.IsCode(err, CodeRunSignalRetryable) || !result.WasApplied {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 }

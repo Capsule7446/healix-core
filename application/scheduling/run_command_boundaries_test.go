@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
@@ -26,7 +27,6 @@ func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
 		{name: "queue revision", err: &QueueRevisionConflictError{ScopeID: "scope", Expected: 2, Actual: 3}, wantText: "queue revision conflict: scope expected 2 actual 3", wantTarget: ErrQueueRevisionConflict},
 		{name: "queue membership", err: &QueueMembershipConflictError{ScopeID: "scope"}, wantText: "queue membership conflict: scope", wantTarget: ErrQueueMembershipConflict},
 		{name: "adapter contract", err: &RunAdapterContractError{Operation: "validate", Cause: cause}, wantText: "run command adapter contract violation: validate: dependency failed", wantTarget: ErrRunAdapterContract, wantCause: cause},
-		{name: "signal retry", err: &RunSignalRetryableError{RunID: "run", Cause: cause}, wantText: "run cancellation signal must be retried: run: dependency failed", wantTarget: ErrRunSignalRetryable, wantCause: cause},
 	}
 
 	for _, test := range tests {
@@ -41,6 +41,21 @@ func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
 				t.Fatalf("errors.Is(%v, cause) = false", test.err)
 			}
 		})
+	}
+}
+
+func TestRunSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing.T) {
+	cause := errors.New("adapter failure: secret-token")
+	err := runSignalRetryableError(cause)
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeRunSignalRetryable || descriptor.Kind() != fault.Unavailable {
+		t.Fatalf("fault descriptor = %#v, ok = %v", descriptor, ok)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("errors.Is(%v, cause) = false", err)
+	}
+	if got := err.Error(); got != "EXECUTION_RUN_SIGNAL_RETRYABLE: execution cancellation signal must be retried" || strings.Contains(got, "secret-token") {
+		t.Fatalf("public retry error = %q", got)
 	}
 }
 
@@ -143,11 +158,11 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			} else {
 				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}})
 			}
-			if !errors.Is(err, ErrRunSignalRetryable) || !result.WasApplied || result.Revision != 2 {
+			if !fault.IsCode(err, CodeRunSignalRetryable) || !result.WasApplied || result.Revision != 2 {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
-			if !strings.Contains(err.Error(), "cancellation signaler is unavailable") {
-				t.Fatalf("error = %v", err)
+			if strings.Contains(err.Error(), "cancellation signaler is unavailable") {
+				t.Fatalf("public error leaked internal details: %v", err)
 			}
 		})
 	}

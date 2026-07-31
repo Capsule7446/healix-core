@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 var (
@@ -19,7 +20,6 @@ var (
 	ErrRunStatusConflict       = errors.New("run status conflict")
 	ErrQueueRevisionConflict   = errors.New("queue revision conflict")
 	ErrQueueMembershipConflict = errors.New("queue membership conflict")
-	ErrRunSignalRetryable      = errors.New("run cancellation signal must be retried")
 	ErrRunAdapterContract      = errors.New("run command adapter contract violation")
 )
 
@@ -83,16 +83,20 @@ func (e *RunAdapterContractError) Error() string {
 func (e *RunAdapterContractError) Unwrap() error        { return e.Cause }
 func (e *RunAdapterContractError) Is(target error) bool { return target == ErrRunAdapterContract }
 
-type RunSignalRetryableError struct {
-	RunID string
-	Cause error
-}
+const CodeRunSignalRetryable fault.Code = "EXECUTION_RUN_SIGNAL_RETRYABLE"
 
-func (e *RunSignalRetryableError) Error() string {
-	return fmt.Sprintf("run cancellation signal must be retried: %s: %v", e.RunID, e.Cause)
+func runSignalRetryableError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.Unavailable,
+		CodeRunSignalRetryable,
+		"execution cancellation signal must be retried",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
-func (e *RunSignalRetryableError) Unwrap() error        { return e.Cause }
-func (e *RunSignalRetryableError) Is(target error) bool { return target == ErrRunSignalRetryable }
 
 type CancelRunCommand struct {
 	CommandID, RunID     string
@@ -209,10 +213,10 @@ func signalIfRequired(ctx context.Context, signaler RunCancellationSignaler, res
 		return result, nil
 	}
 	if signaler == nil {
-		return result, &RunSignalRetryableError{RunID: result.Run.ID, Cause: errors.New("cancellation signaler is unavailable")}
+		return result, runSignalRetryableError(errors.New("cancellation signaler is unavailable"))
 	}
 	if err := signaler.SignalRunCancellation(ctx, result.Run.ID); err != nil {
-		return result, &RunSignalRetryableError{RunID: result.Run.ID, Cause: err}
+		return result, runSignalRetryableError(err)
 	}
 	return result, nil
 }

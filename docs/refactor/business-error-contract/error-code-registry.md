@@ -30,6 +30,7 @@ This registry defines the stable public error-code contract. A code is immutable
 | `EXECUTION_TIMELINE_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `execution timeline configuration is invalid` | none | Provide a recorder and a non-nil recorder timeline when step timeline recording is enabled. |
 | `EXECUTION_COMPLETION_CONFIGURATION_INVALID` | `FAILED_PRECONDITION` | `execution completion configuration is invalid` | none | Provide a read-only browser before enabling completion handlers. |
 | `EXECUTION_SCHEDULING_DEPENDENCY_REQUIRED` | `FAILED_PRECONDITION` | `execution scheduling dependency is required` | none | Supply all scheduling ports before processing claims. |
+| `EXECUTION_RUN_SIGNAL_RETRYABLE` | `UNAVAILABLE` | `execution cancellation signal must be retried` | none | The terminal state is committed; retry only the external cancellation signal and retain its cause privately. |
 
 ## Automation
 

@@ -203,9 +203,14 @@ func TestRunningCancelAndAbortSignalOnlyAfterAtomicCommit(t *testing.T) {
 
 func TestSignalFailureReturnsAuthoritativeCommittedResultAndRetryableError(t *testing.T) {
 	store := &commandStoreStub{abortResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true}}
-	result, err := NewAbortRunService(store, signalStub{store: store, err: errors.New("host down")}).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"}})
-	if !errors.Is(err, ErrRunSignalRetryable) || result.Run.Status != domainexecution.Aborted || !result.WasApplied {
+	store.abortResult.Run.ID = "run"
+	sensitiveCause := errors.New("host signal failure: secret-token")
+	result, err := NewAbortRunService(store, signalStub{store: store, err: sensitiveCause}).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"}})
+	if !fault.IsCode(err, CodeRunSignalRetryable) || !errors.Is(err, sensitiveCause) || result.Run.Status != domainexecution.Aborted || !result.WasApplied {
 		t.Fatalf("result/error=%#v/%v", result, err)
+	}
+	if strings.Contains(err.Error(), "sensitive-run-id") || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("public retry error leaked sensitive details: %v", err)
 	}
 	store.abortResult.WasApplied = false
 	if _, err = NewAbortRunService(store, signalStub{store: store}).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "unique"}}); err != nil {
