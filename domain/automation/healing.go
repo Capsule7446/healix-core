@@ -163,11 +163,15 @@ func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate
 	if status != HealCandidatePromoted && status != HealCandidateRejected {
 		return HealCandidate{}, fmt.Errorf("unsupported reviewed heal candidate status %q", status)
 	}
+	nextRevision, err := candidate.Revision.Next()
+	if err != nil {
+		return HealCandidate{}, err
+	}
 	next := candidate
 	next.Selectors = append([]fingerprint.Selector(nil), candidate.Selectors...)
 	next.Fingerprint = cloneFingerprint(candidate.Fingerprint)
 	next.Status = status
-	next.Revision++
+	next.Revision = nextRevision
 	return next, nil
 }
 

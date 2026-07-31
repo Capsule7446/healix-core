@@ -1,9 +1,12 @@
 package automation
 
 import (
+	"math"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -33,7 +36,32 @@ func TestHealCandidateReviewTransitions(t *testing.T) {
 			if candidate.Status != HealCandidateAwaitingApproval || candidate.Revision != 1 {
 				t.Fatalf("Review() mutated receiver: %#v", candidate)
 			}
+			reviewed.Selectors[0].Value = "changed"
+			reviewed.Fingerprint.Attributes["role"] = "changed"
+			if candidate.Selectors[0].Value != "button" || candidate.Fingerprint.Attributes["role"] != "submit" {
+				t.Fatalf("Review() shared nested state with receiver: %#v", candidate)
+			}
 		})
+	}
+}
+
+func TestHealCandidateReviewRejectsRevisionExhaustionWithoutMutation(t *testing.T) {
+	candidate := HealCandidate{
+		Hash:              "candidate-secret",
+		ElementTargetID:   "node-secret",
+		BaseNodeVersionID: "version-secret",
+		Status:            HealCandidateAwaitingApproval,
+		Revision:          Revision(math.MaxUint64),
+	}
+
+	reviewed, err := candidate.Review(HealCandidatePromoted)
+	if !reflect.DeepEqual(reviewed, HealCandidate{}) || !fault.IsCode(err, CodeRevisionExhausted) || candidate.Status != HealCandidateAwaitingApproval || candidate.Revision != Revision(math.MaxUint64) {
+		t.Fatalf("reviewed/error/original = %#v/%v/%#v", reviewed, err, candidate)
+	}
+	for _, secret := range []string{"candidate-secret", "node-secret", "version-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("public error leaked %q: %q", secret, err.Error())
+		}
 	}
 }
 
