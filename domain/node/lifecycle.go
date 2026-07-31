@@ -406,8 +406,8 @@ func wrapNodeFault(cause error, code fault.Code, message string) error {
 	return err
 }
 
-func mustNodeFault(kind fault.Kind, code fault.Code, message string) error {
-	err, constructionErr := fault.New(kind, code, message)
+func mustNodeFault(kind fault.Kind, code fault.Code, message string, options ...fault.Option) error {
+	err, constructionErr := fault.New(kind, code, message, options...)
 	if constructionErr != nil {
 		panic(constructionErr)
 	}
@@ -445,7 +445,7 @@ func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind stri
 		return lifecycle, nil
 	}
 	if rt.Timeline == nil {
-		return nil, errors.New("node: recording timeline is required when step timeline is enabled")
+		return nil, stepPhaseTransitionInvalidError(errors.New("node: recording timeline is required when step timeline is enabled"))
 	}
 	lifecycle.startedMark = rt.Timeline.Mark()
 	event := StepTimelineEvent{Step: lifecycle.execution, Boundary: StepBoundaryStarted, Mark: lifecycle.startedMark}

@@ -86,18 +86,18 @@ var stepPhaseTransitions = map[Phase]map[Phase]struct{}{
 
 func (e *StepExecution) CanTransition(next Phase) error {
 	if e == nil {
-		return fmt.Errorf("node: nil step execution")
+		return stepPhaseTransitionInvalidError(errors.New("node: nil step execution"))
 	}
-	if err := ValidatePhaseTransition(e.phase, next); err != nil {
-		return fmt.Errorf("node %s: invalid step phase transition %q -> %q", e.nodeID, e.phase, next)
-	}
-	return nil
+	// ValidatePhaseTransition already returns a fully classified fault; return it
+	// unchanged rather than discarding its detail to build a second one — the
+	// contract forbids wrapping an already-coded fault in another fault.
+	return ValidatePhaseTransition(e.phase, next)
 }
 
 // ValidatePhaseTransition 向持久性适配器公开相同的域保护，因此部分或重复写入无法产生不可能的 StepExecution 历史记录。
 func ValidatePhaseTransition(current, next Phase) error {
 	if _, ok := stepPhaseTransitions[current][next]; !ok {
-		return fmt.Errorf("invalid step phase transition %q -> %q", current, next)
+		return stepPhaseTransitionInvalidError(fmt.Errorf("invalid step phase transition %q -> %q", current, next))
 	}
 	return nil
 }
@@ -365,7 +365,7 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 	}
 	if phase == PhaseRunning {
 		if recordErr != nil {
-			return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, recordErr)
+			return evidenceRecordFailedError(recordErr)
 		}
 		rt.occurrences[nodeID] = occurrence
 		rt.activeOccurrences[nodeID] = append(stack, occurrence)
@@ -377,7 +377,7 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 		}
 	}
 	if recordErr != nil {
-		return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, recordErr)
+		return evidenceRecordFailedError(recordErr)
 	}
 	return nil
 }

@@ -27,7 +27,7 @@ func TestStepActionFailureBusinessMatrix(t *testing.T) {
 	}{
 		{name: "click action error", action: Action{Kind: ActionClick}, configure: func(e *matrixElement) { e.actionErr = errors.New("click failed") }, wantKind: fault.Internal, wantCode: CodeOperationFailed},
 		{name: "stable wait error", action: Action{Kind: ActionHover}, configure: func(e *matrixElement) { e.waitStableErr = errors.New("moving") }, wantKind: fault.Internal, wantCode: CodeOperationFailed},
-		{name: "select without value", action: Action{Kind: ActionSelect}, configure: func(*matrixElement) {}, wantKind: fault.Internal, wantCode: CodeOperationFailed},
+		{name: "select without value", action: Action{Kind: ActionSelect}, configure: func(*matrixElement) {}, wantKind: fault.InvalidArgument, wantCode: CodeStepConfigurationInvalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

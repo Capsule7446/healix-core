@@ -240,7 +240,7 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 
 	reader, ok := el.(ValidationStateReader)
 	if !ok {
-		return false, "", fmt.Errorf("driver element does not provide validation state for %q", assertion.Kind)
+		return false, "", unsupportedAssertionKindError(fmt.Errorf("driver element does not provide validation state for %q", assertion.Kind))
 	}
 	state, err := reader.ValidationState(ctx)
 	if err != nil {
@@ -282,8 +282,17 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 		}
 		return compareSet(assertion, state.SelectedTexts)
 	default:
-		return false, "", fmt.Errorf("unsupported validation assertion %q", assertion.Kind)
+		return false, "", unsupportedAssertionKindError(fmt.Errorf("unsupported validation assertion %q", assertion.Kind))
 	}
+}
+
+// unsupportedAssertionKindError classifies every "this assertion.Kind cannot be
+// evaluated" leaf failure under one code, distinguished from every other step
+// configuration failure by its violation field path. assertion.Kind is treated
+// as caller input and never echoed publicly; the concrete value stays on the
+// private cause.
+func unsupportedAssertionKindError(cause error) error {
+	return wrapStepConfigurationInvalidError(cause, mustViolation(fault.CodeFieldInvalid, "assertion.kind", "assertion kind is not supported"))
 }
 
 // solvedAssertion 仅扩展持久断言合约允许的值。属性名称故意是静态的：允许在 DOM 属性名称中进行插值使得验证形状数据依赖，并且在工作区验证期间被拒绝。
@@ -321,29 +330,29 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	snapshot, err := rt.Driver.Snapshot(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("snapshot for healing: %w", err)
+		return nil, false, classifyNodeFault(err)
 	}
 	decision, err := rt.healingPort().Recover(ctx, target, snapshot)
 	if err != nil {
 		return nil, false, err
 	}
 	if err := decision.Validate(); err != nil {
-		return nil, false, fmt.Errorf("invalid heal decision: %w", err)
+		return nil, false, classifyNodeFault(err)
 	}
 	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
-		return nil, false, fmt.Errorf("record heal samples: %w", err)
+		return nil, false, evidenceRecordFailedError(err)
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate {
 		if rt.Facts != nil {
 			if err := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
-				return nil, false, fmt.Errorf("record heal decision: %w", err)
+				return nil, false, evidenceRecordFailedError(err)
 			}
 		}
 		return nil, true, nil
 	}
 	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
 	if err != nil {
-		return nil, false, fmt.Errorf("assess heal decision: %w", err)
+		return nil, false, classifyNodeFault(err)
 	}
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome != heal.OutcomeNoCandidate {
@@ -353,15 +362,15 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
 			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
-				return nil, false, fmt.Errorf("record validation heal decision: %w", recordErr)
+				return nil, false, evidenceRecordFailedError(recordErr)
 			}
 		}
-		return nil, false, fmt.Errorf("validation healing refused: %s", assessment.Explanation)
+		return nil, false, healingRefusedError(fmt.Errorf("validation healing refused: %s", assessment.Explanation))
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
 			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
-				return nil, false, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+				return nil, false, evidenceRecordFailedError(recordErr)
 			}
 		}
 		return nil, true, nil
@@ -374,7 +383,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if rt.Facts != nil {
 		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
-			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
+			return nil, false, evidenceRecordFailedError(recordErr)
 		}
 	}
 	rt.setSelectorOverlay(healed)
@@ -412,7 +421,7 @@ func compareScalar(assertion ValidationAssertion, actual string, normalizeWhites
 		}
 		return re.MatchString(actual), actual, nil
 	default:
-		return false, actual, fmt.Errorf("unsupported scalar validation %q", assertion.Kind)
+		return false, actual, unsupportedAssertionKindError(fmt.Errorf("unsupported scalar validation %q", assertion.Kind))
 	}
 }
 
@@ -470,7 +479,10 @@ func (g *ValidationGroupNode) ID() string { return g.NodeID }
 func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	for branchIndex, branch := range g.Branches {
 		if branch.ID == "" {
-			return fmt.Errorf("validation group %s: branch %d requires an ID", g.NodeID, branchIndex)
+			return wrapStepConfigurationInvalidError(
+				fmt.Errorf("validation group %s: branch %d requires an ID", g.NodeID, branchIndex),
+				mustViolation(fault.CodeFieldRequired, fmt.Sprintf("branches.%d.id", branchIndex), "validation branch id is required"),
+			)
 		}
 		for memberIndex, member := range branch.Nodes {
 			if member == nil {
