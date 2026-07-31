@@ -60,14 +60,14 @@ func (f *workflowRepositoryFake) SaveAggregate(_ context.Context, expected domai
 	return value, nil
 }
 
-func TestRevisionConflictErrorExposesClassificationAndContext(t *testing.T) {
-	err := RevisionConflictError{AggregateKind: "node", ID: "node-1", Expected: 2, Actual: 3}
-	if !errors.Is(err, ErrRevisionConflict) {
-		t.Fatalf("errors.Is(%v, ErrRevisionConflict) = false", err)
+func TestRevisionConflictErrorExposesSafeClassification(t *testing.T) {
+	err := AutomationRevisionConflictError()
+	if !errors.Is(err, CodeAutomationRevisionConflict) {
+		t.Fatalf("fault.IsCode(%v, %v) = false", err, CodeAutomationRevisionConflict)
 	}
-	for _, context := range []string{"node", "node-1", "expected 2", "actual 3"} {
-		if !strings.Contains(err.Error(), context) {
-			t.Fatalf("Error() = %q, missing %q", err.Error(), context)
+	for _, sensitive := range []string{"node", "node-1", "expected 2", "actual 3"} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("Error() leaked %q: %q", sensitive, err.Error())
 		}
 	}
 }

@@ -203,7 +203,7 @@ func TestHealReviewServiceRejectsWithCandidateAndStreakOnly(t *testing.T) {
 func TestHealReviewServiceRejectsStaleStateBeforeCommit(t *testing.T) {
 	source, nodes, transaction, command := healReviewFixture(t)
 	command.ExpectedCandidateRevision = 2
-	if err := newReviewService(t, source, nodes, transaction).Reject(context.Background(), command); !errors.Is(err, ErrRevisionConflict) {
+	if err := newReviewService(t, source, nodes, transaction).Reject(context.Background(), command); !errors.Is(err, CodeAutomationRevisionConflict) {
 		t.Fatalf("candidate conflict = %v", err)
 	}
 	if transaction.intent.CommandID != "" {

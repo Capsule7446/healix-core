@@ -62,7 +62,7 @@ func (s NodeService) transition(ctx context.Context, id string, expected domain.
 		return domain.ElementTargetAggregate{}, fmt.Errorf("load node %q: %w", id, err)
 	}
 	if current.ElementTarget.Revision != expected {
-		return domain.ElementTargetAggregate{}, RevisionConflictError{AggregateKind: "node", ID: id, Expected: expected, Actual: current.ElementTarget.Revision}
+		return domain.ElementTargetAggregate{}, AutomationRevisionConflictError()
 	}
 	next, err := apply(current)
 	if err != nil {

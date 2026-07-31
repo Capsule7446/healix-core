@@ -51,7 +51,7 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 		return FolderSnapshot{}, fmt.Errorf("load folder forest: %w", err)
 	}
 	if snapshot.Revision != expected {
-		return FolderSnapshot{}, RevisionConflictError{AggregateKind: "folder forest", ID: string(kind), Expected: expected, Actual: snapshot.Revision}
+		return FolderSnapshot{}, AutomationRevisionConflictError()
 	}
 	forest, err := domain.NewFolderForest(snapshot.Folders)
 	if err != nil {
@@ -96,7 +96,7 @@ func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expec
 		return FolderSnapshot{}, fmt.Errorf("load folder forest: %w", err)
 	}
 	if snapshot.Revision != expected {
-		return FolderSnapshot{}, RevisionConflictError{AggregateKind: "folder forest", ID: string(kind), Expected: expected, Actual: snapshot.Revision}
+		return FolderSnapshot{}, AutomationRevisionConflictError()
 	}
 	folders := append([]domain.Folder(nil), snapshot.Folders...)
 	folders, err = apply(folders)

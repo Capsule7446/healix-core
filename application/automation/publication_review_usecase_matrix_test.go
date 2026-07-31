@@ -369,7 +369,7 @@ func TestHealReviewUseCasesRejectInvalidIdentityAndTrustedTimeBeforeCommit(t *te
 		{name: "node revision", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			nodes.current.ElementTarget.Revision++
 			return reviewClockFake(10)
-		}, target: ErrRevisionConflict},
+		}, target: CodeAutomationRevisionConflict},
 		{name: "trusted time", configure: func(_ *healReviewSourceProbe, _ *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			return reviewClockFake(0)
 		}, want: "trusted review time must be positive"},

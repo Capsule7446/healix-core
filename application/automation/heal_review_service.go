@@ -246,7 +246,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, ErrHealReviewCASConflict
 	}
 	if candidate.Revision != command.ExpectedCandidateRevision {
-		return HealReviewIntent{}, RevisionConflictError{AggregateKind: "heal candidate", ID: candidate.Hash, Expected: command.ExpectedCandidateRevision, Actual: candidate.Revision}
+		return HealReviewIntent{}, AutomationRevisionConflictError()
 	}
 	if err := s.verifier.VerifyCandidate(ctx, candidate); err != nil {
 		return HealReviewIntent{}, fmt.Errorf("verify heal candidate: %w", err)
@@ -259,7 +259,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, ErrHealReviewCASConflict
 	}
 	if node.ElementTarget.Revision != command.ExpectedNodeRevision {
-		return HealReviewIntent{}, RevisionConflictError{AggregateKind: "node", ID: node.ElementTarget.ID, Expected: command.ExpectedNodeRevision, Actual: node.ElementTarget.Revision}
+		return HealReviewIntent{}, AutomationRevisionConflictError()
 	}
 	if node.ElementTarget.CurrentVersionID != command.BaseNodeVersionID {
 		return HealReviewIntent{}, HealCandidateStaleBaseError()

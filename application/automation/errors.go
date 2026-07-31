@@ -1,15 +1,10 @@
 package automation
 
 import (
-	"errors"
-	"fmt"
 	"reflect"
 
-	domain "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
-
-var ErrRevisionConflict = errors.New("revision conflict")
 
 const CodeAutomationConfigurationInvalid fault.Code = "AUTOMATION_CONFIGURATION_INVALID"
 
@@ -52,15 +47,16 @@ func isNilDependency(value any) bool {
 	}
 }
 
-type RevisionConflictError struct {
-	AggregateKind string
-	ID            string
-	Expected      domain.Revision
-	Actual        domain.Revision
-}
+const CodeAutomationRevisionConflict fault.Code = "AUTOMATION_REVISION_CONFLICT"
 
-func (e RevisionConflictError) Error() string {
-	return fmt.Sprintf("%s %s: %v (expected %d, actual %d)", e.AggregateKind, e.ID, ErrRevisionConflict, e.Expected, e.Actual)
+func AutomationRevisionConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeAutomationRevisionConflict,
+		"automation revision conflicts with current state",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
-
-func (e RevisionConflictError) Unwrap() error { return ErrRevisionConflict }

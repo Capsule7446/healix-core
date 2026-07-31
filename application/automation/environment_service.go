@@ -57,7 +57,7 @@ func (s EnvironmentService) transition(ctx context.Context, id string, expected 
 		return domain.Environment{}, fmt.Errorf("load environment %q: %w", id, err)
 	}
 	if current.Revision != expected {
-		return domain.Environment{}, RevisionConflictError{AggregateKind: "environment", ID: id, Expected: expected, Actual: current.Revision}
+		return domain.Environment{}, AutomationRevisionConflictError()
 	}
 	next, err := apply(current)
 	if err != nil {

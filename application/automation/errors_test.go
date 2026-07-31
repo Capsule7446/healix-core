@@ -1,18 +1,24 @@
 package automation
 
 import (
-	"errors"
+	"strings"
 	"testing"
 
-	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-func TestRevisionConflictErrorSupportsErrorsIsAndReportsValues(t *testing.T) {
-	err := RevisionConflictError{AggregateKind: "node", ID: "node-1", Expected: domain.Revision(2), Actual: domain.Revision(3)}
-	if !errors.Is(err, ErrRevisionConflict) {
-		t.Fatal("errors.Is did not match")
+func TestRevisionConflictErrorExposesSafeStableContract(t *testing.T) {
+	err := AutomationRevisionConflictError()
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeAutomationRevisionConflict || descriptor.Kind() != fault.Conflict || descriptor.Message() != "automation revision conflicts with current state" {
+		t.Fatalf("descriptor = %#v, ok = %v", descriptor, ok)
 	}
-	if err.Expected != 2 || err.Actual != 3 || err.ID != "node-1" {
-		t.Fatal("conflict detail lost")
+	if len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+		t.Fatalf("public schema = %#v", descriptor)
+	}
+	for _, secret := range []string{"node-1", "expected 2", "actual 3"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("public error leaked %q: %v", secret, err)
+		}
 	}
 }

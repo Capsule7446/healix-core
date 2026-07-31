@@ -132,7 +132,7 @@ func TestEnvironmentTransitionUseCasesCoverRulesDependenciesAndState(t *testing.
 			}
 
 			repository = &environmentRepositoryProbe{current: current}
-			if _, err := test.invoke(NewEnvironmentService(repository), current.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.updateCalls != 0 {
+			if _, err := test.invoke(NewEnvironmentService(repository), current.Revision+1); !errors.Is(err, CodeAutomationRevisionConflict) || repository.updateCalls != 0 {
 				t.Fatalf("CAS rejection/error/update calls = %v/%d", err, repository.updateCalls)
 			}
 		})
@@ -275,7 +275,7 @@ func TestFolderCreateAndMoveCoverValidationCASAndPersistence(t *testing.T) {
 				t.Fatalf("load failure/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &folderRepositoryProbe{snapshot: snapshot}
-			if err := operation.invoke(NewFolderService(repository), 2); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
+			if err := operation.invoke(NewFolderService(repository), 2); !errors.Is(err, CodeAutomationRevisionConflict) || repository.saveCalls != 0 {
 				t.Fatalf("CAS/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &folderRepositoryProbe{snapshot: snapshot, saveErr: dependencyFailure}
@@ -303,7 +303,7 @@ func TestFolderDeleteCoversEveryPrecommitRejectionAndDependency(t *testing.T) {
 		wantText   string
 	}{
 		{name: "load failure", repository: &folderRepositoryProbe{snapshot: valid, loadErr: failure}, expected: 1, want: failure},
-		{name: "stale forest", repository: &folderRepositoryProbe{snapshot: valid}, expected: 2, want: ErrRevisionConflict},
+		{name: "stale forest", repository: &folderRepositoryProbe{snapshot: valid}, expected: 2, want: CodeAutomationRevisionConflict},
 		{name: "invalid loaded forest", repository: &folderRepositoryProbe{snapshot: FolderSnapshot{Revision: 1, Folders: []domain.Folder{{ID: "", Kind: domain.FolderWorkflow}}}}, expected: 1, wantText: "validate folder forest"},
 		{name: "occupancy failure", repository: &folderRepositoryProbe{snapshot: valid, occupancyErr: failure}, expected: 1, want: failure},
 		{name: "negative occupancy", repository: &folderRepositoryProbe{snapshot: valid, occupancy: FolderOccupancySnapshot{Revision: 1, Occupancy: domain.FolderOccupancy{Assets: -1}}}, expected: 1, wantText: "cannot be negative"},
@@ -440,7 +440,7 @@ func TestNodePublishDeleteRestoreCoverRulesDependenciesCASAndState(t *testing.T)
 				t.Fatalf("load failure/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &nodeRepositoryMatrix{current: current}
-			if _, err := test.invoke(NewNodeService(repository), current.ElementTarget.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
+			if _, err := test.invoke(NewNodeService(repository), current.ElementTarget.Revision+1); !errors.Is(err, CodeAutomationRevisionConflict) || repository.saveCalls != 0 {
 				t.Fatalf("CAS/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &nodeRepositoryMatrix{current: current, saveErr: failure}
@@ -550,7 +550,7 @@ func TestTestTaskUseCasesCoverDependencyFailuresAndPrecommitRejections(t *testin
 		{name: "blank task id", taskID: " ", expected: 1, publication: publication, repository: &testTaskRepositoryMatrix{current: current}, wantText: "test task ID is required"},
 		{name: "blank version id", taskID: "task", expected: 1, publication: func() domain.ExecutionFlowVersionPublication { value := publication; value.ID = " "; return value }(), repository: &testTaskRepositoryMatrix{current: current}, wantText: "test task version ID is required"},
 		{name: "load failure", taskID: "task", expected: 1, publication: publication, repository: &testTaskRepositoryMatrix{current: current, loadErr: failure}, want: failure},
-		{name: "stale revision", taskID: "task", expected: 2, publication: publication, repository: &testTaskRepositoryMatrix{current: current}, want: ErrRevisionConflict},
+		{name: "stale revision", taskID: "task", expected: 2, publication: publication, repository: &testTaskRepositoryMatrix{current: current}, want: CodeAutomationRevisionConflict},
 		{name: "domain rejection", taskID: "task", expected: 1, publication: func() domain.ExecutionFlowVersionPublication {
 			value := publication
 			value.ID = "task-v1"
@@ -693,7 +693,7 @@ func TestWorkflowTransitionsCoverRulesDependenciesCASAndState(t *testing.T) {
 				t.Fatalf("load failure/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &workflowRepositoryMatrix{current: current}
-			if _, err := test.invoke(NewFlowFragmentService(repository), current.FlowFragment.Revision+1); !errors.Is(err, ErrRevisionConflict) || repository.saveCalls != 0 {
+			if _, err := test.invoke(NewFlowFragmentService(repository), current.FlowFragment.Revision+1); !errors.Is(err, CodeAutomationRevisionConflict) || repository.saveCalls != 0 {
 				t.Fatalf("CAS/error/save calls = %v/%d", err, repository.saveCalls)
 			}
 			repository = &workflowRepositoryMatrix{current: current, saveErr: failure}

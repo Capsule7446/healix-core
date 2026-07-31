@@ -49,12 +49,7 @@ func (s ExecutionFlowService) PublishVersion(
 		return domain.ExecutionFlowAggregate{}, fmt.Errorf("load test task %q: %w", taskID, err)
 	}
 	if current.Task.Revision != expected {
-		return domain.ExecutionFlowAggregate{}, RevisionConflictError{
-			AggregateKind: "test task",
-			ID:            taskID,
-			Expected:      expected,
-			Actual:        current.Task.Revision,
-		}
+		return domain.ExecutionFlowAggregate{}, AutomationRevisionConflictError()
 	}
 	published, err := current.PublishVersion(publication)
 	if err != nil {

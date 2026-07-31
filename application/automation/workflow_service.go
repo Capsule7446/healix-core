@@ -61,7 +61,7 @@ func (s FlowFragmentService) transition(ctx context.Context, id string, expected
 		return domain.FlowFragmentAggregate{}, fmt.Errorf("load workflow %q: %w", id, err)
 	}
 	if current.FlowFragment.Revision != expected {
-		return domain.FlowFragmentAggregate{}, RevisionConflictError{AggregateKind: "workflow", ID: id, Expected: expected, Actual: current.FlowFragment.Revision}
+		return domain.FlowFragmentAggregate{}, AutomationRevisionConflictError()
 	}
 	next, err := apply(current)
 	if err != nil {
