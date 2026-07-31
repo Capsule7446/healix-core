@@ -91,7 +91,7 @@ func TestNodeSpecValidateAggregatesAllFailuresWithoutMutation(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid node spec accepted")
 	}
-	for _, fragment := range []string{"uuid", "id is required", "selectors[0]", "unsupported type", "priority", "selectors[1]", "value is required", "fingerprint.tag"} {
+	for _, fragment := range []string{"uuid", "id is required", "selectors[0]", "FINGERPRINT_SELECTOR_INVALID", "selectors[1]", "fingerprint.tag"} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Errorf("error %q missing %q", err, fragment)
 		}

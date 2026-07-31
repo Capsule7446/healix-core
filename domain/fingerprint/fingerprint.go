@@ -6,7 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
+
+const CodeSelectorInvalid fault.Code = "FINGERPRINT_SELECTOR_INVALID"
+
+func newFingerprintFault(code fault.Code, message string) error {
+	err, constructionErr := fault.New(fault.InvalidArgument, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 // SelectorType 是一种定位策略，按 Playwright 推荐的稳定性阶梯排序
 // （role > testid > css > xpath/text）。
@@ -43,7 +55,7 @@ func (s Selector) Validate() error {
 		problems = append(problems, "priority must be >= 0")
 	}
 	if len(problems) != 0 {
-		return errors.New(strings.Join(problems, "; "))
+		return newFingerprintFault(CodeSelectorInvalid, "element selector is invalid")
 	}
 	return nil
 }

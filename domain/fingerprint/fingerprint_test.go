@@ -3,6 +3,8 @@ package fingerprint
 import (
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestSelectorValidate(t *testing.T) {
@@ -34,17 +36,16 @@ func TestSelectorValidateBusinessMatrix(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		selector Selector
-		want     string
 	}{
-		{name: "empty type", selector: Selector{Value: "locator"}, want: "unsupported type"},
-		{name: "unknown type", selector: Selector{Type: "shadow", Value: "locator"}, want: "unsupported type"},
-		{name: "empty value", selector: Selector{Type: SelectorCSS}, want: "value is required"},
-		{name: "whitespace value", selector: Selector{Type: SelectorCSS, Value: " \t"}, want: "value is required"},
-		{name: "negative priority", selector: Selector{Type: SelectorCSS, Value: "#submit", Priority: -1}, want: "priority"},
+		{name: "empty type", selector: Selector{Value: "locator"}},
+		{name: "unknown type", selector: Selector{Type: "shadow", Value: "locator"}},
+		{name: "empty value", selector: Selector{Type: SelectorCSS}},
+		{name: "whitespace value", selector: Selector{Type: SelectorCSS, Value: " \t"}},
+		{name: "negative priority", selector: Selector{Type: SelectorCSS, Value: "#submit", Priority: -1}},
 	} {
 		t.Run("invalid/"+test.name, func(t *testing.T) {
-			if err := test.selector.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error=%v want containing %q", err, test.want)
+			if err := test.selector.Validate(); !fault.IsCode(err, CodeSelectorInvalid) {
+				t.Fatalf("error=%v want code %q", err, CodeSelectorInvalid)
 			}
 		})
 	}
