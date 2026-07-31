@@ -1,7 +1,6 @@
 package execution
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -92,12 +91,7 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 		}
 	}
 	sealed, err := SealRunSnapshot(forgedInput)
-	if err == nil {
-		t.Fatal("non-canonical child invocation path accepted")
-	}
-	if !strings.Contains(err.Error(), "path is not canonical") {
-		t.Fatalf("forged child rejected for wrong reason: %v", err)
-	}
+	requireCreateInstanceSnapshotRejection(t, err, "path is not canonical")
 	if sealed.Digest() != "" {
 		t.Fatalf("failed seal returned digest %q", sealed.Digest())
 	}

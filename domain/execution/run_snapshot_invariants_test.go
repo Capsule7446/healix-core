@@ -51,17 +51,8 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 			test.mutate(&input, child)
 
 			_, err := SealRunSnapshot(input)
-			if err == nil {
-				t.Fatal("concrete child invocation outside target parameter contract accepted")
-			}
-			message := err.Error()
 			wantPath := fmt.Sprintf("invocation %s parameter values:", child.Path)
-			if !strings.Contains(message, wantPath) {
-				t.Fatalf("error does not identify child parameter validation path %q: %v", wantPath, err)
-			}
-			if !strings.Contains(message, test.wantReason) {
-				t.Fatalf("error does not identify expected validation failure %q: %v", test.wantReason, err)
-			}
+			requireCreateInstanceSnapshotRejection(t, err, wantPath, test.wantReason)
 		})
 	}
 }

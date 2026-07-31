@@ -76,9 +76,11 @@ func TestRunSnapshotRejectsInvocationParentCycle(t *testing.T) {
 	secondChildPath := input.Invocations[2].Path
 	input.Invocations[1].ParentPath = secondChildPath
 	input.Invocations[2].ParentPath = firstChildPath
-	if snapshot, err := SealRunSnapshot(input); err == nil || !strings.Contains(err.Error(), "cycle") || snapshot.Digest() != "" {
-		t.Fatalf("parent cycle accepted: %#v/%v", snapshot, err)
+	snapshot, err := SealRunSnapshot(input)
+	if snapshot.Digest() != "" {
+		t.Fatalf("parent cycle accepted with digest %q", snapshot.Digest())
 	}
+	requireCreateInstanceSnapshotRejection(t, err, "cycle")
 }
 
 func validRunSnapshotInput(t *testing.T) RunSnapshotInput {

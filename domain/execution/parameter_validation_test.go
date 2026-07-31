@@ -90,15 +90,13 @@ func TestSealAccountsForParameterOptionCollectionElements(t *testing.T) {
 		options[i] = fmt.Sprintf("option-%d", i)
 	}
 	draft := directParameterDraft([]Parameter{{Name: "choice", DisplayName: "Choice", Type: parameter.SingleSelect, Required: true, Options: options}}, map[string]parameter.Value{"choice": parameter.SingleSelectValue(options[0])})
-	if _, err := Seal(draft); err == nil || !strings.Contains(err.Error(), "collection elements") {
-		t.Fatalf("error = %v", err)
-	}
+	_, err := Seal(draft)
+	requireCreateInstancePlanRejection(t, err, "collection elements")
 }
 
 func TestSealAccountsForTypedSnapshotAndMultiSelectResources(t *testing.T) {
 	large := strings.Repeat("x", MaxStringBytes+1)
 	draft := directParameterDraft([]Parameter{{Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{large}}}, map[string]parameter.Value{"regions": parameter.MultiSelectValue([]string{large})})
-	if _, err := Seal(draft); err == nil || !strings.Contains(err.Error(), "string exceeds") {
-		t.Fatalf("error = %v", err)
-	}
+	_, err := Seal(draft)
+	requireCreateInstancePlanRejection(t, err, "string exceeds")
 }

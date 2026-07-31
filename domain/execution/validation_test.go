@@ -14,49 +14,48 @@ func TestWorkflowSnapshotValidateRejectsMalformedExecutionContracts(t *testing.T
 	t.Parallel()
 	valid := validWorkflowSnapshot()
 	tests := []struct {
-		name string
-		edit func(*WorkflowSnapshot)
-		want string
+		name      string
+		edit      func(*WorkflowSnapshot)
+		wantField string
+		wantCode  fault.Code
 	}{
-		{"identity", func(w *WorkflowSnapshot) { w.VersionID = "" }, "workflow version does not belong"},
-		{"display name", func(w *WorkflowSnapshot) { w.DisplayName = " " }, "display name is required"},
-		{"version number", func(w *WorkflowSnapshot) { w.VersionNumber = 0 }, "version number must be"},
-		{"duplicate parameters", func(w *WorkflowSnapshot) { w.Parameters = []Parameter{{Name: "query"}, {Name: "query"}} }, "duplicate parameter"},
+		{"identity", func(w *WorkflowSnapshot) { w.VersionID = "" }, "flowFragmentId", fault.CodeFieldInvalid},
+		{"display name", func(w *WorkflowSnapshot) { w.DisplayName = " " }, "displayName", fault.CodeFieldRequired},
+		{"version number", func(w *WorkflowSnapshot) { w.VersionNumber = 0 }, "versionNumber", fault.CodeFieldInvalid},
+		{"duplicate parameters", func(w *WorkflowSnapshot) { w.Parameters = []Parameter{{Name: "query"}, {Name: "query"}} }, "parameters.1", fault.CodeFieldDuplicate},
 		{"duplicate recursive ids", func(w *WorkflowSnapshot) {
 			w.Steps = []Step{{ID: "repeat", DisplayName: "repeat", Kind: RepeatStep, RepeatCount: 1, Children: []Step{{ID: "repeat", DisplayName: "child", Kind: ActionStep, Action: "noop", ElementTargetID: "node", ElementTargetVersionID: "v1"}}}}
-		}, "duplicate workflow step id"},
-		{"unsupported action", func(w *WorkflowSnapshot) { w.Steps[0].Action = "double_click" }, "unsupported action"},
-		{"node version", func(w *WorkflowSnapshot) { w.Steps[0].ElementTargetVersionID = "" }, "exact node version"},
+		}, "steps", fault.CodeFieldDuplicate},
+		{"unsupported action", func(w *WorkflowSnapshot) { w.Steps[0].Action = "double_click" }, "steps", fault.CodeFieldInvalid},
+		{"node version", func(w *WorkflowSnapshot) { w.Steps[0].ElementTargetVersionID = "" }, "steps", fault.CodeFieldRequired},
 		{"wait kind", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "wait", DisplayName: "wait", Kind: WaitStep, WaitKind: "event"}
-		}, "unsupported wait kind"},
+		}, "steps", fault.CodeFieldInvalid},
 		{"repeat count", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "repeat", DisplayName: "repeat", Kind: RepeatStep, Children: []Step{{ID: "child", DisplayName: "child", Kind: ActionStep, Action: "noop", ElementTargetID: "node", ElementTargetVersionID: "v1"}}}
-		}, "repeat requires count"},
+		}, "steps", fault.CodeFieldRequired},
 		{"optional restriction", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "wait", DisplayName: "wait", Kind: WaitStep, WaitMS: 1, Optional: true}
-		}, "only ACTION can be optional"},
+		}, "steps", fault.CodeFieldInvalid},
 		{"reference shape", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "ref", DisplayName: "ref", Kind: FlowFragmentReference, Reference: &Reference{}}
-		}, "requires a workflow reference"},
-		{"validation assertion", func(w *WorkflowSnapshot) { w.Steps[0] = standaloneValidation("unknown", 1000, 200) }, "unsupported validation kind"},
-		{"validation wait bound", func(w *WorkflowSnapshot) { w.Steps[0] = standaloneValidation("visible", 999, 200) }, "maximum wait"},
+		}, "steps", fault.CodeFieldRequired},
+		{"validation assertion", func(w *WorkflowSnapshot) { w.Steps[0] = standaloneValidation("unknown", 1000, 200) }, "steps", fault.CodeFieldInvalid},
+		{"validation wait bound", func(w *WorkflowSnapshot) { w.Steps[0] = standaloneValidation("visible", 999, 200) }, "steps", fault.CodeFieldInvalid},
 		{"group structure", func(w *WorkflowSnapshot) {
 			w.Steps[0] = Step{ID: "group", DisplayName: "group", Kind: ValidationGroupStep, ValidationGroup: &ValidationGroup{MaxWaitMS: 1000, StabilityMS: 200}}
-		}, "requires 1-5 branches"},
+		}, "steps", fault.CodeFieldInvalid},
 		{"group member wait", func(w *WorkflowSnapshot) {
 			member := standaloneValidation("visible", 1000, 200)
 			w.Steps[0] = Step{ID: "group", DisplayName: "group", Kind: ValidationGroupStep, ValidationGroup: &ValidationGroup{MaxWaitMS: 1000, StabilityMS: 200, Branches: []ValidationBranch{{ID: "branch", Name: "branch", Steps: []Step{member}}}}}
-		}, "must inherit"},
+		}, "steps", fault.CodeFieldInvalid},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			workflow := valid
 			workflow.Steps = append([]Step(nil), valid.Steps...)
 			tt.edit(&workflow)
-			if err := workflow.Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, tt.want)
-			}
+			requireStepShapeViolation(t, workflow.Validate(), tt.wantField, tt.wantCode)
 		})
 	}
 }
@@ -107,9 +106,7 @@ func TestDraftValidateRejectsNodeVersionOwnedByDifferentNodes(t *testing.T) {
 	)
 	draft.Workflows[0].Steps[0].ElementTargetID = draft.Nodes[0].ElementTargetID
 	draft.Workflows[0].Steps[0].ElementTargetVersionID = "shared-v1"
-	if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), "owned by different nodes") {
-		t.Fatalf("Validate() error = %v, want cross-node version ownership error", err)
-	}
+	requireCreateInstancePlanRejection(t, draft.Validate(), "owned by different nodes")
 }
 
 func TestDraftValidateRejectsReachableWorkflowReferenceCycles(t *testing.T) {
@@ -123,9 +120,7 @@ func TestDraftValidateRejectsReachableWorkflowReferenceCycles(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			draft := workflowReferenceDraft(test.edges)
-			if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), "workflow reference cycle") {
-				t.Fatalf("Validate() error = %v, want cycle error", err)
-			}
+			requireCreateInstancePlanRejection(t, draft.Validate(), "workflow reference cycle")
 		})
 	}
 }
@@ -175,9 +170,7 @@ func TestSealRejectsBlankAndMismatchedFixedWorkflowVersions(t *testing.T) {
 			root := validWorkflowSnapshot()
 			root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: test.fixed}}}
 			_, err := Seal(Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure, Entries: []WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: root.FlowFragmentID, WorkflowVersionID: root.VersionID}}, Workflows: []WorkflowSnapshot{root, child}, References: []ReferenceResolution{{ParentVersionID: root.VersionID, StepID: "call", FlowFragmentID: "child", WorkflowVersionID: test.resolved}}})
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Seal() error = %v, want %q", err, test.want)
-			}
+			requireCreateInstancePlanRejection(t, err, test.want)
 		})
 	}
 }
@@ -207,9 +200,7 @@ func TestWorkflowSnapshotValidateBoundsNestingWithoutOverflow(t *testing.T) {
 	}
 	workflow := validWorkflowSnapshot()
 	workflow.Steps = []Step{step}
-	if err := workflow.Validate(); err == nil || !strings.Contains(err.Error(), "nesting depth") {
-		t.Fatalf("Validate() error = %v", err)
-	}
+	requireStepShapeViolation(t, workflow.Validate(), "steps", fault.CodeFieldInvalid)
 }
 
 func TestParameterValidateRequiresCompleteDefinition(t *testing.T) {
@@ -288,9 +279,7 @@ func TestDraftValidateAggregatesReferencedWorkflowBudgetAcrossCallsAndRepeats(t 
 		{ParentVersionID: root.VersionID, StepID: "first", FlowFragmentID: "child", WorkflowVersionID: child.VersionID},
 		{ParentVersionID: root.VersionID, StepID: "second", FlowFragmentID: "child", WorkflowVersionID: child.VersionID},
 	}}
-	if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), "cumulative wait") {
-		t.Fatalf("Validate() error = %v, want aggregate wait budget error", err)
-	}
+	requireCreateInstancePlanRejection(t, draft.Validate(), "cumulative wait")
 }
 
 func TestExecutionBudgetCountsValidationBranchWork(t *testing.T) {
@@ -382,10 +371,7 @@ func TestDraftValidateReportsOrphanResolutionDeterministically(t *testing.T) {
 		{ParentVersionID: "a", StepID: "a", FlowFragmentID: "unused", WorkflowVersionID: "unused-v1"},
 	}}
 	for i := 0; i < 20; i++ {
-		err := draft.Validate()
-		if err == nil || !strings.Contains(err.Error(), `{"a" "a"}`) {
-			t.Fatalf("Validate() error = %v, want lexically first orphan", err)
-		}
+		requireCreateInstancePlanRejection(t, draft.Validate(), `{"a" "a"}`)
 	}
 }
 
@@ -425,15 +411,12 @@ func TestAggregateInputLimitsRejectTopLevelEntriesBeforeSealClone(t *testing.T) 
 func TestAggregateInputLimitsBeforeSealClone(t *testing.T) {
 	draft := validDraftWithNodes(validNodeSnapshot("00000000-0000-0000-0000-000000000001", "v1"))
 	draft.Workflows[0].Steps[0].DisplayName = strings.Repeat("x", MaxStringBytes+1)
-	if _, err := Seal(draft); err == nil || !strings.Contains(err.Error(), "string exceeds") {
-		t.Fatalf("Seal() error = %v, want string aggregate limit", err)
-	}
+	_, err := Seal(draft)
+	requireCreateInstancePlanRejection(t, err, "string exceeds")
 
 	draft = validDraftWithNodes(validNodeSnapshot("00000000-0000-0000-0000-000000000001", "v1"))
 	draft.Workflows = make([]WorkflowSnapshot, MaxDraftWorkflows+1)
-	if err := draft.Validate(); err == nil || !strings.Contains(err.Error(), "collection limit") {
-		t.Fatalf("Validate() error = %v, want collection limit", err)
-	}
+	requireCreateInstancePlanRejection(t, draft.Validate(), "collection limit")
 }
 
 func TestExecutionBudgetAggregatesAllEntryOccurrences(t *testing.T) {
@@ -501,9 +484,8 @@ func TestAggregateCollectionLimitsRejectEmptyEntriesBeforeSealClone(t *testing.T
 		t.Run(test.name, func(t *testing.T) {
 			draft := validDraftWithNodes(validNodeSnapshot("00000000-0000-0000-0000-000000000001", "v1"))
 			test.mutate(&draft)
-			if _, err := Seal(draft); err == nil || !strings.Contains(err.Error(), "aggregate collection elements") {
-				t.Fatalf("Seal() error = %v, want aggregate collection-elements limit", err)
-			}
+			_, err := Seal(draft)
+			requireCreateInstancePlanRejection(t, err, "aggregate collection elements")
 		})
 	}
 }

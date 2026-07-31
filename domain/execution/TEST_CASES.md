@@ -42,10 +42,8 @@
 | `ExecutionStatus.CanTransitionTo` | [`domain/execution/status.go`](../../domain/execution/status.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Parameter.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Draft.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowSnapshot.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Reference.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Validation.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidationGroup.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `WorkflowSnapshot.Validate` | [`domain/execution/step_shape.go`](../../domain/execution/step_shape.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Validation.Validate` | [`domain/execution/step_shape.go`](../../domain/execution/step_shape.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `WorkerFence.Validate` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `StaleWorkerFenceError.Error` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `StaleWorkerFenceError.Is` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -128,6 +126,10 @@
 | `TestAggregateCollectionLimitsRejectEmptyEntriesBeforeSealClone` | `Aggregate Collection Limits Reject Empty Entries Before Seal Clone`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/validation_test.go`](../../domain/execution/validation_test.go) · `TestAggregateCollectionLimitsRejectEmptyEntriesBeforeSealClone` |
 | `TestExecutionStatusTransitionMatrix` | `Execution Status Transition Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/validation_test.go`](../../domain/execution/validation_test.go) · `TestExecutionStatusTransitionMatrix` |
 | `TestExecutionStatusRejectsUnknownAndTerminalTransitions` | `Execution Status Rejects Unknown And Terminal Transitions`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/validation_test.go`](../../domain/execution/validation_test.go) · `TestExecutionStatusRejectsUnknownAndTerminalTransitions` |
+| `TestWorkflowSnapshotValidateViolationOrderIsDeterministic` | 重复校验同一个含重复参数名的畸形 `WorkflowSnapshot` 50 次。 | `EXECUTION_CREATE_INSTANCE_STEP_SHAPE_INVALID` 每次返回完全相同顺序的 violation 序列；顺序仅是输入的函数。 | [`domain/execution/envelope_determinism_test.go`](../../domain/execution/envelope_determinism_test.go) · `TestWorkflowSnapshotValidateViolationOrderIsDeterministic` |
+| `TestWorkflowSnapshotValidateCapsViolationsAtDeterministicPrefix` | 构造 `fault.MaxViolations+8` 个各自都不合法的顶层 step。 | 返回的 violation 数量精确等于 `fault.MaxViolations`，且全部落在 `steps`/`CodeFieldInvalid`，即保留确定性的前缀。 | [`domain/execution/envelope_determinism_test.go`](../../domain/execution/envelope_determinism_test.go) · `TestWorkflowSnapshotValidateCapsViolationsAtDeterministicPrefix` |
+| `TestValidateEnvironmentSnapshotViolationOrderIsDeterministic` | 重复校验同一个含多个非法环境变量名的 `EnvironmentSnapshot` 50 次。 | `EXECUTION_ENVIRONMENT_SNAPSHOT_INVALID` 每次返回完全相同顺序的 violation 序列；变量按键排序遍历，顺序仅是输入的函数。 | [`domain/execution/envelope_determinism_test.go`](../../domain/execution/envelope_determinism_test.go) · `TestValidateEnvironmentSnapshotViolationOrderIsDeterministic` |
+| `TestValidateEnvironmentSnapshotCapsViolationsAtDeterministicPrefix` | 构造 `fault.MaxViolations+8` 个各自都不合法的环境变量名。 | 返回的 violation 数量精确等于 `fault.MaxViolations`，且全部落在 `environment.variables`/`CodeFieldInvalid`，即保留排序后的确定性前缀。 | [`domain/execution/envelope_determinism_test.go`](../../domain/execution/envelope_determinism_test.go) · `TestValidateEnvironmentSnapshotCapsViolationsAtDeterministicPrefix` |
 
 ## Cross-cutting / Conformance Cases
 

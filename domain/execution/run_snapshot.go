@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash"
 	"math"
-	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -134,7 +133,20 @@ func (s RunSnapshot) Environment() EnvironmentSnapshot {
 	return result
 }
 
+// SealRunSnapshot classifies its own validation failure at this exported
+// boundary: an uncoded shape defect becomes
+// EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, while a failure already
+// classified by the execution plan, a workflow's step-shape envelope, or the
+// environment/screenshot/healer envelope passes through unchanged.
 func SealRunSnapshot(input RunSnapshotInput) (RunSnapshot, error) {
+	sealed, err := sealRunSnapshotShape(input)
+	if err != nil {
+		return RunSnapshot{}, classifyCreateInstanceSnapshot(err)
+	}
+	return sealed, nil
+}
+
+func sealRunSnapshotShape(input RunSnapshotInput) (RunSnapshot, error) {
 	if err := preflightRunSnapshot(input); err != nil {
 		return RunSnapshot{}, err
 	}
@@ -149,13 +161,18 @@ func SealRunSnapshot(input RunSnapshotInput) (RunSnapshot, error) {
 	encodeSnapshot(&encoder, input)
 	return RunSnapshot{input: input, digest: "sha256:" + hex.EncodeToString(digester.Sum(nil))}, nil
 }
+
+// HydrateRunSnapshot reuses EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT — the
+// code application/scheduling already publishes for the same remediation
+// (re-read the authoritative instance before retrying) — rather than minting
+// a second code for the same meaning.
 func HydrateRunSnapshot(input RunSnapshotInput, storedDigest string) (RunSnapshot, error) {
 	sealed, err := SealRunSnapshot(input)
 	if err != nil {
 		return RunSnapshot{}, err
 	}
 	if storedDigest != sealed.Digest() {
-		return RunSnapshot{}, errors.New("run snapshot digest mismatch")
+		return RunSnapshot{}, createInstanceSnapshotConflictError()
 	}
 	return sealed, nil
 }
@@ -418,7 +435,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 		return errors.New("execution plan identity is inconsistent")
 	}
 	if err := v.Plan.Validate(); err != nil {
-		return fmt.Errorf("execution plan: %w", err)
+		return err
 	}
 	indexes, err := buildSnapshotValidationIndexes(v.Plan)
 	if err != nil {
@@ -492,7 +509,9 @@ func validateSnapshot(v RunSnapshotInput) error {
 			for name, binding := range invocation.Bindings {
 				resolved, err := binding.Resolve(parent.Values)
 				if err != nil {
-					return fmt.Errorf("invocation %s binding %s: %w", invocation.Path, name, err)
+					return wrapOrPropagate(err, func(cause error) error {
+						return fmt.Errorf("invocation %s binding %s: %w", invocation.Path, name, cause)
+					})
 				}
 				resolvedValues[name] = resolved
 			}
@@ -509,7 +528,9 @@ func validateSnapshot(v RunSnapshotInput) error {
 				}
 			}
 			if err := validateSnapshotValues(target.Parameters, resolvedValues); err != nil {
-				return fmt.Errorf("invocation %s parameter values: %w", invocation.Path, err)
+				return wrapOrPropagate(err, func(cause error) error {
+					return fmt.Errorf("invocation %s parameter values: %w", invocation.Path, cause)
+				})
 			}
 			if !equalValues(resolvedValues, invocation.Values) {
 				return errors.New("invocation values and bindings diverge")
@@ -549,13 +570,7 @@ func validateSnapshot(v RunSnapshotInput) error {
 	if !v.FailurePolicy.IsValid() {
 		return errors.New("invalid failure policy")
 	}
-	if err := validateEnvironmentSnapshot(v.SchemaVersion, v.Environment); err != nil {
-		return err
-	}
-	if err := validateScreenshot(v.ScreenshotPolicy); err != nil {
-		return err
-	}
-	if err := validateHealer(v.HealerPolicy); err != nil {
+	if err := validateEnvironmentSnapshot(v.SchemaVersion, v.Environment, v.ScreenshotPolicy, v.HealerPolicy); err != nil {
 		return err
 	}
 	return nil
@@ -614,74 +629,6 @@ func equalValues(left, right map[string]parameter.Value) bool {
 	}
 	return true
 }
-
-func validateEnvironmentSnapshot(schemaVersion RunSnapshotSchema, v EnvironmentSnapshot) error {
-	if v.Revision == 0 {
-		return errors.New("environment revision must be positive")
-	}
-	if !validString(v.ID, true) || !validString(v.DisplayName, true) || !validString(v.BaseURL, false) {
-		return errors.New("invalid environment identity")
-	}
-	if v.BaseURL != "" {
-		u, e := url.ParseRequestURI(v.BaseURL)
-		if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
-			return errors.New("environment base URL must be an absolute HTTP(S) URL without credentials")
-		}
-	}
-	if schemaVersion == RunSnapshotSchemaV1 {
-		if len(v.Variables) != 0 {
-			return errors.New("V1 environment snapshot cannot contain typed variables")
-		}
-		for name, value := range v.Properties {
-			if parameter.ValidateName(name) != nil || !validString(value, false) {
-				return errors.New("invalid environment property")
-			}
-		}
-		return nil
-	}
-	if len(v.Properties) != 0 {
-		return errors.New("V2 environment snapshot cannot contain legacy properties")
-	}
-	for name, value := range v.Variables {
-		if err := parameter.ValidateName(name); err != nil {
-			return fmt.Errorf("invalid environment variable name: %w", err)
-		}
-		if err := value.Validate(); err != nil {
-			return fmt.Errorf("environment variable %q: %w", name, err)
-		}
-	}
-	return nil
-}
-func validateScreenshot(v ScreenshotPolicySnapshot) error {
-	if v.Version != ScreenshotPolicyV1 {
-		return errors.New("invalid screenshot policy version")
-	}
-	if !validString(v.Destination, false) || (v.Enabled && strings.TrimSpace(v.Destination) == "") {
-		return errors.New("invalid screenshot policy destination")
-	}
-	return nil
-}
-func validateHealer(v HealerPolicySnapshot) error {
-	if v.Version != HealerPolicyV1 {
-		return errors.New("invalid healer policy version")
-	}
-	if !unit(v.ReviewCap) || !unit(v.AppliedCap) || v.ReviewCap >= v.AppliedCap {
-		return errors.New("invalid healer thresholds")
-	}
-	weights := []float64{v.Weights.Tag, v.Weights.ID, v.Weights.RoleName, v.Weights.Class, v.Weights.Attrs, v.Weights.Text, v.Weights.Index, v.Weights.Neighbor, v.Weights.LabelText, v.Weights.Container}
-	total := 0.0
-	for _, x := range weights {
-		if math.IsNaN(x) || math.IsInf(x, 0) || x < 0 {
-			return errors.New("invalid healer weight")
-		}
-		total += x
-	}
-	if total == 0 || math.IsInf(total, 0) {
-		return errors.New("healer weights require a positive finite total")
-	}
-	return nil
-}
-func unit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v <= 1 }
 
 type canonicalEncoder struct{ writer hash.Hash }
 

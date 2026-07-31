@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -83,9 +84,7 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			value := test.build()
 			test.mutate(&value)
-			if err := value.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
-			}
+			requireCreateInstancePlanRejection(t, value.Validate(), test.want)
 		})
 	}
 }
@@ -111,9 +110,7 @@ func TestSealCanonicalizesMultipleEntryOrder(t *testing.T) {
 func TestWorkflowSnapshotValidateRejectsMissingSteps(t *testing.T) {
 	workflow := validWorkflowSnapshot()
 	workflow.Steps = nil
-	if err := workflow.Validate(); err == nil || !strings.Contains(err.Error(), "at least one step") {
-		t.Fatalf("Validate() error = %v", err)
-	}
+	requireStepShapeViolation(t, workflow.Validate(), "steps", fault.CodeFieldRequired)
 }
 
 func TestRunConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
@@ -124,9 +121,8 @@ func TestRunConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
 	base := Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
 	mismatch := base
 	mismatch.ID = "other"
-	if _, err := NewRun(mismatch, snapshot); err == nil || !strings.Contains(err.Error(), "identity must match") {
-		t.Fatalf("NewRun() error = %v", err)
-	}
+	_, err = NewRun(mismatch, snapshot)
+	requireCreateInstanceSnapshotRejection(t, err, "identity must match")
 	queued, err := NewRun(base, snapshot)
 	if err != nil {
 		t.Fatal(err)
