@@ -10,6 +10,7 @@ This registry defines the stable public error-code contract. A code is immutable
 - Violations are allowed only on aggregate input codes and are ordered deterministically.
 - Violation reason codes are owned by the shared kernel and listed under "Violation codes". They are the only codes without a bounded-context prefix, and they may appear only as a `Violation` code, never as a top-level `Error` code.
 - Unregistered production fault codes, duplicate codes, cross-context prefixes, and public `errors.New` sentinels are contract violations.
+- When the guard in `architecture/fault_contract_guard_test.go` reports a Kind or message disagreement, **fix the code, never the published row**. The test cannot tell a wrong implementation from a rewritten protocol, and rewriting the row to match the code silently breaks every host already switching on it. A published code's Kind and meaning are immutable; if the implementation genuinely needs different behaviour, that is a new code, not an edited one.
 
 ## Violation codes
 
