@@ -1,15 +1,12 @@
 package execution
 
 import (
-	"errors"
 	"sort"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
-
-// ErrUnsealedPlan identifies a Plan value that was not created by Seal.
-var ErrUnsealedPlan = errors.New("execution plan is unsealed")
 
 type planSeal struct {
 	marker byte
@@ -182,7 +179,7 @@ func (p Plan) IsSealed() bool { return p.seal == sealedPlanToken }
 // Validate checks that the plan carries the Seal invariant.
 func (p Plan) Validate() error {
 	if !p.IsSealed() {
-		return ErrUnsealedPlan
+		return mustExecutionFault(fault.FailedPrecondition, CodePlanUnsealed, "execution plan must be sealed")
 	}
 	return nil
 }

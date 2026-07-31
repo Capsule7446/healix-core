@@ -1,13 +1,13 @@
 package engine
 
 import (
-	"errors"
 	"fmt"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 	"testing"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
@@ -159,8 +159,8 @@ func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
 
 func TestCompilePlanRejectsUnsealedPlanWithDomainError(t *testing.T) {
 	_, err := compilePlanForTest(execution.Plan{})
-	if !errors.Is(err, execution.ErrUnsealedPlan) {
-		t.Fatalf("compilePlanForTest() error = %v, want ErrUnsealedPlan", err)
+	if !fault.IsCode(err, execution.CodePlanUnsealed) {
+		t.Fatalf("compilePlanForTest() error = %v, want %v", err, execution.CodePlanUnsealed)
 	}
 }
 

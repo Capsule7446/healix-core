@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -140,8 +141,8 @@ func TestPlanSealState(t *testing.T) {
 			if got := plan.IsSealed(); got != test.wantSealed {
 				t.Fatalf("IsSealed() = %v, want %v", got, test.wantSealed)
 			}
-			if err := plan.Validate(); !test.wantSealed && !errors.Is(err, ErrUnsealedPlan) {
-				t.Fatalf("Validate() error = %v, want ErrUnsealedPlan", err)
+			if err := plan.Validate(); !test.wantSealed && !fault.IsCode(err, CodePlanUnsealed) {
+				t.Fatalf("Validate() error = %v, want %v", err, CodePlanUnsealed)
 			} else if test.wantSealed && err != nil {
 				t.Fatalf("Validate() error = %v", err)
 			}
