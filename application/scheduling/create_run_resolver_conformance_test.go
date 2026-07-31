@@ -10,6 +10,7 @@ import (
 	"github.com/Capsule7446/healix-core/application/engine"
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -410,9 +411,9 @@ func TestOneViewResolverRejectsCycleAndConfiguredLimits(t *testing.T) {
 }
 
 func TestOneViewResolverSeparatesRetryableAdapterErrors(t *testing.T) {
-	err := fmt.Errorf("transaction read: %w", &CreateRunRetryableError{Operation: "read catalog", Cause: errors.New("serialization")})
-	var typed *CreateRunRetryableError
-	if !errors.Is(err, ErrCreateRunRetryable) || !errors.As(err, &typed) || errors.Is(err, ErrCreateRunCatalogGraph) {
+	cause := errors.New("serialization")
+	err := fmt.Errorf("transaction read: %w", createRunRetryableError(cause))
+	if !fault.IsCode(err, CodeCreateRunRetryable) || !errors.Is(err, cause) || errors.Is(err, ErrCreateRunCatalogGraph) {
 		t.Fatalf("error category drifted: %v", err)
 	}
 }

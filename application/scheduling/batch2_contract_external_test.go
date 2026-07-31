@@ -31,5 +31,6 @@ func TestBatch2PublicCommandContractsCompile(t *testing.T) {
 	_ = app.CodeCreateRunCommandConflict
 	_ = app.CodeCreateRunSnapshotConflict
 	_ = app.CodeCreateRunAdapterContractViolation
+	_ = app.CodeCreateRunRetryable
 	_ = context.Background()
 }

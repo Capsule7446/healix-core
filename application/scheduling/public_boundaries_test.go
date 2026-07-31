@@ -120,7 +120,7 @@ func TestCreateRunAdapterContractViolationExposesSafeStableContract(t *testing.T
 	}
 }
 
-func TestCreateRunTypedErrorsCoverNilCauseAndUnwrap(t *testing.T) {
+func TestCreateRunCatalogGraphTypedErrorCoversNilCauseAndUnwrap(t *testing.T) {
 	catalog := &CreateRunCatalogGraphError{Operation: "resolve"}
 	if got := catalog.Error(); !strings.Contains(got, "resolve") || strings.HasSuffix(got, ": ") {
 		t.Fatalf("catalog error = %q", got)
@@ -128,13 +128,25 @@ func TestCreateRunTypedErrorsCoverNilCauseAndUnwrap(t *testing.T) {
 	if catalog.Unwrap() != nil || !errors.Is(catalog, ErrCreateRunCatalogGraph) {
 		t.Fatalf("catalog classification/unwrap = %v/%v", errors.Is(catalog, ErrCreateRunCatalogGraph), catalog.Unwrap())
 	}
+}
 
-	retryable := &CreateRunRetryableError{Operation: "transaction"}
-	if got := retryable.Error(); !strings.Contains(got, "transaction") || strings.HasSuffix(got, ": ") {
-		t.Fatalf("retryable error = %q", got)
+func TestCreateRunRetryableErrorExposesSafeStableContract(t *testing.T) {
+	cause := errors.New("transaction=transaction-secret command=command-secret")
+	err := createRunRetryableError(cause)
+	descriptor, ok := fault.Describe(err)
+	if !ok ||
+		descriptor.Code() != CodeCreateRunRetryable ||
+		descriptor.Kind() != fault.Unavailable ||
+		descriptor.Message() != "create-run outcome is temporarily unavailable" ||
+		len(descriptor.Params()) != 0 ||
+		len(descriptor.Violations()) != 0 ||
+		!errors.Is(err, cause) {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
 	}
-	if retryable.Unwrap() != nil || !errors.Is(retryable, ErrCreateRunRetryable) {
-		t.Fatalf("retryable classification/unwrap = %v/%v", errors.Is(retryable, ErrCreateRunRetryable), retryable.Unwrap())
+	for _, sensitive := range []string{"transaction-secret", "command-secret", cause.Error()} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("public error leaked %q: %q", sensitive, err.Error())
+		}
 	}
 }
 

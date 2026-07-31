@@ -131,6 +131,21 @@ func createRunAdapterContractViolationError(cause error) error {
 	return err
 }
 
+const CodeCreateRunRetryable fault.Code = "EXECUTION_CREATE_RUN_RETRYABLE"
+
+func createRunRetryableError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.Unavailable,
+		CodeCreateRunRetryable,
+		"create-run outcome is temporarily unavailable",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
 type CreateRunCatalogGraphError struct {
 	Operation string
 	Cause     error
@@ -145,23 +160,8 @@ func (e *CreateRunCatalogGraphError) Error() string {
 func (e *CreateRunCatalogGraphError) Is(target error) bool { return target == ErrCreateRunCatalogGraph }
 func (e *CreateRunCatalogGraphError) Unwrap() error        { return e.Cause }
 
-type CreateRunRetryableError struct {
-	Operation string
-	Cause     error
-}
-
-func (e *CreateRunRetryableError) Error() string {
-	if e.Cause == nil {
-		return "retryable create-run transaction or catalog conflict: " + e.Operation
-	}
-	return "retryable create-run transaction or catalog conflict: " + e.Operation + ": " + e.Cause.Error()
-}
-func (e *CreateRunRetryableError) Is(target error) bool { return target == ErrCreateRunRetryable }
-func (e *CreateRunRetryableError) Unwrap() error        { return e.Cause }
-
 var (
 	ErrCreateRunCatalogGraph = errors.New("create-run catalog graph not found or invalid")
-	ErrCreateRunRetryable    = errors.New("retryable create-run transaction or catalog conflict")
 )
 
 type CreateRunStore interface {

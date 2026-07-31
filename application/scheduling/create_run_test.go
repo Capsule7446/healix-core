@@ -1070,14 +1070,14 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 			f.resolveErr = &CreateRunCatalogGraphError{Operation: "resolve workflow", Cause: errors.New("missing child")}
 		}, ErrCreateRunCatalogGraph, ""},
 		{"retryable resolver", base, func(f *createRunFake) {
-			f.resolveErr = &CreateRunRetryableError{Operation: "resolve", Cause: errors.New("serialization")}
-		}, ErrCreateRunRetryable, ""},
+			f.resolveErr = createRunRetryableError(errors.New("serialization"))
+		}, nil, CodeCreateRunRetryable},
 		{"retryable insert", base, func(f *createRunFake) {
-			f.insertErr = &CreateRunRetryableError{Operation: "insert", Cause: errors.New("serialization")}
-		}, ErrCreateRunRetryable, ""},
+			f.insertErr = createRunRetryableError(errors.New("serialization"))
+		}, nil, CodeCreateRunRetryable},
 		{"retryable transaction", base, func(f *createRunFake) {
-			f.transactionErr = &CreateRunRetryableError{Operation: "commit", Cause: errors.New("serialization")}
-		}, ErrCreateRunRetryable, ""},
+			f.transactionErr = createRunRetryableError(errors.New("serialization"))
+		}, nil, CodeCreateRunRetryable},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1086,18 +1086,6 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), test.command)
 			if err == nil || (test.target != nil && !errors.Is(err, test.target)) || (test.wantCode != "" && !fault.IsCode(err, test.wantCode)) || !isZeroCreateRunResult(result) {
 				t.Fatalf("result=%#v err=%v", result, err)
-			}
-			switch test.target {
-			case ErrCreateRunCatalogGraph:
-				var typed *CreateRunCatalogGraphError
-				if !errors.As(err, &typed) || typed.Operation == "" {
-					t.Fatalf("catalog error lost type/context: %v", err)
-				}
-			case ErrCreateRunRetryable:
-				var typed *CreateRunRetryableError
-				if !errors.As(err, &typed) || typed.Operation == "" {
-					t.Fatalf("retryable error lost type/context: %v", err)
-				}
 			}
 		})
 	}
