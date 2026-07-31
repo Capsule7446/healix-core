@@ -63,9 +63,16 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			publication := samplingCreatePublication().Clone()
 			test.mutate(&publication)
-			if err := publication.Validate(); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.want)
+			err := publication.Validate()
+			// One case exercises a revision failure that carries its own code and
+			// therefore passes through the content classifier untouched.
+			if strings.HasPrefix(test.want, "AUTOMATION_") {
+				if !fault.IsCode(err, fault.Code(test.want)) {
+					t.Fatalf("Validate() error = %v, want code %s", err, test.want)
+				}
+				return
 			}
+			requireSamplingPublicationRejection(t, err, test.want)
 		})
 	}
 }

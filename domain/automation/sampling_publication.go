@@ -56,7 +56,14 @@ func containsReferenceableElementTargetVersion(aggregate ElementTargetAggregate,
 	return false
 }
 
+// Validate classifies at this single exported boundary. The checks below stay
+// ordinary Go errors and travel on as a private cause; identities never reach
+// public text.
 func (p SamplingPublication) Validate() error {
+	return classifySamplingPublicationContent(p.validateContent())
+}
+
+func (p SamplingPublication) validateContent() error {
 	if err := p.FlowFragment.Validate(); err != nil {
 		return fmt.Errorf("sampled workflow: %w", err)
 	}

@@ -220,3 +220,26 @@ func TestExecutionFlowAggregateValidatePropagatesVersionEnvelope(t *testing.T) {
 	aggregate.Versions[0].Items[0].FlowFragmentID = " "
 	requireExecutionFlowViolation(t, aggregate.Validate(), fault.CodeFieldRequired, "items.0.flowFragmentId")
 }
+
+// requireSamplingPublicationRejection asserts the boundary split: the host
+// switches on the content code, and the detail — which names nodes by position
+// and never by identity — survives only on the private cause.
+func requireSamplingPublicationRejection(t *testing.T, err error, wantDetail string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("an invalid sampling publication was accepted")
+	}
+	if !fault.IsCode(err, CodeSamplingPublicationContentInvalid) {
+		t.Fatalf("error = %v, want code %s", err, CodeSamplingPublicationContentInvalid)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Kind() != fault.InvalidArgument {
+		t.Fatalf("descriptor = %#v (ok=%v)", descriptor, ok)
+	}
+	if strings.Contains(descriptor.Message(), wantDetail) {
+		t.Fatalf("public message %q carries the detail %q", descriptor.Message(), wantDetail)
+	}
+	if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), wantDetail) {
+		t.Fatalf("private cause = %v, want it to retain %q", cause, wantDetail)
+	}
+}

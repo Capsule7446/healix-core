@@ -170,9 +170,7 @@ func TestSamplingPublicationValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			publication := valid.Clone()
 			tt.mutate(&publication)
-			if err := publication.Validate(); err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, tt.want)
-			}
+			requireSamplingPublicationRejection(t, publication.Validate(), tt.want)
 		})
 	}
 }
@@ -189,9 +187,7 @@ func TestSamplingPublicationValidatesReuseAuthority(t *testing.T) {
 	}
 
 	node.ExpectedCurrentVersionID = "stale-version"
-	if err := publication.Validate(); err == nil || !strings.Contains(err.Error(), "reuse must keep") {
-		t.Fatalf("invalid reuse error = %v", err)
-	}
+	requireSamplingPublicationRejection(t, publication.Validate(), "reuse must keep")
 }
 
 func TestSamplingPublicationRejectsInvalidMergeAuthority(t *testing.T) {
@@ -200,9 +196,7 @@ func TestSamplingPublicationRejectsInvalidMergeAuthority(t *testing.T) {
 	node.ResolutionMode = "MERGE"
 	node.ExpectedRevision = node.Aggregate.ElementTarget.Revision
 	node.ExpectedCurrentVersionID = node.Aggregate.Current.ID
-	if err := publication.Validate(); err == nil || !strings.Contains(err.Error(), "merge requires current revision") {
-		t.Fatalf("invalid merge error = %v", err)
-	}
+	requireSamplingPublicationRejection(t, publication.Validate(), "merge requires current revision")
 }
 
 func TestNodeDependencyIdentitySeparatesAmbiguousPairs(t *testing.T) {

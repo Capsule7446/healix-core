@@ -3,9 +3,10 @@ package automation
 import "github.com/Capsule7446/healix-core/domain/fault"
 
 const (
-	CodeExecutionFlowInvalid           fault.Code = "AUTOMATION_EXECUTION_FLOW_INVALID"
-	CodeExecutionFlowHistoryInvalid    fault.Code = "AUTOMATION_EXECUTION_FLOW_HISTORY_INVALID"
-	CodeExecutionFlowDependencyInvalid fault.Code = "AUTOMATION_EXECUTION_FLOW_DEPENDENCY_INVALID"
+	CodeExecutionFlowInvalid              fault.Code = "AUTOMATION_EXECUTION_FLOW_INVALID"
+	CodeExecutionFlowHistoryInvalid       fault.Code = "AUTOMATION_EXECUTION_FLOW_HISTORY_INVALID"
+	CodeExecutionFlowDependencyInvalid    fault.Code = "AUTOMATION_EXECUTION_FLOW_DEPENDENCY_INVALID"
+	CodeSamplingPublicationContentInvalid fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID"
 
 	CodePersistedRevisionInvalid          fault.Code = "AUTOMATION_PERSISTED_REVISION_INVALID"
 	CodeRevisionExhausted                 fault.Code = "AUTOMATION_REVISION_EXHAUSTED"
@@ -113,6 +114,26 @@ func executionFlowHistoryInvalidError(violations []fault.Violation) error {
 // graph by re-resolving the catalog, not by editing a field.
 func executionFlowDependencyInvalidError(violations []fault.Violation) error {
 	return mustAutomationFault(fault.InvalidArgument, CodeExecutionFlowDependencyInvalid, "execution flow dependency resolution is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// classifySamplingPublicationContent classifies the publication's content shape
+// at its one exported boundary. The dozen checks inside stay ordinary Go errors,
+// which the contract permits for internal invariants, and travel on as a private
+// cause; only the crossing needs a code. An already-classified failure — a node
+// aggregate's own fault, or a revision code — passes through rather than being
+// buried under a second one.
+//
+// This code is distinct from the four AUTOMATION_SAMPLING_PUBLICATION_* codes
+// produced in application/automation: those are transaction-level (digest,
+// availability, adapter contract, authority), this one is content-level.
+func classifySamplingPublicationContent(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	return wrapAutomationFault(cause, fault.InvalidArgument, CodeSamplingPublicationContentInvalid, "sampling publication content is invalid")
 }
 
 // capViolations keeps the deterministic leading prefix when an aggregate exceeds
