@@ -9,13 +9,27 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/evidence"
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 var (
 	ErrStepRevisionConflict   = errors.New("step revision conflict")
 	ErrCommitIdentityConflict = errors.New("step transition commit identity conflict")
-	ErrFactCommitterRequired  = errors.New("fact committer is required")
 )
+
+const CodeFactCommitterRequired fault.Code = "EXECUTION_FACT_COMMITTER_REQUIRED"
+
+func FactCommitterRequiredError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeFactCommitterRequired,
+		"execution fact committer is required",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 const (
 	MaxStepTransitionPayloadBytes = 1 << 20
@@ -101,7 +115,7 @@ func NewFactCommitter(transaction StepTransitionTransaction, planner HealGoverna
 
 func (c FactCommitter) CommitStepTransition(ctx context.Context, fence domainexecution.WorkerFence, commit evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
 	if isNilInterface(c.transaction) {
-		return evidence.StepTransitionCommitResult{}, ErrFactCommitterRequired
+		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
 	if isNilInterface(c.planner) {
 		return evidence.StepTransitionCommitResult{}, fmt.Errorf("heal governance planner is required")
@@ -119,7 +133,7 @@ func NewStepTransitionService(committer FactCommitter) StepTransitionService {
 
 func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution.WorkerFence, commit evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
 	if isNilInterface(s.committer.transaction) || isNilInterface(s.committer.planner) {
-		return evidence.StepTransitionCommitResult{}, ErrFactCommitterRequired
+		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
 	if err := fence.Validate(); err != nil {
 		return evidence.StepTransitionCommitResult{}, fmt.Errorf("validate worker fence: %w", err)

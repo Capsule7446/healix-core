@@ -11,6 +11,7 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/evidence"
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type fakeTransaction struct{}
@@ -298,7 +299,7 @@ func TestStepTransitionServiceRejectsNilCommitter(t *testing.T) {
 	var typedNil *recordingTransaction
 	for _, committer := range []FactCommitter{{}, NewFactCommitter(nil, NewDefaultHealGovernancePlanner()), NewFactCommitter(typedNil, NewDefaultHealGovernancePlanner())} {
 		_, err := NewStepTransitionService(committer).Commit(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, validStepTransitionCommit())
-		if !errors.Is(err, ErrFactCommitterRequired) {
+		if !fault.IsCode(err, CodeFactCommitterRequired) {
 			t.Fatalf("Commit() error = %v", err)
 		}
 	}
@@ -328,11 +329,11 @@ func TestFactCommitterRejectsMissingDependenciesAndDelegatesAuthoritatively(t *t
 	tests := []struct {
 		name      string
 		committer FactCommitter
-		want      error
+		wantCode  fault.Code
 		wantText  string
 	}{
-		{name: "missing transaction", committer: NewFactCommitter(nil, &plannerFixture{}), want: ErrFactCommitterRequired},
-		{name: "typed nil transaction", committer: NewFactCommitter(typedNilTransaction, &plannerFixture{}), want: ErrFactCommitterRequired},
+		{name: "missing transaction", committer: NewFactCommitter(nil, &plannerFixture{}), wantCode: CodeFactCommitterRequired},
+		{name: "typed nil transaction", committer: NewFactCommitter(typedNilTransaction, &plannerFixture{}), wantCode: CodeFactCommitterRequired},
 		{name: "missing planner", committer: NewFactCommitter(&recordingTransaction{}, nil), wantText: "heal governance planner is required"},
 		{name: "typed nil planner", committer: NewFactCommitter(&recordingTransaction{}, typedNilPlanner), wantText: "heal governance planner is required"},
 	}
@@ -342,8 +343,8 @@ func TestFactCommitterRejectsMissingDependenciesAndDelegatesAuthoritatively(t *t
 			if err == nil || !reflect.DeepEqual(result, evidence.StepTransitionCommitResult{}) {
 				t.Fatalf("CommitStepTransition() = (%#v, %v)", result, err)
 			}
-			if test.want != nil && !errors.Is(err, test.want) {
-				t.Fatalf("error = %v, want %v", err, test.want)
+			if test.wantCode != "" && !fault.IsCode(err, test.wantCode) {
+				t.Fatalf("error = %v, want code %v", err, test.wantCode)
 			}
 			if test.wantText != "" && !strings.Contains(err.Error(), test.wantText) {
 				t.Fatalf("error = %v, want text %q", err, test.wantText)
