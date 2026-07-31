@@ -87,6 +87,57 @@ func TestMapSamplingPublicationModes(t *testing.T) {
 	}
 }
 
+func TestMapSamplingPublicationAllowsHistoricalReuse(t *testing.T) {
+	current := sampledCurrentNode(t)
+	versioned, err := current.PublishVersion(
+		"existing-v2",
+		"/current",
+		"current",
+		sampledSelector("#current"),
+		sampledFingerprint("current"),
+		domainautomation.SourceManual,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("PublishVersion: %v", err)
+	}
+
+	publication, err := MapSamplingPublication(SamplingPublicationRequest{
+		FlowFragmentID:    "workflow",
+		WorkflowVersionID: "workflow-v1",
+		PublishedAt:       3,
+		Workspace:         sampledWorkflow(sampling.ResolutionModeReuse),
+		Nodes: []SamplingNodeAuthority{{
+			TemporaryElementTargetID: "temporary-node",
+			ElementTargetID:          "existing",
+			ElementTargetVersionID:   "existing-v1",
+			Current:                  &versioned,
+			ExpectedRevision:         versioned.ElementTarget.Revision,
+			ExpectedCurrentVersionID: versioned.Current.ID,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("MapSamplingPublication: %v", err)
+	}
+
+	decision := publication.Nodes[0]
+	if decision.Aggregate.Current.ID != "existing-v1" || decision.Aggregate.ElementTarget.CurrentVersionID != "existing-v2" {
+		t.Fatalf("reuse projection = current %q / persisted pointer %q, want selected historical version with current CAS pointer", decision.Aggregate.Current.ID, decision.Aggregate.ElementTarget.CurrentVersionID)
+	}
+	if decision.Aggregate.Current.Selectors[0].Value != "#old" {
+		t.Fatalf("reuse selected version content = %#v, want historical version", decision.Aggregate.Current)
+	}
+	decision.Aggregate.Current.Selectors[0].Value = "#mutated"
+	decision.Aggregate.Current.Fingerprint.Attributes["id"] = "mutated"
+	if versioned.Versions[0].Selectors[0].Value != "#old" || versioned.Versions[0].Fingerprint.Attributes["id"] != "old" {
+		t.Fatal("historical reuse publication aliases authoritative history")
+	}
+	step := publication.FlowFragment.Current.Definition.Steps[0].Children[0]
+	if step.ElementTargetID != "existing" || step.ElementTargetVersionID != "existing-v1" {
+		t.Fatalf("rewritten step = %#v, want fixed historical version", step)
+	}
+}
+
 func TestMapSamplingPublicationRejectsInvalidAuthority(t *testing.T) {
 	current := sampledCurrentNode(t)
 	tests := []struct {
@@ -97,6 +148,7 @@ func TestMapSamplingPublicationRejectsInvalidAuthority(t *testing.T) {
 		{name: "undecided", mode: sampling.ResolutionModeUndecided, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}}},
 		{name: "stale merge revision", mode: sampling.ResolutionModeMerge, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v2", Current: &current, ExpectedRevision: current.ElementTarget.Revision + 1, ExpectedCurrentVersionID: current.Current.ID}}},
 		{name: "stale reuse version", mode: sampling.ResolutionModeReuse, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v1", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: "stale"}}},
+		{name: "missing historical reuse version", mode: sampling.ResolutionModeReuse, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "missing", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: current.Current.ID}}},
 		{name: "missing authority", mode: sampling.ResolutionModeCreate},
 		{name: "duplicate formal node", mode: sampling.ResolutionModeCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, {TemporaryElementTargetID: "extra", ElementTargetID: "node", ElementTargetVersionID: "extra-v1"}}},
 		{name: "extra authority", mode: sampling.ResolutionModeCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, {TemporaryElementTargetID: "extra", ElementTargetID: "extra", ElementTargetVersionID: "extra-v1"}}},

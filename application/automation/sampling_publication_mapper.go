@@ -84,6 +84,15 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	return result, nil
 }
 
+func referenceableElementTargetVersion(aggregate domainautomation.ElementTargetAggregate, versionID string) (domainautomation.ElementTargetVersion, bool) {
+	for _, version := range aggregate.Versions {
+		if version.ID == versionID && version.DeletedAt == 0 {
+			return version, true
+		}
+	}
+	return domainautomation.ElementTargetVersion{}, false
+}
+
 func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority SamplingNodeAuthority, at int64) (domainautomation.SamplingElementTargetPublication, error) {
 	mode := temporary.ResolutionMode
 	publication := domainautomation.SamplingElementTargetPublication{TemporaryElementTargetID: temporary.ID, ResolutionMode: string(mode)}
@@ -110,10 +119,18 @@ func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority Samp
 		}
 		publication.Aggregate, publication.ExpectedRevision, publication.ExpectedCurrentVersionID, publication.PublishVersion = aggregate, authority.ExpectedRevision, authority.ExpectedCurrentVersionID, true
 	case sampling.ResolutionModeReuse:
-		if authority.Current == nil || authority.Current.ElementTarget.ID != authority.ElementTargetID || authority.Current.Current.ID != authority.ElementTargetVersionID || authority.ExpectedRevision == 0 || authority.Current.ElementTarget.Revision != authority.ExpectedRevision || authority.Current.ElementTarget.CurrentVersionID != authority.ExpectedCurrentVersionID || authority.ExpectedCurrentVersionID != authority.ElementTargetVersionID {
-			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires exact current node authority", temporary.ID)
+		if authority.Current == nil || authority.Current.ElementTarget.ID != authority.ElementTargetID || authority.ExpectedRevision == 0 || authority.Current.ElementTarget.Revision != authority.ExpectedRevision || authority.Current.ElementTarget.CurrentVersionID != authority.ExpectedCurrentVersionID || authority.ExpectedCurrentVersionID != authority.Current.Current.ID {
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires exact current aggregate authority", temporary.ID)
+		}
+		if err := authority.Current.ValidateLoadedHistory(); err != nil {
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires valid loaded authority history: %w", temporary.ID, err)
 		}
 		publication.Aggregate = authority.Current.Clone()
+		selected, ok := referenceableElementTargetVersion(publication.Aggregate, authority.ElementTargetVersionID)
+		if !ok {
+			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q reuse requires a referenceable selected version", temporary.ID)
+		}
+		publication.Aggregate.Current = selected
 		publication.ExpectedRevision, publication.ExpectedCurrentVersionID = authority.ExpectedRevision, authority.ExpectedCurrentVersionID
 	case sampling.ResolutionModeUndecided:
 		return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("sampling node %q resolution is undecided", temporary.ID)

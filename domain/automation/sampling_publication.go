@@ -44,6 +44,18 @@ func (p SamplingPublication) Clone() SamplingPublication {
 	return cloned
 }
 
+func containsReferenceableElementTargetVersion(aggregate ElementTargetAggregate, versionID string) bool {
+	if aggregate.Current.ID == versionID && aggregate.Current.DeletedAt == 0 {
+		return true
+	}
+	for _, version := range aggregate.Versions {
+		if version.ID == versionID && version.DeletedAt == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (p SamplingPublication) Validate() error {
 	if err := p.FlowFragment.Validate(); err != nil {
 		return fmt.Errorf("sampled workflow: %w", err)
@@ -65,8 +77,16 @@ func (p SamplingPublication) Validate() error {
 			return fmt.Errorf("duplicate sampled node %q", node.TemporaryElementTargetID)
 		}
 		seen[node.TemporaryElementTargetID] = struct{}{}
-		if err := node.Aggregate.Validate(); err != nil {
-			return fmt.Errorf("sampled node %s: %w", node.TemporaryElementTargetID, err)
+		if node.ResolutionMode != "REUSE" {
+			if err := node.Aggregate.Validate(); err != nil {
+				return fmt.Errorf("sampled node %s: %w", node.TemporaryElementTargetID, err)
+			}
+		}
+		if strings.TrimSpace(node.Aggregate.ElementTarget.ID) == "" || node.Aggregate.Current.ElementTargetID != node.Aggregate.ElementTarget.ID || node.Aggregate.Current.DeletedAt != 0 {
+			return fmt.Errorf("sampled node %s selected version is not referenceable", node.TemporaryElementTargetID)
+		}
+		if node.ResolutionMode != "REUSE" && !containsReferenceableElementTargetVersion(node.Aggregate, node.Aggregate.Current.ID) {
+			return fmt.Errorf("sampled node %s selected version is not referenceable", node.TemporaryElementTargetID)
 		}
 		switch node.ResolutionMode {
 		case "CREATE":
@@ -88,8 +108,8 @@ func (p SamplingPublication) Validate() error {
 				return fmt.Errorf("sampled node %s merge must publish version 2 or later", node.TemporaryElementTargetID)
 			}
 		case "REUSE":
-			if node.ExpectedRevision == 0 || node.PublishVersion || node.ExpectedCurrentVersionID == "" || node.ExpectedCurrentVersionID != node.Aggregate.Current.ID || node.Aggregate.ElementTarget.Revision != node.ExpectedRevision {
-				return fmt.Errorf("sampled node %s reuse must keep the expected current version and revision", node.TemporaryElementTargetID)
+			if node.ExpectedRevision == 0 || node.PublishVersion || node.ExpectedCurrentVersionID == "" || node.Aggregate.ElementTarget.CurrentVersionID != node.ExpectedCurrentVersionID || node.Aggregate.ElementTarget.Revision != node.ExpectedRevision || !containsReferenceableElementTargetVersion(node.Aggregate, node.Aggregate.Current.ID) {
+				return fmt.Errorf("sampled node %s reuse must keep current aggregate authority and select a referenceable version", node.TemporaryElementTargetID)
 			}
 		}
 		if _, ok := formalNodes[node.Aggregate.ElementTarget.ID]; ok {
