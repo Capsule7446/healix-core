@@ -37,8 +37,21 @@ func TestBuildRunSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
 			command := validCreateRunCommand()
 			resolved := validResolvedCreateRun(t, command)
 			test.mutate(&command, &resolved)
-			if _, err := BuildRunSnapshot(command, resolved); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("BuildRunSnapshot() error = %v, want %q", err, test.want)
+			_, err := BuildRunSnapshot(command, resolved)
+			if err == nil {
+				t.Fatal("BuildRunSnapshot() accepted an invalid command graph")
+			}
+			// The detail is now a private cause and the public code is what a host
+			// switches on, so both are asserted: the classification, and that the
+			// detail survives for diagnostics without being public text.
+			if !fault.IsCode(err, CodeCreateInstanceCatalogGraphUnresolvable) {
+				t.Fatalf("BuildRunSnapshot() error = %v, want code %s", err, CodeCreateInstanceCatalogGraphUnresolvable)
+			}
+			if descriptor, ok := fault.Describe(err); !ok || strings.Contains(descriptor.Message(), test.want) {
+				t.Fatalf("public message must not carry the detail: %#v", descriptor)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), test.want) {
+				t.Fatalf("private cause = %v, want it to retain %q", cause, test.want)
 			}
 		})
 	}

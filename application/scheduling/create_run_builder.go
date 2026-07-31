@@ -21,19 +21,20 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		return execution.RunSnapshot{}, err
 	}
 	if resolved.Plan.Task.ID != command.ExecutionFlowID || resolved.Plan.Version.ID != command.TestTaskVersionID || resolved.Environment.ID != command.EnvironmentID {
-		return execution.RunSnapshot{}, errors.New("resolved catalog assets do not match command selectors")
+		return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("resolved catalog assets do not match command selectors"))
 	}
 	entries := make([]executionEntryInput, len(resolved.Plan.Version.Items))
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(resolved.Plan.Version.Items))
 	for index, item := range resolved.Plan.Version.Items {
 		values, exists := command.Entries[item.ID]
 		if !exists {
-			return execution.RunSnapshot{}, fmt.Errorf("test-task item %q values are missing", item.ID)
+			// The item id stays in the private cause, never in public text.
+			return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
 		}
 		executionID := concreteRootPath(command.RunID, item.ID)
 		resolvedRoot, exists := invocationByPath(resolved.Invocations, executionID)
 		if !exists || resolvedRoot.ParentPath != "" {
-			return execution.RunSnapshot{}, fmt.Errorf("test-task item %q root invocation is missing", item.ID)
+			return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
 		if err := validateSuppliedRootValues(values, resolvedRoot.WorkflowVersionID, resolved.Plan); err != nil {
 			// Constraint.Validate already returns PARAMETER_CONSTRAINT_UNSATISFIED or
@@ -51,11 +52,16 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: entries[index].WorkflowVersionID}
 	}
 	if len(command.Entries) != len(entries) {
-		return execution.RunSnapshot{}, errors.New("command contains unknown test-task item values")
+		return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("command contains unknown test-task item values"))
 	}
 	draft, err := buildExecutionDraft(buildExecutionPlanInput{RunID: command.RunID, Publication: resolved.Plan, Entries: entries})
 	if err != nil {
-		return execution.RunSnapshot{}, fmt.Errorf("build execution draft: %w", err)
+		// This is the boundary for the whole draft-building tree. Its internal
+		// invariant checks stay ordinary Go errors, as the contract permits, and are
+		// classified once here rather than at each of the dozen sites inside. An
+		// error that already carries a code passes through untouched: wrapping it
+		// would nest two faults and force the host to unwrap to classify.
+		return execution.RunSnapshot{}, classifyCatalogGraphFailure(err)
 	}
 	draft.FailurePolicy = command.FailurePolicy
 	invocations := cloneInvocationScopes(resolved.Invocations)

@@ -146,6 +146,18 @@ func createRunRetryableError(cause error) error {
 
 const CodeCreateInstanceCatalogGraphUnresolvable fault.Code = "EXECUTION_CREATE_INSTANCE_CATALOG_GRAPH_UNRESOLVABLE"
 
+// classifyCatalogGraphFailure gives an unclassified catalog-graph failure its
+// registered code, and lets an already-classified one through unchanged. The
+// distinction matters as the domain packages migrate: once a nested validator
+// starts returning its own code, wrapping it again here would bury that code
+// under a second one and force the host to unwrap before it could classify.
+func classifyCatalogGraphFailure(cause error) error {
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	return createRunCatalogGraphUnresolvableError(cause)
+}
+
 func createRunCatalogGraphUnresolvableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
