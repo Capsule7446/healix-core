@@ -137,7 +137,10 @@ func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string
 	next := cloneNodeAggregate(a)
 	nextRevision, err := a.ElementTarget.Revision.Next()
 	if err != nil {
-		return ElementTargetAggregate{}, revisionError("node", a.ElementTarget.ID, err)
+		// Revision.Next already returns AUTOMATION_REVISION_EXHAUSTED. The wrapper
+		// this replaces welded the aggregate id into fresh public text on top of an
+		// already-classified fault.
+		return ElementTargetAggregate{}, err
 	}
 	versionNumber, err := nextNodeVersion(a)
 	if err != nil {
@@ -165,7 +168,7 @@ func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowF
 	next := cloneWorkflowAggregate(a)
 	nextRevision, err := a.FlowFragment.Revision.Next()
 	if err != nil {
-		return FlowFragmentAggregate{}, revisionError("workflow", a.FlowFragment.ID, err)
+		return FlowFragmentAggregate{}, err
 	}
 	versionNumber, err := nextWorkflowVersion(a)
 	if err != nil {

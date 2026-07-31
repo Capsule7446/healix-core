@@ -18,7 +18,9 @@ func TestSamplingPublicationValidatePublicScenarioMatrix(t *testing.T) {
 		{name: "merge invalid expected revision", mutate: func(p *SamplingPublication) {
 			p.Nodes[0].ResolutionMode = "MERGE"
 			p.Nodes[0].Aggregate = versionedNodeAggregate()
-		}, want: "merge revision"},
+			// Revision.Next's classified fault now surfaces directly instead of being
+			// buried inside an unclassified "merge revision" wrapper.
+		}, want: string(CodePersistedRevisionInvalid)},
 		{name: "merge authority mismatch", mutate: func(p *SamplingPublication) {
 			p.Nodes[0].ResolutionMode = "MERGE"
 			p.Nodes[0].Aggregate = versionedNodeAggregate()

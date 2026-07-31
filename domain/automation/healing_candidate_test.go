@@ -155,7 +155,10 @@ func TestSamplingPublicationValidation(t *testing.T) {
 		{name: "missing temporary id", mutate: func(p *SamplingPublication) { p.Nodes[0].TemporaryElementTargetID = " " }, want: "temporary id is required"},
 		{name: "unsupported resolution", mutate: func(p *SamplingPublication) { p.Nodes[0].ResolutionMode = "COPY" }, want: "unsupported resolution mode"},
 		{name: "duplicate temporary id", mutate: func(p *SamplingPublication) { p.Nodes = append(p.Nodes, p.Nodes[0]) }, want: "duplicate sampled node"},
-		{name: "invalid aggregate", mutate: func(p *SamplingPublication) { p.Nodes[0].Aggregate.ElementTarget.ID = "" }, want: "sampled node temporary"},
+		// The previous expectation matched the temporary element target id itself,
+		// which is precisely the value that must not reach the message. Nodes are now
+		// addressed by their position in the caller's own slice.
+		{name: "invalid aggregate", mutate: func(p *SamplingPublication) { p.Nodes[0].Aggregate.ElementTarget.ID = "" }, want: "sampled node 0"},
 		{name: "create has authority", mutate: func(p *SamplingPublication) { p.Nodes[0].ExpectedRevision = 1 }, want: "new ownership"},
 		{name: "duplicate formal node", mutate: func(p *SamplingPublication) {
 			second := p.Nodes[0]

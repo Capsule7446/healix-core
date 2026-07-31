@@ -2,7 +2,6 @@ package automation
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
@@ -290,10 +289,6 @@ func NewExecutionFlow(task ExecutionFlow, initial ExecutionFlowVersion) (Executi
 		return ExecutionFlowAggregate{}, err
 	}
 	return aggregate, nil
-}
-
-func revisionError(kind, id string, err error) error {
-	return fmt.Errorf("%s %s revision: %w", kind, id, err)
 }
 
 func cloneTestTaskAggregate(aggregate ExecutionFlowAggregate) ExecutionFlowAggregate {
