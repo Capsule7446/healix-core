@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type coordinatorPortStub struct {
@@ -143,8 +144,9 @@ func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
 					t.Fatal("nil dependency panicked")
 				}
 			}()
-			if call() == nil {
-				t.Fatal("expected dependency error")
+			err := call()
+			if !fault.IsCode(err, CodeSchedulingDependencyRequired) {
+				t.Fatalf("dependency error = %v", err)
 			}
 		}()
 	}

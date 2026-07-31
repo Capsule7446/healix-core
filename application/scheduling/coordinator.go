@@ -8,14 +8,22 @@ import (
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 const claimReleaseTimeout = 5 * time.Second
 
-var (
-	ErrInvalidClaim         = errors.New("invalid scheduling claim")
-	ErrSchedulingDependency = errors.New("scheduling dependency is unavailable")
-)
+var ErrInvalidClaim = errors.New("invalid scheduling claim")
+
+const CodeSchedulingDependencyRequired fault.Code = "EXECUTION_SCHEDULING_DEPENDENCY_REQUIRED"
+
+func schedulingDependencyRequiredError() error {
+	err, constructionErr := fault.New(fault.FailedPrecondition, CodeSchedulingDependencyRequired, "execution scheduling dependency is required")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func isNilPort(port any) bool {
 	if port == nil {
@@ -62,7 +70,7 @@ func NewCoordinator(claims ClaimSource, states EntryStateReader, writer Decision
 
 func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredAt int64) (claimed bool, resultErr error) {
 	if isNilPort(c.claims) || isNilPort(c.states) || isNilPort(c.writer) {
-		return false, ErrSchedulingDependency
+		return false, schedulingDependencyRequiredError()
 	}
 	claim, found, err := c.claims.ClaimNext(ctx, workerID, occurredAt)
 	if err != nil {

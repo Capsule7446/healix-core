@@ -157,7 +157,7 @@ func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunComman
 		return RunCommandResult{}, err
 	}
 	if isNilPort(s.store) {
-		return RunCommandResult{}, ErrSchedulingDependency
+		return RunCommandResult{}, schedulingDependencyRequiredError()
 	}
 	result, err := s.store.Cancel(ctx, command)
 	if err != nil {
@@ -189,7 +189,7 @@ func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) 
 		return RunCommandResult{}, fmt.Errorf("invalid abort run command: %w", err)
 	}
 	if isNilPort(s.store) {
-		return RunCommandResult{}, ErrSchedulingDependency
+		return RunCommandResult{}, schedulingDependencyRequiredError()
 	}
 	result, err := s.store.Abort(ctx, command)
 	if err != nil {
@@ -234,7 +234,7 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 		return ReorderQueueResult{}, err
 	}
 	if isNilPort(s.store) {
-		return ReorderQueueResult{}, ErrSchedulingDependency
+		return ReorderQueueResult{}, schedulingDependencyRequiredError()
 	}
 	ownedCommand := command
 	ownedCommand.RunIDs = append([]string(nil), command.RunIDs...)
