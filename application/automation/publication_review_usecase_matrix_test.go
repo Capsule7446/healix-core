@@ -361,11 +361,11 @@ func TestHealReviewUseCasesRejectInvalidIdentityAndTrustedTimeBeforeCommit(t *te
 		{name: "candidate identity", configure: func(source *healReviewSourceProbe, _ *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			source.candidate.Hash = "other"
 			return reviewClockFake(10)
-		}, target: CodeHealReviewCASConflict},
+		}, target: CodeHealReviewAuthorityConflict},
 		{name: "node identity", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			nodes.current.ElementTarget.ID = "other"
 			return reviewClockFake(10)
-		}, target: CodeHealReviewCASConflict},
+		}, target: CodeHealReviewAuthorityConflict},
 		{name: "node revision", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			nodes.current.ElementTarget.Revision++
 			return reviewClockFake(10)
@@ -453,7 +453,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 				} else {
 					err = service.Reject(context.Background(), command)
 				}
-				if !errors.Is(err, ErrHealReviewContract) || transaction.commitCalls != 0 || source.candidateCalls != 0 {
+				if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 0 || source.candidateCalls != 0 {
 					t.Fatalf("error/commit/candidate calls = %v/%d/%d", err, transaction.commitCalls, source.candidateCalls)
 				}
 			})
@@ -476,7 +476,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 			test.mutate(&outcome)
 			transaction := &healReviewTransactionProbe{lookupFound: true, lookupOutcome: outcome}
 			_, err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{}).Approve(context.Background(), command)
-			if !errors.Is(err, ErrHealReviewContract) || transaction.commitCalls != 0 {
+			if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 0 {
 				t.Fatalf("error/commit calls = %v/%d", err, transaction.commitCalls)
 			}
 		})
@@ -497,7 +497,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 			test.mutate(&outcome)
 			transaction := &healReviewTransactionProbe{lookupFound: true, lookupOutcome: outcome}
 			err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{}).Reject(context.Background(), command)
-			if !errors.Is(err, ErrHealReviewContract) || transaction.commitCalls != 0 {
+			if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 0 {
 				t.Fatalf("error/commit calls = %v/%d", err, transaction.commitCalls)
 			}
 		})
@@ -522,7 +522,7 @@ func TestHealReviewAppliedOutcomeRejectsEveryDivergentAuthoritativeValue(t *test
 				return outcome
 			}}
 			result, err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v2"}).Approve(context.Background(), command)
-			if !errors.Is(err, ErrHealReviewContract) || !reflect.DeepEqual(result, domain.ElementTargetAggregate{}) || transaction.commitCalls != 1 {
+			if !fault.IsCode(err, CodeHealReviewContractViolation) || !reflect.DeepEqual(result, domain.ElementTargetAggregate{}) || transaction.commitCalls != 1 {
 				t.Fatalf("result/error/commit calls = %#v/%v/%d", result, err, transaction.commitCalls)
 			}
 		})
@@ -650,7 +650,7 @@ func TestHealReviewCommitRejectsUnsupportedAndMalformedConcurrentOutcomes(t *tes
 				} else {
 					err = service.Reject(context.Background(), command)
 				}
-				if err == nil || !strings.Contains(err.Error(), test.want) || transaction.commitCalls != 1 {
+				if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 1 {
 					t.Fatalf("error/commit calls = %v/%d", err, transaction.commitCalls)
 				}
 			})

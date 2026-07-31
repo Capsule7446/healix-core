@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -14,22 +13,54 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-const healReviewDigestV1 = "heal-review-v1"
+const (
+	healReviewDigestV1 = "heal-review-v1"
 
-var (
-	ErrHealReviewIdentityConflict = errors.New("heal review command identity conflict")
-	ErrHealReviewDecisionConflict = errors.New("heal review decision conflict")
-	ErrHealReviewContract         = errors.New("heal review transaction contract violation")
+	CodeHealReviewIdentityConflict  fault.Code = "AUTOMATION_HEAL_REVIEW_IDENTITY_CONFLICT"
+	CodeHealReviewDecisionConflict  fault.Code = "AUTOMATION_HEAL_REVIEW_DECISION_CONFLICT"
+	CodeHealReviewAuthorityConflict fault.Code = "AUTOMATION_HEAL_REVIEW_AUTHORITY_CONFLICT"
+	CodeHealReviewContractViolation fault.Code = "AUTOMATION_HEAL_REVIEW_CONTRACT_VIOLATION"
 )
 
-const CodeHealReviewCASConflict fault.Code = "AUTOMATION_HEAL_REVIEW_CAS_CONFLICT"
-
-func HealReviewCASConflictError() error {
-	err, constructionErr := fault.New(
+func HealReviewIdentityConflictError() error {
+	return newHealReviewFault(
 		fault.Conflict,
-		CodeHealReviewCASConflict,
-		"heal review state conflicts with the current authoritative state",
+		CodeHealReviewIdentityConflict,
+		"heal review command conflicts with an existing request",
 	)
+}
+
+func HealReviewDecisionConflictError() error {
+	return newHealReviewFault(
+		fault.FailedPrecondition,
+		CodeHealReviewDecisionConflict,
+		"heal candidate is no longer available for review",
+	)
+}
+
+func HealReviewAuthorityConflictError() error {
+	return newHealReviewFault(
+		fault.Conflict,
+		CodeHealReviewAuthorityConflict,
+		"heal review authority changed before the operation completed",
+	)
+}
+
+func healReviewContractViolationError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.Internal,
+		CodeHealReviewContractViolation,
+		"heal review could not be completed",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func newHealReviewFault(kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.New(kind, code, message)
 	if constructionErr != nil {
 		panic(constructionErr)
 	}
@@ -188,7 +219,7 @@ func ValidateHealReviewIntentDigest(intent HealReviewIntent) error {
 		return err
 	}
 	if intent.RequestDigest != digest {
-		return ErrHealReviewIdentityConflict
+		return HealReviewIdentityConflictError()
 	}
 	return nil
 }

@@ -125,7 +125,7 @@ func (f *healFixture) LookupHealReview(_ context.Context, commandID, digest stri
 		return application.HealReviewOutcome{}, false, nil
 	}
 	if f.state.digests[commandID] != digest {
-		return application.HealReviewOutcome{}, false, application.ErrHealReviewIdentityConflict
+		return application.HealReviewOutcome{}, false, application.HealReviewIdentityConflictError()
 	}
 	outcome.Status = application.HealReviewReplayed
 	return cloneOutcome(outcome), true, nil
@@ -139,21 +139,21 @@ func (f *healFixture) CommitHealReview(_ context.Context, i application.HealRevi
 	defer f.mu.Unlock()
 	if old, ok := f.state.replays[i.CommandID]; ok {
 		if f.state.digests[i.CommandID] != i.RequestDigest || !reflect.DeepEqual(old.Result, application.HealReviewResult{Decision: i.Decision, Candidate: i.NextCandidate, ElementTarget: i.NextNode, Streak: i.NextStreak}) {
-			return application.HealReviewOutcome{}, application.ErrHealReviewIdentityConflict
+			return application.HealReviewOutcome{}, application.HealReviewIdentityConflictError()
 		}
 		old.Status = application.HealReviewReplayed
 		return cloneOutcome(old), nil
 	}
 	if f.state.candidate.Status != domain.HealCandidateAwaitingApproval {
-		return application.HealReviewOutcome{}, application.ErrHealReviewDecisionConflict
+		return application.HealReviewOutcome{}, application.HealReviewDecisionConflictError()
 	}
 	if f.state.candidate.Revision != i.ExpectedCandidateRevision || f.state.node.ElementTarget.Revision != i.ExpectedNodeRevision || f.state.node.Current.ID != i.BaseNodeVersionID {
-		return application.HealReviewOutcome{}, application.HealReviewCASConflictError()
+		return application.HealReviewOutcome{}, application.HealReviewAuthorityConflictError()
 	}
 	if i.ExpectedStreak != nil {
 		streakDigest, _ := application.HealReviewStreakDigest(f.state.streak)
 		if !reflect.DeepEqual(f.state.streak, *i.ExpectedStreak) || streakDigest != i.ExpectedStreakDigest {
-			return application.HealReviewOutcome{}, application.HealReviewCASConflictError()
+			return application.HealReviewOutcome{}, application.HealReviewAuthorityConflictError()
 		}
 	}
 	n := cloneHealState(f.state)

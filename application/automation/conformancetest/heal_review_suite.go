@@ -2,7 +2,6 @@ package conformancetest
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -63,16 +62,16 @@ func RunHealReview(t *testing.T, factory HealReviewFactory) {
 		}
 		bad := intent
 		bad.RequestDigest = "sha256:bad"
-		if _, err := f.CommitHealReview(context.Background(), bad); !errors.Is(err, application.ErrHealReviewIdentityConflict) {
+		if _, err := f.CommitHealReview(context.Background(), bad); !fault.IsCode(err, application.CodeHealReviewIdentityConflict) {
 			t.Fatalf("malformed digest = %v", err)
 		}
 		changed := intent
 		changed.NextCandidate.PageURL = "/different-payload"
-		if _, err := f.CommitHealReview(context.Background(), changed); !errors.Is(err, application.ErrHealReviewIdentityConflict) {
+		if _, err := f.CommitHealReview(context.Background(), changed); !fault.IsCode(err, application.CodeHealReviewIdentityConflict) {
 			t.Fatalf("payload mismatch = %v", err)
 		}
 		changed.RequestDigest = mustHealDigest(t, changed)
-		if _, err := f.CommitHealReview(context.Background(), changed); !errors.Is(err, application.ErrHealReviewIdentityConflict) {
+		if _, err := f.CommitHealReview(context.Background(), changed); !fault.IsCode(err, application.CodeHealReviewIdentityConflict) {
 			t.Fatalf("identity conflict = %v", err)
 		}
 	})
@@ -90,7 +89,7 @@ func RunHealReview(t *testing.T, factory HealReviewFactory) {
 			f := factory(t)
 			tc.mutate(f)
 			before := f.Snapshot()
-			if _, err := f.CommitHealReview(context.Background(), f.Intent()); !fault.IsCode(err, application.CodeHealReviewCASConflict) {
+			if _, err := f.CommitHealReview(context.Background(), f.Intent()); !fault.IsCode(err, application.CodeHealReviewAuthorityConflict) {
 				t.Fatalf("error = %v", err)
 			}
 			if !reflect.DeepEqual(before, f.Snapshot()) {
@@ -143,7 +142,7 @@ func RunHealReview(t *testing.T, factory HealReviewFactory) {
 				winners++
 				continue
 			}
-			if errors.Is(r.err, application.ErrHealReviewDecisionConflict) || fault.IsCode(r.err, application.CodeHealReviewCASConflict) {
+			if fault.IsCode(r.err, application.CodeHealReviewDecisionConflict) || fault.IsCode(r.err, application.CodeHealReviewAuthorityConflict) {
 				losers++
 				continue
 			}

@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
@@ -330,11 +331,43 @@ func TestHealReviewServiceReplayAuthorizesExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestHealReviewFaultsExposeSafeStableContracts(t *testing.T) {
+	cause := errors.New("command=command-secret candidate=candidate-secret reviewer=reviewer-secret")
+	tests := []struct {
+		name    string
+		err     error
+		code    fault.Code
+		kind    fault.Kind
+		message string
+	}{
+		{"identity", HealReviewIdentityConflictError(), CodeHealReviewIdentityConflict, fault.Conflict, "heal review command conflicts with an existing request"},
+		{"decision", HealReviewDecisionConflictError(), CodeHealReviewDecisionConflict, fault.FailedPrecondition, "heal candidate is no longer available for review"},
+		{"authority", HealReviewAuthorityConflictError(), CodeHealReviewAuthorityConflict, fault.Conflict, "heal review authority changed before the operation completed"},
+		{"contract", healReviewContractViolationError(cause), CodeHealReviewContractViolation, fault.Internal, "heal review could not be completed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor, ok := fault.Describe(test.err)
+			if !ok || descriptor.Code() != test.code || descriptor.Kind() != test.kind || descriptor.Message() != test.message || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 {
+				t.Fatalf("descriptor/error = %#v/%v", descriptor, test.err)
+			}
+			for _, secret := range []string{"command-secret", "candidate-secret", "reviewer-secret", cause.Error()} {
+				if strings.Contains(test.err.Error(), secret) {
+					t.Fatalf("public error leaked %q: %q", secret, test.err.Error())
+				}
+			}
+			if test.name == "contract" && !errors.Is(test.err, cause) {
+				t.Fatalf("contract cause was not preserved: %v", test.err)
+			}
+		})
+	}
+}
+
 func TestHealReviewServiceRejectsMalformedTransactionOutcome(t *testing.T) {
 	source, nodes, transaction, command := healReviewFixture(t)
 	transaction.outcome = &HealReviewOutcome{Status: HealReviewApplied, CommandID: "other"}
 	_, err := newReviewService(t, source, nodes, transaction).Approve(context.Background(), command)
-	if !errors.Is(err, ErrHealReviewContract) {
+	if !fault.IsCode(err, CodeHealReviewContractViolation) {
 		t.Fatalf("malformed outcome error = %v", err)
 	}
 }

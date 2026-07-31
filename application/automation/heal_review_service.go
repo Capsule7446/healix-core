@@ -2,6 +2,7 @@ package automation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -81,7 +82,9 @@ func (s HealReviewService) Approve(ctx context.Context, command domain.HealCandi
 	}
 	if found {
 		if replay.Result.ElementTarget == nil {
-			return domain.ElementTargetAggregate{}, fmt.Errorf("%w: replayed approval requires node", ErrHealReviewContract)
+			return domain.ElementTargetAggregate{}, healReviewContractViolationError(
+				errors.New("replayed approval requires node"),
+			)
 		}
 		return replay.Result.ElementTarget.Clone(), nil
 	}
@@ -108,10 +111,12 @@ func (s HealReviewService) Approve(ctx context.Context, command domain.HealCandi
 		return domain.ElementTargetAggregate{}, fmt.Errorf("commit heal review: %w", err)
 	}
 	if err := validateHealReviewOutcome(intent, outcome); err != nil {
-		return domain.ElementTargetAggregate{}, fmt.Errorf("%w: %v", ErrHealReviewContract, err)
+		return domain.ElementTargetAggregate{}, healReviewContractViolationError(err)
 	}
 	if outcome.Result.ElementTarget == nil {
-		return domain.ElementTargetAggregate{}, fmt.Errorf("%w: approval result requires node", ErrHealReviewContract)
+		return domain.ElementTargetAggregate{}, healReviewContractViolationError(
+			errors.New("approval result requires node"),
+		)
 	}
 	return outcome.Result.ElementTarget.Clone(), nil
 }
@@ -159,7 +164,10 @@ func (s HealReviewService) Reject(ctx context.Context, command domain.HealCandid
 	if err != nil {
 		return fmt.Errorf("commit heal review: %w", err)
 	}
-	return validateHealReviewOutcome(intent, outcome)
+	if err := validateHealReviewOutcome(intent, outcome); err != nil {
+		return healReviewContractViolationError(err)
+	}
+	return nil
 }
 
 func (s HealReviewService) lookup(ctx context.Context, command domain.HealCandidateReviewCommand, decision HealReviewDecision) (HealReviewOutcome, bool, error) {
@@ -176,7 +184,7 @@ func (s HealReviewService) lookup(ctx context.Context, command domain.HealCandid
 		return HealReviewOutcome{}, false, nil
 	}
 	if err := validateHealReviewReplay(request, digest, outcome); err != nil {
-		return HealReviewOutcome{}, false, fmt.Errorf("%w: %v", ErrHealReviewContract, err)
+		return HealReviewOutcome{}, false, healReviewContractViolationError(err)
 	}
 	return cloneHealReviewOutcome(outcome), true, nil
 }
@@ -243,7 +251,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, err
 	}
 	if candidate.ElementTargetID != command.ElementTargetID || candidate.BaseNodeVersionID != command.BaseNodeVersionID || candidate.Hash != command.CandidateHash {
-		return HealReviewIntent{}, HealReviewCASConflictError()
+		return HealReviewIntent{}, HealReviewAuthorityConflictError()
 	}
 	if candidate.Revision != command.ExpectedCandidateRevision {
 		return HealReviewIntent{}, AutomationRevisionConflictError()
@@ -256,7 +264,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, fmt.Errorf("load node: %w", err)
 	}
 	if node.ElementTarget.ID != command.ElementTargetID {
-		return HealReviewIntent{}, HealReviewCASConflictError()
+		return HealReviewIntent{}, HealReviewAuthorityConflictError()
 	}
 	if node.ElementTarget.Revision != command.ExpectedNodeRevision {
 		return HealReviewIntent{}, AutomationRevisionConflictError()
