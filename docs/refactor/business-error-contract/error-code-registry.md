@@ -54,6 +54,9 @@ This registry defines the stable public error-code contract. A code is immutable
 | `EXECUTION_QUEUE_REVISION_CONFLICT` | `CONFLICT` | `queue revision conflicts with current state` | none | Re-read the authoritative queue before retrying; scope and revision values remain private. |
 | `EXECUTION_QUEUE_MEMBERSHIP_CONFLICT` | `CONFLICT` | `queue membership conflicts with the authoritative state` | none | Re-read the authoritative queue membership before retrying; scope and run identities remain private. |
 | `EXECUTION_RUN_COMMAND_ADAPTER_CONTRACT_VIOLATION` | `INTERNAL` | `run command adapter returned an invalid authoritative result` | none | Preserve the validation cause only for diagnostics; public output never includes adapter details, identities, revisions, statuses, or payloads. |
+| `EXECUTION_HEAL_GOVERNANCE_SNAPSHOT_INVALID` | `FAILED_PRECONDITION` | `heal governance snapshot is invalid` | none | Repair or reload malformed persisted governance state before retrying; snapshot identities, revisions, candidate states, streak details, and private causes remain private. |
+| `EXECUTION_HEAL_ACCEPTED_FACT_INVALID` | `INVALID_ARGUMENT` | `accepted heal fact is invalid` | none | Correct the accepted fact before retrying; fact kinds, provenance, payloads, decision bands, and identities remain private. |
+| `EXECUTION_HEAL_TERMINAL_EFFECT_CONFLICT` | `CONFLICT` | `heal terminal effect conflicts with persisted state` | none | Re-read and reconcile the persisted terminal effect; effect kinds, candidate hashes, bands, contributions, and private causes remain private. |
 
 ## Automation
 
