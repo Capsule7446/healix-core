@@ -1,10 +1,11 @@
 package automation
 
 import (
-	"errors"
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestFolderValidationMatrix(t *testing.T) {
@@ -111,11 +112,11 @@ func TestFolderForestRequireEmpty(t *testing.T) {
 		name      string
 		id        string
 		occupancy FolderOccupancy
-		want      error
+		wantCode  fault.Code
 		text      string
 	}{
 		{name: "missing id", id: " ", text: "folder id is required"},
-		{name: "unknown folder", id: "missing", want: ErrFolderNotFound},
+		{name: "unknown folder", id: "missing", wantCode: CodeFolderNotFound},
 		{name: "negative occupancy", id: "child", occupancy: FolderOccupancy{Assets: -1}, text: "cannot be negative"},
 		{name: "folder with child", id: "root", text: "must be empty"},
 		{name: "folder with asset", id: "child", occupancy: FolderOccupancy{Assets: 1}, text: "must be empty"},
@@ -123,7 +124,7 @@ func TestFolderForestRequireEmpty(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			err := forest.RequireEmpty(tt.id, tt.occupancy)
-			if err == nil || (tt.want != nil && !errors.Is(err, tt.want)) || (tt.text != "" && !strings.Contains(err.Error(), tt.text)) {
+			if err == nil || (tt.wantCode != "" && !fault.IsCode(err, tt.wantCode)) || (tt.text != "" && !strings.Contains(err.Error(), tt.text)) {
 				t.Errorf("RequireEmpty(%q, %+v) error = %v", tt.id, tt.occupancy, err)
 			}
 		})

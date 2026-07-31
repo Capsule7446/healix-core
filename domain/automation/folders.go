@@ -3,10 +3,11 @@ package automation
 import (
 	"errors"
 	"fmt"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"strings"
 )
 
-var ErrFolderNotFound = errors.New("folder not found")
+const CodeFolderNotFound fault.Code = "AUTOMATION_FOLDER_NOT_FOUND"
 
 type FolderKind string
 
@@ -149,7 +150,11 @@ func (f FolderForest) RequireEmpty(id string, occupancy FolderOccupancy) error {
 		return errors.New("folder id is required")
 	}
 	if _, exists := f.byID[id]; !exists {
-		return fmt.Errorf("folder %s: %w", id, ErrFolderNotFound)
+		faultErr, err := fault.New(fault.NotFound, CodeFolderNotFound, "automation folder was not found")
+		if err != nil {
+			panic(err)
+		}
+		return faultErr
 	}
 	if occupancy.Assets < 0 {
 		return errors.New("folder occupancy cannot be negative")
