@@ -9,10 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-var (
-	ErrRevisionConflict       = errors.New("revision conflict")
-	ErrHealCandidateStaleBase = errors.New("heal candidate base version is no longer current")
-)
+var ErrRevisionConflict = errors.New("revision conflict")
 
 const CodeAutomationConfigurationInvalid fault.Code = "AUTOMATION_CONFIGURATION_INVALID"
 
@@ -21,6 +18,20 @@ func AutomationConfigurationError() error {
 		fault.FailedPrecondition,
 		CodeAutomationConfigurationInvalid,
 		"automation service is not configured",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+const CodeHealCandidateStaleBase fault.Code = "AUTOMATION_HEAL_CANDIDATE_STALE_BASE"
+
+func HealCandidateStaleBaseError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeHealCandidateStaleBase,
+		"heal candidate base version is no longer current",
 	)
 	if constructionErr != nil {
 		panic(constructionErr)

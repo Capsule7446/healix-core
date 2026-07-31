@@ -262,7 +262,7 @@ func (s HealReviewService) prepare(ctx context.Context, command domain.HealCandi
 		return HealReviewIntent{}, RevisionConflictError{AggregateKind: "node", ID: node.ElementTarget.ID, Expected: command.ExpectedNodeRevision, Actual: node.ElementTarget.Revision}
 	}
 	if node.ElementTarget.CurrentVersionID != command.BaseNodeVersionID {
-		return HealReviewIntent{}, ErrHealCandidateStaleBase
+		return HealReviewIntent{}, HealCandidateStaleBaseError()
 	}
 	nextCandidate, err := candidate.Review(status)
 	if err != nil {

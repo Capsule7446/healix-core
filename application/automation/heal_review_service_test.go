@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -210,7 +211,7 @@ func TestHealReviewServiceRejectsStaleStateBeforeCommit(t *testing.T) {
 	}
 	command.ExpectedCandidateRevision = 1
 	nodes.current.ElementTarget.CurrentVersionID = "other"
-	if err := newReviewService(t, source, nodes, transaction).Reject(context.Background(), command); !errors.Is(err, ErrHealCandidateStaleBase) {
+	if err := newReviewService(t, source, nodes, transaction).Reject(context.Background(), command); !fault.IsCode(err, CodeHealCandidateStaleBase) {
 		t.Fatalf("base conflict = %v", err)
 	}
 }
