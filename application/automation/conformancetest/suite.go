@@ -75,7 +75,7 @@ func Run(t *testing.T, factory Factory) {
 		changed = intent
 		changed.Publication = intent.Publication.Clone()
 		changed.Publication.FlowFragment.FlowFragment.DisplayName = "different valid payload"
-		command := application.SamplingPublicationCommand{PublicationID: changed.PublicationID, ForceCreateAuthorization: changed.ForceCreateAuthorization, Publication: changed.Publication}
+		command := application.SamplingPublicationCommand{PublicationID: changed.PublicationID, Publication: changed.Publication}
 		changed.RequestDigest, err = application.SamplingPublicationRequestDigest(command)
 		if err != nil {
 			t.Fatal(err)

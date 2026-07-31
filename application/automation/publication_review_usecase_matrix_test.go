@@ -33,17 +33,17 @@ func (transaction *samplingTransactionProbe) PublishSampling(_ context.Context, 
 	return transaction.publishOutcome, transaction.publishErr
 }
 
-func forceCreateSamplingCommand(t testing.TB) SamplingPublicationCommand {
+func createSamplingCommand(t testing.TB) SamplingPublicationCommand {
 	t.Helper()
 	publication, err := MapSamplingPublication(SamplingPublicationRequest{
 		FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
-		Workspace: sampledWorkflow(sampling.SamplingResolutionForceCreate),
-		Nodes:     []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1", ForceCreateAuthorized: true}},
+		Workspace: sampledWorkflow(sampling.ResolutionModeCreate),
+		Nodes:     []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return SamplingPublicationCommand{PublicationID: "publication", ForceCreateAuthorization: "authorization", Publication: publication}
+	return SamplingPublicationCommand{PublicationID: "publication", Publication: publication}
 }
 
 func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing.T) {
@@ -51,13 +51,13 @@ func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing
 	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 
 	transaction := &samplingTransactionProbe{lookupErr: failure}
-	result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
+	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 0 {
 		t.Fatalf("lookup failure/result/error/calls = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
 
 	transaction = &samplingTransactionProbe{publishErr: failure}
-	result, err = NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
+	result, err = NewSamplingPublicationService(transaction).Publish(context.Background(), command)
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 1 {
 		t.Fatalf("publish failure/result/error/calls = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
@@ -68,24 +68,17 @@ func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing
 
 func TestSamplingPublicationPublishRejectsInvalidCommandBeforeDependencies(t *testing.T) {
 	plain := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
-	force := forceCreateSamplingCommand(t)
 	tests := []struct {
 		name    string
 		command SamplingPublicationCommand
 		want    string
 	}{
 		{name: "missing publication identity", command: func() SamplingPublicationCommand { value := plain; value.PublicationID = " "; return value }(), want: "sampling publication id is required"},
-		{name: "authorization not applicable", command: func() SamplingPublicationCommand {
-			value := plain
-			value.ForceCreateAuthorization = "unexpected"
-			return value
-		}(), want: "force-create authorization is not applicable"},
-		{name: "force create authorization required", command: func() SamplingPublicationCommand { value := force; value.ForceCreateAuthorization = ""; return value }(), want: "force-create authorization is required"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transaction := &samplingTransactionProbe{}
-			if _, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), test.command); err == nil || !strings.Contains(err.Error(), test.want) || transaction.lookupCalls != 0 || transaction.publishCalls != 0 {
+			if _, err := NewSamplingPublicationService(transaction).Publish(context.Background(), test.command); err == nil || !strings.Contains(err.Error(), test.want) || transaction.lookupCalls != 0 || transaction.publishCalls != 0 {
 				t.Fatalf("error/lookup/publish calls = %v/%d/%d", err, transaction.lookupCalls, transaction.publishCalls)
 			}
 		})
@@ -93,7 +86,7 @@ func TestSamplingPublicationPublishRejectsInvalidCommandBeforeDependencies(t *te
 }
 
 func TestSamplingPublicationReplayValidatesEveryAuthoritativeFieldBeforeReturning(t *testing.T) {
-	command := forceCreateSamplingCommand(t)
+	command := createSamplingCommand(t)
 	valid := samplingOutcomeFor(t, command, PublishSamplingReplayed)
 	tests := []struct {
 		name   string
@@ -112,7 +105,7 @@ func TestSamplingPublicationReplayValidatesEveryAuthoritativeFieldBeforeReturnin
 			outcome.Result.Nodes = append([]domain.SamplingNodeMapping(nil), valid.Result.Nodes...)
 			test.mutate(&outcome)
 			transaction := &samplingTransactionProbe{lookupOutcome: outcome, lookupFound: true}
-			result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
+			result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
 			if !errors.Is(err, ErrSamplingPublicationContract) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.publishCalls != 0 {
 				t.Fatalf("result/error/publish calls = %#v/%v/%d", result, err, transaction.publishCalls)
 			}

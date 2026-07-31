@@ -137,7 +137,7 @@ func competingIntent(base application.PublishSamplingIntent, suffix string) appl
 		case "MERGE":
 			node.Aggregate.Current.ID += "-" + suffix
 			node.Aggregate.ElementTarget.CurrentVersionID = node.Aggregate.Current.ID
-		case "CREATE", "FORCE_CREATE":
+		case "CREATE":
 			node.Aggregate.ElementTarget.ID += "-" + suffix
 			node.Aggregate.Current.ID += "-" + suffix
 			node.Aggregate.ElementTarget.CurrentVersionID = node.Aggregate.Current.ID
@@ -246,7 +246,7 @@ func (f *referenceFixture) PublishSampling(_ context.Context, intent application
 	for _, decision := range intent.Publication.Nodes {
 		nodeID, versionID := decision.Aggregate.ElementTarget.ID, decision.Aggregate.Current.ID
 		switch decision.ResolutionMode {
-		case "CREATE", "FORCE_CREATE":
+		case "CREATE":
 			if _, exists := next.nodes[nodeID]; exists {
 				return application.PublishSamplingOutcome{}, errors.New("node identity conflict")
 			}

@@ -69,7 +69,7 @@ func TestConstructorsAndMethodsRejectTypedNilDependencies(t *testing.T) {
 			return err
 		}, ErrAutomationConfiguration},
 		{"sampling", func() error {
-			_, err := NewSamplingPublicationService(sampling, nil).Publish(context.Background(), SamplingPublicationCommand{})
+			_, err := NewSamplingPublicationService(sampling).Publish(context.Background(), SamplingPublicationCommand{})
 			return err
 		}, ErrSamplingPublicationConfiguration},
 	}

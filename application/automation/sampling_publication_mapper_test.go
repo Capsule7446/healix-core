@@ -29,11 +29,11 @@ func sampledCurrentNode(t *testing.T) domainautomation.ElementTargetAggregate {
 	return aggregate
 }
 
-func sampledWorkflow(mode sampling.SamplingResolutionMode) sampling.TemporarySamplingWorkflow {
-	return sampling.TemporarySamplingWorkflow{
+func sampledWorkflow(mode sampling.ResolutionMode) sampling.UnpublishedFlowFragment {
+	return sampling.UnpublishedFlowFragment{
 		ID: "temporary-workflow", DisplayName: "sampled", Properties: domainautomation.Properties{"kind": "sampled"},
 		Steps: []domainautomation.FlowFragmentStep{{ID: "repeat", DisplayName: "repeat", Kind: domainautomation.StepRepeat, RepeatCount: 1, Children: []domainautomation.FlowFragmentStep{{ID: "action", DisplayName: "action", Kind: domainautomation.StepAction, Action: "click", ElementTargetID: "temporary-node"}}}},
-		Nodes: []sampling.TemporarySamplingNode{{ID: "temporary-node", DisplayName: "sampled-node", Properties: domainautomation.Properties{"sampled": "yes"}, PageURL: "/new", Origin: "new", Selectors: sampledSelector("#new"), Fingerprint: sampledFingerprint("new"), ResolutionMode: mode}},
+		Nodes: []sampling.UnpublishedElementTarget{{ID: "temporary-node", DisplayName: "sampled-node", Properties: domainautomation.Properties{"sampled": "yes"}, PageURL: "/new", Origin: "new", Selectors: sampledSelector("#new"), Fingerprint: sampledFingerprint("new"), ResolutionMode: mode}},
 	}
 }
 
@@ -41,16 +41,16 @@ func TestMapSamplingPublicationModes(t *testing.T) {
 	current := sampledCurrentNode(t)
 	tests := []struct {
 		name      string
-		mode      sampling.SamplingResolutionMode
+		mode      sampling.ResolutionMode
 		authority SamplingNodeAuthority
 		wantID    string
 		wantVer   string
 		publish   bool
 	}{
-		{name: "create", mode: sampling.SamplingResolutionCreate, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "created", ElementTargetVersionID: "created-v1"}, wantID: "created", wantVer: "created-v1", publish: true},
-		{name: "force create", mode: sampling.SamplingResolutionForceCreate, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1", ForceCreateAuthorized: true}, wantID: "forced", wantVer: "forced-v1", publish: true},
-		{name: "merge", mode: sampling.SamplingResolutionMerge, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v2", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: current.Current.ID}, wantID: "existing", wantVer: "existing-v2", publish: true},
-		{name: "reuse", mode: sampling.SamplingResolutionReuse, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v1", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: current.Current.ID}, wantID: "existing", wantVer: "existing-v1"},
+		{name: "create", mode: sampling.ResolutionModeCreate, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "created", ElementTargetVersionID: "created-v1"}, wantID: "created", wantVer: "created-v1", publish: true},
+		{name: "force create", mode: sampling.ResolutionModeCreate, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1"}, wantID: "forced", wantVer: "forced-v1", publish: true},
+		{name: "merge", mode: sampling.ResolutionModeMerge, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v2", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: current.Current.ID}, wantID: "existing", wantVer: "existing-v2", publish: true},
+		{name: "reuse", mode: sampling.ResolutionModeReuse, authority: SamplingNodeAuthority{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v1", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: current.Current.ID}, wantID: "existing", wantVer: "existing-v1"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -68,12 +68,12 @@ func TestMapSamplingPublicationModes(t *testing.T) {
 			if step.ElementTargetID != test.wantID || step.ElementTargetVersionID != test.wantVer {
 				t.Fatalf("rewritten step = %#v", step)
 			}
-			if test.mode == sampling.SamplingResolutionMerge {
+			if test.mode == sampling.ResolutionModeMerge {
 				if node.Aggregate.ElementTarget.DisplayName != current.ElementTarget.DisplayName || node.Aggregate.ElementTarget.Properties["owner"] != "kept" || node.Aggregate.Current.Selectors[0].Value != "#new" || len(node.Aggregate.Current.Selectors) != 1 {
 					t.Fatalf("merge did not preserve metadata and replace version content: %#v", node.Aggregate)
 				}
 			}
-			if test.mode == sampling.SamplingResolutionReuse {
+			if test.mode == sampling.ResolutionModeReuse {
 				node.Aggregate.ElementTarget.Properties["owner"] = "mutated"
 				node.Aggregate.Current.Fingerprint.Attributes["id"] = "mutated"
 				if current.ElementTarget.Properties["owner"] != "kept" || current.Current.Fingerprint.Attributes["id"] != "old" {
@@ -91,16 +91,15 @@ func TestMapSamplingPublicationRejectsInvalidAuthority(t *testing.T) {
 	current := sampledCurrentNode(t)
 	tests := []struct {
 		name      string
-		mode      sampling.SamplingResolutionMode
+		mode      sampling.ResolutionMode
 		authority []SamplingNodeAuthority
 	}{
-		{name: "undecided", mode: sampling.SamplingResolutionUndecided, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}}},
-		{name: "unauthorized force create", mode: sampling.SamplingResolutionForceCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}}},
-		{name: "stale merge revision", mode: sampling.SamplingResolutionMerge, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v2", Current: &current, ExpectedRevision: current.ElementTarget.Revision + 1, ExpectedCurrentVersionID: current.Current.ID}}},
-		{name: "stale reuse version", mode: sampling.SamplingResolutionReuse, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v1", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: "stale"}}},
-		{name: "missing authority", mode: sampling.SamplingResolutionCreate},
-		{name: "duplicate formal node", mode: sampling.SamplingResolutionCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, {TemporaryElementTargetID: "extra", ElementTargetID: "node", ElementTargetVersionID: "extra-v1"}}},
-		{name: "extra authority", mode: sampling.SamplingResolutionCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, {TemporaryElementTargetID: "extra", ElementTargetID: "extra", ElementTargetVersionID: "extra-v1"}}},
+		{name: "undecided", mode: sampling.ResolutionModeUndecided, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}}},
+		{name: "stale merge revision", mode: sampling.ResolutionModeMerge, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v2", Current: &current, ExpectedRevision: current.ElementTarget.Revision + 1, ExpectedCurrentVersionID: current.Current.ID}}},
+		{name: "stale reuse version", mode: sampling.ResolutionModeReuse, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "existing", ElementTargetVersionID: "existing-v1", Current: &current, ExpectedRevision: current.ElementTarget.Revision, ExpectedCurrentVersionID: "stale"}}},
+		{name: "missing authority", mode: sampling.ResolutionModeCreate},
+		{name: "duplicate formal node", mode: sampling.ResolutionModeCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, {TemporaryElementTargetID: "extra", ElementTargetID: "node", ElementTargetVersionID: "extra-v1"}}},
+		{name: "extra authority", mode: sampling.ResolutionModeCreate, authority: []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, {TemporaryElementTargetID: "extra", ElementTargetID: "extra", ElementTargetVersionID: "extra-v1"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

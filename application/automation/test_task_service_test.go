@@ -177,7 +177,7 @@ func TestSamplingPublicationErrorsExposeStableClassification(t *testing.T) {
 }
 
 func TestSamplingPublicationServiceRejectsMissingTransaction(t *testing.T) {
-	_, err := NewSamplingPublicationService(nil, nil).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
+	_, err := NewSamplingPublicationService(nil).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
 	if !errors.Is(err, ErrSamplingPublicationConfiguration) {
 		t.Fatalf("Publish() error = %v", err)
 	}
@@ -185,7 +185,7 @@ func TestSamplingPublicationServiceRejectsMissingTransaction(t *testing.T) {
 
 func TestSamplingPublicationServiceRejectsInvalidAdapterOutcome(t *testing.T) {
 	repository := &samplingRepositoryFake{outcome: PublishSamplingOutcome{Status: "UNKNOWN"}}
-	_, err := NewSamplingPublicationService(repository, nil).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
+	_, err := NewSamplingPublicationService(repository).Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
 	if !errors.Is(err, ErrSamplingPublicationContract) {
 		t.Fatalf("Publish() error = %v", err)
 	}
@@ -197,7 +197,7 @@ func TestSamplingPublicationServiceRejectsInvalidAdapterOutcome(t *testing.T) {
 
 func TestSamplingPublicationServiceValidatesAndPublishes(t *testing.T) {
 	repository := &samplingRepositoryFake{outcome: PublishSamplingOutcome{Status: PublishSamplingApplied, Result: domain.SamplingPublicationResult{FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", VersionNumber: 1}}}
-	service := NewSamplingPublicationService(repository, nil)
+	service := NewSamplingPublicationService(repository)
 	result, err := service.Publish(context.Background(), SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)})
 	if err != nil || result.FlowFragmentID != "workflow" || !repository.called {
 		t.Fatalf("publish = %#v, %v", result, err)
@@ -206,7 +206,7 @@ func TestSamplingPublicationServiceValidatesAndPublishes(t *testing.T) {
 
 func TestSamplingPublicationServiceRejectsInvalidInputAndWrapsErrors(t *testing.T) {
 	repository := &samplingRepositoryFake{}
-	service := NewSamplingPublicationService(repository, nil)
+	service := NewSamplingPublicationService(repository)
 	if _, err := service.Publish(context.Background(), SamplingPublicationCommand{Publication: samplingPublicationFixture(t)}); err == nil {
 		t.Fatal("empty publication id accepted")
 	}

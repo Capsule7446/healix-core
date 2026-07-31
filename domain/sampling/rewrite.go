@@ -8,7 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/automation"
 )
 
-func RewriteTemporaryNodeReferences(steps []automation.FlowFragmentStep, mappings []automation.SamplingNodeMapping) ([]automation.FlowFragmentStep, error) {
+func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentStep, mappings []automation.SamplingNodeMapping) ([]automation.FlowFragmentStep, error) {
 	mappingByTemporaryID := make(map[string]automation.SamplingNodeMapping, len(mappings))
 	for _, mapping := range mappings {
 		if strings.TrimSpace(mapping.TemporaryElementTargetID) == "" || strings.TrimSpace(mapping.ElementTargetID) == "" || strings.TrimSpace(mapping.ElementTargetVersionID) == "" {

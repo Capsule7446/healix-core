@@ -57,7 +57,7 @@ func (p SamplingPublication) Validate() error {
 			return errors.New("sampled node temporary id is required")
 		}
 		switch node.ResolutionMode {
-		case "CREATE", "FORCE_CREATE", "MERGE", "REUSE":
+		case "CREATE", "MERGE", "REUSE":
 		default:
 			return fmt.Errorf("sampled node %s has unsupported resolution mode %q", node.TemporaryElementTargetID, node.ResolutionMode)
 		}
@@ -69,7 +69,7 @@ func (p SamplingPublication) Validate() error {
 			return fmt.Errorf("sampled node %s: %w", node.TemporaryElementTargetID, err)
 		}
 		switch node.ResolutionMode {
-		case "CREATE", "FORCE_CREATE":
+		case "CREATE":
 			if node.ExpectedRevision != 0 || node.ExpectedCurrentVersionID != "" || !node.PublishVersion || node.Aggregate.Current.VersionNumber != 1 {
 				return fmt.Errorf("sampled node %s new ownership must publish version 1 without current-node authority", node.TemporaryElementTargetID)
 			}

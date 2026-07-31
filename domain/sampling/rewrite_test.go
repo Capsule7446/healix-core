@@ -7,7 +7,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/automation"
 )
 
-func TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput(t *testing.T) {
+func TestRewriteUnpublishedElementTargetReferencesRecursesWithoutMutatingInput(t *testing.T) {
 	steps := []automation.FlowFragmentStep{
 		{ID: "root", DisplayName: "root", Kind: automation.StepAction, ElementTargetID: "temp-a"},
 		{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "child", DisplayName: "child", Kind: automation.StepAction, ElementTargetID: "temp-a"}}},
@@ -18,7 +18,7 @@ func TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput(t *testing.T
 		{TemporaryElementTargetID: "temp-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v2"},
 		{TemporaryElementTargetID: "temp-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1"},
 	}
-	got, err := RewriteTemporaryNodeReferences(steps, mappings)
+	got, err := RewriteUnpublishedElementTargetReferences(steps, mappings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestRewriteTemporaryNodeReferencesRecursesWithoutMutatingInput(t *testing.T
 	}
 }
 
-func TestRewriteTemporaryNodeReferencesRequiresExactMappingSet(t *testing.T) {
+func TestRewriteUnpublishedElementTargetReferencesRequiresExactMappingSet(t *testing.T) {
 	steps := []automation.FlowFragmentStep{{ID: "step", DisplayName: "step", Kind: automation.StepAction, ElementTargetID: "temp-a"}}
 	for _, test := range []struct {
 		name     string
@@ -46,16 +46,16 @@ func TestRewriteTemporaryNodeReferencesRequiresExactMappingSet(t *testing.T) {
 		{"blank formal identity", []automation.SamplingNodeMapping{{TemporaryElementTargetID: "temp-a"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := RewriteTemporaryNodeReferences(steps, test.mappings); err == nil {
+			if _, err := RewriteUnpublishedElementTargetReferences(steps, test.mappings); err == nil {
 				t.Fatal("invalid mapping set was accepted")
 			}
 		})
 	}
 }
 
-func TestRewriteTemporaryNodeReferencesAllowsStepsWithoutNodes(t *testing.T) {
+func TestRewriteUnpublishedElementTargetReferencesAllowsStepsWithoutNodes(t *testing.T) {
 	steps := []automation.FlowFragmentStep{{ID: "wait", DisplayName: "wait", Kind: automation.StepWait}}
-	got, err := RewriteTemporaryNodeReferences(steps, nil)
+	got, err := RewriteUnpublishedElementTargetReferences(steps, nil)
 	if err != nil || !reflect.DeepEqual(got, steps) {
 		t.Fatalf("node-free rewrite = %#v, %v", got, err)
 	}

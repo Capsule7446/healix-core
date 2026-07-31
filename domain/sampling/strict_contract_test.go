@@ -67,8 +67,8 @@ func TestDraftIndexBoundariesDoNotAllocateFromExtremeValues(t *testing.T) {
 	step := workflow.Steps[0]
 	for _, index := range []int{math.MinInt, -1, len(workflow.Steps) + 1, math.MaxInt} {
 		t.Run(strconv.Itoa(index), func(t *testing.T) {
-			if _, err := InsertDraftStep(workflow, StepContainer{}, index, step); err == nil {
-				t.Fatalf("InsertDraftStep(index=%d) succeeded", index)
+			if _, err := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, index, step); err == nil {
+				t.Fatalf("InsertUnpublishedFlowFragmentStep(index=%d) succeeded", index)
 			}
 		})
 	}
@@ -77,8 +77,8 @@ func TestDraftIndexBoundariesDoNotAllocateFromExtremeValues(t *testing.T) {
 func TestTemporaryWorkflowTimestampBoundaryValuesRemainLossless(t *testing.T) {
 	values := []int64{-1, 0, 1, math.MaxInt64}
 	for _, value := range values {
-		workflow := TemporarySamplingWorkflow{StartedAt: value, PausedAt: value, EndedAt: value, InterruptedAt: value}
-		cloned := cloneTemporaryWorkflow(workflow)
+		workflow := UnpublishedFlowFragment{StartedAt: value, PausedAt: value, EndedAt: value, InterruptedAt: value}
+		cloned := cloneUnpublishedFlowFragment(workflow)
 		if cloned.StartedAt != value || cloned.PausedAt != value || cloned.EndedAt != value || cloned.InterruptedAt != value {
 			t.Fatalf("timestamp %d changed during clone: %+v", value, cloned)
 		}

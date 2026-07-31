@@ -102,7 +102,7 @@ func TestMapSamplingPublicationRejectsEachRequestAndCompositionBoundary(t *testi
 	newRequest := func() SamplingPublicationRequest {
 		return SamplingPublicationRequest{
 			FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
-			Workspace: sampledWorkflow(sampling.SamplingResolutionCreate),
+			Workspace: sampledWorkflow(sampling.ResolutionModeCreate),
 			Nodes:     []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}},
 		}
 	}

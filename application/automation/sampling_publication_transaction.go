@@ -45,16 +45,14 @@ func (e *SamplingPublicationContractError) Is(target error) bool {
 }
 
 type SamplingPublicationCommand struct {
-	PublicationID            string
-	ForceCreateAuthorization string
-	Publication              domain.SamplingPublication
+	PublicationID string
+	Publication   domain.SamplingPublication
 }
 
 type PublishSamplingIntent struct {
-	PublicationID            string
-	RequestDigest            string
-	ForceCreateAuthorization string
-	Publication              domain.SamplingPublication
+	PublicationID string
+	RequestDigest string
+	Publication   domain.SamplingPublication
 }
 
 type PublishSamplingStatus string
@@ -76,30 +74,18 @@ type SamplingPublicationTransaction interface {
 	PublishSampling(context.Context, PublishSamplingIntent) (PublishSamplingOutcome, error)
 }
 
-type ForceCreateAuthorizationIntent struct {
-	PublicationID          string
-	RequestDigest          string
-	AuthorizationReference string
-}
-
-type ForceCreateAuthorizer interface {
-	AuthorizeForceCreate(context.Context, ForceCreateAuthorizationIntent) error
-}
-
 type SamplingPublicationService struct {
 	transaction SamplingPublicationTransaction
-	authorizer  ForceCreateAuthorizer
 }
 
-func NewSamplingPublicationService(transaction SamplingPublicationTransaction, authorizer ForceCreateAuthorizer) SamplingPublicationService {
-	return SamplingPublicationService{transaction: transaction, authorizer: authorizer}
+func NewSamplingPublicationService(transaction SamplingPublicationTransaction) SamplingPublicationService {
+	return SamplingPublicationService{transaction: transaction}
 }
 
 func ValidatePublishSamplingIntentDigest(intent PublishSamplingIntent) error {
 	digest, err := SamplingPublicationRequestDigest(SamplingPublicationCommand{
-		PublicationID:            intent.PublicationID,
-		ForceCreateAuthorization: intent.ForceCreateAuthorization,
-		Publication:              intent.Publication,
+		PublicationID: intent.PublicationID,
+		Publication:   intent.Publication,
 	})
 	if err != nil {
 		return fmt.Errorf("validate sampling publication intent: %w", err)
@@ -117,11 +103,10 @@ func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (strin
 		return "", err
 	}
 	payload, err := json.Marshal(struct {
-		Schema                   string
-		PublicationID            string
-		ForceCreateAuthorization string
-		Publication              domain.SamplingPublication
-	}{samplingPublicationDigestV1, owned.PublicationID, owned.ForceCreateAuthorization, owned.Publication})
+		Schema        string
+		PublicationID string
+		Publication   domain.SamplingPublication
+	}{samplingPublicationDigestV1, owned.PublicationID, owned.Publication})
 	if err != nil {
 		return "", fmt.Errorf("encode sampling publication request: %w", err)
 	}
@@ -152,27 +137,14 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 		}
 		return cloneSamplingPublicationResult(replay.Result), nil
 	}
-	if requiresForceCreateAuthorization(owned.Publication) {
-		if s.authorizer == nil {
-			return domain.SamplingPublicationResult{}, ErrSamplingPublicationAuthorization
-		}
-		if err := s.authorizer.AuthorizeForceCreate(ctx, ForceCreateAuthorizationIntent{
-			PublicationID:          owned.PublicationID,
-			RequestDigest:          digest,
-			AuthorizationReference: owned.ForceCreateAuthorization,
-		}); err != nil {
-			return domain.SamplingPublicationResult{}, fmt.Errorf("%w: %w", ErrSamplingPublicationAuthorization, err)
-		}
-	}
 	if s.transaction == nil {
 		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
 	}
 	transactionPublication := owned.Publication.Clone()
 	outcome, err := s.transaction.PublishSampling(ctx, PublishSamplingIntent{
-		PublicationID:            owned.PublicationID,
-		RequestDigest:            digest,
-		ForceCreateAuthorization: owned.ForceCreateAuthorization,
-		Publication:              transactionPublication,
+		PublicationID: owned.PublicationID,
+		RequestDigest: digest,
+		Publication:   transactionPublication,
 	})
 	if err != nil {
 		return domain.SamplingPublicationResult{}, fmt.Errorf("publish sampling result: %w", err)
@@ -188,31 +160,12 @@ func cloneSamplingPublicationResult(result domain.SamplingPublicationResult) dom
 	return result
 }
 
-func requiresForceCreateAuthorization(publication domain.SamplingPublication) bool {
-	for _, node := range publication.Nodes {
-		if node.ResolutionMode == "FORCE_CREATE" {
-			return true
-		}
-	}
-	return false
-}
-
 func validateSamplingPublicationCommand(command SamplingPublicationCommand) error {
 	if strings.TrimSpace(command.PublicationID) == "" {
 		return errors.New("sampling publication id is required")
 	}
 	if err := command.Publication.Validate(); err != nil {
 		return fmt.Errorf("validate sampling publication: %w", err)
-	}
-	hasForceCreate := false
-	for _, node := range command.Publication.Nodes {
-		hasForceCreate = hasForceCreate || node.ResolutionMode == "FORCE_CREATE"
-	}
-	if hasForceCreate && strings.TrimSpace(command.ForceCreateAuthorization) == "" {
-		return errors.New("force-create authorization is required")
-	}
-	if !hasForceCreate && command.ForceCreateAuthorization != "" {
-		return errors.New("force-create authorization is not applicable")
 	}
 	return nil
 }

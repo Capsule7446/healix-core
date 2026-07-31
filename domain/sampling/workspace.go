@@ -35,26 +35,25 @@ const (
 	SamplingLifecycleInterrupted SamplingLifecycle = "INTERRUPTED"
 )
 
-type SamplingWorkflowStatus string
+type PublicationStatus string
 
 const (
-	SamplingWorkflowUnsaved SamplingWorkflowStatus = "UNSAVED"
-	SamplingWorkflowSaving  SamplingWorkflowStatus = "SAVING"
-	SamplingWorkflowSaved   SamplingWorkflowStatus = "SAVED"
-	SamplingWorkflowFailed  SamplingWorkflowStatus = "FAILED"
+	PublicationStatusUnpublished PublicationStatus = "UNSAVED"
+	PublicationStatusPublishing  PublicationStatus = "SAVING"
+	PublicationStatusPublished   PublicationStatus = "SAVED"
+	PublicationStatusFailed      PublicationStatus = "FAILED"
 )
 
-type SamplingResolutionMode string
+type ResolutionMode string
 
 const (
-	SamplingResolutionUndecided   SamplingResolutionMode = "UNDECIDED"
-	SamplingResolutionCreate      SamplingResolutionMode = "CREATE"
-	SamplingResolutionMerge       SamplingResolutionMode = "MERGE"
-	SamplingResolutionReuse       SamplingResolutionMode = "REUSE"
-	SamplingResolutionForceCreate SamplingResolutionMode = "FORCE_CREATE"
+	ResolutionModeUndecided ResolutionMode = "UNDECIDED"
+	ResolutionModeCreate    ResolutionMode = "CREATE"
+	ResolutionModeMerge     ResolutionMode = "MERGE"
+	ResolutionModeReuse     ResolutionMode = "REUSE"
 )
 
-type SamplingCandidate struct {
+type ElementTargetCandidate struct {
 	ElementTargetID string
 	DisplayName     string
 	VersionID       string
@@ -64,7 +63,7 @@ type SamplingCandidate struct {
 	Exact           bool
 }
 
-type TemporarySamplingNode struct {
+type UnpublishedElementTarget struct {
 	ID             string
 	DisplayName    string
 	Properties     automation.Properties
@@ -73,12 +72,12 @@ type TemporarySamplingNode struct {
 	Selectors      []fingerprint.Selector
 	Fingerprint    fingerprint.Fingerprint
 	StepIDs        []string
-	ResolutionMode SamplingResolutionMode
+	ResolutionMode ResolutionMode
 	ExistingNodeID string
-	Candidates     []SamplingCandidate
+	Candidates     []ElementTargetCandidate
 }
 
-type TemporarySamplingWorkflow struct {
+type UnpublishedFlowFragment struct {
 	ID            string
 	SessionID     string
 	DisplayName   string
@@ -92,18 +91,18 @@ type TemporarySamplingWorkflow struct {
 	ValidationInsertGroupID     string
 	ValidationInsertBranchID    string
 	ValidationCapturedActionIDs []string
-	Status                      SamplingWorkflowStatus
+	Status                      PublicationStatus
 	ErrorMessage                string
 	Steps                       []automation.FlowFragmentStep
 	Parameters                  []automation.ParameterDefinition
-	Nodes                       []TemporarySamplingNode
+	Nodes                       []UnpublishedElementTarget
 	SavedWorkflowID             string
 	SavedVersionID              string
 	SavedVersionNumber          int
 }
 
-// RebuildTemporaryNodeReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
-func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
+// RebuildUnpublishedElementTargetReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
+func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment) error {
 	if workflow == nil {
 		return errors.New("temporary sampling workflow is required")
 	}
@@ -143,11 +142,11 @@ func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	return nil
 }
 
-type SamplingWorkspace struct {
+type SamplingSessionState struct {
 	BrowserStatus     SamplingBrowserStatus
 	CaptureStatus     SamplingCaptureStatus
 	ValidationArmed   bool
 	BrowserSessionID  string
 	CurrentWorkflowID string
-	Workflows         []TemporarySamplingWorkflow
+	Workflows         []UnpublishedFlowFragment
 }
