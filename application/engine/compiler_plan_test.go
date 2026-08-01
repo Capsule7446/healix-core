@@ -8,30 +8,30 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func compilePlanForTest(plan execution.Plan) (CompiledRun, error) {
+func compilePlanForTest(plan execution.Plan) (CompiledPlan, error) {
 	if err := plan.Validate(); err != nil {
-		return CompiledRun{}, err
+		return CompiledPlan{}, err
 	}
 	return compileDraftSnapshotForTest(plan.Snapshot())
 }
 
-func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
+func compileDraftSnapshotForTest(draft execution.PlanSnapshot) (CompiledPlan, error) {
 	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
 	if err != nil {
-		return CompiledRun{}, err
+		return CompiledPlan{}, err
 	}
 	return CompilePlan(snapshot)
 }
 
-func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map[string]string) (execution.RunSnapshot, error) {
+func runSnapshotForCompilerTest(draft execution.PlanSnapshot, environmentProperties map[string]string) (execution.InstanceSnapshot, error) {
 	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV1, environmentProperties, nil)
 }
 
-func runSnapshotForCompilerTypedEnvironmentTest(draft execution.Draft, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
+func runSnapshotForCompilerTypedEnvironmentTest(draft execution.PlanSnapshot, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
 	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV2, nil, environmentVariables)
 }
 
-func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion execution.RunSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
+func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaVersion execution.RunSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
@@ -90,10 +90,10 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion 
 	for index, entry := range draft.Entries {
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
 		if err := addInvocation(entry.ExecutionID, "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
-			return execution.RunSnapshot{}, err
+			return execution.InstanceSnapshot{}, err
 		}
 	}
-	input := execution.RunSnapshotInput{
+	input := execution.InstanceSnapshotInput{
 		SchemaVersion: schemaVersion,
 		RunID:         draft.RunID, ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
 		ExecutionFlow:        execution.TestTaskSnapshot{ID: "task"},
@@ -104,9 +104,9 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion 
 		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1},
 		HealerPolicy:     execution.DefaultHealerPolicySnapshot(),
 	}
-	snapshot, err := execution.SealRunSnapshot(input)
+	snapshot, err := execution.SealInstanceSnapshot(input)
 	if err != nil {
-		return execution.RunSnapshot{}, err
+		return execution.InstanceSnapshot{}, err
 	}
 	return snapshot, nil
 }

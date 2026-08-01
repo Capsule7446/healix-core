@@ -98,7 +98,7 @@ const (
 	TimelineFinishFailed TimelineOutcome = "FINISH_FAILED"
 )
 
-type RunResult struct {
+type EntryResult struct {
 	ExecutionOutcome ExecutionOutcome
 	RecordingOutcome RecordingOutcome
 	TimelineOutcome  TimelineOutcome
@@ -106,8 +106,8 @@ type RunResult struct {
 
 // RunProgram executes only an entry produced by CompilePlan. Identity is
 // validated before any runtime port can be observed.
-func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult, error) {
-	result := RunResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
+func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResult, error) {
+	result := EntryResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
 	if entry.identity.runID == "" ||
 		entry.RunID != entry.identity.runID ||
 		entry.SnapshotDigest != entry.identity.snapshotDigest ||

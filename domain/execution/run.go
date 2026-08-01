@@ -9,20 +9,20 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-type RunStatus string
+type InstanceStatus string
 
 const (
-	Queued    RunStatus = "QUEUED"
-	Running   RunStatus = "RUNNING"
-	Succeeded RunStatus = "SUCCEEDED"
-	Failed    RunStatus = "FAILED"
-	Canceled  RunStatus = "CANCELED"
-	Aborted   RunStatus = "ABORTED"
+	Queued    InstanceStatus = "QUEUED"
+	Running   InstanceStatus = "RUNNING"
+	Succeeded InstanceStatus = "SUCCEEDED"
+	Failed    InstanceStatus = "FAILED"
+	Canceled  InstanceStatus = "CANCELED"
+	Aborted   InstanceStatus = "ABORTED"
 )
 
 const sha256DigestLength = 71
 
-func ValidateRunStatusTransition(from, to RunStatus) error {
+func ValidateRunStatusTransition(from, to InstanceStatus) error {
 	allowed := (from == Queued && (to == Running || to == Canceled)) ||
 		(from == Running && (to == Succeeded || to == Failed || to == Canceled || to == Aborted))
 	if allowed {
@@ -37,7 +37,7 @@ type Run struct {
 	TestTaskVersionID     string
 	SnapshotSchemaVersion RunSnapshotSchema
 	SnapshotDigest        string
-	Status                RunStatus
+	Status                InstanceStatus
 	EnvironmentID         string
 	QueuePosition         int
 	CreatedAt             int64
@@ -51,7 +51,7 @@ type Run struct {
 // uncoded identity or lifecycle-shape defect becomes
 // EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, with the bare detail retained
 // only on the private cause.
-func NewRun(run Run, snapshot RunSnapshot) (Run, error) {
+func NewRun(run Run, snapshot InstanceSnapshot) (Run, error) {
 	sealed, err := newRun(run, snapshot)
 	if err != nil {
 		return Run{}, classifyCreateInstanceSnapshot(err)
@@ -59,7 +59,7 @@ func NewRun(run Run, snapshot RunSnapshot) (Run, error) {
 	return sealed, nil
 }
 
-func newRun(run Run, snapshot RunSnapshot) (Run, error) {
+func newRun(run Run, snapshot InstanceSnapshot) (Run, error) {
 	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.ExecutionFlowID != snapshot.ExecutionFlowID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() {
 		return Run{}, errors.New("run identity must match sealed snapshot")
 	}
@@ -98,7 +98,7 @@ func validateRunLifecycleShape(run Run) error {
 }
 
 // HydrateRun restores the private snapshot identity seal after durable storage.
-func HydrateRun(run Run, snapshot RunSnapshot) (Run, error) {
+func HydrateRun(run Run, snapshot InstanceSnapshot) (Run, error) {
 	if snapshot.digest == "" || run.ID != snapshot.RunID() || run.ExecutionFlowID != snapshot.ExecutionFlowID() || run.TestTaskVersionID != snapshot.TestTaskVersionID() || run.SnapshotSchemaVersion != snapshot.SchemaVersion() || run.SnapshotDigest != snapshot.Digest() {
 		return Run{}, errors.New("persisted run identity must match hydrated snapshot")
 	}
@@ -129,7 +129,7 @@ func ValidateRun(run Run) error {
 	return validateRunLifecycleShape(run)
 }
 
-func (r Run) Transition(to RunStatus, at int64) (Run, error) {
+func (r Run) Transition(to InstanceStatus, at int64) (Run, error) {
 	if !isSupportedRunSnapshotSchema(r.SnapshotSchemaVersion) || len(r.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(r.SnapshotDigest, "sha256:") || r.SnapshotDigest != r.sealedSnapshotDigest || strings.TrimSpace(r.TestTaskVersionID) == "" {
 		return Run{}, errors.New("run snapshot identity is invalid")
 	}

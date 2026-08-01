@@ -18,7 +18,7 @@ func TestInvocationEdgeKeyDoesNotCollideLikeDelimitedStrings(t *testing.T) {
 	}
 }
 
-func snapshotWithTwoConcreteReferenceEdges(t *testing.T) RunSnapshotInput {
+func snapshotWithTwoConcreteReferenceEdges(t *testing.T) InstanceSnapshotInput {
 	input := validRunSnapshotInput(t)
 	root := &input.Plan.Workflows[0]
 	root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("count")}}}}
@@ -75,7 +75,7 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 			}
 		}
 	}
-	if _, err := SealRunSnapshot(canonicalInput); err != nil {
+	if _, err := SealInstanceSnapshot(canonicalInput); err != nil {
 		t.Fatalf("canonical child invocation path rejected: %v", err)
 	}
 
@@ -90,7 +90,7 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 			grandchild.Path = child.Path + "/15:call-grandchild"
 		}
 	}
-	sealed, err := SealRunSnapshot(forgedInput)
+	sealed, err := SealInstanceSnapshot(forgedInput)
 	requireCreateInstanceSnapshotRejection(t, err, "path is not canonical")
 	if sealed.Digest() != "" {
 		t.Fatalf("failed seal returned digest %q", sealed.Digest())
@@ -99,28 +99,28 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 
 func TestRunSnapshotUsesConcreteParentPathForRepeatedReferenceEdges(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
-	if _, err := SealRunSnapshot(input); err != nil {
+	if _, err := SealInstanceSnapshot(input); err != nil {
 		t.Fatal(err)
 	}
 	input = snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations = input.Invocations[:len(input.Invocations)-1]
-	if _, err := SealRunSnapshot(input); err == nil {
+	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("missing edge accepted")
 	}
 	input = snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations = append(input.Invocations, input.Invocations[2])
 	input.Invocations[len(input.Invocations)-1].Path = "entry-1/4:call-duplicate"
-	if _, err := SealRunSnapshot(input); err == nil {
+	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("duplicate concrete edge accepted")
 	}
 }
 
 func TestRunSnapshotRequiresCompleteConcreteBindingsAndChildValues(t *testing.T) {
-	tests := []func(*RunSnapshotInput){func(v *RunSnapshotInput) { v.Invocations[2].Bindings = map[string]parameter.Binding{} }, func(v *RunSnapshotInput) { delete(v.Invocations[2].Values, "value") }, func(v *RunSnapshotInput) { v.Invocations[2].Values["extra"] = parameter.TextValue("x") }}
+	tests := []func(*InstanceSnapshotInput){func(v *InstanceSnapshotInput) { v.Invocations[2].Bindings = map[string]parameter.Binding{} }, func(v *InstanceSnapshotInput) { delete(v.Invocations[2].Values, "value") }, func(v *InstanceSnapshotInput) { v.Invocations[2].Values["extra"] = parameter.TextValue("x") }}
 	for _, mutate := range tests {
 		input := snapshotWithTwoConcreteReferenceEdges(t)
 		mutate(&input)
-		if _, err := SealRunSnapshot(input); err == nil {
+		if _, err := SealInstanceSnapshot(input); err == nil {
 			t.Fatal("binding/value divergence accepted")
 		}
 	}
@@ -129,7 +129,7 @@ func TestRunSnapshotRequiresCompleteConcreteBindingsAndChildValues(t *testing.T)
 func TestRunSnapshotPermitsConcreteBindingDifferentFromAuthoringMetadata(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations[2].Bindings["value"] = parameter.LiteralBinding(input.Invocations[2].Values["value"])
-	if _, err := SealRunSnapshot(input); err != nil {
+	if _, err := SealInstanceSnapshot(input); err != nil {
 		t.Fatal(err)
 	}
 }

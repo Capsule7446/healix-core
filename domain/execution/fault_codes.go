@@ -54,7 +54,7 @@ func classifyCreateInstancePlan(cause error) error {
 }
 
 // classifyCreateInstanceSnapshot is the equivalent boundary for
-// SealRunSnapshot, HydrateRunSnapshot, and NewRun: an uncoded snapshot-shape
+// SealInstanceSnapshot, HydrateInstanceSnapshot, and NewRun: an uncoded snapshot-shape
 // failure becomes EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, while a plan,
 // step-shape, or environment fault reached while validating the snapshot
 // passes through unchanged.

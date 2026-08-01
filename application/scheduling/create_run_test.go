@@ -477,7 +477,7 @@ func TestCreateRunServiceRejectsMalformedAuthoritativeOutcomes(t *testing.T) {
 		{"wrong command", func(v *InsertCreateRunOutcome) { v.CommandID = "other" }},
 		{"wrong digest", func(v *InsertCreateRunOutcome) { v.RequestDigest = "sha256:" + strings.Repeat("0", 64) }},
 		{"wrong run", func(v *InsertCreateRunOutcome) { v.Result.Run.ID = "other" }},
-		{"empty snapshot", func(v *InsertCreateRunOutcome) { v.Result.Snapshot = execution.RunSnapshot{} }},
+		{"empty snapshot", func(v *InsertCreateRunOutcome) { v.Result.Snapshot = execution.InstanceSnapshot{} }},
 		{"wrong entries", func(v *InsertCreateRunOutcome) { v.Result.EntryIDs = []string{"other"} }},
 	}
 	for _, test := range mutations {
@@ -690,7 +690,7 @@ func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
 	input.SchemaVersion = execution.RunSnapshotSchemaV1
 	input.Environment.Variables = nil
 	input.Environment.Properties = map[string]string{"Region": "east"}
-	snapshot, err := execution.SealRunSnapshot(input)
+	snapshot, err := execution.SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +776,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 			input := v.Snapshot.Input()
 			input.FailurePolicy = execution.FailurePolicyStopOnFailure
 			input.Plan.FailurePolicy = execution.FailurePolicyStopOnFailure
-			altered, sealErr := execution.SealRunSnapshot(input)
+			altered, sealErr := execution.SealInstanceSnapshot(input)
 			if sealErr != nil {
 				t.Fatal(sealErr)
 			}

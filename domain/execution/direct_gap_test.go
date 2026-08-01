@@ -30,7 +30,7 @@ func TestFailurePolicyAndPlanFailurePolicyDirect(t *testing.T) {
 }
 
 func TestValidateRunDirect(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestValidateRunDirect(t *testing.T) {
 }
 
 func TestRunSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

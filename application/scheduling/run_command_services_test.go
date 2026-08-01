@@ -12,7 +12,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-func validCommandRun(t *testing.T, status domainexecution.RunStatus) domainexecution.Run {
+func validCommandRun(t *testing.T, status domainexecution.InstanceStatus) domainexecution.Run {
 	t.Helper()
 	command := validCreateRunCommand()
 	command.RunID = "run"
@@ -189,7 +189,7 @@ func (sliceSignaler) SignalRunCancellation(context.Context, string) error { retu
 
 func TestCancelRejectsSignalRequirementThatDisagreesWithExpectedStatus(t *testing.T) {
 	for _, test := range []struct {
-		status domainexecution.RunStatus
+		status domainexecution.InstanceStatus
 		signal bool
 	}{{domainexecution.Queued, true}, {domainexecution.Running, false}} {
 		store := &commandStoreStub{cancelResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: test.signal}}

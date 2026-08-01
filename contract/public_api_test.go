@@ -54,7 +54,7 @@ func (consumerSnapshot) Candidates(context.Context) ([]heal.SnapshotCandidate, e
 
 type consumerCreateRunStore struct {
 	resolved scheduling.ResolvedCreateRun
-	input    execution.RunSnapshotInput
+	input    execution.InstanceSnapshotInput
 	digest   string
 }
 
@@ -70,7 +70,7 @@ func (s *consumerCreateRunStore) ResolveCreateRun(context.Context, scheduling.Cr
 func (s *consumerCreateRunStore) InsertCreateRun(_ context.Context, intent scheduling.CreateRunIntent) (scheduling.InsertCreateRunOutcome, error) {
 	s.input = intent.Snapshot.Input()
 	s.digest = intent.Snapshot.Digest()
-	hydrated, err := execution.HydrateRunSnapshot(s.input, s.digest)
+	hydrated, err := execution.HydrateInstanceSnapshot(s.input, s.digest)
 	if err != nil {
 		return scheduling.InsertCreateRunOutcome{}, err
 	}
@@ -95,7 +95,7 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	if err != nil || !result.WasApplied || store.digest == "" || store.input.RunID != "run" {
 		t.Fatalf("external CreateRun contract: result=%#v digest=%q err=%v", result, store.digest, err)
 	}
-	snapshot, err := execution.HydrateRunSnapshot(store.input, store.digest)
+	snapshot, err := execution.HydrateInstanceSnapshot(store.input, store.digest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,9 +126,9 @@ func TestPublicConsumerCanUseCoreContracts(t *testing.T) {
 		t.Fatalf("public interpolation contract = %q, %v", value, err)
 	}
 	_ = coreengine.Config{Driver: consumerDriver{}, Healer: heal.NewDefaultHealer()}
-	_ = coreengine.CompiledRun{}
+	_ = coreengine.CompiledPlan{}
 	_ = sampling.MatchProfile{}
-	_ = execution.Draft{}
+	_ = execution.PlanSnapshot{}
 	_ = execution.Seal
 }
 

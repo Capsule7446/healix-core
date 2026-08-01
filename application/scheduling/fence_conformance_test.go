@@ -12,7 +12,7 @@ import (
 
 type fencedSchedulingStore struct {
 	mu       sync.Mutex
-	snapshot execution.RunSnapshot
+	snapshot execution.InstanceSnapshot
 	active   execution.WorkerFence
 	claims   uint64
 	starts   int

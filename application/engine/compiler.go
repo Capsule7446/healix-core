@@ -51,14 +51,14 @@ type CompiledEntry struct {
 	identity          compiledExecutionIdentity
 }
 
-type CompiledRun struct {
+type CompiledPlan struct {
 	entries []CompiledEntry
 	byID    map[string]int
 }
 
 // Entries returns the compiled entries in execution order. The returned slice
 // and each entry's exported maps are owned by the caller.
-func (r CompiledRun) Entries() []CompiledEntry {
+func (r CompiledPlan) Entries() []CompiledEntry {
 	entries := make([]CompiledEntry, len(r.entries))
 	for index, entry := range r.entries {
 		entries[index] = cloneCompiledEntry(entry)
@@ -68,7 +68,7 @@ func (r CompiledRun) Entries() []CompiledEntry {
 
 // Entry returns the compiled entry identified by executionID without exposing
 // the run's private lookup index.
-func (r CompiledRun) Entry(executionID string) (CompiledEntry, bool) {
+func (r CompiledPlan) Entry(executionID string) (CompiledEntry, bool) {
 	index, ok := r.byID[executionID]
 	if !ok || index < 0 || index >= len(r.entries) {
 		return CompiledEntry{}, false
@@ -114,34 +114,34 @@ func planUnsealedError() error {
 
 // CompilePlan compiles solely from the immutable run snapshot payload. Every
 // returned entry is bound to the snapshot's Run, digest, and Execution ID.
-func CompilePlan(snapshot execution.RunSnapshot) (CompiledRun, error) {
+func CompilePlan(snapshot execution.InstanceSnapshot) (CompiledPlan, error) {
 	if snapshot.Digest() == "" {
-		return CompiledRun{}, planUnsealedError()
+		return CompiledPlan{}, planUnsealedError()
 	}
 	return compileSnapshotDraft(snapshot.Plan(), snapshot)
 }
 
-func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot) (CompiledRun, error) {
+func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.InstanceSnapshot) (CompiledPlan, error) {
 	versions := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
 	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
 	nodes := make(map[execution.NodeDependencyKey]execution.NodeSnapshot, len(draft.Nodes))
 	for _, workflow := range draft.Workflows {
 		if _, exists := versions[workflow.VersionID]; exists {
-			return CompiledRun{}, fmt.Errorf("duplicate workflow version %s", workflow.VersionID)
+			return CompiledPlan{}, fmt.Errorf("duplicate workflow version %s", workflow.VersionID)
 		}
 		versions[workflow.VersionID] = workflow
 	}
 	for _, resolution := range draft.References {
 		key := referenceKey(resolution.ParentVersionID, resolution.StepID)
 		if _, exists := resolutions[key]; exists {
-			return CompiledRun{}, fmt.Errorf("duplicate reference resolution for workflow version %s step %s", resolution.ParentVersionID, resolution.StepID)
+			return CompiledPlan{}, fmt.Errorf("duplicate reference resolution for workflow version %s step %s", resolution.ParentVersionID, resolution.StepID)
 		}
 		resolutions[key] = resolution
 	}
 	for _, snapshot := range draft.Nodes {
 		key := nodeDependencyIdentity(snapshot.ElementTargetID, snapshot.VersionID)
 		if _, exists := nodes[key]; exists {
-			return CompiledRun{}, fmt.Errorf("duplicate node dependency %s version %s", snapshot.ElementTargetID, snapshot.VersionID)
+			return CompiledPlan{}, fmt.Errorf("duplicate node dependency %s version %s", snapshot.ElementTargetID, snapshot.VersionID)
 		}
 		nodes[key] = snapshot
 	}
@@ -151,15 +151,15 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 	invocationsByPath := make(map[string]execution.InvocationScopeSnapshot, len(invocations))
 	for _, invocation := range invocations {
 		if _, exists := invocationsByPath[invocation.Path]; exists {
-			return CompiledRun{}, fmt.Errorf("duplicate invocation path %s", invocation.Path)
+			return CompiledPlan{}, fmt.Errorf("duplicate invocation path %s", invocation.Path)
 		}
 		invocationsByPath[invocation.Path] = invocation
 	}
 	environment := snapshot.Environment()
-	result := CompiledRun{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
+	result := CompiledPlan{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
 		if _, exists := result.byID[entry.ExecutionID]; exists {
-			return CompiledRun{}, fmt.Errorf("duplicate execution %s", entry.ExecutionID)
+			return CompiledPlan{}, fmt.Errorf("duplicate execution %s", entry.ExecutionID)
 		}
 		compiler := executionCompiler{
 			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
@@ -172,12 +172,12 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 		if err != nil {
 			// The inner failure is already a classified fault. This wrapper both hid
 			// that classification and welded the execution id into public text.
-			return CompiledRun{}, err
+			return CompiledPlan{}, err
 		}
 		root.OwnsParameterScope = true
 		invocation, exists := invocationsByPath[entry.ExecutionID]
 		if !exists {
-			return CompiledRun{}, fmt.Errorf("compile execution %s: root invocation is missing", entry.ExecutionID)
+			return CompiledPlan{}, fmt.Errorf("compile execution %s: root invocation is missing", entry.ExecutionID)
 		}
 		root.Parameters = cloneParameterValues(invocation.Values)
 		if len(environment.Variables) > 0 && root.Parameters == nil {
@@ -191,7 +191,7 @@ func compileSnapshotDraft(draft execution.Draft, snapshot execution.RunSnapshot)
 				// parallel domain/execution migration), so this stays an uncoded error
 				// with the identities dropped rather than echoed. The integrator should
 				// route this through that code once it lands.
-				return CompiledRun{}, errors.New("compile execution: environment parameter collides with workflow scope")
+				return CompiledPlan{}, errors.New("compile execution: environment parameter collides with workflow scope")
 			}
 			root.Parameters[key] = value.Clone()
 		}

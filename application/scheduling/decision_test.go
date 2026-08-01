@@ -16,7 +16,7 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 		next        string
 		transitions []string
 		cause       SkipCause
-		final       execution.RunStatus
+		final       execution.InstanceStatus
 	}{
 		{"initial selects A", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionPending, execution.ExecutionPending), "a", nil, "", ""},
 		{"running frontier waits", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionRunning, execution.ExecutionPending, execution.ExecutionPending), "", nil, "", ""},
@@ -100,7 +100,7 @@ func entryStates(values ...execution.ExecutionStatus) []EntryState {
 func causedStates(first execution.ExecutionStatus, cause SkipCause) []EntryState {
 	return []EntryState{{ExecutionID: "a", Status: first}, {ExecutionID: "b", Status: execution.ExecutionSkipped, SkipCause: cause}, {ExecutionID: "c", Status: execution.ExecutionSkipped, SkipCause: cause}}
 }
-func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.RunSnapshot {
+func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.InstanceSnapshot {
 	t.Helper()
 	draft := planDraft(policy)
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(draft.Entries))
@@ -109,7 +109,7 @@ func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.RunSnaps
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
 		invocations[index] = execution.InvocationScopeSnapshot{Path: entry.ExecutionID, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
 	}
-	snapshot, err := execution.SealRunSnapshot(execution.RunSnapshotInput{
+	snapshot, err := execution.SealInstanceSnapshot(execution.InstanceSnapshotInput{
 		SchemaVersion: execution.RunSnapshotSchemaV1, RunID: "run", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
 		ExecutionFlow: execution.TestTaskSnapshot{ID: "task"}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: items},
 		Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: map[string]string{}}, FailurePolicy: policy,
@@ -120,7 +120,7 @@ func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.RunSnaps
 	}
 	return snapshot
 }
-func planDraft(policy execution.FailurePolicy) execution.Draft {
+func planDraft(policy execution.FailurePolicy) execution.PlanSnapshot {
 	workflow := execution.WorkflowSnapshot{ID: "workflow", VersionID: "workflow-v1", FlowFragmentID: "workflow", DisplayName: "FlowFragment", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "Wait", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}
-	return execution.Draft{RunID: "run", FailurePolicy: policy, Entries: []execution.WorkflowEntry{{ExecutionID: "a", TestTaskItemID: "item-a", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "b", TestTaskItemID: "item-b", SequenceNumber: 2, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "c", TestTaskItemID: "item-c", SequenceNumber: 3, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
+	return execution.PlanSnapshot{RunID: "run", FailurePolicy: policy, Entries: []execution.Entry{{ExecutionID: "a", TestTaskItemID: "item-a", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "b", TestTaskItemID: "item-b", SequenceNumber: 2, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "c", TestTaskItemID: "item-c", SequenceNumber: 3, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
 }

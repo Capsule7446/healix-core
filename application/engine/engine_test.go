@@ -201,7 +201,7 @@ func compiledEntry(runID string, program node.Program) CompiledEntry {
 	}
 }
 
-func runProgramForTest(ctx context.Context, entry CompiledEntry, cfg Config) (RunResult, error) {
+func runProgramForTest(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResult, error) {
 	return runProgram(ctx, entry.program, cfg)
 }
 

@@ -43,12 +43,12 @@ type ExecutionTransition struct {
 type Decision struct {
 	NextExecutionID string
 	Transitions     []ExecutionTransition
-	FinalStatus     *execution.RunStatus
+	FinalStatus     *execution.InstanceStatus
 }
 
 // DecideAdvance makes a serial scheduling decision using the run snapshot as the
 // sole authority for membership, order, and failure policy.
-func DecideAdvance(snapshot execution.RunSnapshot, states []EntryState) (Decision, error) {
+func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (Decision, error) {
 	if snapshot.Digest() == "" {
 		return Decision{}, invalidEntryStatesError()
 	}
@@ -103,11 +103,11 @@ func DecideAdvance(snapshot execution.RunSnapshot, states []EntryState) (Decisio
 	return Decision{FinalStatus: &status}, nil
 }
 
-func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (int, SkipCause, execution.RunStatus, error) {
+func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (int, SkipCause, execution.InstanceStatus, error) {
 	frontierSeen := false
 	stopIndex := -1
 	var expectedCause SkipCause
-	var finalStatus execution.RunStatus
+	var finalStatus execution.InstanceStatus
 	for i, state := range states {
 		status := state.Status
 		if !isKnownStatus(status) {
@@ -158,7 +158,7 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 	return stopIndex, expectedCause, finalStatus, nil
 }
 
-func stopFor(status execution.ExecutionStatus, policy execution.FailurePolicy) (SkipCause, execution.RunStatus) {
+func stopFor(status execution.ExecutionStatus, policy execution.FailurePolicy) (SkipCause, execution.InstanceStatus) {
 	switch status {
 	case execution.ExecutionFailed:
 		if policy == execution.FailurePolicyStopOnFailure {
@@ -176,7 +176,7 @@ func isKnownStatus(status execution.ExecutionStatus) bool {
 	return status == execution.ExecutionPending || status == execution.ExecutionRunning || execution.IsTerminalExecutionStatus(status)
 }
 
-func stopAfter(entries []execution.WorkflowEntry, states []EntryState, index int, cause SkipCause, status execution.RunStatus) Decision {
+func stopAfter(entries []execution.Entry, states []EntryState, index int, cause SkipCause, status execution.InstanceStatus) Decision {
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {
 		if states[i].Status == execution.ExecutionPending {

@@ -66,12 +66,12 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 	input := validRunSnapshotInput(t)
 	parameters := input.Plan.Entries[0].Parameters
 	input.ExecutionFlowVersion.Items = make([]ExecutionFlowVersionItemSnapshot, entryCount)
-	input.Plan.Entries = make([]WorkflowEntry, entryCount)
+	input.Plan.Entries = make([]Entry, entryCount)
 	for index := 0; index < entryCount; index++ {
 		itemID := fmt.Sprintf("item-%04d", index)
 		executionID := fmt.Sprintf("entry-%04d", index)
 		input.ExecutionFlowVersion.Items[index] = ExecutionFlowVersionItemSnapshot{ID: itemID, TestTaskVersionID: input.TestTaskVersionID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}
-		input.Plan.Entries[index] = WorkflowEntry{ExecutionID: executionID, TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
+		input.Plan.Entries[index] = Entry{ExecutionID: executionID, TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
 	}
 
 	indexes, err := buildSnapshotValidationIndexes(input.Plan)
@@ -117,7 +117,7 @@ func TestValidateSnapshotIndexesTestTaskVersionItems(t *testing.T) {
 	const itemCount = 256
 	input := validRunSnapshotInput(t)
 	input.ExecutionFlowVersion.Items = make([]ExecutionFlowVersionItemSnapshot, itemCount)
-	input.Plan.Entries = make([]WorkflowEntry, itemCount)
+	input.Plan.Entries = make([]Entry, itemCount)
 	for index := 0; index < itemCount; index++ {
 		itemID := fmt.Sprintf("item-%04d", index)
 		input.ExecutionFlowVersion.Items[index] = ExecutionFlowVersionItemSnapshot{
@@ -127,7 +127,7 @@ func TestValidateSnapshotIndexesTestTaskVersionItems(t *testing.T) {
 			FlowFragmentID:    "workflow-1",
 			WorkflowVersionID: "workflow-v2",
 		}
-		input.Plan.Entries[index] = WorkflowEntry{
+		input.Plan.Entries[index] = Entry{
 			ExecutionID:       fmt.Sprintf("entry-%04d", index),
 			TestTaskItemID:    itemID,
 			SequenceNumber:    index + 1,

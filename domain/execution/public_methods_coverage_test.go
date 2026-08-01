@@ -30,7 +30,7 @@ func TestPlanFailurePolicyReturnsSealedPolicy(t *testing.T) {
 }
 
 func TestRunSnapshotInvocationFindsAndOwnsValues(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

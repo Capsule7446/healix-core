@@ -3,7 +3,7 @@ package execution
 import "testing"
 
 func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 	tests := []struct {
 		name   string
 		source Run
-		to     RunStatus
+		to     InstanceStatus
 		mutate func(*Run)
 	}{
 		{"queued forbidden start", queued, Running, func(run *Run) { run.StartedAt = 10 }},
@@ -53,7 +53,7 @@ func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 }
 
 func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 	tests := []struct {
 		name   string
 		source Run
-		status RunStatus
+		status InstanceStatus
 		at     int64
 	}{
 		{"queued canceled", queued, Canceled, 11},
@@ -97,7 +97,7 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 }
 
 func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
 	}
 	tests := []struct {
 		name   string
-		status RunStatus
+		status InstanceStatus
 		start  int64
 		finish int64
 		valid  bool
@@ -153,7 +153,7 @@ func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
 }
 
 func TestRunStatusTransitionPermitsCancellationBeforeAndDuringExecution(t *testing.T) {
-	for _, from := range []RunStatus{Queued, Running} {
+	for _, from := range []InstanceStatus{Queued, Running} {
 		if err := ValidateRunStatusTransition(from, Canceled); err != nil {
 			t.Fatalf("%s -> CANCELED: %v", from, err)
 		}
@@ -161,7 +161,7 @@ func TestRunStatusTransitionPermitsCancellationBeforeAndDuringExecution(t *testi
 }
 
 func TestRunTransitionAcceptsLifecycleProgression(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

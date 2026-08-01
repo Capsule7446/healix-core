@@ -67,8 +67,8 @@ func classifySchedulingAdapterFailure(cause error) error {
 	return err
 }
 
-func runProgram(ctx context.Context, program node.Program, cfg Config) (result RunResult, runErr error) {
-	result = RunResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
+func runProgram(ctx context.Context, program node.Program, cfg Config) (result EntryResult, runErr error) {
+	result = EntryResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
 	if ctx == nil {
 		return result, runtimeConfigurationInvalidError(errors.New("context is required"))
 	}

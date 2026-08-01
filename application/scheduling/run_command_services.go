@@ -103,7 +103,7 @@ func runSignalRetryableError(cause error) error {
 
 type CancelRunCommand struct {
 	CommandID, RunID     string
-	ExpectedStatus       domainexecution.RunStatus
+	ExpectedStatus       domainexecution.InstanceStatus
 	ExpectedRevision, At int64
 }
 type AbortRunCommand struct {
@@ -269,7 +269,7 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 	result.RunIDs = append([]string(nil), result.RunIDs...)
 	return result, nil
 }
-func validateRunResult(runID string, status domainexecution.RunStatus, expectedRevision int64, result RunCommandResult) error {
+func validateRunResult(runID string, status domainexecution.InstanceStatus, expectedRevision int64, result RunCommandResult) error {
 	if result.Run.ID != runID {
 		return runAdapterContractViolationError(runIdentityConflictError())
 	}

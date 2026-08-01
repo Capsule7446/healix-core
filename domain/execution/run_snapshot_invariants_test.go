@@ -12,12 +12,12 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 	tests := []struct {
 		name       string
 		wantReason string
-		mutate     func(*RunSnapshotInput, *InvocationScopeSnapshot)
+		mutate     func(*InstanceSnapshotInput, *InvocationScopeSnapshot)
 	}{
 		{
 			name:       "missing required value",
 			wantReason: `parameter "value" is missing`,
-			mutate: func(_ *RunSnapshotInput, child *InvocationScopeSnapshot) {
+			mutate: func(_ *InstanceSnapshotInput, child *InvocationScopeSnapshot) {
 				child.Bindings = map[string]parameter.Binding{}
 				child.Values = map[string]parameter.Value{}
 			},
@@ -25,7 +25,7 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 		{
 			name:       "wrong typed literal",
 			wantReason: `parameter "value": parameter value type mismatch`,
-			mutate: func(_ *RunSnapshotInput, child *InvocationScopeSnapshot) {
+			mutate: func(_ *InstanceSnapshotInput, child *InvocationScopeSnapshot) {
 				child.Bindings["value"] = parameter.LiteralBinding(parameter.TextValue("not-a-number"))
 				child.Values["value"] = parameter.TextValue("not-a-number")
 			},
@@ -33,7 +33,7 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 		{
 			name:       "invalid select option",
 			wantReason: `parameter "value": single-select value is not an option`,
-			mutate: func(input *RunSnapshotInput, child *InvocationScopeSnapshot) {
+			mutate: func(input *InstanceSnapshotInput, child *InvocationScopeSnapshot) {
 				input.Plan.Workflows[0].Steps[0].Reference.ParameterBindings["value"] = parameter.LiteralBinding(parameter.SingleSelectValue("allowed"))
 				input.Plan.Workflows[1].Parameters[0] = Parameter{
 					Name: "value", DisplayName: "Value", Type: parameter.SingleSelect, Required: true, Options: []string{"allowed"},
@@ -50,7 +50,7 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 			child := &input.Invocations[2]
 			test.mutate(&input, child)
 
-			_, err := SealRunSnapshot(input)
+			_, err := SealInstanceSnapshot(input)
 			wantPath := fmt.Sprintf("invocation %s parameter values:", child.Path)
 			requireCreateInstanceSnapshotRejection(t, err, wantPath, test.wantReason)
 		})
@@ -60,24 +60,24 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 func TestRunSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*RunSnapshotInput)
+		mutate func(*InstanceSnapshotInput)
 	}{
-		{"extra entry", func(v *RunSnapshotInput) {
+		{"extra entry", func(v *InstanceSnapshotInput) {
 			entry := v.Plan.Entries[0]
 			entry.ExecutionID = "entry-2"
 			entry.TestTaskItemID = "extra"
 			entry.SequenceNumber = 2
 			v.Plan.Entries = append(v.Plan.Entries, entry)
 		}},
-		{"sequence mismatch", func(v *RunSnapshotInput) { v.ExecutionFlowVersion.Items[0].SequenceNumber = 2 }},
-		{"workflow mismatch", func(v *RunSnapshotInput) { v.ExecutionFlowVersion.Items[0].FlowFragmentID = "other" }},
-		{"workflow version mismatch", func(v *RunSnapshotInput) { v.ExecutionFlowVersion.Items[0].WorkflowVersionID = "other-v1" }},
+		{"sequence mismatch", func(v *InstanceSnapshotInput) { v.ExecutionFlowVersion.Items[0].SequenceNumber = 2 }},
+		{"workflow mismatch", func(v *InstanceSnapshotInput) { v.ExecutionFlowVersion.Items[0].FlowFragmentID = "other" }},
+		{"workflow version mismatch", func(v *InstanceSnapshotInput) { v.ExecutionFlowVersion.Items[0].WorkflowVersionID = "other-v1" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := validRunSnapshotInput(t)
 			test.mutate(&input)
-			if _, err := SealRunSnapshot(input); err == nil {
+			if _, err := SealInstanceSnapshot(input); err == nil {
 				t.Fatal("invalid correspondence accepted")
 			}
 		})
@@ -100,12 +100,12 @@ func TestValidateBindingsRejectsUnknownLiteralAndParentNames(t *testing.T) {
 func TestRunSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *testing.T) {
 	input := validRunSnapshotInput(t)
 	input.Environment.Properties["large"] = strings.Repeat("x", MaxStringBytes+1)
-	if _, err := SealRunSnapshot(input); err == nil {
+	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("oversized environment property accepted")
 	}
 	input = validRunSnapshotInput(t)
 	input.Invocations[0].Path = strings.Repeat("x", MaxStringBytes+1)
-	if _, err := SealRunSnapshot(input); err == nil {
+	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("oversized invocation path accepted")
 	}
 }
@@ -116,7 +116,7 @@ func TestRunSnapshotSharesAggregateStringBudgetAcrossPlanAndEnvelope(t *testing.
 	for index := 0; index < MaxAggregateStringBytes/MaxStringBytes; index++ {
 		input.Environment.Properties[string(rune('a'+index%26))+strings.Repeat("k", index/26)] = chunk
 	}
-	if _, err := SealRunSnapshot(input); err == nil {
+	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("plan plus envelope exceeding the shared string budget was accepted")
 	}
 }

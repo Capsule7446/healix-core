@@ -53,36 +53,36 @@ func requireEngineStepShapeViolation(t *testing.T, err error, wantField string, 
 	t.Fatalf("violations = %#v, want %s at %q", descriptor.Violations(), wantCode, wantField)
 }
 
-func minimalCompilerPlan() execution.Draft {
-	return execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{ID: "root", FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}}}
+func minimalCompilerPlan() execution.PlanSnapshot {
+	return execution.PlanSnapshot{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{ID: "root", FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}}}
 }
 
 func TestCompilePlanRejectsSnapshotIdentityMatrix(t *testing.T) {
 	tests := []struct {
 		name      string
-		mutate    func(*execution.Draft)
+		mutate    func(*execution.PlanSnapshot)
 		wantPlain string
 		wantField string
 		wantCode  fault.Code
 	}{
-		{name: "empty workflow version id", mutate: func(plan *execution.Draft) { plan.Workflows[0].VersionID = "" }, wantPlain: "empty version id"},
-		{name: "duplicate workflow version", mutate: func(plan *execution.Draft) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, wantPlain: "duplicate workflow version"},
-		{name: "duplicate reference resolution", mutate: func(plan *execution.Draft) {
+		{name: "empty workflow version id", mutate: func(plan *execution.PlanSnapshot) { plan.Workflows[0].VersionID = "" }, wantPlain: "empty version id"},
+		{name: "duplicate workflow version", mutate: func(plan *execution.PlanSnapshot) { plan.Workflows = append(plan.Workflows, plan.Workflows[0]) }, wantPlain: "duplicate workflow version"},
+		{name: "duplicate reference resolution", mutate: func(plan *execution.PlanSnapshot) {
 			resolution := execution.ReferenceResolution{ParentVersionID: "root-v1", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1"}
 			plan.References = []execution.ReferenceResolution{resolution, resolution}
 		}, wantPlain: "duplicate workflow resolution"},
-		{name: "duplicate node dependency", mutate: func(plan *execution.Draft) {
+		{name: "duplicate node dependency", mutate: func(plan *execution.PlanSnapshot) {
 			dependency := compilerNodeSnapshot(compilerNodeV1, "submit")
 			plan.Nodes = []execution.NodeSnapshot{dependency, dependency}
 		}, wantPlain: "duplicate node dependency"},
-		{name: "missing root version", mutate: func(plan *execution.Draft) { plan.Entries[0].WorkflowVersionID = "missing-v1" }, wantPlain: "entry workflow version"},
+		{name: "missing root version", mutate: func(plan *execution.PlanSnapshot) { plan.Entries[0].WorkflowVersionID = "missing-v1" }, wantPlain: "entry workflow version"},
 		// The workflow's own version-vs-flow-fragment mismatch is caught by
-		// WorkflowSnapshot.Validate's step-shape envelope before Draft.Validate
+		// WorkflowSnapshot.Validate's step-shape envelope before PlanSnapshot.Validate
 		// ever reaches its own entry/workflow cross-check, so this and the next
 		// case surface EXECUTION_CREATE_INSTANCE_STEP_SHAPE_INVALID, not the
 		// plan-level code.
-		{name: "workflow version has wrong owner", mutate: func(plan *execution.Draft) { plan.Workflows[0].FlowFragmentID = "other" }, wantField: "flowFragmentId", wantCode: fault.CodeFieldInvalid},
-		{name: "invalid frozen workflow", mutate: func(plan *execution.Draft) { plan.Workflows[0].Steps = nil }, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "workflow version has wrong owner", mutate: func(plan *execution.PlanSnapshot) { plan.Workflows[0].FlowFragmentID = "other" }, wantField: "flowFragmentId", wantCode: fault.CodeFieldInvalid},
+		{name: "invalid frozen workflow", mutate: func(plan *execution.PlanSnapshot) { plan.Workflows[0].Steps = nil }, wantField: "steps", wantCode: fault.CodeFieldRequired},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -145,7 +145,7 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := execution.Draft{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.WorkflowEntry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
+	plan := execution.PlanSnapshot{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ExecutionID: "execution-entry", TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
 			{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{
 				{ID: "select", DisplayName: "选择", Kind: execution.ActionStep, Action: "select", ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1, Values: []string{"east", "west"}, Optional: true, CaptureScreenshot: true},

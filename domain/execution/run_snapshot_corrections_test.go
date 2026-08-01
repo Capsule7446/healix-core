@@ -18,7 +18,7 @@ func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
 		"count": parameter.LiteralBinding(input.Invocations[0].Values["count"]),
 	}
 
-	snapshot, err := SealRunSnapshot(input)
+	snapshot, err := SealInstanceSnapshot(input)
 
 	requireCreateInstanceSnapshotRejection(t, err, "root invocation cannot have bindings")
 	if snapshot.Digest() != "" {
@@ -29,7 +29,7 @@ func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
 func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T) {
 	input := validRunSnapshotInput(t)
 	input.Plan.Workflows[0].Steps[0].DisplayName = "original"
-	sealed, err := SealRunSnapshot(input)
+	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,20 +46,20 @@ func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T
 	}
 	changed := validRunSnapshotInput(t)
 	changed.Plan.Workflows[0].Steps[0].DisplayName = "changed"
-	other, err := SealRunSnapshot(changed)
+	other, err := SealInstanceSnapshot(changed)
 	if err != nil || other.Digest() == firstDigest {
 		t.Fatalf("plan behavior absent from digest: %v", err)
 	}
 }
 
 func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.T) {
-	base, err := SealRunSnapshot(validRunSnapshotInput(t))
+	base, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mutate := range []func(*RunSnapshotInput){
-		func(v *RunSnapshotInput) { v.Environment.Revision++ },
-		func(v *RunSnapshotInput) {
+	for _, mutate := range []func(*InstanceSnapshotInput){
+		func(v *InstanceSnapshotInput) { v.Environment.Revision++ },
+		func(v *InstanceSnapshotInput) {
 			v.Plan.References = []ReferenceResolution{{ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true}}
 			v.Plan.Workflows[0].Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}}
 			v.Plan.Workflows = append(v.Plan.Workflows, WorkflowSnapshot{ID: "child", FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Steps: []Step{{ID: "wait-child", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}})
@@ -68,7 +68,7 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 	} {
 		input := validRunSnapshotInput(t)
 		mutate(&input)
-		got, err := SealRunSnapshot(input)
+		got, err := SealInstanceSnapshot(input)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,12 +82,12 @@ func TestSealRunSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
 	input := validRunSnapshotInput(t)
 	input.Environment.Revision = 0
 
-	snapshot, err := SealRunSnapshot(input)
+	snapshot, err := SealInstanceSnapshot(input)
 
 	if err == nil {
 		t.Fatal("zero environment revision accepted")
 	}
-	if !reflect.DeepEqual(snapshot, RunSnapshot{}) {
+	if !reflect.DeepEqual(snapshot, InstanceSnapshot{}) {
 		t.Fatalf("rejected snapshot is not zero value: %#v", snapshot)
 	}
 	if snapshot.Digest() != "" {
@@ -108,12 +108,12 @@ func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *t
 	encodeSnapshot(&encoder, canonicalInput)
 	storedDigest := "sha256:" + hex.EncodeToString(digester.Sum(nil))
 
-	snapshot, err := HydrateRunSnapshot(input, storedDigest)
+	snapshot, err := HydrateInstanceSnapshot(input, storedDigest)
 
 	if err == nil {
 		t.Fatal("zero environment revision accepted during hydration")
 	}
-	if !reflect.DeepEqual(snapshot, RunSnapshot{}) {
+	if !reflect.DeepEqual(snapshot, InstanceSnapshot{}) {
 		t.Fatalf("rejected hydrated snapshot is not zero value: %#v", snapshot)
 	}
 	if snapshot.Digest() != "" {
@@ -123,14 +123,14 @@ func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *t
 
 func TestHydrateRunSnapshotVerifiesStoredDigest(t *testing.T) {
 	input := validRunSnapshotInput(t)
-	sealed, err := SealRunSnapshot(input)
+	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := HydrateRunSnapshot(input, sealed.Digest()); err != nil {
+	if _, err := HydrateInstanceSnapshot(input, sealed.Digest()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := HydrateRunSnapshot(input, "sha256:"+strings.Repeat("0", 64)); err == nil {
+	if _, err := HydrateInstanceSnapshot(input, "sha256:"+strings.Repeat("0", 64)); err == nil {
 		t.Fatal("digest mismatch accepted")
 	}
 }
@@ -146,8 +146,8 @@ func TestPolicyNegativeZeroHasCanonicalDigest(t *testing.T) {
 		set(&negative.HealerPolicy)
 		set(&positive.HealerPolicy)
 		normalizePolicyPositiveZero(&positive.HealerPolicy)
-		a, ea := SealRunSnapshot(negative)
-		b, eb := SealRunSnapshot(positive)
+		a, ea := SealInstanceSnapshot(negative)
+		b, eb := SealInstanceSnapshot(positive)
 		if ea != nil || eb != nil || a.Digest() != b.Digest() {
 			t.Fatalf("field %d: %v %v", i, ea, eb)
 		}
@@ -169,7 +169,7 @@ func normalizePolicyPositiveZero(p *HealerPolicySnapshot) {
 }
 
 func TestNewRunRejectsInvalidInitialLifecycleShape(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

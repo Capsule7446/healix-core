@@ -30,7 +30,7 @@ func TestRunSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
 				input.Environment.Properties = nil
 				input.Environment.Variables = map[string]parameter.Value{test.key: parameter.TextValue("value")}
 			}
-			if _, err := SealRunSnapshot(input); err == nil {
+			if _, err := SealInstanceSnapshot(input); err == nil {
 				t.Fatal("invalid environment name accepted")
 			}
 		})
@@ -39,14 +39,14 @@ func TestRunSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
 
 func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
-	canonical, err := SealRunSnapshot(input)
+	canonical, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for left, right := 0, len(input.Invocations)-1; left < right; left, right = left+1, right-1 {
 		input.Invocations[left], input.Invocations[right] = input.Invocations[right], input.Invocations[left]
 	}
-	reordered, err := SealRunSnapshot(input)
+	reordered, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestRunSnapshotRejectsInvocationWithMissingParentIndependentOfOrder(t *test
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations[1].ParentPath = "missing"
 	input.Invocations[0], input.Invocations[1] = input.Invocations[1], input.Invocations[0]
-	if snapshot, err := SealRunSnapshot(input); err == nil || snapshot.Digest() != "" {
+	if snapshot, err := SealInstanceSnapshot(input); err == nil || snapshot.Digest() != "" {
 		t.Fatalf("missing parent accepted: %#v/%v", snapshot, err)
 	}
 }
@@ -76,27 +76,27 @@ func TestRunSnapshotRejectsInvocationParentCycle(t *testing.T) {
 	secondChildPath := input.Invocations[2].Path
 	input.Invocations[1].ParentPath = secondChildPath
 	input.Invocations[2].ParentPath = firstChildPath
-	snapshot, err := SealRunSnapshot(input)
+	snapshot, err := SealInstanceSnapshot(input)
 	if snapshot.Digest() != "" {
 		t.Fatalf("parent cycle accepted with digest %q", snapshot.Digest())
 	}
 	requireCreateInstanceSnapshotRejection(t, err, "cycle")
 }
 
-func validRunSnapshotInput(t *testing.T) RunSnapshotInput {
+func validRunSnapshotInput(t *testing.T) InstanceSnapshotInput {
 	t.Helper()
 	number, err := parameter.NewNumberValue("1.20")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return RunSnapshotInput{
+	return InstanceSnapshotInput{
 		SchemaVersion: RunSnapshotSchemaV1,
 		RunID:         "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3",
 		TestTaskVersionNumber: 3,
 		ExecutionFlow:         TestTaskSnapshot{ID: "task-1"},
 		ExecutionFlowVersion:  ExecutionFlowVersionSnapshot{ID: "task-v3", ExecutionFlowID: "task-1", VersionNumber: 3, Items: []ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v3", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}}},
-		Plan: Draft{RunID: "run-1", FailurePolicy: FailurePolicyStopOnFailure,
-			Entries:   []WorkflowEntry{{ExecutionID: "entry-1", TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
+		Plan: PlanSnapshot{RunID: "run-1", FailurePolicy: FailurePolicyStopOnFailure,
+			Entries:   []Entry{{ExecutionID: "entry-1", TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
 			Workflows: []WorkflowSnapshot{{ID: "workflow-1", FlowFragmentID: "workflow-1", VersionID: "workflow-v2", DisplayName: "Flow", VersionNumber: 2, Parameters: []Parameter{{Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 		},
 		Invocations:      []InvocationScopeSnapshot{{Path: "entry-1", ParentPath: "", FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}},
@@ -109,7 +109,7 @@ func validRunSnapshotInput(t *testing.T) RunSnapshotInput {
 
 func TestRunSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
 	input := validRunSnapshotInput(t)
-	sealed, err := SealRunSnapshot(input)
+	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestRunSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
 	if sealed.Digest() != legacyDigest {
 		t.Fatalf("V1 digest changed: got %q", sealed.Digest())
 	}
-	hydrated, err := HydrateRunSnapshot(input, legacyDigest)
+	hydrated, err := HydrateInstanceSnapshot(input, legacyDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 		"flag": parameter.TextValue("true"),
 		"list": parameter.MultiSelectValue([]string{"east", "west"}),
 	}
-	sealed, err := SealRunSnapshot(input)
+	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 		"list": parameter.MultiSelectValue([]string{"east", "west"}),
 		"flag": parameter.TextValue("true"),
 	}
-	other, err := SealRunSnapshot(reordered)
+	other, err := SealInstanceSnapshot(reordered)
 	if err != nil || sealed.Digest() != other.Digest() {
 		t.Fatalf("V2 digest unstable: %q %q %v", sealed.Digest(), other.Digest(), err)
 	}
@@ -157,7 +157,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 		"flag": parameter.BooleanValue(true),
 		"list": parameter.MultiSelectValue([]string{"east", "west"}),
 	}
-	booleanSnapshot, err := SealRunSnapshot(typed)
+	booleanSnapshot, err := SealInstanceSnapshot(typed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 	if got := sealed.Input().Environment.Variables["list"].MultiSelect(); !reflect.DeepEqual(got, []string{"east", "west"}) {
 		t.Fatalf("Input aliases MULTI_SELECT: %v", got)
 	}
-	hydrated, err := HydrateRunSnapshot(sealed.Input(), sealed.Digest())
+	hydrated, err := HydrateInstanceSnapshot(sealed.Input(), sealed.Digest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 
 func TestSealRunSnapshotOwnsDataAndHasStableCanonicalDigest(t *testing.T) {
 	input := validRunSnapshotInput(t)
-	sealed, err := SealRunSnapshot(input)
+	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestSealRunSnapshotOwnsDataAndHasStableCanonicalDigest(t *testing.T) {
 	}
 	reordered := validRunSnapshotInput(t)
 	reordered.Environment.Properties = map[string]string{"region": "east", "password": "ordinary-property"}
-	other, err := SealRunSnapshot(reordered)
+	other, err := SealInstanceSnapshot(reordered)
 	if err != nil || sealed.Digest() != other.Digest() {
 		t.Fatalf("digest unstable: %q %q %v", sealed.Digest(), other.Digest(), err)
 	}
@@ -213,41 +213,41 @@ func TestSealRunSnapshotOwnsDataAndHasStableCanonicalDigest(t *testing.T) {
 }
 
 func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
-	base, err := SealRunSnapshot(validRunSnapshotInput(t))
+	base, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tests := []struct {
 		name   string
-		mutate func(*RunSnapshotInput)
+		mutate func(*InstanceSnapshotInput)
 	}{
-		{"schema", func(v *RunSnapshotInput) { v.SchemaVersion++ }},
-		{"run", func(v *RunSnapshotInput) { v.RunID = "run-2"; v.Plan.RunID = "run-2" }},
-		{"task version", func(v *RunSnapshotInput) {
+		{"schema", func(v *InstanceSnapshotInput) { v.SchemaVersion++ }},
+		{"run", func(v *InstanceSnapshotInput) { v.RunID = "run-2"; v.Plan.RunID = "run-2" }},
+		{"task version", func(v *InstanceSnapshotInput) {
 			v.TestTaskVersionID = "task-v4"
 			v.TestTaskVersionNumber = 4
 			v.ExecutionFlowVersion.ID = "task-v4"
 			v.ExecutionFlowVersion.VersionNumber = 4
 			v.ExecutionFlowVersion.Items[0].TestTaskVersionID = "task-v4"
 		}},
-		{"scope", func(v *RunSnapshotInput) {
+		{"scope", func(v *InstanceSnapshotInput) {
 			number, _ := parameter.NewNumberValue("2")
 			v.Invocations[0].Values["count"] = number
 			v.Plan.Entries[0].Parameters.Values["count"] = number
 		}},
-		{"environment", func(v *RunSnapshotInput) { v.Environment.Properties["region"] = "west" }},
-		{"failure policy", func(v *RunSnapshotInput) {
+		{"environment", func(v *InstanceSnapshotInput) { v.Environment.Properties["region"] = "west" }},
+		{"failure policy", func(v *InstanceSnapshotInput) {
 			v.FailurePolicy = FailurePolicyContinueOnFailure
 			v.Plan.FailurePolicy = FailurePolicyContinueOnFailure
 		}},
-		{"screenshot", func(v *RunSnapshotInput) { v.ScreenshotPolicy.Destination = "other" }},
-		{"healer", func(v *RunSnapshotInput) { v.HealerPolicy.ReviewCap = .5 }},
+		{"screenshot", func(v *InstanceSnapshotInput) { v.ScreenshotPolicy.Destination = "other" }},
+		{"healer", func(v *InstanceSnapshotInput) { v.HealerPolicy.ReviewCap = .5 }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := validRunSnapshotInput(t)
 			test.mutate(&input)
-			got, err := SealRunSnapshot(input)
+			got, err := SealInstanceSnapshot(input)
 			if test.name == "schema" {
 				if err == nil {
 					return
@@ -267,24 +267,24 @@ func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
 func TestSealRunSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*RunSnapshotInput)
+		mutate func(*InstanceSnapshotInput)
 	}{
-		{"schema", func(v *RunSnapshotInput) { v.SchemaVersion = 0 }}, {"run", func(v *RunSnapshotInput) { v.RunID = "" }},
-		{"task", func(v *RunSnapshotInput) { v.ExecutionFlowID = "" }}, {"task version", func(v *RunSnapshotInput) { v.TestTaskVersionID = "" }},
-		{"task version number", func(v *RunSnapshotInput) { v.TestTaskVersionNumber = 0 }}, {"environment URL", func(v *RunSnapshotInput) { v.Environment.BaseURL = "ftp://example.test" }},
-		{"property key", func(v *RunSnapshotInput) { v.Environment.Properties[" "] = "x" }}, {"property value", func(v *RunSnapshotInput) {
+		{"schema", func(v *InstanceSnapshotInput) { v.SchemaVersion = 0 }}, {"run", func(v *InstanceSnapshotInput) { v.RunID = "" }},
+		{"task", func(v *InstanceSnapshotInput) { v.ExecutionFlowID = "" }}, {"task version", func(v *InstanceSnapshotInput) { v.TestTaskVersionID = "" }},
+		{"task version number", func(v *InstanceSnapshotInput) { v.TestTaskVersionNumber = 0 }}, {"environment URL", func(v *InstanceSnapshotInput) { v.Environment.BaseURL = "ftp://example.test" }},
+		{"property key", func(v *InstanceSnapshotInput) { v.Environment.Properties[" "] = "x" }}, {"property value", func(v *InstanceSnapshotInput) {
 			v.Environment.Properties["x"] = strings.Repeat("x", MaxSnapshotStringBytes+1)
 		}},
-		{"failure policy", func(v *RunSnapshotInput) { v.FailurePolicy = "INVALID" }}, {"screenshot version", func(v *RunSnapshotInput) { v.ScreenshotPolicy.Version = 0 }},
-		{"screenshot destination", func(v *RunSnapshotInput) { v.ScreenshotPolicy.Destination = "" }}, {"healer version", func(v *RunSnapshotInput) { v.HealerPolicy.Version = 0 }},
-		{"healer NaN", func(v *RunSnapshotInput) { v.HealerPolicy.ReviewCap = math.NaN() }}, {"healer Inf", func(v *RunSnapshotInput) { v.HealerPolicy.Weights.Tag = math.Inf(1) }},
-		{"zero healer", func(v *RunSnapshotInput) { v.HealerPolicy.Weights = HealerWeightsSnapshot{} }},
+		{"failure policy", func(v *InstanceSnapshotInput) { v.FailurePolicy = "INVALID" }}, {"screenshot version", func(v *InstanceSnapshotInput) { v.ScreenshotPolicy.Version = 0 }},
+		{"screenshot destination", func(v *InstanceSnapshotInput) { v.ScreenshotPolicy.Destination = "" }}, {"healer version", func(v *InstanceSnapshotInput) { v.HealerPolicy.Version = 0 }},
+		{"healer NaN", func(v *InstanceSnapshotInput) { v.HealerPolicy.ReviewCap = math.NaN() }}, {"healer Inf", func(v *InstanceSnapshotInput) { v.HealerPolicy.Weights.Tag = math.Inf(1) }},
+		{"zero healer", func(v *InstanceSnapshotInput) { v.HealerPolicy.Weights = HealerWeightsSnapshot{} }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := validRunSnapshotInput(t)
 			test.mutate(&input)
-			if _, err := SealRunSnapshot(input); err == nil {
+			if _, err := SealInstanceSnapshot(input); err == nil {
 				t.Fatal("invalid snapshot accepted")
 			}
 		})
@@ -292,7 +292,7 @@ func TestSealRunSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.
 }
 
 func TestRunSnapshotInputExportSupportsDurableHydrationWithoutAliasing(t *testing.T) {
-	sealed, err := SealRunSnapshot(validRunSnapshotInput(t))
+	sealed, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,14 +303,14 @@ func TestRunSnapshotInputExportSupportsDurableHydrationWithoutAliasing(t *testin
 		t.Fatal("export aliases sealed snapshot")
 	}
 	persisted := sealed.Input()
-	hydrated, err := HydrateRunSnapshot(persisted, sealed.Digest())
+	hydrated, err := HydrateInstanceSnapshot(persisted, sealed.Digest())
 	if err != nil || hydrated.Digest() != sealed.Digest() {
 		t.Fatalf("hydrate exported input: digest=%q err=%v", hydrated.Digest(), err)
 	}
 }
 
 func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
 	}
 	otherInput := validRunSnapshotInput(t)
 	otherInput.Environment.Properties["region"] = "west"
-	other, err := SealRunSnapshot(otherInput)
+	other, err := SealInstanceSnapshot(otherInput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
 }
 
 func TestRunTransitionPreservesSnapshotIdentity(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

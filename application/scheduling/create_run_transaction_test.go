@@ -25,15 +25,15 @@ const (
 type conformanceState struct {
 	commands  map[string]StoredCreateRunCommand
 	runs      map[string]execution.Run
-	entries   map[string][]execution.WorkflowEntry
-	inputs    map[string]execution.RunSnapshotInput
+	entries   map[string][]execution.Entry
+	inputs    map[string]execution.InstanceSnapshotInput
 	digests   map[string]string
 	queue     []string
 	positions map[string]int
 }
 
 func emptyConformanceState() conformanceState {
-	return conformanceState{commands: map[string]StoredCreateRunCommand{}, runs: map[string]execution.Run{}, entries: map[string][]execution.WorkflowEntry{}, inputs: map[string]execution.RunSnapshotInput{}, digests: map[string]string{}, positions: map[string]int{}}
+	return conformanceState{commands: map[string]StoredCreateRunCommand{}, runs: map[string]execution.Run{}, entries: map[string][]execution.Entry{}, inputs: map[string]execution.InstanceSnapshotInput{}, digests: map[string]string{}, positions: map[string]int{}}
 }
 func cloneConformanceState(source conformanceState) conformanceState {
 	out := emptyConformanceState()
@@ -44,7 +44,7 @@ func cloneConformanceState(source conformanceState) conformanceState {
 		out.runs[key] = value
 	}
 	for key, value := range source.entries {
-		out.entries[key] = append([]execution.WorkflowEntry(nil), value...)
+		out.entries[key] = append([]execution.Entry(nil), value...)
 	}
 	for key, value := range source.inputs {
 		out.inputs[key] = value
@@ -167,7 +167,7 @@ func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunInte
 	if err := fail(stageEntries); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}
-	tx.state.entries[intent.Run.ID] = append([]execution.WorkflowEntry(nil), intent.Entries...)
+	tx.state.entries[intent.Run.ID] = append([]execution.Entry(nil), intent.Entries...)
 	if err := fail(stageSnapshot); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}

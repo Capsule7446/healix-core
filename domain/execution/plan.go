@@ -139,7 +139,7 @@ func (p FailurePolicy) IsValid() bool {
 	return p == FailurePolicyStopOnFailure || p == FailurePolicyContinueOnFailure
 }
 
-type WorkflowEntry struct {
+type Entry struct {
 	ExecutionID       string
 	TestTaskItemID    string
 	SequenceNumber    int
@@ -148,21 +148,21 @@ type WorkflowEntry struct {
 	Parameters        ParameterSnapshot
 }
 
-type Draft struct {
+type PlanSnapshot struct {
 	RunID         string
 	FailurePolicy FailurePolicy
-	Entries       []WorkflowEntry
+	Entries       []Entry
 	Workflows     []WorkflowSnapshot
 	Nodes         []NodeSnapshot
 	References    []ReferenceResolution
 }
 
 type Plan struct {
-	draft Draft
+	draft PlanSnapshot
 	seal  *planSeal
 }
 
-func Seal(draft Draft) (Plan, error) {
+func Seal(draft PlanSnapshot) (Plan, error) {
 	if err := draft.Validate(); err != nil {
 		return Plan{}, err
 	}
@@ -184,14 +184,14 @@ func (p Plan) Validate() error {
 	return nil
 }
 
-func (p Plan) Snapshot() Draft { return cloneDraft(p.draft) }
+func (p Plan) Snapshot() PlanSnapshot { return cloneDraft(p.draft) }
 
 func (p Plan) RunID() string { return p.draft.RunID }
 
 func (p Plan) FailurePolicy() FailurePolicy { return p.draft.FailurePolicy }
 
-func (p Plan) Entries() []WorkflowEntry {
-	entries := append([]WorkflowEntry(nil), p.draft.Entries...)
+func (p Plan) Entries() []Entry {
+	entries := append([]Entry(nil), p.draft.Entries...)
 	for i := range entries {
 		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
 	}
@@ -206,12 +206,12 @@ func (p Plan) References() []ReferenceResolution {
 	return append([]ReferenceResolution(nil), p.draft.References...)
 }
 
-func cloneDraft(draft Draft) Draft {
-	entries := append([]WorkflowEntry(nil), draft.Entries...)
+func cloneDraft(draft PlanSnapshot) PlanSnapshot {
+	entries := append([]Entry(nil), draft.Entries...)
 	for i := range entries {
 		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
 	}
-	return Draft{
+	return PlanSnapshot{
 		RunID: draft.RunID, FailurePolicy: draft.FailurePolicy,
 		Entries:   entries,
 		Workflows: cloneWorkflows(draft.Workflows), Nodes: cloneNodes(draft.Nodes),

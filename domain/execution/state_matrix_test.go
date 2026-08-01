@@ -9,8 +9,8 @@ import (
 
 func TestRunStatusTransitionMatrix(t *testing.T) {
 	type transition struct {
-		from RunStatus
-		to   RunStatus
+		from InstanceStatus
+		to   InstanceStatus
 	}
 	allowed := map[transition]struct{}{
 		{Queued, Running}:    {},
@@ -20,7 +20,7 @@ func TestRunStatusTransitionMatrix(t *testing.T) {
 		{Running, Canceled}:  {},
 		{Running, Aborted}:   {},
 	}
-	statuses := []RunStatus{Queued, Running, Succeeded, Failed, Canceled, Aborted, "UNKNOWN"}
+	statuses := []InstanceStatus{Queued, Running, Succeeded, Failed, Canceled, Aborted, "UNKNOWN"}
 
 	for _, from := range statuses {
 		for _, to := range statuses {
@@ -129,7 +129,7 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 }
 
 func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 }
 
 func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

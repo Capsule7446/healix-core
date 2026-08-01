@@ -12,16 +12,16 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (execution.RunSnapshot, error) {
+func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (execution.InstanceSnapshot, error) {
 	command = normalizeCreateRunCommand(command)
 	if err := preflightResolvedCreateRun(resolved); err != nil {
-		return execution.RunSnapshot{}, err
+		return execution.InstanceSnapshot{}, err
 	}
 	if err := validateCreateRunCommand(command); err != nil {
-		return execution.RunSnapshot{}, err
+		return execution.InstanceSnapshot{}, err
 	}
 	if resolved.Plan.Task.ID != command.ExecutionFlowID || resolved.Plan.Version.ID != command.TestTaskVersionID || resolved.Environment.ID != command.EnvironmentID {
-		return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("resolved catalog assets do not match command selectors"))
+		return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("resolved catalog assets do not match command selectors"))
 	}
 	entries := make([]executionEntryInput, len(resolved.Plan.Version.Items))
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(resolved.Plan.Version.Items))
@@ -29,20 +29,20 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		values, exists := command.Entries[item.ID]
 		if !exists {
 			// The item id stays in the private cause, never in public text.
-			return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
+			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
 		}
 		executionID := concreteRootPath(command.RunID, item.ID)
 		resolvedRoot, exists := invocationByPath(resolved.Invocations, executionID)
 		if !exists || resolvedRoot.ParentPath != "" {
-			return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
+			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
 		if err := validateSuppliedRootValues(values, resolvedRoot.WorkflowVersionID, resolved.Plan); err != nil {
 			// Constraint.Validate already returns PARAMETER_CONSTRAINT_UNSATISFIED or
 			// PARAMETER_VALUE_INVALID; the wrapper also echoed the item id.
-			return execution.RunSnapshot{}, err
+			return execution.InstanceSnapshot{}, err
 		}
 		if err := validateResolvedRootValues(values, resolvedRoot, resolved.Plan); err != nil {
-			return execution.RunSnapshot{}, fmt.Errorf("test-task item %q resolution: %w", item.ID, err)
+			return execution.InstanceSnapshot{}, fmt.Errorf("test-task item %q resolution: %w", item.ID, err)
 		}
 		parameterSnapshot := parameterSnapshotInput{}
 		if len(resolvedRoot.Values) > 0 {
@@ -52,7 +52,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: entries[index].WorkflowVersionID}
 	}
 	if len(command.Entries) != len(entries) {
-		return execution.RunSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("command contains unknown test-task item values"))
+		return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("command contains unknown test-task item values"))
 	}
 	draft, err := buildExecutionDraft(buildExecutionPlanInput{RunID: command.RunID, Publication: resolved.Plan, Entries: entries})
 	if err != nil {
@@ -61,12 +61,12 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		// classified once here rather than at each of the dozen sites inside. An
 		// error that already carries a code passes through untouched: wrapping it
 		// would nest two faults and force the host to unwrap to classify.
-		return execution.RunSnapshot{}, classifyCatalogGraphFailure(err)
+		return execution.InstanceSnapshot{}, classifyCatalogGraphFailure(err)
 	}
 	draft.FailurePolicy = command.FailurePolicy
 	invocations := cloneInvocationScopes(resolved.Invocations)
-	input := execution.RunSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, RunID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
-	return execution.SealRunSnapshot(input)
+	input := execution.InstanceSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, RunID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
+	return execution.SealInstanceSnapshot(input)
 }
 
 func addResolvedValueBudget(budget *createRunRequestBudget, value parameter.Value) error {

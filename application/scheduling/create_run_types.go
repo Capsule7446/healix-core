@@ -31,14 +31,14 @@ type ResolvedCreateRun struct {
 
 type CreateRunResult struct {
 	Run        execution.Run
-	Snapshot   execution.RunSnapshot
+	Snapshot   execution.InstanceSnapshot
 	EntryIDs   []string
 	WasApplied bool
 }
 
 type StoredCreateRunResult struct {
 	Run            execution.Run
-	Snapshot       execution.RunSnapshot
+	Snapshot       execution.InstanceSnapshot
 	SnapshotDigest string
 	EntryIDs       []string
 }
@@ -67,8 +67,8 @@ type CreateRunIntent struct {
 	CommandID     string
 	RequestDigest string
 	Run           execution.Run
-	Snapshot      execution.RunSnapshot
-	Entries       []execution.WorkflowEntry
+	Snapshot      execution.InstanceSnapshot
+	Entries       []execution.Entry
 }
 
 const CodeCreateInstanceCommandInvalid fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_INVALID"

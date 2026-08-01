@@ -28,45 +28,45 @@ type parameterSnapshotInput struct {
 	Values        map[string]parameter.Value
 }
 
-func buildExecutionDraft(input buildExecutionPlanInput) (execution.Draft, error) {
+func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot, error) {
 	if err := input.Publication.Validate(); err != nil {
 		// ResolvedExecutionFlow.Validate() always returns nil or its own classified
 		// fault; wrapping it in an uncoded "invalid publication: %w" buried that
 		// classification behind an unpublished code at this boundary.
-		return execution.Draft{}, err
+		return execution.PlanSnapshot{}, err
 	}
 	if input.RunID == "" {
-		return execution.Draft{}, errors.New("run id is required")
+		return execution.PlanSnapshot{}, errors.New("run id is required")
 	}
 	if err := validateEntries(input); err != nil {
-		return execution.Draft{}, err
+		return execution.PlanSnapshot{}, err
 	}
 	if err := rejectUnmappedParameters(input); err != nil {
-		return execution.Draft{}, err
+		return execution.PlanSnapshot{}, err
 	}
 	workflows, err := mapWorkflows(input.Publication.Workflows)
 	if err != nil {
-		return execution.Draft{}, err
+		return execution.PlanSnapshot{}, err
 	}
 	references := mapReferences(input.Publication.References)
 	if err := applyReferenceResolutions(workflows, references); err != nil {
-		return execution.Draft{}, err
+		return execution.PlanSnapshot{}, err
 	}
 	policy, err := mapFailurePolicy(input.Publication.Version.FailurePolicy)
 	if err != nil {
-		return execution.Draft{}, err
+		return execution.PlanSnapshot{}, err
 	}
-	entries := make([]execution.WorkflowEntry, len(input.Entries))
+	entries := make([]execution.Entry, len(input.Entries))
 	for i, item := range input.Entries {
-		entry := execution.WorkflowEntry{ExecutionID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
+		entry := execution.Entry{ExecutionID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
 		if item.ParameterSnapshot.IsPresent {
 			entry.Parameters = execution.ParameterSnapshot{ID: item.ParameterSnapshot.ID, SchemaVersion: item.ParameterSnapshot.SchemaVersion, WorkflowVersionID: item.WorkflowVersionID, Values: cloneParameterValues(item.ParameterSnapshot.Values)}
 		}
 		entries[i] = entry
 	}
-	draft := execution.Draft{RunID: input.RunID, FailurePolicy: policy, Entries: entries, Workflows: workflows, Nodes: mapNodes(input.Publication.Nodes), References: references}
+	draft := execution.PlanSnapshot{RunID: input.RunID, FailurePolicy: policy, Entries: entries, Workflows: workflows, Nodes: mapNodes(input.Publication.Nodes), References: references}
 	if err := draft.Validate(); err != nil {
-		return execution.Draft{}, fmt.Errorf("validate execution draft: %w", err)
+		return execution.PlanSnapshot{}, fmt.Errorf("validate execution draft: %w", err)
 	}
 	return draft, nil
 }

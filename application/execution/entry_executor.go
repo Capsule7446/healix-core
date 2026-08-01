@@ -70,13 +70,13 @@ type BrowserSession interface {
 }
 
 type BrowserSessionFactory interface {
-	Create(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry) (BrowserSession, error)
+	Create(context.Context, domainexecution.WorkerFence, domainexecution.Entry) (BrowserSession, error)
 }
 
 type EntryRunner interface {
 	// RunEntry executes the complete top-level entry. Nested workflow references
 	// receive this same session through the runner's execution context.
-	RunEntry(context.Context, domainexecution.WorkerFence, domainexecution.WorkflowEntry, BrowserSession) error
+	RunEntry(context.Context, domainexecution.WorkerFence, domainexecution.Entry, BrowserSession) error
 }
 
 // EntryLifecyclePanic retains both panics when runner execution and cleanup
@@ -117,7 +117,7 @@ func NewEntryExecutor(factory BrowserSessionFactory, runner EntryRunner, closeTi
 // is the one that commits terminal state. An executor that also sequenced meant
 // two components could disagree about what ran, with no way to tell which was
 // right after the fact.
-func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.WorkerFence, entry domainexecution.WorkflowEntry) error {
+func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.WorkerFence, entry domainexecution.Entry) error {
 	// The fence returns its own classified fault; an uncoded wrapper here would
 	// hide that classification behind an unclassified outer error.
 	if err := fence.Validate(); err != nil {
@@ -126,7 +126,7 @@ func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.Worker
 	return e.executeEntry(ctx, fence, entry)
 }
 
-func (e EntryExecutor) executeEntry(ctx context.Context, fence domainexecution.WorkerFence, entry domainexecution.WorkflowEntry) (result error) {
+func (e EntryExecutor) executeEntry(ctx context.Context, fence domainexecution.WorkerFence, entry domainexecution.Entry) (result error) {
 	session, err := e.factory.Create(ctx, fence, entry)
 	if err != nil {
 		// No execution id in either wrap: classifySchedulingAdapterFailure passes an

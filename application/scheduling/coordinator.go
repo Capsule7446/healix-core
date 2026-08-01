@@ -74,7 +74,7 @@ func isNilPort(port any) bool {
 }
 
 type Claim struct {
-	Snapshot execution.RunSnapshot
+	Snapshot execution.InstanceSnapshot
 	Fence    execution.WorkerFence
 }
 

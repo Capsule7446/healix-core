@@ -297,7 +297,7 @@ func TestReferenceStoreAbortFenceReplayAndCompetingTerminalRaces(t *testing.T) {
 		t.Fatalf("stale=%v", err)
 	}
 
-	for _, competing := range []domainexecution.RunStatus{domainexecution.Succeeded, domainexecution.Failed, domainexecution.Canceled} {
+	for _, competing := range []domainexecution.InstanceStatus{domainexecution.Succeeded, domainexecution.Failed, domainexecution.Canceled} {
 		t.Run(string(competing), func(t *testing.T) {
 			race := newReferenceCommandStore(referenceRun{run: domainexecution.Run{ID: "run", Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
 			start := make(chan struct{})
@@ -364,7 +364,7 @@ func TestReferenceStoreCancelClaimAbortAndDuplicateRaces(t *testing.T) {
 		t.Fatal("old fence mutated terminal winner")
 	}
 
-	for _, completed := range []domainexecution.RunStatus{domainexecution.Succeeded, domainexecution.Failed} {
+	for _, completed := range []domainexecution.InstanceStatus{domainexecution.Succeeded, domainexecution.Failed} {
 		t.Run("cancel-vs-"+string(completed), func(t *testing.T) {
 			race := active()
 			start := make(chan struct{})

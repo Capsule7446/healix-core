@@ -218,11 +218,11 @@ func validateSnapshotValues(definitions []Parameter, values map[string]parameter
 // the private cause, while a failure already classified by a workflow
 // snapshot's own step-shape envelope, a node's fingerprint spec, or a
 // parameter contract passes through unchanged.
-func (p Draft) Validate() error {
+func (p PlanSnapshot) Validate() error {
 	return classifyCreateInstancePlan(p.validateShape())
 }
 
-func (p Draft) validateShape() error {
+func (p PlanSnapshot) validateShape() error {
 	if err := validateAggregateInputBounds(p); err != nil {
 		return err
 	}
@@ -357,7 +357,7 @@ func (p Draft) validateShape() error {
 	return nil
 }
 
-func validateAggregateInputBounds(p Draft) error {
+func validateAggregateInputBounds(p PlanSnapshot) error {
 	type stepFrame struct {
 		steps []Step
 		depth int

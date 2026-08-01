@@ -215,7 +215,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	if len(stored.EntryIDs) != len(entries) {
 		return invalid("stored entry count mismatch")
 	}
-	entryByItem := make(map[string]execution.WorkflowEntry, len(entries))
+	entryByItem := make(map[string]execution.Entry, len(entries))
 	for index := range entries {
 		if stored.EntryIDs[index] != entries[index].ExecutionID {
 			return invalid("stored entry identity mismatch")
@@ -241,7 +241,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	return nil
 }
 
-func equalAppliedRun(returned, intended execution.Run, snapshot execution.RunSnapshot) bool {
+func equalAppliedRun(returned, intended execution.Run, snapshot execution.InstanceSnapshot) bool {
 	// QueuePosition is assigned atomically by the adapter; every other persisted field is intent-owned.
 	hydrated, err := execution.HydrateRun(returned, snapshot)
 	if err != nil {
@@ -354,7 +354,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 	return nil
 }
 
-func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Run, snapshot execution.RunSnapshot, entryIDs []string) error {
+func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Run, snapshot execution.InstanceSnapshot, entryIDs []string) error {
 	invalid := func(reason string) error {
 		return createRunAdapterContractViolationError(errors.New(reason))
 	}

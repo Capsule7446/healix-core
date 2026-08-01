@@ -85,13 +85,13 @@ type InvocationScopeSnapshot struct {
 	Bindings           map[string]parameter.Binding
 }
 
-type RunSnapshotInput struct {
+type InstanceSnapshotInput struct {
 	SchemaVersion                             RunSnapshotSchema
 	RunID, ExecutionFlowID, TestTaskVersionID string
 	TestTaskVersionNumber                     int
 	ExecutionFlow                             TestTaskSnapshot
 	ExecutionFlowVersion                      ExecutionFlowVersionSnapshot
-	Plan                                      Draft
+	Plan                                      PlanSnapshot
 	Invocations                               []InvocationScopeSnapshot
 	Environment                               EnvironmentSnapshot
 	FailurePolicy                             FailurePolicy
@@ -99,22 +99,22 @@ type RunSnapshotInput struct {
 	HealerPolicy                              HealerPolicySnapshot
 }
 
-type RunSnapshot struct {
-	input  RunSnapshotInput
+type InstanceSnapshot struct {
+	input  InstanceSnapshotInput
 	digest string
 }
 
-func (s RunSnapshot) Digest() string                   { return s.digest }
-func (s RunSnapshot) SchemaVersion() RunSnapshotSchema { return s.input.SchemaVersion }
-func (s RunSnapshot) RunID() string                    { return s.input.RunID }
-func (s RunSnapshot) ExecutionFlowID() string          { return s.input.ExecutionFlowID }
-func (s RunSnapshot) TestTaskVersionID() string        { return s.input.TestTaskVersionID }
-func (s RunSnapshot) Input() RunSnapshotInput          { return cloneSnapshotInput(s.input) }
-func (s RunSnapshot) Plan() Draft                      { return cloneDraft(s.input.Plan) }
-func (s RunSnapshot) Invocations() []InvocationScopeSnapshot {
+func (s InstanceSnapshot) Digest() string                   { return s.digest }
+func (s InstanceSnapshot) SchemaVersion() RunSnapshotSchema { return s.input.SchemaVersion }
+func (s InstanceSnapshot) RunID() string                    { return s.input.RunID }
+func (s InstanceSnapshot) ExecutionFlowID() string          { return s.input.ExecutionFlowID }
+func (s InstanceSnapshot) TestTaskVersionID() string        { return s.input.TestTaskVersionID }
+func (s InstanceSnapshot) Input() InstanceSnapshotInput     { return cloneSnapshotInput(s.input) }
+func (s InstanceSnapshot) Plan() PlanSnapshot               { return cloneDraft(s.input.Plan) }
+func (s InstanceSnapshot) Invocations() []InvocationScopeSnapshot {
 	return cloneInvocations(s.input.Invocations)
 }
-func (s RunSnapshot) Invocation(path string) (InvocationScopeSnapshot, bool) {
+func (s InstanceSnapshot) Invocation(path string) (InvocationScopeSnapshot, bool) {
 	for _, invocation := range s.input.Invocations {
 		if invocation.Path == path {
 			return cloneInvocations([]InvocationScopeSnapshot{invocation})[0], true
@@ -122,7 +122,7 @@ func (s RunSnapshot) Invocation(path string) (InvocationScopeSnapshot, bool) {
 	}
 	return InvocationScopeSnapshot{}, false
 }
-func (s RunSnapshot) Environment() EnvironmentSnapshot {
+func (s InstanceSnapshot) Environment() EnvironmentSnapshot {
 	result := cloneEnvironment(s.input.Environment)
 	if s.input.SchemaVersion == RunSnapshotSchemaV1 {
 		result.Variables = make(map[string]parameter.Value, len(result.Properties))
@@ -133,51 +133,51 @@ func (s RunSnapshot) Environment() EnvironmentSnapshot {
 	return result
 }
 
-// SealRunSnapshot classifies its own validation failure at this exported
+// SealInstanceSnapshot classifies its own validation failure at this exported
 // boundary: an uncoded shape defect becomes
 // EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, while a failure already
 // classified by the execution plan, a workflow's step-shape envelope, or the
 // environment/screenshot/healer envelope passes through unchanged.
-func SealRunSnapshot(input RunSnapshotInput) (RunSnapshot, error) {
+func SealInstanceSnapshot(input InstanceSnapshotInput) (InstanceSnapshot, error) {
 	sealed, err := sealRunSnapshotShape(input)
 	if err != nil {
-		return RunSnapshot{}, classifyCreateInstanceSnapshot(err)
+		return InstanceSnapshot{}, classifyCreateInstanceSnapshot(err)
 	}
 	return sealed, nil
 }
 
-func sealRunSnapshotShape(input RunSnapshotInput) (RunSnapshot, error) {
+func sealRunSnapshotShape(input InstanceSnapshotInput) (InstanceSnapshot, error) {
 	if err := preflightRunSnapshot(input); err != nil {
-		return RunSnapshot{}, err
+		return InstanceSnapshot{}, err
 	}
 	input = cloneSnapshotInput(input)
 	sort.Slice(input.Invocations, func(i, j int) bool { return input.Invocations[i].Path < input.Invocations[j].Path })
 	normalizeHealerZeros(&input.HealerPolicy)
 	if err := validateSnapshot(input); err != nil {
-		return RunSnapshot{}, err
+		return InstanceSnapshot{}, err
 	}
 	digester := sha256.New()
 	encoder := canonicalEncoder{writer: digester}
 	encodeSnapshot(&encoder, input)
-	return RunSnapshot{input: input, digest: "sha256:" + hex.EncodeToString(digester.Sum(nil))}, nil
+	return InstanceSnapshot{input: input, digest: "sha256:" + hex.EncodeToString(digester.Sum(nil))}, nil
 }
 
-// HydrateRunSnapshot reuses EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT — the
+// HydrateInstanceSnapshot reuses EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT — the
 // code application/scheduling already publishes for the same remediation
 // (re-read the authoritative instance before retrying) — rather than minting
 // a second code for the same meaning.
-func HydrateRunSnapshot(input RunSnapshotInput, storedDigest string) (RunSnapshot, error) {
-	sealed, err := SealRunSnapshot(input)
+func HydrateInstanceSnapshot(input InstanceSnapshotInput, storedDigest string) (InstanceSnapshot, error) {
+	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
-		return RunSnapshot{}, err
+		return InstanceSnapshot{}, err
 	}
 	if storedDigest != sealed.Digest() {
-		return RunSnapshot{}, createInstanceSnapshotConflictError()
+		return InstanceSnapshot{}, createInstanceSnapshotConflictError()
 	}
 	return sealed, nil
 }
 
-func cloneSnapshotInput(v RunSnapshotInput) RunSnapshotInput {
+func cloneSnapshotInput(v InstanceSnapshotInput) InstanceSnapshotInput {
 	v.Plan = cloneDraft(v.Plan)
 	v.Invocations = cloneInvocations(v.Invocations)
 	v.Environment = cloneEnvironment(v.Environment)
@@ -219,7 +219,7 @@ func normalizeHealerZeros(policy *HealerPolicySnapshot) {
 const maxSnapshotElements = 100000
 const maxSnapshotDepth = 64
 
-func preflightRunSnapshot(input RunSnapshotInput) error {
+func preflightRunSnapshot(input InstanceSnapshotInput) error {
 	if err := validateAggregateInputBounds(input.Plan); err != nil {
 		return fmt.Errorf("run snapshot plan bounds: %w", err)
 	}
@@ -333,7 +333,7 @@ func validString(v string, required bool) bool {
 	return (!required || strings.TrimSpace(v) != "") && len(v) <= MaxSnapshotStringBytes
 }
 
-func validateTestTaskVersionItemEntries(versionID string, items []ExecutionFlowVersionItemSnapshot, entries []WorkflowEntry) error {
+func validateTestTaskVersionItemEntries(versionID string, items []ExecutionFlowVersionItemSnapshot, entries []Entry) error {
 	itemsByID := make(map[string]ExecutionFlowVersionItemSnapshot, len(items))
 	for index, item := range items {
 		if !validString(item.ID, true) || item.TestTaskVersionID != versionID || item.SequenceNumber != index+1 || !validString(item.FlowFragmentID, true) || !validString(item.WorkflowVersionID, true) {
@@ -371,16 +371,16 @@ type referenceEdgeKey struct {
 
 type snapshotValidationIndexes struct {
 	workflows         map[string]WorkflowSnapshot
-	entriesByID       map[string]WorkflowEntry
+	entriesByID       map[string]Entry
 	referenceSteps    map[referenceEdgeKey]Step
 	referenceByEdge   map[referenceEdgeKey]ReferenceResolution
 	stepsByWorkflowID map[string][]Step
 }
 
-func buildSnapshotValidationIndexes(plan Draft) (snapshotValidationIndexes, error) {
+func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexes, error) {
 	indexes := snapshotValidationIndexes{
 		workflows:         make(map[string]WorkflowSnapshot, len(plan.Workflows)),
-		entriesByID:       make(map[string]WorkflowEntry, len(plan.Entries)),
+		entriesByID:       make(map[string]Entry, len(plan.Entries)),
 		referenceSteps:    make(map[referenceEdgeKey]Step),
 		referenceByEdge:   make(map[referenceEdgeKey]ReferenceResolution, len(plan.References)),
 		stepsByWorkflowID: make(map[string][]Step, len(plan.Workflows)),
@@ -416,7 +416,7 @@ func buildSnapshotValidationIndexes(plan Draft) (snapshotValidationIndexes, erro
 	return indexes, nil
 }
 
-func validateSnapshot(v RunSnapshotInput) error {
+func validateSnapshot(v InstanceSnapshotInput) error {
 	if v.SchemaVersion != RunSnapshotSchemaV1 && v.SchemaVersion != RunSnapshotSchemaV2 {
 		return fmt.Errorf("unsupported run snapshot schema %d", v.SchemaVersion)
 	}
@@ -646,7 +646,7 @@ func (e *canonicalEncoder) boolean(v bool) {
 		e.raw([]byte{0})
 	}
 }
-func encodeSnapshot(e *canonicalEncoder, v RunSnapshotInput) {
+func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
 	e.str("healix.run-snapshot")
 	e.u64(uint64(v.SchemaVersion))
 	e.str(v.RunID)
