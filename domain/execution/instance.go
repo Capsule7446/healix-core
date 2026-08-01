@@ -116,7 +116,7 @@ func HydrateInstance(instance Instance, snapshot InstanceSnapshot) (Instance, er
 // It is pure and validates identity, lifecycle shape, and the private snapshot
 // seal when snapshot identity is carried by the Instance.
 func isSupportedInstanceSnapshotSchema(version InstanceSnapshotSchema) bool {
-	return version == RunSnapshotSchemaV1 || version == RunSnapshotSchemaV2
+	return version == InstanceSnapshotSchemaV1 || version == InstanceSnapshotSchemaV2
 }
 
 func ValidateInstance(instance Instance) error {

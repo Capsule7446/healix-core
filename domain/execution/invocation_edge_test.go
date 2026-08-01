@@ -52,7 +52,7 @@ func snapshotWithTwoConcreteReferenceEdges(t *testing.T) InstanceSnapshotInput {
 	return input
 }
 
-func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
+func TestInstanceSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 	const stepID = "call/阶段:一"
 
 	canonicalInput := snapshotWithTwoConcreteReferenceEdges(t)
@@ -103,7 +103,7 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotUsesConcreteParentPathForRepeatedReferenceEdges(t *testing.T) {
+func TestInstanceSnapshotUsesConcreteParentPathForRepeatedReferenceEdges(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	if _, err := SealInstanceSnapshot(input); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestRunSnapshotUsesConcreteParentPathForRepeatedReferenceEdges(t *testing.T
 	}
 }
 
-func TestRunSnapshotRequiresCompleteConcreteBindingsAndChildValues(t *testing.T) {
+func TestInstanceSnapshotRequiresCompleteConcreteBindingsAndChildValues(t *testing.T) {
 	tests := []func(*InstanceSnapshotInput){func(v *InstanceSnapshotInput) { v.Invocations[2].Bindings = map[string]parameter.Binding{} }, func(v *InstanceSnapshotInput) { delete(v.Invocations[2].Values, "value") }, func(v *InstanceSnapshotInput) { v.Invocations[2].Values["extra"] = parameter.TextValue("x") }}
 	for _, mutate := range tests {
 		input := snapshotWithTwoConcreteReferenceEdges(t)
@@ -134,7 +134,7 @@ func TestRunSnapshotRequiresCompleteConcreteBindingsAndChildValues(t *testing.T)
 	}
 }
 
-func TestRunSnapshotPermitsConcreteBindingDifferentFromAuthoringMetadata(t *testing.T) {
+func TestInstanceSnapshotPermitsConcreteBindingDifferentFromAuthoringMetadata(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations[2].Bindings["value"] = parameter.LiteralBinding(input.Invocations[2].Values["value"])
 	if _, err := SealInstanceSnapshot(input); err != nil {

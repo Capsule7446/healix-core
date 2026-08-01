@@ -9,15 +9,15 @@ import (
 )
 
 func TestBatch2PublicCommandContractsCompile(t *testing.T) {
-	_ = app.CancelRunCommand{CommandID: "cancel-1", InstanceID: mustInstanceID("run-1"), ExpectedStatus: domain.Queued, ExpectedRevision: 3, At: 10}
-	_ = app.AbortRunCommand{CommandID: "abort-1", InstanceID: mustInstanceID("run-1"), ExpectedRevision: 3, Fence: domain.WorkerFence{InstanceID: mustInstanceID("run-1"), ClaimToken: "claim-1"}, At: 10}
+	_ = app.CancelInstanceCommand{CommandID: "cancel-1", InstanceID: mustInstanceID("run-1"), ExpectedStatus: domain.Queued, ExpectedRevision: 3, At: 10}
+	_ = app.AbortInstanceCommand{CommandID: "abort-1", InstanceID: mustInstanceID("run-1"), ExpectedRevision: 3, Fence: domain.WorkerFence{InstanceID: mustInstanceID("run-1"), ClaimToken: "claim-1"}, At: 10}
 	_ = app.ReorderQueueCommand{CommandID: "reorder-1", ScopeID: "scope-1", ExpectedRevision: 3, InstanceIDs: []string{"run-2", "run-1"}}
-	var cancel *app.CancelRunService
-	var abort *app.AbortRunService
+	var cancel *app.CancelInstanceService
+	var abort *app.AbortInstanceService
 	var reorder *app.ReorderQueueService
 	_, _, _ = cancel, abort, reorder
-	_, _ = app.CancelRunRequestDigest(app.CancelRunCommand{})
-	_, _ = app.AbortRunRequestDigest(app.AbortRunCommand{})
+	_, _ = app.CancelInstanceRequestDigest(app.CancelInstanceCommand{})
+	_, _ = app.AbortInstanceRequestDigest(app.AbortInstanceCommand{})
 	_, _ = app.ReorderQueueRequestDigest(app.ReorderQueueCommand{})
 	_ = app.CodeInstanceSignalRetryable
 	_ = app.CodeInstanceCommandIdentityConflict

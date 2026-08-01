@@ -110,7 +110,7 @@ func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.Instance
 		invocations[index] = execution.InvocationScopeSnapshot{Path: execution.RootInvocationPath(entry.ID), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
 	}
 	snapshot, err := execution.SealInstanceSnapshot(execution.InstanceSnapshotInput{
-		SchemaVersion: execution.RunSnapshotSchemaV1, InstanceID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
+		SchemaVersion: execution.InstanceSnapshotSchemaV1, InstanceID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
 		ExecutionFlow: execution.TestTaskSnapshot{ID: "task"}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: items},
 		Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: map[string]string{}}, FailurePolicy: policy,
 		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot(),

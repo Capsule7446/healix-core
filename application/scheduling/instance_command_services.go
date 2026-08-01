@@ -26,40 +26,40 @@ const (
 	CodeReorderQueueCommandInvalid       fault.Code = "EXECUTION_REORDER_QUEUE_COMMAND_INVALID"
 )
 
-func cancelRunCommandInvalidError(cause error) error {
-	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeCancelInstanceCommandInvalid, "cancel instance command is invalid")
+func cancelInstanceCommandInvalidError(cause error) error {
+	return newInstanceCommandWrappedFault(cause, fault.InvalidArgument, CodeCancelInstanceCommandInvalid, "cancel instance command is invalid")
 }
 
-func abortRunCommandInvalidError(cause error) error {
-	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeAbortInstanceCommandInvalid, "abort instance command is invalid")
+func abortInstanceCommandInvalidError(cause error) error {
+	return newInstanceCommandWrappedFault(cause, fault.InvalidArgument, CodeAbortInstanceCommandInvalid, "abort instance command is invalid")
 }
 
 func reorderQueueCommandInvalidError(cause error) error {
-	return newRunCommandWrappedFault(cause, fault.InvalidArgument, CodeReorderQueueCommandInvalid, "reorder queue command is invalid")
+	return newInstanceCommandWrappedFault(cause, fault.InvalidArgument, CodeReorderQueueCommandInvalid, "reorder queue command is invalid")
 }
 
 func runCommandConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeInstanceCommandIdentityConflict, "instance command identity conflicts with an existing request")
+	return newInstanceCommandFault(fault.Conflict, CodeInstanceCommandIdentityConflict, "instance command identity conflicts with an existing request")
 }
 
 func runIdentityConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeInstanceIdentityConflict, "instance identity conflicts with the authoritative state")
+	return newInstanceCommandFault(fault.Conflict, CodeInstanceIdentityConflict, "instance identity conflicts with the authoritative state")
 }
 
 func runRevisionConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeInstanceRevisionConflict, "instance revision conflicts with current state")
+	return newInstanceCommandFault(fault.Conflict, CodeInstanceRevisionConflict, "instance revision conflicts with current state")
 }
 
 func runStatusConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeInstanceStatusConflict, "instance status conflicts with current state")
+	return newInstanceCommandFault(fault.Conflict, CodeInstanceStatusConflict, "instance status conflicts with current state")
 }
 
 func queueRevisionConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeQueueRevisionConflict, "queue revision conflicts with current state")
+	return newInstanceCommandFault(fault.Conflict, CodeQueueRevisionConflict, "queue revision conflicts with current state")
 }
 
 func queueMembershipConflictError() error {
-	return newRunCommandFault(fault.Conflict, CodeQueueMembershipConflict, "queue membership conflicts with the authoritative state")
+	return newInstanceCommandFault(fault.Conflict, CodeQueueMembershipConflict, "queue membership conflicts with the authoritative state")
 }
 
 func runAdapterContractViolationError(cause error) error {
@@ -70,7 +70,7 @@ func runAdapterContractViolationError(cause error) error {
 	return err
 }
 
-func newRunCommandWrappedFault(cause error, kind fault.Kind, code fault.Code, message string) error {
+func newInstanceCommandWrappedFault(cause error, kind fault.Kind, code fault.Code, message string) error {
 	err, constructionErr := fault.Wrap(cause, kind, code, message)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -78,7 +78,7 @@ func newRunCommandWrappedFault(cause error, kind fault.Kind, code fault.Code, me
 	return err
 }
 
-func newRunCommandFault(kind fault.Kind, code fault.Code, message string) error {
+func newInstanceCommandFault(kind fault.Kind, code fault.Code, message string) error {
 	err, constructionErr := fault.New(kind, code, message)
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -101,13 +101,13 @@ func runSignalRetryableError(cause error) error {
 	return err
 }
 
-type CancelRunCommand struct {
+type CancelInstanceCommand struct {
 	CommandID            string
 	InstanceID           domainexecution.InstanceID
 	ExpectedStatus       domainexecution.InstanceStatus
 	ExpectedRevision, At int64
 }
-type AbortRunCommand struct {
+type AbortInstanceCommand struct {
 	CommandID            string
 	InstanceID           domainexecution.InstanceID
 	ExpectedRevision, At int64
@@ -119,7 +119,7 @@ type ReorderQueueCommand struct {
 	InstanceIDs        []string
 }
 
-type RunCommandResult struct {
+type InstanceCommandResult struct {
 	Run            domainexecution.Instance
 	Revision       int64
 	WasApplied     bool
@@ -132,14 +132,14 @@ type ReorderQueueResult struct {
 	WasApplied  bool
 }
 
-// RunCommandStore must canonicalize CommandID payloads and execute each method
+// InstanceCommandStore must canonicalize CommandID payloads and execute each method
 // atomically. Cancel removes a queued Run, or transitions a running Run and
 // invalidates its fence. Abort accepts only RUNNING, transitions to ABORTED and
 // invalidates the supplied fence before returning. The returned result is the
 // authoritative committed/replayed value, including after an unknown commit.
-type RunCommandStore interface {
-	Cancel(context.Context, CancelRunCommand) (RunCommandResult, error)
-	Abort(context.Context, AbortRunCommand) (RunCommandResult, error)
+type InstanceCommandStore interface {
+	Cancel(context.Context, CancelInstanceCommand) (InstanceCommandResult, error)
+	Abort(context.Context, AbortInstanceCommand) (InstanceCommandResult, error)
 }
 
 // QueueCommandStore atomically applies a queue revision CAS. InstanceIDs must be the
@@ -149,95 +149,95 @@ type QueueCommandStore interface {
 	Reorder(context.Context, ReorderQueueCommand) (ReorderQueueResult, error)
 }
 
-type RunCancellationSignaler interface {
-	SignalRunCancellation(context.Context, domainexecution.InstanceID) error
+type InstanceCancellationSignaler interface {
+	SignalInstanceCancellation(context.Context, domainexecution.InstanceID) error
 }
 
-type CancelRunService struct {
-	store    RunCommandStore
-	signaler RunCancellationSignaler
+type CancelInstanceService struct {
+	store    InstanceCommandStore
+	signaler InstanceCancellationSignaler
 }
 
-func NewCancelRunService(store RunCommandStore, signaler RunCancellationSignaler) CancelRunService {
-	return CancelRunService{store: store, signaler: signaler}
+func NewCancelInstanceService(store InstanceCommandStore, signaler InstanceCancellationSignaler) CancelInstanceService {
+	return CancelInstanceService{store: store, signaler: signaler}
 }
-func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunCommand) (RunCommandResult, error) {
+func (s CancelInstanceService) CancelInstance(ctx context.Context, command CancelInstanceCommand) (InstanceCommandResult, error) {
 	if err := validateCancel(command); err != nil {
-		return RunCommandResult{}, err
+		return InstanceCommandResult{}, err
 	}
 	if isNilPort(s.store) {
-		return RunCommandResult{}, schedulingDependencyRequiredError()
+		return InstanceCommandResult{}, schedulingDependencyRequiredError()
 	}
 	result, err := s.store.Cancel(ctx, command)
 	if err != nil {
-		return RunCommandResult{}, classifySchedulingAdapterFailure(err)
+		return InstanceCommandResult{}, classifySchedulingAdapterFailure(err)
 	}
-	if err := validateRunResult(command.InstanceID, domainexecution.Canceled, command.ExpectedRevision, result); err != nil {
-		// validateRunResult already returns
+	if err := validateInstanceResult(command.InstanceID, domainexecution.Canceled, command.ExpectedRevision, result); err != nil {
+		// validateInstanceResult already returns
 		// EXECUTION_INSTANCE_COMMAND_ADAPTER_CONTRACT_VIOLATION.
-		return RunCommandResult{}, err
+		return InstanceCommandResult{}, err
 	}
 	shouldSignal := command.ExpectedStatus == domainexecution.Running
 	if result.SignalRequired != shouldSignal {
-		return RunCommandResult{}, runAdapterContractViolationError(errors.New("unexpected SignalRequired value"))
+		return InstanceCommandResult{}, runAdapterContractViolationError(errors.New("unexpected SignalRequired value"))
 	}
 	return signalIfRequired(ctx, s.signaler, result)
 }
 
-type AbortRunService struct {
-	store    RunCommandStore
-	signaler RunCancellationSignaler
+type AbortInstanceService struct {
+	store    InstanceCommandStore
+	signaler InstanceCancellationSignaler
 }
 
-func NewAbortRunService(store RunCommandStore, signaler RunCancellationSignaler) AbortRunService {
-	return AbortRunService{store: store, signaler: signaler}
+func NewAbortInstanceService(store InstanceCommandStore, signaler InstanceCancellationSignaler) AbortInstanceService {
+	return AbortInstanceService{store: store, signaler: signaler}
 }
-func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) (RunCommandResult, error) {
+func (s AbortInstanceService) AbortInstance(ctx context.Context, command AbortInstanceCommand) (InstanceCommandResult, error) {
 	if err := validateAbort(command); err != nil {
-		return RunCommandResult{}, err
+		return InstanceCommandResult{}, err
 	}
 	if isNilPort(s.store) {
-		return RunCommandResult{}, schedulingDependencyRequiredError()
+		return InstanceCommandResult{}, schedulingDependencyRequiredError()
 	}
 	result, err := s.store.Abort(ctx, command)
 	if err != nil {
-		return RunCommandResult{}, classifySchedulingAdapterFailure(err)
+		return InstanceCommandResult{}, classifySchedulingAdapterFailure(err)
 	}
-	if err := validateRunResult(command.InstanceID, domainexecution.Aborted, command.ExpectedRevision, result); err != nil {
-		return RunCommandResult{}, err
+	if err := validateInstanceResult(command.InstanceID, domainexecution.Aborted, command.ExpectedRevision, result); err != nil {
+		return InstanceCommandResult{}, err
 	}
 	if !result.SignalRequired {
-		return RunCommandResult{}, runAdapterContractViolationError(errors.New("abort must require cancellation signal"))
+		return InstanceCommandResult{}, runAdapterContractViolationError(errors.New("abort must require cancellation signal"))
 	}
 	return signalIfRequired(ctx, s.signaler, result)
 }
 
-func signalIfRequired(ctx context.Context, signaler RunCancellationSignaler, result RunCommandResult) (RunCommandResult, error) {
+func signalIfRequired(ctx context.Context, signaler InstanceCancellationSignaler, result InstanceCommandResult) (InstanceCommandResult, error) {
 	if !result.SignalRequired {
 		return result, nil
 	}
 	if isNilPort(signaler) {
 		return result, runSignalRetryableError(errors.New("cancellation signaler is unavailable"))
 	}
-	if err := signaler.SignalRunCancellation(ctx, result.Run.ID); err != nil {
+	if err := signaler.SignalInstanceCancellation(ctx, result.Run.ID); err != nil {
 		return result, runSignalRetryableError(err)
 	}
 	return result, nil
 }
 
-func validateCancel(command CancelRunCommand) error {
+func validateCancel(command CancelInstanceCommand) error {
 	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
-		return cancelRunCommandInvalidError(nil)
+		return cancelInstanceCommandInvalidError(nil)
 	}
 	return nil
 }
 
-func validateAbort(command AbortRunCommand) error {
+func validateAbort(command AbortInstanceCommand) error {
 	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.InstanceID != command.InstanceID {
-		return abortRunCommandInvalidError(nil)
+		return abortInstanceCommandInvalidError(nil)
 	}
 	if err := command.Fence.Validate(); err != nil {
-		return abortRunCommandInvalidError(err)
+		return abortInstanceCommandInvalidError(err)
 	}
 	return nil
 }
@@ -271,7 +271,7 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 	result.InstanceIDs = append([]string(nil), result.InstanceIDs...)
 	return result, nil
 }
-func validateRunResult(instanceID domainexecution.InstanceID, status domainexecution.InstanceStatus, expectedRevision int64, result RunCommandResult) error {
+func validateInstanceResult(instanceID domainexecution.InstanceID, status domainexecution.InstanceStatus, expectedRevision int64, result InstanceCommandResult) error {
 	if result.Run.ID != instanceID {
 		return runAdapterContractViolationError(runIdentityConflictError())
 	}
@@ -296,11 +296,11 @@ func canonicalDigest(value any) (string, error) {
 	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
-func CancelRunRequestDigest(command CancelRunCommand) (string, error) {
+func CancelInstanceRequestDigest(command CancelInstanceCommand) (string, error) {
 	return canonicalDigest(command)
 }
 
-func AbortRunRequestDigest(command AbortRunCommand) (string, error) {
+func AbortInstanceRequestDigest(command AbortInstanceCommand) (string, error) {
 	return canonicalDigest(command)
 }
 

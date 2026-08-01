@@ -18,12 +18,12 @@ import (
 type InstanceSnapshotSchema int
 
 const (
-	RunSnapshotSchemaV1      InstanceSnapshotSchema = 1
-	RunSnapshotSchemaV2      InstanceSnapshotSchema = 2
-	RunSnapshotSchemaCurrent                        = RunSnapshotSchemaV2
-	ScreenshotPolicyV1                              = 1
-	HealerPolicyV1                                  = 1
-	MaxSnapshotStringBytes                          = 64 * 1024
+	InstanceSnapshotSchemaV1      InstanceSnapshotSchema = 1
+	InstanceSnapshotSchemaV2      InstanceSnapshotSchema = 2
+	InstanceSnapshotSchemaCurrent                        = InstanceSnapshotSchemaV2
+	ScreenshotPolicyV1                                   = 1
+	HealerPolicyV1                                       = 1
+	MaxSnapshotStringBytes                               = 64 * 1024
 )
 
 type EnvironmentSnapshot struct {
@@ -124,7 +124,7 @@ func (s InstanceSnapshot) Invocation(path InvocationPath) (InvocationScopeSnapsh
 }
 func (s InstanceSnapshot) Environment() EnvironmentSnapshot {
 	result := cloneEnvironment(s.input.Environment)
-	if s.input.SchemaVersion == RunSnapshotSchemaV1 {
+	if s.input.SchemaVersion == InstanceSnapshotSchemaV1 {
 		result.Variables = make(map[string]parameter.Value, len(result.Properties))
 		for name, value := range result.Properties {
 			result.Variables[name] = parameter.TextValue(value)
@@ -422,7 +422,7 @@ func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexe
 }
 
 func validateSnapshot(v InstanceSnapshotInput) error {
-	if v.SchemaVersion != RunSnapshotSchemaV1 && v.SchemaVersion != RunSnapshotSchemaV2 {
+	if v.SchemaVersion != InstanceSnapshotSchemaV1 && v.SchemaVersion != InstanceSnapshotSchemaV2 {
 		return fmt.Errorf("unsupported instance snapshot schema %d", v.SchemaVersion)
 	}
 	if !validString(v.InstanceID.String(), true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
@@ -683,7 +683,7 @@ func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
 	e.str(v.Environment.DisplayName)
 	e.str(v.Environment.BaseURL)
 	e.u64(v.Environment.Revision)
-	if v.SchemaVersion == RunSnapshotSchemaV1 {
+	if v.SchemaVersion == InstanceSnapshotSchemaV1 {
 		encodeStrings(e, v.Environment.Properties)
 	} else {
 		encodeParameterValues(e, v.Environment.Variables)

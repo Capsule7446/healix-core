@@ -35,7 +35,7 @@ func TestCompilePlanIndexesInvocationsOnceAcrossEntries(t *testing.T) {
 				}},
 			}
 		}
-		snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+		snapshot, err := instanceSnapshotForCompilerTest(draft, map[string]string{})
 		if err != nil {
 			t.Fatalf("seal %d-entry snapshot: %v", entryCount, err)
 		}
@@ -111,7 +111,7 @@ func TestCompilePlanInjectsTypedEnvironmentValues(t *testing.T) {
 func TestCompilePlanInjectsEnvironmentIntoParameterlessRoot(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Entries[0].Parameters.Values = nil
-	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{"Region": "east"})
+	snapshot, err := instanceSnapshotForCompilerTest(draft, map[string]string{"Region": "east"})
 	if err != nil {
 		t.Fatal(err)
 	}

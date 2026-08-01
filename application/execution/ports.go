@@ -33,7 +33,7 @@ func stepTransitionCommitPayloadTooLargeError(cause error) error {
 	return err
 }
 
-func stepTransitionCommitRunMismatchError(cause error) error {
+func stepTransitionCommitInstanceMismatchError(cause error) error {
 	err, constructionErr := fault.Wrap(cause, fault.FailedPrecondition, CodeStepTransitionCommitRunMismatch, "step transition commit does not match the claimed run")
 	if constructionErr != nil {
 		panic(constructionErr)
@@ -194,7 +194,7 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	if err := commit.Validate(); err != nil {
 		return evidence.StepTransitionCommitResult{}, err
 	}
-	if err := validateCommitRunBinding(fence.InstanceID, commit); err != nil {
+	if err := validateCommitInstanceBinding(fence.InstanceID, commit); err != nil {
 		return evidence.StepTransitionCommitResult{}, err
 	}
 	owned, err := ownStepTransitionCommit(commit)
@@ -209,20 +209,20 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	return result, nil
 }
 
-func validateCommitRunBinding(instanceID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
+func validateCommitInstanceBinding(instanceID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
 	for _, observation := range commit.FinalValidations {
 		if observation.InstanceID != instanceID {
-			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
 		}
 	}
 	for _, group := range commit.FinalValidationGroups {
 		if group.InstanceID != instanceID {
-			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation group run %q does not match worker fence run %q", group.InstanceID, instanceID))
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation group run %q does not match worker fence run %q", group.InstanceID, instanceID))
 		}
 	}
 	for _, observation := range commit.HealObservations {
 		if observation.InstanceID != instanceID {
-			return stepTransitionCommitRunMismatchError(fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
 		}
 	}
 	return nil

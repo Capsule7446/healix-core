@@ -8,8 +8,8 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-// CreateRunCommand is the sole authority for caller-supplied create data.
-type CreateRunCommand struct {
+// CreateInstanceCommand is the sole authority for caller-supplied create data.
+type CreateInstanceCommand struct {
 	CommandID         string
 	InstanceID        execution.InstanceID
 	ExecutionFlowID   string
@@ -22,48 +22,48 @@ type CreateRunCommand struct {
 	HealerPolicy      execution.HealerPolicySnapshot
 }
 
-// ResolvedCreateRun contains only assets read from one consistent catalog view.
-type ResolvedCreateRun struct {
+// ResolvedCreateInstance contains only assets read from one consistent catalog view.
+type ResolvedCreateInstance struct {
 	Plan        automation.ResolvedExecutionFlow
 	Environment automation.Environment
 	Invocations []execution.InvocationScopeSnapshot
 }
 
-type CreateRunResult struct {
+type CreateInstanceResult struct {
 	Run        execution.Instance
 	Snapshot   execution.InstanceSnapshot
 	EntryIDs   []execution.EntryID
 	WasApplied bool
 }
 
-type StoredCreateRunResult struct {
+type StoredCreateInstanceResult struct {
 	Run            execution.Instance
 	Snapshot       execution.InstanceSnapshot
 	SnapshotDigest string
 	EntryIDs       []execution.EntryID
 }
 
-type StoredCreateRunCommand struct {
+type StoredCreateInstanceCommand struct {
 	CommandID     string
 	RequestDigest string
-	Result        StoredCreateRunResult
+	Result        StoredCreateInstanceResult
 }
 
-type InsertCreateRunStatus string
+type InsertCreateInstanceStatus string
 
 const (
-	InsertCreateRunApplied  InsertCreateRunStatus = "APPLIED"
-	InsertCreateRunReplayed InsertCreateRunStatus = "REPLAYED"
+	InsertCreateInstanceApplied  InsertCreateInstanceStatus = "APPLIED"
+	InsertCreateInstanceReplayed InsertCreateInstanceStatus = "REPLAYED"
 )
 
-type InsertCreateRunOutcome struct {
-	Status        InsertCreateRunStatus
+type InsertCreateInstanceOutcome struct {
+	Status        InsertCreateInstanceStatus
 	CommandID     string
 	RequestDigest string
-	Result        StoredCreateRunResult
+	Result        StoredCreateInstanceResult
 }
 
-type CreateRunIntent struct {
+type CreateInstanceIntent struct {
 	CommandID     string
 	RequestDigest string
 	Run           execution.Instance
@@ -73,7 +73,7 @@ type CreateRunIntent struct {
 
 const CodeCreateInstanceCommandInvalid fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_INVALID"
 
-func createRunCommandInvalidError(cause error) error {
+func createInstanceCommandInvalidError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.InvalidArgument,
@@ -88,7 +88,7 @@ func createRunCommandInvalidError(cause error) error {
 
 const CodeCreateInstanceCommandConflict fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_CONFLICT"
 
-func createRunCommandConflictError() error {
+func createInstanceCommandConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
 		CodeCreateInstanceCommandConflict,
@@ -102,7 +102,7 @@ func createRunCommandConflictError() error {
 
 const CodeCreateInstanceSnapshotConflict fault.Code = "EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT"
 
-func createRunSnapshotConflictError() error {
+func createInstanceSnapshotConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
 		CodeCreateInstanceSnapshotConflict,
@@ -116,7 +116,7 @@ func createRunSnapshotConflictError() error {
 
 const CodeCreateInstanceAdapterContractViolation fault.Code = "EXECUTION_CREATE_INSTANCE_ADAPTER_CONTRACT_VIOLATION"
 
-func createRunAdapterContractViolationError(cause error) error {
+func createInstanceAdapterContractViolationError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.Internal,
@@ -131,7 +131,7 @@ func createRunAdapterContractViolationError(cause error) error {
 
 const CodeCreateInstanceRetryable fault.Code = "EXECUTION_CREATE_INSTANCE_RETRYABLE"
 
-func createRunRetryableError(cause error) error {
+func createInstanceRetryableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.Unavailable,
@@ -155,10 +155,10 @@ func classifyCatalogGraphFailure(cause error) error {
 	if _, classified := fault.CodeOf(cause); classified {
 		return cause
 	}
-	return createRunCatalogGraphUnresolvableError(cause)
+	return createInstanceCatalogGraphUnresolvableError(cause)
 }
 
-func createRunCatalogGraphUnresolvableError(cause error) error {
+func createInstanceCatalogGraphUnresolvableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
 		fault.FailedPrecondition,
@@ -171,18 +171,18 @@ func createRunCatalogGraphUnresolvableError(cause error) error {
 	return err
 }
 
-type CreateRunStore interface {
-	InTransaction(context.Context, func(CreateRunTx) error) error
+type CreateInstanceStore interface {
+	InTransaction(context.Context, func(CreateInstanceTx) error) error
 }
 
-type CreateRunTx interface {
-	FindCommand(context.Context, string) (StoredCreateRunCommand, bool, error)
-	// ResolveCreateRun must resolve task, recursive workflow LATEST/current pointers,
+type CreateInstanceTx interface {
+	FindCommand(context.Context, string) (StoredCreateInstanceCommand, bool, error)
+	// ResolveCreateInstance must resolve task, recursive workflow LATEST/current pointers,
 	// nodes, environment, bindings, defaults, and concrete invocations from one
 	// transaction view. It must validate cycles, missing pointers, and execution
 	// depth/invocation/reference/value limits before returning.
-	ResolveCreateRun(context.Context, CreateRunCommand) (ResolvedCreateRun, error)
-	// InsertCreateRun atomically stores the command, queued Run, exact entries,
+	ResolveCreateInstance(context.Context, CreateInstanceCommand) (ResolvedCreateInstance, error)
+	// InsertCreateInstance atomically stores the command, queued Run, exact entries,
 	// sealed snapshot, and queue membership/order. Its outcome is authoritative.
-	InsertCreateRun(context.Context, CreateRunIntent) (InsertCreateRunOutcome, error)
+	InsertCreateInstance(context.Context, CreateInstanceIntent) (InsertCreateInstanceOutcome, error)
 }

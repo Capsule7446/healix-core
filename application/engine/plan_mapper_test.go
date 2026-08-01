@@ -13,7 +13,7 @@ func TestCompilePlanMapsNestedValidationAndReferences(t *testing.T) {
 	}
 }
 
-func TestCompilePlanRequiresRunIdentity(t *testing.T) {
+func TestCompilePlanRequiresInstanceIdentity(t *testing.T) {
 	if _, err := compileDraft(execution.PlanSnapshot{Entries: []execution.Entry{{ID: mustEntryID("execution-entry"), TestTaskItemID: "task-item", FlowFragmentID: "root", WorkflowVersionID: "root"}}}); err == nil {
 		t.Fatal("expected run identity validation")
 	}

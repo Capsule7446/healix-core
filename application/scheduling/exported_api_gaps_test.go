@@ -99,42 +99,42 @@ func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 	}
 }
 
-func validCancelCommand() CancelRunCommand {
-	return CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: 1, At: 2}
+func validCancelCommand() CancelInstanceCommand {
+	return CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: 1, At: 2}
 }
-func validAbortCommand() AbortRunCommand {
-	return AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
+func validAbortCommand() AbortInstanceCommand {
+	return AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
 }
 
-func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
-	cancelInvalid := []CancelRunCommand{{}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: -1, At: 2}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, At: 0}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Succeeded, At: 2}}
-	abortInvalid := []AbortRunCommand{{}, {CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: -1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 0, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("other"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run")}}}
+func TestInstanceCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
+	cancelInvalid := []CancelInstanceCommand{{}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: -1, At: 2}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, At: 0}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Succeeded, At: 2}}
+	abortInvalid := []AbortInstanceCommand{{}, {CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: -1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 0, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("other"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run")}}}
 	for _, command := range cancelInvalid {
-		if result, err := NewCancelRunService(nil, nil).CancelRun(context.Background(), command); err == nil || result != (RunCommandResult{}) {
+		if result, err := NewCancelInstanceService(nil, nil).CancelInstance(context.Background(), command); err == nil || result != (InstanceCommandResult{}) {
 			t.Fatalf("cancel invalid result/error=%#v/%v", result, err)
 		}
 	}
 	for _, command := range abortInvalid {
-		if result, err := NewAbortRunService(nil, nil).AbortRun(context.Background(), command); err == nil || result != (RunCommandResult{}) {
+		if result, err := NewAbortInstanceService(nil, nil).AbortInstance(context.Background(), command); err == nil || result != (InstanceCommandResult{}) {
 			t.Fatalf("abort invalid result/error=%#v/%v", result, err)
 		}
 	}
 	var typedNilStore *commandStoreStub
 	for _, call := range []func() error{
 		func() error {
-			_, err := NewCancelRunService(nil, nil).CancelRun(context.Background(), validCancelCommand())
+			_, err := NewCancelInstanceService(nil, nil).CancelInstance(context.Background(), validCancelCommand())
 			return err
 		},
 		func() error {
-			_, err := NewCancelRunService(typedNilStore, nil).CancelRun(context.Background(), validCancelCommand())
+			_, err := NewCancelInstanceService(typedNilStore, nil).CancelInstance(context.Background(), validCancelCommand())
 			return err
 		},
 		func() error {
-			_, err := NewAbortRunService(nil, nil).AbortRun(context.Background(), validAbortCommand())
+			_, err := NewAbortInstanceService(nil, nil).AbortInstance(context.Background(), validAbortCommand())
 			return err
 		},
 		func() error {
-			_, err := NewAbortRunService(typedNilStore, nil).AbortRun(context.Background(), validAbortCommand())
+			_, err := NewAbortInstanceService(typedNilStore, nil).AbortInstance(context.Background(), validAbortCommand())
 			return err
 		},
 	} {
@@ -153,8 +153,8 @@ func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
 }
 
 func TestCancelSignalFailureReturnsCommittedResult(t *testing.T) {
-	store := &commandStoreStub{cancelResult: RunCommandResult{Run: validCommandRun(t, execution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}}
-	result, err := NewCancelRunService(store, signalStub{store: store, err: errors.New("down")}).CancelRun(context.Background(), validCancelCommand())
+	store := &commandStoreStub{cancelResult: InstanceCommandResult{Run: validCommandInstance(t, execution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}}
+	result, err := NewCancelInstanceService(store, signalStub{store: store, err: errors.New("down")}).CancelInstance(context.Background(), validCancelCommand())
 	if !fault.IsCode(err, CodeInstanceSignalRetryable) || !result.WasApplied {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}

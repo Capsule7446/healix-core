@@ -11,7 +11,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
+func TestInstanceCommandErrorsExposeStableContracts(t *testing.T) {
 	cause := errors.New("dependency failed: secret-token")
 	tests := []struct {
 		name    string
@@ -46,7 +46,7 @@ func TestRunCommandErrorsExposeStableContracts(t *testing.T) {
 	}
 }
 
-func TestRunSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing.T) {
+func TestInstanceSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing.T) {
 	cause := errors.New("adapter failure: secret-token")
 	err := runSignalRetryableError(cause)
 	descriptor, ok := fault.Describe(err)
@@ -61,19 +61,19 @@ func TestRunSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing
 	}
 }
 
-func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
-	valid := CancelRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1}
+func TestCancelInstanceRejectsEachInvalidCommandBeforeStore(t *testing.T) {
+	valid := CancelInstanceCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1}
 	tests := []struct {
 		name   string
-		mutate func(*CancelRunCommand)
+		mutate func(*CancelInstanceCommand)
 	}{
-		{name: "blank command id", mutate: func(command *CancelRunCommand) { command.CommandID = " \t\n" }},
-		{name: "unset run id", mutate: func(command *CancelRunCommand) { command.InstanceID = domainexecution.InstanceID{} }},
-		{name: "negative revision", mutate: func(command *CancelRunCommand) { command.ExpectedRevision = -1 }},
-		{name: "zero timestamp", mutate: func(command *CancelRunCommand) { command.At = 0 }},
-		{name: "negative timestamp", mutate: func(command *CancelRunCommand) { command.At = -1 }},
-		{name: "unknown status", mutate: func(command *CancelRunCommand) { command.ExpectedStatus = "UNKNOWN" }},
-		{name: "terminal status", mutate: func(command *CancelRunCommand) { command.ExpectedStatus = domainexecution.Succeeded }},
+		{name: "blank command id", mutate: func(command *CancelInstanceCommand) { command.CommandID = " \t\n" }},
+		{name: "unset run id", mutate: func(command *CancelInstanceCommand) { command.InstanceID = domainexecution.InstanceID{} }},
+		{name: "negative revision", mutate: func(command *CancelInstanceCommand) { command.ExpectedRevision = -1 }},
+		{name: "zero timestamp", mutate: func(command *CancelInstanceCommand) { command.At = 0 }},
+		{name: "negative timestamp", mutate: func(command *CancelInstanceCommand) { command.At = -1 }},
+		{name: "unknown status", mutate: func(command *CancelInstanceCommand) { command.ExpectedStatus = "UNKNOWN" }},
+		{name: "terminal status", mutate: func(command *CancelInstanceCommand) { command.ExpectedStatus = domainexecution.Succeeded }},
 	}
 
 	for _, test := range tests {
@@ -81,33 +81,33 @@ func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			command := valid
 			test.mutate(&command)
 			store := &commandStoreStub{}
-			result, err := NewCancelRunService(store, nil).CancelRun(context.Background(), command)
+			result, err := NewCancelInstanceService(store, nil).CancelInstance(context.Background(), command)
 			if !fault.IsCode(err, CodeCancelInstanceCommandInvalid) {
-				t.Fatalf("CancelRun() error = %v", err)
+				t.Fatalf("CancelInstance() error = %v", err)
 			}
-			if result != (RunCommandResult{}) || len(store.calls) != 0 {
+			if result != (InstanceCommandResult{}) || len(store.calls) != 0 {
 				t.Fatalf("rejected command result/calls = %#v/%v", result, store.calls)
 			}
 		})
 	}
 }
 
-func TestAbortRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
-	valid := AbortRunCommand{
+func TestAbortInstanceRejectsEachInvalidCommandBeforeStore(t *testing.T) {
+	valid := AbortInstanceCommand{
 		CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 0, At: 1,
 		Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
 	}
 	tests := []struct {
 		name   string
-		mutate func(*AbortRunCommand)
+		mutate func(*AbortInstanceCommand)
 	}{
-		{name: "blank command id", mutate: func(command *AbortRunCommand) { command.CommandID = " \t\n" }},
-		{name: "unset run id", mutate: func(command *AbortRunCommand) { command.InstanceID = domainexecution.InstanceID{} }},
-		{name: "negative revision", mutate: func(command *AbortRunCommand) { command.ExpectedRevision = -1 }},
-		{name: "zero timestamp", mutate: func(command *AbortRunCommand) { command.At = 0 }},
-		{name: "negative timestamp", mutate: func(command *AbortRunCommand) { command.At = -1 }},
-		{name: "foreign fence", mutate: func(command *AbortRunCommand) { command.Fence.InstanceID = mustInstanceID("other") }},
-		{name: "empty claim token", mutate: func(command *AbortRunCommand) { command.Fence.ClaimToken = "" }},
+		{name: "blank command id", mutate: func(command *AbortInstanceCommand) { command.CommandID = " \t\n" }},
+		{name: "unset run id", mutate: func(command *AbortInstanceCommand) { command.InstanceID = domainexecution.InstanceID{} }},
+		{name: "negative revision", mutate: func(command *AbortInstanceCommand) { command.ExpectedRevision = -1 }},
+		{name: "zero timestamp", mutate: func(command *AbortInstanceCommand) { command.At = 0 }},
+		{name: "negative timestamp", mutate: func(command *AbortInstanceCommand) { command.At = -1 }},
+		{name: "foreign fence", mutate: func(command *AbortInstanceCommand) { command.Fence.InstanceID = mustInstanceID("other") }},
+		{name: "empty claim token", mutate: func(command *AbortInstanceCommand) { command.Fence.ClaimToken = "" }},
 	}
 
 	for _, test := range tests {
@@ -115,30 +115,30 @@ func TestAbortRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 			command := valid
 			test.mutate(&command)
 			store := &commandStoreStub{}
-			result, err := NewAbortRunService(store, nil).AbortRun(context.Background(), command)
+			result, err := NewAbortInstanceService(store, nil).AbortInstance(context.Background(), command)
 			if !fault.IsCode(err, CodeAbortInstanceCommandInvalid) {
-				t.Fatalf("AbortRun() error = %v", err)
+				t.Fatalf("AbortInstance() error = %v", err)
 			}
-			if result != (RunCommandResult{}) || len(store.calls) != 0 {
+			if result != (InstanceCommandResult{}) || len(store.calls) != 0 {
 				t.Fatalf("rejected command result/calls = %#v/%v", result, store.calls)
 			}
 		})
 	}
 }
 
-func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
+func TestInstanceCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 	transactionFailure := errors.New("transaction unavailable")
 	for _, operation := range []string{"cancel", "abort"} {
 		t.Run(operation+" transaction", func(t *testing.T) {
 			store := &commandStoreStub{cancelErr: transactionFailure, abortErr: transactionFailure}
-			var result RunCommandResult
+			var result InstanceCommandResult
 			var err error
 			if operation == "cancel" {
-				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1})
+				result, err = NewCancelInstanceService(store, nil).CancelInstance(context.Background(), CancelInstanceCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1})
 			} else {
-				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 0, At: 1, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}})
+				result, err = NewAbortInstanceService(store, nil).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 0, At: 1, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}})
 			}
-			if !errors.Is(err, transactionFailure) || result != (RunCommandResult{}) {
+			if !errors.Is(err, transactionFailure) || result != (InstanceCommandResult{}) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
 			if !fault.IsCode(err, CodeSchedulingAdapterUnavailable) {
@@ -156,15 +156,15 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 	for _, operation := range []string{"cancel", "abort"} {
 		t.Run(operation+" missing signaler", func(t *testing.T) {
 			store := &commandStoreStub{
-				cancelResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true},
-				abortResult:  RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true},
+				cancelResult: InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true},
+				abortResult:  InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true},
 			}
-			var result RunCommandResult
+			var result InstanceCommandResult
 			var err error
 			if operation == "cancel" {
-				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
+				result, err = NewCancelInstanceService(store, nil).CancelInstance(context.Background(), CancelInstanceCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
 			} else {
-				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}})
+				result, err = NewAbortInstanceService(store, nil).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}})
 			}
 			if !fault.IsCode(err, CodeInstanceSignalRetryable) || !result.WasApplied || result.Revision != 2 {
 				t.Fatalf("result/error = %#v/%v", result, err)
@@ -180,14 +180,14 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 }
 
 func TestQueuedCancelReturnsWithoutSignaling(t *testing.T) {
-	store := &commandStoreStub{cancelResult: RunCommandResult{
-		Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true,
+	store := &commandStoreStub{cancelResult: InstanceCommandResult{
+		Run: validCommandInstance(t, domainexecution.Canceled), Revision: 2, WasApplied: true,
 	}}
-	result, err := NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{
+	result, err := NewCancelInstanceService(store, nil).CancelInstance(context.Background(), CancelInstanceCommand{
 		CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2,
 	})
 	if err != nil || !result.WasApplied || result.SignalRequired {
-		t.Fatalf("CancelRun() = (%#v, %v)", result, err)
+		t.Fatalf("CancelInstance() = (%#v, %v)", result, err)
 	}
 	if len(store.calls) != 1 {
 		t.Fatalf("calls = %v", store.calls)
@@ -285,15 +285,15 @@ func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *te
 	}
 }
 
-func TestInvalidRunCommandFaultsExposeSafeStableContracts(t *testing.T) {
+func TestInvalidInstanceCommandFaultsExposeSafeStableContracts(t *testing.T) {
 	tests := []struct {
 		name    string
 		err     error
 		code    fault.Code
 		message string
 	}{
-		{name: "cancel", err: cancelRunCommandInvalidError(errors.New("command=command-secret value=credential-secret")), code: CodeCancelInstanceCommandInvalid, message: "cancel instance command is invalid"},
-		{name: "abort", err: abortRunCommandInvalidError(errors.New("fence=claim-secret value=credential-secret")), code: CodeAbortInstanceCommandInvalid, message: "abort instance command is invalid"},
+		{name: "cancel", err: cancelInstanceCommandInvalidError(errors.New("command=command-secret value=credential-secret")), code: CodeCancelInstanceCommandInvalid, message: "cancel instance command is invalid"},
+		{name: "abort", err: abortInstanceCommandInvalidError(errors.New("fence=claim-secret value=credential-secret")), code: CodeAbortInstanceCommandInvalid, message: "abort instance command is invalid"},
 		{name: "reorder", err: reorderQueueCommandInvalidError(errors.New("scope=scope-secret run=run-secret")), code: CodeReorderQueueCommandInvalid, message: "reorder queue command is invalid"},
 	}
 	for _, test := range tests {

@@ -8,7 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract(t *testing.T) {
+func TestSealInstanceSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract(t *testing.T) {
 	tests := []struct {
 		name       string
 		wantReason string
@@ -57,7 +57,7 @@ func TestSealRunSnapshotRejectsConcreteChildValuesOutsideTargetParameterContract
 	}
 }
 
-func TestRunSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
+func TestInstanceSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*InstanceSnapshotInput)
@@ -97,7 +97,7 @@ func TestValidateBindingsRejectsUnknownLiteralAndParentNames(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *testing.T) {
+func TestInstanceSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	input.Environment.Properties["large"] = strings.Repeat("x", MaxStringBytes+1)
 	if _, err := SealInstanceSnapshot(input); err == nil {
@@ -113,7 +113,7 @@ func TestRunSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *test
 	}
 }
 
-func TestRunSnapshotSharesAggregateStringBudgetAcrossPlanAndEnvelope(t *testing.T) {
+func TestInstanceSnapshotSharesAggregateStringBudgetAcrossPlanAndEnvelope(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	chunk := strings.Repeat("x", MaxStringBytes)
 	for index := 0; index < MaxAggregateStringBytes/MaxStringBytes; index++ {

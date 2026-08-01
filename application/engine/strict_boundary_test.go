@@ -31,7 +31,7 @@ func TestCompileSnapshotDraftRejectsDuplicatePublicIdentities(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			draft := base
 			tt.mutate(&draft)
-			snapshot, err := runSnapshotForCompilerTest(base, nil)
+			snapshot, err := instanceSnapshotForCompilerTest(base, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,7 +102,7 @@ func TestMillisecondsDurationRejectsOnlyInvalidInt64Boundaries(t *testing.T) {
 
 func TestCompilerRejectsNegativeWaitMilliseconds(t *testing.T) {
 	base := minimalCompilerPlan()
-	snapshot, err := runSnapshotForCompilerTest(base, nil)
+	snapshot, err := instanceSnapshotForCompilerTest(base, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

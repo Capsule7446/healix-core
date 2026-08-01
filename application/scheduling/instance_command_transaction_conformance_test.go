@@ -12,7 +12,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-type referenceRun struct {
+type referenceInstance struct {
 	run      domainexecution.Instance
 	revision int64
 	scope    string
@@ -21,11 +21,11 @@ type referenceRun struct {
 }
 type storedCommand struct {
 	digest string
-	run    RunCommandResult
+	run    InstanceCommandResult
 	queue  ReorderQueueResult
 }
 type referenceState struct {
-	runs          map[string]referenceRun
+	runs          map[string]referenceInstance
 	queueRevision map[string]int64
 	commands      map[string]storedCommand
 }
@@ -36,15 +36,15 @@ type referenceCommandStore struct {
 	unknownCommit    bool
 }
 
-func newReferenceCommandStore(runs ...referenceRun) *referenceCommandStore {
-	state := referenceState{runs: map[string]referenceRun{}, queueRevision: map[string]int64{}, commands: map[string]storedCommand{}}
+func newReferenceCommandStore(runs ...referenceInstance) *referenceCommandStore {
+	state := referenceState{runs: map[string]referenceInstance{}, queueRevision: map[string]int64{}, commands: map[string]storedCommand{}}
 	for _, run := range runs {
 		state.runs[run.run.ID.String()] = run
 	}
 	return &referenceCommandStore{state: state}
 }
 func cloneReferenceState(state referenceState) referenceState {
-	clone := referenceState{runs: make(map[string]referenceRun, len(state.runs)), queueRevision: make(map[string]int64, len(state.queueRevision)), commands: make(map[string]storedCommand, len(state.commands))}
+	clone := referenceState{runs: make(map[string]referenceInstance, len(state.runs)), queueRevision: make(map[string]int64, len(state.queueRevision)), commands: make(map[string]storedCommand, len(state.commands))}
 	for id, run := range state.runs {
 		clone.runs[id] = run
 	}
@@ -85,8 +85,8 @@ func replay(state *referenceState, id, digest string) (storedCommand, bool, erro
 	stored.run.WasApplied, stored.queue.WasApplied = false, false
 	return stored, true, nil
 }
-func (s *referenceCommandStore) Cancel(_ context.Context, command CancelRunCommand) (RunCommandResult, error) {
-	digest, _ := CancelRunRequestDigest(command)
+func (s *referenceCommandStore) Cancel(_ context.Context, command CancelInstanceCommand) (InstanceCommandResult, error) {
+	digest, _ := CancelInstanceRequestDigest(command)
 	stored, err := s.transact(func(state *referenceState) (storedCommand, error) {
 		if prior, ok, err := replay(state, command.CommandID, digest); ok || err != nil {
 			return prior, err
@@ -121,15 +121,15 @@ func (s *referenceCommandStore) Cancel(_ context.Context, command CancelRunComma
 			}
 			state.queueRevision[record.scope]++
 		}
-		result := RunCommandResult{Run: record.run, Revision: record.revision, WasApplied: true, SignalRequired: command.ExpectedStatus == domainexecution.Running}
+		result := InstanceCommandResult{Run: record.run, Revision: record.revision, WasApplied: true, SignalRequired: command.ExpectedStatus == domainexecution.Running}
 		stored := storedCommand{digest: digest, run: result}
 		state.commands[command.CommandID] = stored
 		return stored, nil
 	})
 	return stored.run, err
 }
-func (s *referenceCommandStore) Abort(_ context.Context, command AbortRunCommand) (RunCommandResult, error) {
-	digest, _ := AbortRunRequestDigest(command)
+func (s *referenceCommandStore) Abort(_ context.Context, command AbortInstanceCommand) (InstanceCommandResult, error) {
+	digest, _ := AbortInstanceRequestDigest(command)
 	stored, err := s.transact(func(state *referenceState) (storedCommand, error) {
 		if prior, ok, err := replay(state, command.CommandID, digest); ok || err != nil {
 			return prior, err
@@ -150,7 +150,7 @@ func (s *referenceCommandStore) Abort(_ context.Context, command AbortRunCommand
 		record.run.Status, record.run.FinishedAt, record.revision = domainexecution.Aborted, command.At, record.revision+1
 		record.claimed, record.fence = false, domainexecution.WorkerFence{}
 		state.runs[command.InstanceID.String()] = record
-		result := RunCommandResult{Run: record.run, Revision: record.revision, WasApplied: true, SignalRequired: true}
+		result := InstanceCommandResult{Run: record.run, Revision: record.revision, WasApplied: true, SignalRequired: true}
 		stored := storedCommand{digest: digest, run: result}
 		state.commands[command.CommandID] = stored
 		return stored, nil
@@ -214,11 +214,11 @@ func (s *referenceCommandStore) claim(instanceID string, expectedQueueRevision i
 
 func TestQueuedCancelAtomicallyRemovesAndNormalizesQueue(t *testing.T) {
 	store := newReferenceCommandStore(
-		referenceRun{run: domainexecution.Instance{ID: mustInstanceID("a"), Status: domainexecution.Queued, QueuePosition: 0}, revision: 1, scope: "scope"},
-		referenceRun{run: domainexecution.Instance{ID: mustInstanceID("b"), Status: domainexecution.Queued, QueuePosition: 1}, revision: 1, scope: "scope"},
-		referenceRun{run: domainexecution.Instance{ID: mustInstanceID("c"), Status: domainexecution.Queued, QueuePosition: 2}, revision: 1, scope: "scope"},
+		referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("a"), Status: domainexecution.Queued, QueuePosition: 0}, revision: 1, scope: "scope"},
+		referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("b"), Status: domainexecution.Queued, QueuePosition: 1}, revision: 1, scope: "scope"},
+		referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("c"), Status: domainexecution.Queued, QueuePosition: 2}, revision: 1, scope: "scope"},
 	)
-	result, err := store.Cancel(context.Background(), CancelRunCommand{CommandID: "cancel", InstanceID: mustInstanceID("b"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2})
+	result, err := store.Cancel(context.Background(), CancelInstanceCommand{CommandID: "cancel", InstanceID: mustInstanceID("b"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2})
 	if err != nil || !result.WasApplied || store.state.queueRevision["scope"] != 1 || store.state.runs["a"].run.QueuePosition != 0 || store.state.runs["c"].run.QueuePosition != 1 {
 		t.Fatalf("result/state=%#v/%#v", result, store.state)
 	}
@@ -236,19 +236,19 @@ func TestQueuedCancelAtomicallyRemovesAndNormalizesQueue(t *testing.T) {
 	}
 }
 
-func TestRunningCancelDoesNotChangeQueueRevision(t *testing.T) {
+func TestRunningInstanceCancelDoesNotChangeQueueRevision(t *testing.T) {
 	fence := domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}
-	store := newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, scope: "scope", claimed: true, fence: fence})
+	store := newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, scope: "scope", claimed: true, fence: fence})
 	store.state.queueRevision["scope"] = 4
-	_, err := store.Cancel(context.Background(), CancelRunCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
+	_, err := store.Cancel(context.Background(), CancelInstanceCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
 	if err != nil || store.state.queueRevision["scope"] != 4 || store.state.runs["run"].fence != (domainexecution.WorkerFence{}) {
 		t.Fatalf("revision/state/error=%d/%#v/%v", store.state.queueRevision["scope"], store.state.runs["run"], err)
 	}
 }
 
 func TestReferenceStoreReplayConflictRollbackAndUnknownCommit(t *testing.T) {
-	store := newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Queued}, revision: 1, scope: "scope"})
-	command := CancelRunCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}
+	store := newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Queued}, revision: 1, scope: "scope"})
+	command := CancelInstanceCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}
 	first, err := store.Cancel(context.Background(), command)
 	if err != nil || !first.WasApplied {
 		t.Fatalf("first=%#v/%v", first, err)
@@ -262,14 +262,14 @@ func TestReferenceStoreReplayConflictRollbackAndUnknownCommit(t *testing.T) {
 	if _, err := store.Cancel(context.Background(), changed); !fault.IsCode(err, CodeInstanceCommandIdentityConflict) {
 		t.Fatalf("conflict=%v", err)
 	}
-	rollback := newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("rollback"), Status: domainexecution.Queued}, revision: 1})
+	rollback := newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("rollback"), Status: domainexecution.Queued}, revision: 1})
 	rollback.failBeforeCommit = true
-	if _, err := rollback.Cancel(context.Background(), CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("rollback"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}); err == nil || rollback.state.runs["rollback"].run.Status != domainexecution.Queued || len(rollback.state.commands) != 0 {
+	if _, err := rollback.Cancel(context.Background(), CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("rollback"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}); err == nil || rollback.state.runs["rollback"].run.Status != domainexecution.Queued || len(rollback.state.commands) != 0 {
 		t.Fatal("failed transaction did not roll back")
 	}
-	unknown := newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("unknown"), Status: domainexecution.Queued}, revision: 1})
+	unknown := newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("unknown"), Status: domainexecution.Queued}, revision: 1})
 	unknown.unknownCommit = true
-	unknownCommand := CancelRunCommand{CommandID: "u", InstanceID: mustInstanceID("unknown"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}
+	unknownCommand := CancelInstanceCommand{CommandID: "u", InstanceID: mustInstanceID("unknown"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}
 	if _, err := unknown.Cancel(context.Background(), unknownCommand); err == nil {
 		t.Fatal("expected unknown result")
 	}
@@ -281,8 +281,8 @@ func TestReferenceStoreReplayConflictRollbackAndUnknownCommit(t *testing.T) {
 
 func TestReferenceStoreAbortFenceReplayAndCompetingTerminalRaces(t *testing.T) {
 	fence := domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}
-	store := newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
-	command := AbortRunCommand{CommandID: "abort", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: fence}
+	store := newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
+	command := AbortInstanceCommand{CommandID: "abort", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: fence}
 	first, err := store.Abort(context.Background(), command)
 	if err != nil || !first.WasApplied {
 		t.Fatalf("abort=%#v/%v", first, err)
@@ -299,7 +299,7 @@ func TestReferenceStoreAbortFenceReplayAndCompetingTerminalRaces(t *testing.T) {
 
 	for _, competing := range []domainexecution.InstanceStatus{domainexecution.Succeeded, domainexecution.Failed, domainexecution.Canceled} {
 		t.Run(string(competing), func(t *testing.T) {
-			race := newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
+			race := newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
 			start := make(chan struct{})
 			outcomes := make(chan bool, 2)
 			go func() { <-start; _, err := race.Abort(context.Background(), command); outcomes <- err == nil }()
@@ -330,9 +330,9 @@ func TestReferenceStoreAbortFenceReplayAndCompetingTerminalRaces(t *testing.T) {
 
 func TestReferenceStoreCancelClaimAbortAndDuplicateRaces(t *testing.T) {
 	queued := func() *referenceCommandStore {
-		return newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Queued}, revision: 1, scope: "scope"})
+		return newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Queued}, revision: 1, scope: "scope"})
 	}
-	cancelQueued := CancelRunCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}
+	cancelQueued := CancelInstanceCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2}
 	race := queued()
 	start := make(chan struct{})
 	outcomes := make(chan bool, 2)
@@ -345,10 +345,10 @@ func TestReferenceStoreCancelClaimAbortAndDuplicateRaces(t *testing.T) {
 
 	fence := domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}
 	active := func() *referenceCommandStore {
-		return newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
+		return newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("run"), Status: domainexecution.Running}, revision: 1, claimed: true, fence: fence})
 	}
-	cancelActive := CancelRunCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2}
-	abort := AbortRunCommand{CommandID: "abort", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: fence}
+	cancelActive := CancelInstanceCommand{CommandID: "cancel", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2}
+	abort := AbortInstanceCommand{CommandID: "abort", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: fence}
 	race = active()
 	start = make(chan struct{})
 	outcomes = make(chan bool, 2)
@@ -395,11 +395,11 @@ func TestReferenceStoreCancelClaimAbortAndDuplicateRaces(t *testing.T) {
 		t.Run("duplicate-"+operation, func(t *testing.T) {
 			store := active()
 			start := make(chan struct{})
-			results := make(chan RunCommandResult, 2)
+			results := make(chan InstanceCommandResult, 2)
 			errorsFound := make(chan error, 2)
 			invoke := func() {
 				<-start
-				var result RunCommandResult
+				var result InstanceCommandResult
 				var err error
 				if operation == "cancel" {
 					result, err = store.Cancel(context.Background(), cancelActive)
@@ -428,7 +428,7 @@ func TestReferenceStoreCancelClaimAbortAndDuplicateRaces(t *testing.T) {
 
 func TestReferenceStoreReorderExactPermutationReplayRollbackAndClaimRace(t *testing.T) {
 	makeStore := func() *referenceCommandStore {
-		return newReferenceCommandStore(referenceRun{run: domainexecution.Instance{ID: mustInstanceID("a"), Status: domainexecution.Queued}, revision: 1, scope: "scope"}, referenceRun{run: domainexecution.Instance{ID: mustInstanceID("b"), Status: domainexecution.Queued}, revision: 1, scope: "scope"})
+		return newReferenceCommandStore(referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("a"), Status: domainexecution.Queued}, revision: 1, scope: "scope"}, referenceInstance{run: domainexecution.Instance{ID: mustInstanceID("b"), Status: domainexecution.Queued}, revision: 1, scope: "scope"})
 	}
 	command := ReorderQueueCommand{CommandID: "reorder", ScopeID: "scope", ExpectedRevision: 0, InstanceIDs: []string{"b", "a"}}
 	store := makeStore()

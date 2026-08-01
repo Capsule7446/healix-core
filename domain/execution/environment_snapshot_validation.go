@@ -48,7 +48,7 @@ func appendEnvironmentIdentityViolations(violations []fault.Violation, v Environ
 }
 
 func appendEnvironmentVariableViolations(violations []fault.Violation, schemaVersion InstanceSnapshotSchema, v EnvironmentSnapshot) []fault.Violation {
-	if schemaVersion == RunSnapshotSchemaV1 {
+	if schemaVersion == InstanceSnapshotSchemaV1 {
 		if len(v.Variables) != 0 {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.variables", "a V1 environment snapshot cannot contain typed variables"))
 		}

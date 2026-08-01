@@ -52,48 +52,48 @@ func (consumerSnapshot) Candidates(context.Context) ([]heal.SnapshotCandidate, e
 	return nil, nil
 }
 
-type consumerCreateRunStore struct {
-	resolved scheduling.ResolvedCreateRun
+type consumerCreateInstanceStore struct {
+	resolved scheduling.ResolvedCreateInstance
 	input    execution.InstanceSnapshotInput
 	digest   string
 }
 
-func (s *consumerCreateRunStore) InTransaction(ctx context.Context, callback func(scheduling.CreateRunTx) error) error {
+func (s *consumerCreateInstanceStore) InTransaction(ctx context.Context, callback func(scheduling.CreateInstanceTx) error) error {
 	return callback(s)
 }
-func (s *consumerCreateRunStore) FindCommand(context.Context, string) (scheduling.StoredCreateRunCommand, bool, error) {
-	return scheduling.StoredCreateRunCommand{}, false, nil
+func (s *consumerCreateInstanceStore) FindCommand(context.Context, string) (scheduling.StoredCreateInstanceCommand, bool, error) {
+	return scheduling.StoredCreateInstanceCommand{}, false, nil
 }
-func (s *consumerCreateRunStore) ResolveCreateRun(context.Context, scheduling.CreateRunCommand) (scheduling.ResolvedCreateRun, error) {
+func (s *consumerCreateInstanceStore) ResolveCreateInstance(context.Context, scheduling.CreateInstanceCommand) (scheduling.ResolvedCreateInstance, error) {
 	return s.resolved, nil
 }
-func (s *consumerCreateRunStore) InsertCreateRun(_ context.Context, intent scheduling.CreateRunIntent) (scheduling.InsertCreateRunOutcome, error) {
+func (s *consumerCreateInstanceStore) InsertCreateInstance(_ context.Context, intent scheduling.CreateInstanceIntent) (scheduling.InsertCreateInstanceOutcome, error) {
 	s.input = intent.Snapshot.Input()
 	s.digest = intent.Snapshot.Digest()
 	hydrated, err := execution.HydrateInstanceSnapshot(s.input, s.digest)
 	if err != nil {
-		return scheduling.InsertCreateRunOutcome{}, err
+		return scheduling.InsertCreateInstanceOutcome{}, err
 	}
 	entryIDs := make([]execution.EntryID, len(intent.Entries))
 	for index, entry := range intent.Entries {
 		entryIDs[index] = entry.ID
 	}
-	return scheduling.InsertCreateRunOutcome{Status: scheduling.InsertCreateRunApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: scheduling.StoredCreateRunResult{Run: intent.Run, Snapshot: hydrated, SnapshotDigest: hydrated.Digest(), EntryIDs: entryIDs}}, nil
+	return scheduling.InsertCreateInstanceOutcome{Status: scheduling.InsertCreateInstanceApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: scheduling.StoredCreateInstanceResult{Run: intent.Run, Snapshot: hydrated, SnapshotDigest: hydrated.Digest(), EntryIDs: entryIDs}}, nil
 }
 
-func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
+func TestExternalConsumerCanImplementCreateInstancePorts(t *testing.T) {
 	workflow := automation.FlowFragmentDependencySnapshot{FlowFragment: automation.FlowFragment{ID: "workflow", DisplayName: "FlowFragment", CurrentVersionID: "workflow-v1", Properties: automation.Properties{}, CreatedAt: 1, UpdatedAt: 1}, Version: automation.FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1, Definition: automation.FlowFragmentContent{Steps: []automation.FlowFragmentStep{{ID: "wait", DisplayName: "Wait", Kind: automation.StepWait, WaitKind: "sleep", WaitMS: 1}}}, CreatedAt: 1}, ResolvedFromLatest: true}
 	plan := automation.ResolvedExecutionFlow{Task: automation.ExecutionFlow{ID: "task", DisplayName: "Task", CurrentVersionID: "task-v1", CreatedAt: 1, UpdatedAt: 1}, Version: automation.ExecutionFlowVersion{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, FailurePolicy: automation.FailurePolicyStopOnFailure, CreatedAt: 1, Items: []automation.ExecutionFlowItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1, FlowFragmentID: "workflow", VersionPolicy: automation.FlowFragmentVersionLatest}}}, Workflows: []automation.FlowFragmentDependencySnapshot{workflow}}
 	path := "3:run4:item"
-	store := &consumerCreateRunStore{resolved: scheduling.ResolvedCreateRun{Plan: plan, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Revision: 1, Variables: automation.EnvironmentVariables{}}, Invocations: []execution.InvocationScopeSnapshot{{Path: mustInvocationPath(path), FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}}}
-	command := scheduling.CreateRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item": {}}, FailurePolicy: execution.FailurePolicyStopOnFailure, CreatedAt: 1, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
-	service, err := scheduling.NewCreateRunService(store)
+	store := &consumerCreateInstanceStore{resolved: scheduling.ResolvedCreateInstance{Plan: plan, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Revision: 1, Variables: automation.EnvironmentVariables{}}, Invocations: []execution.InvocationScopeSnapshot{{Path: mustInvocationPath(path), FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}}}
+	command := scheduling.CreateInstanceCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item": {}}, FailurePolicy: execution.FailurePolicyStopOnFailure, CreatedAt: 1, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
+	service, err := scheduling.NewCreateInstanceService(store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.CreateRun(context.Background(), command)
+	result, err := service.CreateInstance(context.Background(), command)
 	if err != nil || !result.WasApplied || store.digest == "" || store.input.InstanceID != mustInstanceID("run") {
-		t.Fatalf("external CreateRun contract: result=%#v digest=%q err=%v", result, store.digest, err)
+		t.Fatalf("external CreateInstance contract: result=%#v digest=%q err=%v", result, store.digest, err)
 	}
 	snapshot, err := execution.HydrateInstanceSnapshot(store.input, store.digest)
 	if err != nil {

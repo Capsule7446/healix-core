@@ -7,7 +7,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-func TestRunStatusTransitionMatrix(t *testing.T) {
+func TestInstanceStatusTransitionMatrix(t *testing.T) {
 	type transition struct {
 		from InstanceStatus
 		to   InstanceStatus
@@ -128,7 +128,7 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 	}
 }
 
-func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
+func TestValidateInstanceAcceptsEveryLegalLifecycleShape(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +170,7 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 	}
 }
 
-func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
+func TestValidateInstanceRejectsSingleFactorBoundaryViolations(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +191,7 @@ func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
 		{name: "blank task id", mutate: func(run *Instance) { run.ExecutionFlowID = "\n" }},
 		{name: "blank task version id", mutate: func(run *Instance) { run.TestTaskVersionID = " " }},
 		{name: "blank environment id", mutate: func(run *Instance) { run.EnvironmentID = " " }},
-		{name: "schema below boundary", mutate: func(run *Instance) { run.SnapshotSchemaVersion = RunSnapshotSchemaV1 - 1 }},
+		{name: "schema below boundary", mutate: func(run *Instance) { run.SnapshotSchemaVersion = InstanceSnapshotSchemaV1 - 1 }},
 		{name: "digest missing prefix", mutate: func(run *Instance) { run.SnapshotDigest = strings.Repeat("0", 71) }},
 		{name: "digest differs from seal", mutate: func(run *Instance) { run.SnapshotDigest = "sha256:" + strings.Repeat("0", 64) }},
 		{name: "private seal missing", mutate: func(run *Instance) { run.sealedSnapshotDigest = "" }},

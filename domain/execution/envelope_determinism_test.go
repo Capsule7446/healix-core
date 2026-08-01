@@ -90,7 +90,7 @@ func TestValidateEnvironmentSnapshotViolationOrderIsDeterministic(t *testing.T) 
 
 	var first []fault.Violation
 	for run := 0; run < 50; run++ {
-		descriptor, ok := fault.Describe(validateEnvironmentSnapshot(RunSnapshotSchemaV2, env, screenshot, healer))
+		descriptor, ok := fault.Describe(validateEnvironmentSnapshot(InstanceSnapshotSchemaV2, env, screenshot, healer))
 		if !ok {
 			t.Fatalf("run %d: error is not a fault", run)
 		}
@@ -117,7 +117,7 @@ func TestValidateEnvironmentSnapshotCapsViolationsAtDeterministicPrefix(t *testi
 	}
 	env := EnvironmentSnapshot{ID: "env", DisplayName: "Env", Revision: 1, Variables: variables}
 
-	descriptor, ok := fault.Describe(validateEnvironmentSnapshot(RunSnapshotSchemaV2, env, ScreenshotPolicySnapshot{Version: ScreenshotPolicyV1}, DefaultHealerPolicySnapshot()))
+	descriptor, ok := fault.Describe(validateEnvironmentSnapshot(InstanceSnapshotSchemaV2, env, ScreenshotPolicySnapshot{Version: ScreenshotPolicyV1}, DefaultHealerPolicySnapshot()))
 	if !ok {
 		t.Fatal("error is not a fault")
 	}

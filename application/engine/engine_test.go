@@ -86,17 +86,17 @@ func (t *engineTestTimeline) Mark() node.TimelineMark {
 }
 
 type engineTestRecorder struct {
-	startedRunID string
-	stopped      bool
-	retained     bool
-	startErr     error
-	stopErr      error
-	stopCtxErr   error
-	nilTimeline  bool
+	startedInstanceID string
+	stopped           bool
+	retained          bool
+	startErr          error
+	stopErr           error
+	stopCtxErr        error
+	nilTimeline       bool
 }
 
 func (r *engineTestRecorder) Start(_ context.Context, instanceID domainexecution.InstanceID) (node.RecordingTimeline, error) {
-	r.startedRunID = instanceID.String()
+	r.startedInstanceID = instanceID.String()
 	if r.startErr != nil {
 		return nil, r.startErr
 	}
@@ -123,7 +123,7 @@ func TestRunProgramRetainsSuccessfulRecording(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunProgram: %v", err)
 	}
-	if recorder.startedRunID != "run-retain-success" || !recorder.stopped || !recorder.retained {
+	if recorder.startedInstanceID != "run-retain-success" || !recorder.stopped || !recorder.retained {
 		t.Fatalf("recorder lifecycle = %+v, want successful run retained", recorder)
 	}
 }

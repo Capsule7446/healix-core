@@ -16,22 +16,22 @@ func compilePlanForTest(plan execution.Plan) (CompiledPlan, error) {
 }
 
 func compileDraftSnapshotForTest(draft execution.PlanSnapshot) (CompiledPlan, error) {
-	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(draft, map[string]string{})
 	if err != nil {
 		return CompiledPlan{}, err
 	}
 	return CompilePlan(snapshot)
 }
 
-func runSnapshotForCompilerTest(draft execution.PlanSnapshot, environmentProperties map[string]string) (execution.InstanceSnapshot, error) {
-	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV1, environmentProperties, nil)
+func instanceSnapshotForCompilerTest(draft execution.PlanSnapshot, environmentProperties map[string]string) (execution.InstanceSnapshot, error) {
+	return instanceSnapshotForCompilerEnvironmentTest(draft, execution.InstanceSnapshotSchemaV1, environmentProperties, nil)
 }
 
 func runSnapshotForCompilerTypedEnvironmentTest(draft execution.PlanSnapshot, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
-	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV2, nil, environmentVariables)
+	return instanceSnapshotForCompilerEnvironmentTest(draft, execution.InstanceSnapshotSchemaV2, nil, environmentVariables)
 }
 
-func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaVersion execution.InstanceSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
+func instanceSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaVersion execution.InstanceSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))

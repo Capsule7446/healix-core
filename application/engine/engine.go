@@ -130,15 +130,15 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResu
 		return result, err
 	}
 	result, runErr := runProgram(ctx, entry.program, cfg)
-	return result, classifyUnclassifiedRunFailure(runErr)
+	return result, classifyUnclassifiedInstanceFailure(runErr)
 }
 
-// classifyUnclassifiedRunFailure is RunProgram's backstop: it guarantees no
+// classifyUnclassifiedInstanceFailure is RunProgram's backstop: it guarantees no
 // unclassified error ever leaves RunProgram by giving any bare failure the
 // same code and message domain/node already publishes for an opaque node
 // operation failure, and it lets every already-classified failure through
 // unchanged.
-func classifyUnclassifiedRunFailure(cause error) error {
+func classifyUnclassifiedInstanceFailure(cause error) error {
 	if cause == nil {
 		return nil
 	}

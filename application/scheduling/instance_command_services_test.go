@@ -12,12 +12,12 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-func validCommandRun(t *testing.T, status domainexecution.InstanceStatus) domainexecution.Instance {
+func validCommandInstance(t *testing.T, status domainexecution.InstanceStatus) domainexecution.Instance {
 	t.Helper()
-	command := validCreateRunCommand()
+	command := validCreateInstanceCommand()
 	command.InstanceID = mustInstanceID("run")
-	resolved := validResolvedCreateRun(t, command)
-	snapshot, err := BuildRunSnapshot(command, resolved)
+	resolved := validResolvedCreateInstance(t, command)
+	snapshot, err := BuildInstanceSnapshot(command, resolved)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,19 +43,19 @@ func validCommandRun(t *testing.T, status domainexecution.InstanceStatus) domain
 }
 
 func TestCanonicalCommandDigestsAreStableAndPayloadSensitive(t *testing.T) {
-	cancel := CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2}
-	first, err := CancelRunRequestDigest(cancel)
+	cancel := CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2}
+	first, err := CancelInstanceRequestDigest(cancel)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := CancelRunRequestDigest(cancel)
+	second, _ := CancelInstanceRequestDigest(cancel)
 	cancel.At++
-	changed, _ := CancelRunRequestDigest(cancel)
+	changed, _ := CancelInstanceRequestDigest(cancel)
 	if first != second || first == changed || len(first) != 71 {
 		t.Fatalf("digests=%q/%q/%q", first, second, changed)
 	}
-	abort := AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
-	if digest, err := AbortRunRequestDigest(abort); err != nil || len(digest) != 71 {
+	abort := AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
+	if digest, err := AbortInstanceRequestDigest(abort); err != nil || len(digest) != 71 {
 		t.Fatalf("abort digest=%q/%v", digest, err)
 	}
 	reorder := ReorderQueueCommand{CommandID: "r", ScopeID: "scope", ExpectedRevision: 1, InstanceIDs: []string{"a", "b"}}
@@ -70,7 +70,7 @@ func TestCanonicalCommandDigestsAreStableAndPayloadSensitive(t *testing.T) {
 	}
 }
 
-func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *testing.T) {
+func TestInstanceServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *testing.T) {
 	mutations := []struct {
 		name   string
 		mutate func(*domainexecution.Instance, *int64)
@@ -84,7 +84,7 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 			*run = domainexecution.Instance{ID: run.ID, ExecutionFlowID: run.ExecutionFlowID, TestTaskVersionID: run.TestTaskVersionID, EnvironmentID: run.EnvironmentID, Status: run.Status, CreatedAt: run.CreatedAt, QueuedAt: run.QueuedAt, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt}
 		}},
 		{"invalid snapshot seal", func(run *domainexecution.Instance, _ *int64) {
-			run.SnapshotSchemaVersion = domainexecution.RunSnapshotSchemaV1
+			run.SnapshotSchemaVersion = domainexecution.InstanceSnapshotSchemaV1
 			run.SnapshotDigest = "sha256:" + strings.Repeat("a", 64)
 		}},
 		{"wrong revision", func(_ *domainexecution.Instance, revision *int64) { *revision = 3 }},
@@ -98,18 +98,18 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 					if operation == "abort" {
 						status = domainexecution.Aborted
 					}
-					result := RunCommandResult{Run: validCommandRun(t, status), Revision: 2, WasApplied: applied, SignalRequired: true}
+					result := InstanceCommandResult{Run: validCommandInstance(t, status), Revision: 2, WasApplied: applied, SignalRequired: true}
 					mutation.mutate(&result.Run, &result.Revision)
 					store.cancelResult, store.abortResult = result, result
 					signal := signalStub{store: store}
-					var got RunCommandResult
+					var got InstanceCommandResult
 					var err error
 					if operation == "cancel" {
-						got, err = NewCancelRunService(store, signal).CancelRun(context.Background(), CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
+						got, err = NewCancelInstanceService(store, signal).CancelInstance(context.Background(), CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
 					} else {
-						got, err = NewAbortRunService(store, signal).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}})
+						got, err = NewAbortInstanceService(store, signal).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}})
 					}
-					if !fault.IsCode(err, CodeInstanceAdapterContractViolation) || got != (RunCommandResult{}) || len(store.calls) != 1 {
+					if !fault.IsCode(err, CodeInstanceAdapterContractViolation) || got != (InstanceCommandResult{}) || len(store.calls) != 1 {
 						t.Fatalf("operation/result/error/calls=%s/%#v/%v/%v", operation, got, err, store.calls)
 					}
 				}
@@ -119,14 +119,14 @@ func TestRunServicesRejectMalformedAppliedAndReplayedLifecycleBeforeSignal(t *te
 }
 
 func TestServicesRejectMalformedAuthoritativeAdapterOutcomes(t *testing.T) {
-	cancelStore := &commandStoreStub{cancelResult: RunCommandResult{Run: domainexecution.Instance{ID: mustInstanceID("foreign"), Status: domainexecution.Canceled}, Revision: 2}}
-	result, err := NewCancelRunService(cancelStore, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2})
-	if !fault.IsCode(err, CodeInstanceIdentityConflict) || result != (RunCommandResult{}) {
+	cancelStore := &commandStoreStub{cancelResult: InstanceCommandResult{Run: domainexecution.Instance{ID: mustInstanceID("foreign"), Status: domainexecution.Canceled}, Revision: 2}}
+	result, err := NewCancelInstanceService(cancelStore, nil).CancelInstance(context.Background(), CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2})
+	if !fault.IsCode(err, CodeInstanceIdentityConflict) || result != (InstanceCommandResult{}) {
 		t.Fatalf("cancel result/error=%#v/%v", result, err)
 	}
-	abortStore := &commandStoreStub{abortResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2}}
-	result, err = NewAbortRunService(abortStore, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}})
-	if err == nil || result != (RunCommandResult{}) {
+	abortStore := &commandStoreStub{abortResult: InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Aborted), Revision: 2}}
+	result, err = NewAbortInstanceService(abortStore, nil).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}})
+	if err == nil || result != (InstanceCommandResult{}) {
 		t.Fatalf("abort result/error=%#v/%v", result, err)
 	}
 	queue := &queueStoreStub{result: ReorderQueueResult{ScopeID: "scope", Revision: 2, InstanceIDs: []string{"a", "b"}}}
@@ -137,18 +137,18 @@ func TestServicesRejectMalformedAuthoritativeAdapterOutcomes(t *testing.T) {
 }
 
 type commandStoreStub struct {
-	cancelResult RunCommandResult
-	abortResult  RunCommandResult
+	cancelResult InstanceCommandResult
+	abortResult  InstanceCommandResult
 	cancelErr    error
 	abortErr     error
 	calls        []string
 }
 
-func (s *commandStoreStub) Cancel(context.Context, CancelRunCommand) (RunCommandResult, error) {
+func (s *commandStoreStub) Cancel(context.Context, CancelInstanceCommand) (InstanceCommandResult, error) {
 	s.calls = append(s.calls, "commit-cancel")
 	return s.cancelResult, s.cancelErr
 }
-func (s *commandStoreStub) Abort(context.Context, AbortRunCommand) (RunCommandResult, error) {
+func (s *commandStoreStub) Abort(context.Context, AbortInstanceCommand) (InstanceCommandResult, error) {
 	s.calls = append(s.calls, "commit-abort")
 	return s.abortResult, s.abortErr
 }
@@ -158,38 +158,38 @@ type signalStub struct {
 	err   error
 }
 
-func (s signalStub) SignalRunCancellation(context.Context, domainexecution.InstanceID) error {
+func (s signalStub) SignalInstanceCancellation(context.Context, domainexecution.InstanceID) error {
 	s.store.calls = append(s.store.calls, "signal")
 	return s.err
 }
 
 type typedNilSignaler struct{}
 
-func (*typedNilSignaler) SignalRunCancellation(context.Context, domainexecution.InstanceID) error {
+func (*typedNilSignaler) SignalInstanceCancellation(context.Context, domainexecution.InstanceID) error {
 	panic("typed nil signaler invoked")
 }
 
 type functionSignaler func(context.Context, string) error
 
-func (signaler functionSignaler) SignalRunCancellation(ctx context.Context, instanceID domainexecution.InstanceID) error {
+func (signaler functionSignaler) SignalInstanceCancellation(ctx context.Context, instanceID domainexecution.InstanceID) error {
 	return signaler(ctx, instanceID.String())
 }
 
 type channelSignaler chan struct{}
 
-func (channelSignaler) SignalRunCancellation(context.Context, domainexecution.InstanceID) error {
+func (channelSignaler) SignalInstanceCancellation(context.Context, domainexecution.InstanceID) error {
 	return nil
 }
 
 type mapSignaler map[string]struct{}
 
-func (mapSignaler) SignalRunCancellation(context.Context, domainexecution.InstanceID) error {
+func (mapSignaler) SignalInstanceCancellation(context.Context, domainexecution.InstanceID) error {
 	return nil
 }
 
 type sliceSignaler []string
 
-func (sliceSignaler) SignalRunCancellation(context.Context, domainexecution.InstanceID) error {
+func (sliceSignaler) SignalInstanceCancellation(context.Context, domainexecution.InstanceID) error {
 	return nil
 }
 
@@ -198,31 +198,31 @@ func TestCancelRejectsSignalRequirementThatDisagreesWithExpectedStatus(t *testin
 		status domainexecution.InstanceStatus
 		signal bool
 	}{{domainexecution.Queued, true}, {domainexecution.Running, false}} {
-		store := &commandStoreStub{cancelResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: test.signal}}
-		result, err := NewCancelRunService(store, signalStub{store: store}).CancelRun(context.Background(), CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: test.status, ExpectedRevision: 1, At: 2})
-		if err == nil || result != (RunCommandResult{}) || !reflect.DeepEqual(store.calls, []string{"commit-cancel"}) {
+		store := &commandStoreStub{cancelResult: InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: test.signal}}
+		result, err := NewCancelInstanceService(store, signalStub{store: store}).CancelInstance(context.Background(), CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: test.status, ExpectedRevision: 1, At: 2})
+		if err == nil || result != (InstanceCommandResult{}) || !reflect.DeepEqual(store.calls, []string{"commit-cancel"}) {
 			t.Fatalf("status/signal/result/error/calls=%s/%v/%#v/%v/%v", test.status, test.signal, result, err, store.calls)
 		}
 	}
 }
 
-func TestRunningCancelAndAbortSignalOnlyAfterAtomicCommit(t *testing.T) {
+func TestRunningInstanceCancelAndAbortSignalOnlyAfterAtomicCommit(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		call func(*commandStoreStub, signalStub) (RunCommandResult, error)
+		call func(*commandStoreStub, signalStub) (InstanceCommandResult, error)
 		want []string
 	}{
-		{"cancel", func(store *commandStoreStub, signal signalStub) (RunCommandResult, error) {
-			return NewCancelRunService(store, signal).CancelRun(context.Background(), CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
+		{"cancel", func(store *commandStoreStub, signal signalStub) (InstanceCommandResult, error) {
+			return NewCancelInstanceService(store, signal).CancelInstance(context.Background(), CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
 		}, []string{"commit-cancel", "signal"}},
-		{"abort", func(store *commandStoreStub, signal signalStub) (RunCommandResult, error) {
-			return NewAbortRunService(store, signal).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"}})
+		{"abort", func(store *commandStoreStub, signal signalStub) (InstanceCommandResult, error) {
+			return NewAbortInstanceService(store, signal).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"}})
 		}, []string{"commit-abort", "signal"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &commandStoreStub{}
-			store.cancelResult = RunCommandResult{Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}
-			store.abortResult = RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true}
+			store.cancelResult = InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}
+			store.abortResult = InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true}
 			result, err := tc.call(store, signalStub{store: store})
 			if err != nil || result.Revision != 2 || !reflect.DeepEqual(store.calls, tc.want) {
 				t.Fatalf("result/calls/error=%#v/%v/%v", result, store.calls, err)
@@ -239,7 +239,7 @@ func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
 	var sliceSignaler sliceSignaler
 	for _, test := range []struct {
 		name     string
-		signaler RunCancellationSignaler
+		signaler InstanceCancellationSignaler
 	}{
 		{name: "pointer", signaler: pointerSignaler},
 		{name: "function", signaler: funcSignaler},
@@ -248,7 +248,7 @@ func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
 		{name: "slice", signaler: sliceSignaler},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			committed := RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: false, SignalRequired: true}
+			committed := InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Aborted), Revision: 2, WasApplied: false, SignalRequired: true}
 			store := &commandStoreStub{abortResult: committed}
 
 			defer func() {
@@ -256,7 +256,7 @@ func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
 					t.Fatalf("typed-nil signaler panicked: %v", recovered)
 				}
 			}()
-			result, err := NewAbortRunService(store, test.signaler).AbortRun(context.Background(), AbortRunCommand{
+			result, err := NewAbortInstanceService(store, test.signaler).AbortInstance(context.Background(), AbortInstanceCommand{
 				CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2,
 				Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"},
 			})
@@ -271,10 +271,10 @@ func TestTypedNilSignalerReturnsRedactedRetryableFault(t *testing.T) {
 }
 
 func TestSignalFailureReturnsAuthoritativeCommittedResultAndRetryableError(t *testing.T) {
-	store := &commandStoreStub{abortResult: RunCommandResult{Run: validCommandRun(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true}}
+	store := &commandStoreStub{abortResult: InstanceCommandResult{Run: validCommandInstance(t, domainexecution.Aborted), Revision: 2, WasApplied: true, SignalRequired: true}}
 	store.abortResult.Run.ID = mustInstanceID("run")
 	sensitiveCause := errors.New("host signal failure: secret-token")
-	result, err := NewAbortRunService(store, signalStub{store: store, err: sensitiveCause}).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"}})
+	result, err := NewAbortInstanceService(store, signalStub{store: store, err: sensitiveCause}).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"}})
 	if !fault.IsCode(err, CodeInstanceSignalRetryable) || !errors.Is(err, sensitiveCause) || result.Run.Status != domainexecution.Aborted || !result.WasApplied {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
@@ -282,7 +282,7 @@ func TestSignalFailureReturnsAuthoritativeCommittedResultAndRetryableError(t *te
 		t.Fatalf("public retry error leaked sensitive details: %v", err)
 	}
 	store.abortResult.WasApplied = false
-	if _, err = NewAbortRunService(store, signalStub{store: store}).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"}}); err != nil {
+	if _, err = NewAbortInstanceService(store, signalStub{store: store}).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "unique"}}); err != nil {
 		t.Fatalf("reconciliation signal: %v", err)
 	}
 	if !reflect.DeepEqual(store.calls, []string{"commit-abort", "signal", "commit-abort", "signal"}) {
@@ -292,8 +292,8 @@ func TestSignalFailureReturnsAuthoritativeCommittedResultAndRetryableError(t *te
 
 func TestTransactionErrorsExposeNoNonAuthoritativeResult(t *testing.T) {
 	store := &commandStoreStub{abortErr: domainexecution.NewStaleWorkerFenceError()}
-	result, err := NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "stale"}})
-	if !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) || result != (RunCommandResult{}) {
+	result, err := NewAbortInstanceService(store, nil).AbortInstance(context.Background(), AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "stale"}})
+	if !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) || result != (InstanceCommandResult{}) {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 }

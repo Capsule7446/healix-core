@@ -15,18 +15,18 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-const createRunRequestDigestV1 = "create-run-request-v1"
+const createInstanceRequestDigestV1 = "create-run-request-v1"
 
-func CreateRunRequestDigest(owned CreateRunCommand) (string, error) {
-	owned = normalizeCreateRunCommand(owned)
-	if err := preflightCreateRunCommand(owned); err != nil {
+func CreateInstanceRequestDigest(owned CreateInstanceCommand) (string, error) {
+	owned = normalizeCreateInstanceCommand(owned)
+	if err := preflightCreateInstanceCommand(owned); err != nil {
 		return "", err
 	}
-	if err := validateCreateRunCommand(owned); err != nil {
+	if err := validateCreateInstanceCommand(owned); err != nil {
 		return "", err
 	}
 	h := sha256.New()
-	writeDigestString(h, createRunRequestDigestV1)
+	writeDigestString(h, createInstanceRequestDigestV1)
 	for _, value := range []string{owned.InstanceID.String(), owned.ExecutionFlowID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
 		writeDigestString(h, value)
 	}
@@ -101,16 +101,16 @@ func writeDigestBool(h hash.Hash, value bool) {
 	}
 }
 
-type CreateRunService struct{ store CreateRunStore }
+type CreateInstanceService struct{ store CreateInstanceStore }
 
-func NewCreateRunService(store CreateRunStore) (CreateRunService, error) {
-	if isNilCreateRunStore(store) {
-		return CreateRunService{}, schedulingDependencyRequiredError()
+func NewCreateInstanceService(store CreateInstanceStore) (CreateInstanceService, error) {
+	if isNilCreateInstanceStore(store) {
+		return CreateInstanceService{}, schedulingDependencyRequiredError()
 	}
-	return CreateRunService{store: store}, nil
+	return CreateInstanceService{store: store}, nil
 }
 
-func isNilCreateRunStore(store CreateRunStore) bool {
+func isNilCreateInstanceStore(store CreateInstanceStore) bool {
 	if store == nil {
 		return true
 	}
@@ -123,41 +123,41 @@ func isNilCreateRunStore(store CreateRunStore) bool {
 	}
 }
 
-func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunCommand) (CreateRunResult, error) {
-	if err := preflightCreateRunCommand(command); err != nil {
-		return CreateRunResult{}, err
+func (s CreateInstanceService) CreateInstance(ctx context.Context, command CreateInstanceCommand) (CreateInstanceResult, error) {
+	if err := preflightCreateInstanceCommand(command); err != nil {
+		return CreateInstanceResult{}, err
 	}
-	owned := normalizeCreateRunCommand(cloneCreateRunCommand(command))
-	digest, err := CreateRunRequestDigest(owned)
+	owned := normalizeCreateInstanceCommand(cloneCreateInstanceCommand(command))
+	digest, err := CreateInstanceRequestDigest(owned)
 	if err != nil {
-		return CreateRunResult{}, err
+		return CreateInstanceResult{}, err
 	}
-	var result CreateRunResult
-	err = s.store.InTransaction(ctx, func(tx CreateRunTx) error {
-		attempt := CreateRunResult{}
+	var result CreateInstanceResult
+	err = s.store.InTransaction(ctx, func(tx CreateInstanceTx) error {
+		attempt := CreateInstanceResult{}
 		existing, found, err := tx.FindCommand(ctx, owned.CommandID)
 		if err != nil {
 			return classifySchedulingAdapterFailure(err)
 		}
 		if found {
 			if existing.RequestDigest != digest {
-				return createRunCommandConflictError()
+				return createInstanceCommandConflictError()
 			}
 			if existing.CommandID != owned.CommandID {
-				return createRunAdapterContractViolationError(errors.New("stored command identity mismatch"))
+				return createInstanceAdapterContractViolationError(errors.New("stored command identity mismatch"))
 			}
-			if err := validateStoredCreateRunResult(existing.Result, owned); err != nil {
+			if err := validateStoredCreateInstanceResult(existing.Result, owned); err != nil {
 				return err
 			}
 			attempt = resultFromStored(existing.Result, false)
 			result = attempt
 			return nil
 		}
-		resolved, err := tx.ResolveCreateRun(ctx, cloneCreateRunCommand(owned))
+		resolved, err := tx.ResolveCreateInstance(ctx, cloneCreateInstanceCommand(owned))
 		if err != nil {
 			return err
 		}
-		snapshot, err := BuildRunSnapshot(owned, resolved)
+		snapshot, err := BuildInstanceSnapshot(owned, resolved)
 		if err != nil {
 			return err
 		}
@@ -170,14 +170,14 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		for i := range entries {
 			entryIDs[i] = entries[i].ID
 		}
-		outcome, err := tx.InsertCreateRun(ctx, CreateRunIntent{CommandID: owned.CommandID, RequestDigest: digest, Run: run, Snapshot: snapshot, Entries: entries})
+		outcome, err := tx.InsertCreateInstance(ctx, CreateInstanceIntent{CommandID: owned.CommandID, RequestDigest: digest, Run: run, Snapshot: snapshot, Entries: entries})
 		if err != nil {
 			return classifySchedulingAdapterFailure(err)
 		}
-		if err := validateInsertCreateRunOutcome(outcome, owned, digest, run, snapshot, entryIDs); err != nil {
+		if err := validateInsertCreateInstanceOutcome(outcome, owned, digest, run, snapshot, entryIDs); err != nil {
 			return err
 		}
-		attempt = resultFromStored(outcome.Result, outcome.Status == InsertCreateRunApplied)
+		attempt = resultFromStored(outcome.Result, outcome.Status == InsertCreateInstanceApplied)
 		result = attempt
 		return nil
 	})
@@ -186,14 +186,14 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		// classification of everything the transaction produced — command
 		// validation, catalog resolution, snapshot conflicts, adapter contract
 		// violations — and left the host a single unclassified error for all of them.
-		return CreateRunResult{}, err
+		return CreateInstanceResult{}, err
 	}
 	return result, nil
 }
 
-func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateRunCommand) error {
+func validateStoredCreateInstanceResult(stored StoredCreateInstanceResult, command CreateInstanceCommand) error {
 	invalid := func(reason string) error {
-		return createRunAdapterContractViolationError(errors.New(reason))
+		return createInstanceAdapterContractViolationError(errors.New(reason))
 	}
 	input := stored.Snapshot.Input()
 	if stored.SnapshotDigest == "" || stored.SnapshotDigest != stored.Snapshot.Digest() || stored.Run.SnapshotDigest != stored.SnapshotDigest {
@@ -241,7 +241,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	return nil
 }
 
-func equalAppliedRun(returned, intended execution.Instance, snapshot execution.InstanceSnapshot) bool {
+func equalAppliedInstance(returned, intended execution.Instance, snapshot execution.InstanceSnapshot) bool {
 	// QueuePosition is assigned atomically by the adapter; every other persisted field is intent-owned.
 	hydrated, err := execution.HydrateInstance(returned, snapshot)
 	if err != nil {
@@ -251,7 +251,7 @@ func equalAppliedRun(returned, intended execution.Instance, snapshot execution.I
 	return hydrated == intended
 }
 
-func cloneCreateRunCommand(command CreateRunCommand) CreateRunCommand {
+func cloneCreateInstanceCommand(command CreateInstanceCommand) CreateInstanceCommand {
 	owned := command
 	owned.Entries = make(map[string]map[string]parameter.Value, len(command.Entries))
 	for itemID, values := range command.Entries {
@@ -260,58 +260,58 @@ func cloneCreateRunCommand(command CreateRunCommand) CreateRunCommand {
 	return owned
 }
 
-type createRunRequestBudget struct {
+type createInstanceRequestBudget struct {
 	remainingBytes      int
 	remainingParameters int
 	remainingElements   int
 }
 
-func newCreateRunRequestBudget() createRunRequestBudget {
-	return createRunRequestBudget{remainingBytes: execution.MaxAggregateStringBytes, remainingParameters: execution.MaxAggregateParameters, remainingElements: execution.MaxAggregateCollectionElements}
+func newCreateInstanceRequestBudget() createInstanceRequestBudget {
+	return createInstanceRequestBudget{remainingBytes: execution.MaxAggregateStringBytes, remainingParameters: execution.MaxAggregateParameters, remainingElements: execution.MaxAggregateCollectionElements}
 }
 
-func (b *createRunRequestBudget) addString(value string) error {
+func (b *createInstanceRequestBudget) addString(value string) error {
 	if len(value) > execution.MaxStringBytes || len(value) > b.remainingBytes {
-		return createRunCommandInvalidError(nil)
+		return createInstanceCommandInvalidError(nil)
 	}
 	b.remainingBytes -= len(value)
 	return nil
 }
 
-func (b *createRunRequestBudget) addStringMetrics(totalBytes, maxItemBytes int) error {
+func (b *createInstanceRequestBudget) addStringMetrics(totalBytes, maxItemBytes int) error {
 	if totalBytes < 0 || maxItemBytes < 0 || maxItemBytes > execution.MaxStringBytes || totalBytes > b.remainingBytes {
-		return createRunCommandInvalidError(nil)
+		return createInstanceCommandInvalidError(nil)
 	}
 	b.remainingBytes -= totalBytes
 	return nil
 }
 
-func (b *createRunRequestBudget) addParameters(count int) error {
+func (b *createInstanceRequestBudget) addParameters(count int) error {
 	if count < 0 || count > b.remainingParameters || count > b.remainingElements {
-		return createRunCommandInvalidError(nil)
+		return createInstanceCommandInvalidError(nil)
 	}
 	b.remainingParameters -= count
 	b.remainingElements -= count
 	return nil
 }
 
-func (b *createRunRequestBudget) addElements(count int) error {
+func (b *createInstanceRequestBudget) addElements(count int) error {
 	if count < 0 || count > b.remainingElements {
-		return createRunCommandInvalidError(nil)
+		return createInstanceCommandInvalidError(nil)
 	}
 	b.remainingElements -= count
 	return nil
 }
 
-func preflightCreateRunCommand(command CreateRunCommand) error {
-	budget := newCreateRunRequestBudget()
+func preflightCreateInstanceCommand(command CreateInstanceCommand) error {
+	budget := newCreateInstanceRequestBudget()
 	for _, value := range []string{command.CommandID, command.InstanceID.String(), command.ExecutionFlowID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
 		if err := budget.addString(value); err != nil {
 			return err
 		}
 	}
 	if err := budget.addElements(len(command.Entries)); err != nil {
-		return createRunCommandInvalidError(nil)
+		return createInstanceCommandInvalidError(nil)
 	}
 	for itemID, values := range command.Entries {
 		if err := budget.addString(itemID); err != nil {
@@ -340,7 +340,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 			case parameter.MultiSelect:
 				count, totalBytes, maxItemBytes, ok := value.MultiSelectMetrics()
 				if !ok {
-					return createRunCommandInvalidError(nil)
+					return createInstanceCommandInvalidError(nil)
 				}
 				if err := budget.addElements(count); err != nil {
 					return err
@@ -354,11 +354,11 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 	return nil
 }
 
-func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Instance, snapshot execution.InstanceSnapshot, entryIDs []execution.EntryID) error {
+func validateInsertCreateInstanceOutcome(outcome InsertCreateInstanceOutcome, command CreateInstanceCommand, digest string, intendedInstance execution.Instance, snapshot execution.InstanceSnapshot, entryIDs []execution.EntryID) error {
 	invalid := func(reason string) error {
-		return createRunAdapterContractViolationError(errors.New(reason))
+		return createInstanceAdapterContractViolationError(errors.New(reason))
 	}
-	if outcome.Status != InsertCreateRunApplied && outcome.Status != InsertCreateRunReplayed {
+	if outcome.Status != InsertCreateInstanceApplied && outcome.Status != InsertCreateInstanceReplayed {
 		return invalid("invalid status")
 	}
 	if outcome.CommandID != command.CommandID || outcome.RequestDigest != digest {
@@ -376,17 +376,17 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 			return invalid("stored entry identities are inconsistent")
 		}
 	}
-	if outcome.Status == InsertCreateRunReplayed {
-		if err := validateStoredCreateRunResult(outcome.Result, command); err != nil {
-			return createRunAdapterContractViolationError(err)
+	if outcome.Status == InsertCreateInstanceReplayed {
+		if err := validateStoredCreateInstanceResult(outcome.Result, command); err != nil {
+			return createInstanceAdapterContractViolationError(err)
 		}
 		return nil
 	}
 	if outcome.Result.SnapshotDigest != snapshot.Digest() {
 		return invalid("applied snapshot digest does not match submitted intent")
 	}
-	if outcome.Status == InsertCreateRunApplied {
-		if !equalAppliedRun(outcome.Result.Run, intendedRun, outcome.Result.Snapshot) {
+	if outcome.Status == InsertCreateInstanceApplied {
+		if !equalAppliedInstance(outcome.Result.Run, intendedInstance, outcome.Result.Snapshot) {
 			return invalid("applied run does not match submitted intent")
 		}
 		if _, err := execution.HydrateInstance(outcome.Result.Run, outcome.Result.Snapshot); err != nil {
@@ -404,6 +404,6 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 	return nil
 }
 
-func resultFromStored(stored StoredCreateRunResult, applied bool) CreateRunResult {
-	return CreateRunResult{Run: stored.Run, Snapshot: stored.Snapshot, EntryIDs: append([]execution.EntryID(nil), stored.EntryIDs...), WasApplied: applied}
+func resultFromStored(stored StoredCreateInstanceResult, applied bool) CreateInstanceResult {
+	return CreateInstanceResult{Run: stored.Run, Snapshot: stored.Snapshot, EntryIDs: append([]execution.EntryID(nil), stored.EntryIDs...), WasApplied: applied}
 }

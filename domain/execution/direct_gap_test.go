@@ -29,7 +29,7 @@ func TestFailurePolicyAndPlanFailurePolicyDirect(t *testing.T) {
 	}
 }
 
-func TestValidateRunDirect(t *testing.T) {
+func TestValidateInstanceDirect(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -57,12 +57,12 @@ func TestValidateRunDirect(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
+func TestInstanceSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.SchemaVersion() != RunSnapshotSchemaV1 || snapshot.ExecutionFlowID() != "task-1" || snapshot.TestTaskVersionID() != "task-v3" {
+	if snapshot.SchemaVersion() != InstanceSnapshotSchemaV1 || snapshot.ExecutionFlowID() != "task-1" || snapshot.TestTaskVersionID() != "task-v3" {
 		t.Fatalf("accessors returned wrong identity")
 	}
 	invocation, ok := snapshot.Invocation(mustInvocationPath("entry-1"))

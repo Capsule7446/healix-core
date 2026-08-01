@@ -15,7 +15,7 @@ import (
 type conformanceStage string
 
 const (
-	stageRun      conformanceStage = "run"
+	stageInstance conformanceStage = "run"
 	stageEntries  conformanceStage = "entries"
 	stageSnapshot conformanceStage = "snapshot"
 	stageQueue    conformanceStage = "queue"
@@ -23,7 +23,7 @@ const (
 )
 
 type conformanceState struct {
-	commands  map[string]StoredCreateRunCommand
+	commands  map[string]StoredCreateInstanceCommand
 	runs      map[string]execution.Instance
 	entries   map[string][]execution.Entry
 	inputs    map[string]execution.InstanceSnapshotInput
@@ -33,7 +33,7 @@ type conformanceState struct {
 }
 
 func emptyConformanceState() conformanceState {
-	return conformanceState{commands: map[string]StoredCreateRunCommand{}, runs: map[string]execution.Instance{}, entries: map[string][]execution.Entry{}, inputs: map[string]execution.InstanceSnapshotInput{}, digests: map[string]string{}, positions: map[string]int{}}
+	return conformanceState{commands: map[string]StoredCreateInstanceCommand{}, runs: map[string]execution.Instance{}, entries: map[string][]execution.Entry{}, inputs: map[string]execution.InstanceSnapshotInput{}, digests: map[string]string{}, positions: map[string]int{}}
 }
 func cloneConformanceState(source conformanceState) conformanceState {
 	out := emptyConformanceState()
@@ -62,7 +62,7 @@ func cloneConformanceState(source conformanceState) conformanceState {
 type conformanceStore struct {
 	mu                sync.Mutex
 	state             conformanceState
-	resolved          ResolvedCreateRun
+	resolved          ResolvedCreateInstance
 	fault             conformanceStage
 	commitErr         error
 	retryOnce         bool
@@ -76,10 +76,10 @@ type conformanceTx struct {
 	dirty bool
 }
 
-func newConformanceStore(resolved ResolvedCreateRun) *conformanceStore {
+func newConformanceStore(resolved ResolvedCreateInstance) *conformanceStore {
 	return &conformanceStore{state: emptyConformanceState(), resolved: resolved}
 }
-func (s *conformanceStore) InTransaction(ctx context.Context, callback func(CreateRunTx) error) (err error) {
+func (s *conformanceStore) InTransaction(ctx context.Context, callback func(CreateInstanceTx) error) (err error) {
 transactionAttempt:
 	for {
 		if err := ctx.Err(); err != nil {
@@ -117,14 +117,14 @@ transactionAttempt:
 			if winner, exists := s.state.commands[commandID]; exists {
 				if winner.RequestDigest != command.RequestDigest {
 					s.mu.Unlock()
-					return createRunCommandConflictError()
+					return createInstanceCommandConflictError()
 				}
 				s.mu.Unlock()
 				continue transactionAttempt
 			}
 			if winner, exists := s.state.runs[command.Result.Run.ID.String()]; exists && winner.SnapshotDigest != command.Result.Run.SnapshotDigest {
 				s.mu.Unlock()
-				return createRunSnapshotConflictError()
+				return createInstanceSnapshotConflictError()
 			}
 		}
 		s.state = tx.state
@@ -137,22 +137,22 @@ transactionAttempt:
 		return nil
 	}
 }
-func (tx *conformanceTx) FindCommand(_ context.Context, id string) (StoredCreateRunCommand, bool, error) {
+func (tx *conformanceTx) FindCommand(_ context.Context, id string) (StoredCreateInstanceCommand, bool, error) {
 	value, ok := tx.state.commands[id]
 	return value, ok, nil
 }
-func (tx *conformanceTx) ResolveCreateRun(context.Context, CreateRunCommand) (ResolvedCreateRun, error) {
+func (tx *conformanceTx) ResolveCreateInstance(context.Context, CreateInstanceCommand) (ResolvedCreateInstance, error) {
 	return tx.store.resolved, nil
 }
-func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunIntent) (InsertCreateRunOutcome, error) {
+func (tx *conformanceTx) InsertCreateInstance(_ context.Context, intent CreateInstanceIntent) (InsertCreateInstanceOutcome, error) {
 	if existing, ok := tx.state.commands[intent.CommandID]; ok {
 		if existing.RequestDigest != intent.RequestDigest {
-			return InsertCreateRunOutcome{}, createRunCommandConflictError()
+			return InsertCreateInstanceOutcome{}, createInstanceCommandConflictError()
 		}
-		return InsertCreateRunOutcome{Status: InsertCreateRunReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: existing.Result}, nil
+		return InsertCreateInstanceOutcome{Status: InsertCreateInstanceReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: existing.Result}, nil
 	}
 	if existing, ok := tx.state.runs[intent.Run.ID.String()]; ok && existing.SnapshotDigest != intent.Run.SnapshotDigest {
-		return InsertCreateRunOutcome{}, createRunSnapshotConflictError()
+		return InsertCreateInstanceOutcome{}, createInstanceSnapshotConflictError()
 	}
 	fail := func(stage conformanceStage) error {
 		if tx.store.fault == stage {
@@ -160,36 +160,36 @@ func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunInte
 		}
 		return nil
 	}
-	if err := fail(stageRun); err != nil {
-		return InsertCreateRunOutcome{}, err
+	if err := fail(stageInstance); err != nil {
+		return InsertCreateInstanceOutcome{}, err
 	}
 	tx.state.runs[intent.Run.ID.String()] = intent.Run
 	if err := fail(stageEntries); err != nil {
-		return InsertCreateRunOutcome{}, err
+		return InsertCreateInstanceOutcome{}, err
 	}
 	tx.state.entries[intent.Run.ID.String()] = append([]execution.Entry(nil), intent.Entries...)
 	if err := fail(stageSnapshot); err != nil {
-		return InsertCreateRunOutcome{}, err
+		return InsertCreateInstanceOutcome{}, err
 	}
 	tx.state.inputs[intent.Run.ID.String()], tx.state.digests[intent.Run.ID.String()] = intent.Snapshot.Input(), intent.Snapshot.Digest()
 	if err := fail(stageQueue); err != nil {
-		return InsertCreateRunOutcome{}, err
+		return InsertCreateInstanceOutcome{}, err
 	}
 	if _, exists := tx.state.positions[intent.Run.ID.String()]; !exists {
 		tx.state.positions[intent.Run.ID.String()] = len(tx.state.queue) + 1
 		tx.state.queue = append(tx.state.queue, intent.Run.ID.String())
 	}
 	if err := fail(stageCommand); err != nil {
-		return InsertCreateRunOutcome{}, err
+		return InsertCreateInstanceOutcome{}, err
 	}
 	entryIDs := make([]execution.EntryID, len(intent.Entries))
 	for index := range intent.Entries {
 		entryIDs[index] = intent.Entries[index].ID
 	}
-	stored := StoredCreateRunResult{Run: intent.Run, Snapshot: intent.Snapshot, SnapshotDigest: intent.Snapshot.Digest(), EntryIDs: entryIDs}
-	tx.state.commands[intent.CommandID] = StoredCreateRunCommand{CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: stored}
+	stored := StoredCreateInstanceResult{Run: intent.Run, Snapshot: intent.Snapshot, SnapshotDigest: intent.Snapshot.Digest(), EntryIDs: entryIDs}
+	tx.state.commands[intent.CommandID] = StoredCreateInstanceCommand{CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: stored}
 	tx.dirty = true
-	return InsertCreateRunOutcome{Status: InsertCreateRunApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: stored}, nil
+	return InsertCreateInstanceOutcome{Status: InsertCreateInstanceApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: stored}, nil
 }
 func (s *conformanceStore) isEmpty() bool {
 	s.mu.Lock()
@@ -198,12 +198,12 @@ func (s *conformanceStore) isEmpty() bool {
 }
 
 func TestCopyOnWriteStoreRollsBackEveryAtomicWriteStage(t *testing.T) {
-	for _, stage := range []conformanceStage{stageRun, stageEntries, stageSnapshot, stageQueue, stageCommand} {
+	for _, stage := range []conformanceStage{stageInstance, stageEntries, stageSnapshot, stageQueue, stageCommand} {
 		t.Run(string(stage), func(t *testing.T) {
-			command := validCreateRunCommand()
-			store := newConformanceStore(validResolvedCreateRun(t, command))
+			command := validCreateInstanceCommand()
+			store := newConformanceStore(validResolvedCreateInstance(t, command))
 			store.fault = stage
-			if _, err := mustCreateRunService(t, store).CreateRun(context.Background(), command); err == nil {
+			if _, err := mustCreateInstanceService(t, store).CreateInstance(context.Background(), command); err == nil {
 				t.Fatal("fault accepted")
 			}
 			if !store.isEmpty() {
@@ -214,15 +214,15 @@ func TestCopyOnWriteStoreRollsBackEveryAtomicWriteStage(t *testing.T) {
 }
 
 func TestCopyOnWriteStoreRollsBackCallbackCommitCancelAndPanic(t *testing.T) {
-	store := newConformanceStore(ResolvedCreateRun{})
-	if err := store.InTransaction(context.Background(), func(tx CreateRunTx) error {
+	store := newConformanceStore(ResolvedCreateInstance{})
+	if err := store.InTransaction(context.Background(), func(tx CreateInstanceTx) error {
 		tx.(*conformanceTx).state.queue = append(tx.(*conformanceTx).state.queue, "run")
 		return errors.New("callback")
 	}); err == nil || !store.isEmpty() {
 		t.Fatal("callback error published")
 	}
 	store.commitErr = errors.New("commit")
-	if err := store.InTransaction(context.Background(), func(tx CreateRunTx) error {
+	if err := store.InTransaction(context.Background(), func(tx CreateInstanceTx) error {
 		tx.(*conformanceTx).state.queue = append(tx.(*conformanceTx).state.queue, "run")
 		return nil
 	}); err == nil || !store.isEmpty() {
@@ -231,7 +231,7 @@ func TestCopyOnWriteStoreRollsBackCallbackCommitCancelAndPanic(t *testing.T) {
 	store.commitErr = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := store.InTransaction(ctx, func(CreateRunTx) error { t.Fatal("canceled callback executed"); return nil }); !errors.Is(err, context.Canceled) {
+	if err := store.InTransaction(ctx, func(CreateInstanceTx) error { t.Fatal("canceled callback executed"); return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel error=%v", err)
 	}
 	defer func() {
@@ -242,44 +242,44 @@ func TestCopyOnWriteStoreRollsBackCallbackCommitCancelAndPanic(t *testing.T) {
 			t.Fatal("panic published")
 		}
 	}()
-	_ = store.InTransaction(context.Background(), func(tx CreateRunTx) error {
+	_ = store.InTransaction(context.Background(), func(tx CreateInstanceTx) error {
 		tx.(*conformanceTx).state.queue = append(tx.(*conformanceTx).state.queue, "run")
 		panic("boom")
 	})
 }
 
 func TestCopyOnWriteStoreRetriesWithFreshAttemptAndReturnsSuccessfulResult(t *testing.T) {
-	command := validCreateRunCommand()
-	store := newConformanceStore(validResolvedCreateRun(t, command))
+	command := validCreateInstanceCommand()
+	store := newConformanceStore(validResolvedCreateInstance(t, command))
 	store.retryOnce = true
-	result, err := mustCreateRunService(t, store).CreateRun(context.Background(), command)
+	result, err := mustCreateInstanceService(t, store).CreateInstance(context.Background(), command)
 	if err != nil || !result.WasApplied || store.attempts != 2 || len(store.state.queue) != 1 {
 		t.Fatalf("result=%#v attempts=%d state=%#v err=%v", result, store.attempts, store.state, err)
 	}
 }
 
 func TestCopyOnWriteStoreReconcilesUnknownCommittedOutcome(t *testing.T) {
-	command := validCreateRunCommand()
-	store := newConformanceStore(validResolvedCreateRun(t, command))
+	command := validCreateInstanceCommand()
+	store := newConformanceStore(validResolvedCreateInstance(t, command))
 	store.unknownCommitOnce = true
-	result, err := mustCreateRunService(t, store).CreateRun(context.Background(), command)
+	result, err := mustCreateInstanceService(t, store).CreateInstance(context.Background(), command)
 	if err != nil || result.WasApplied || store.attempts != 2 || len(store.state.queue) != 1 || len(store.state.commands) != 1 {
 		t.Fatalf("result=%#v attempts=%d state=%#v err=%v", result, store.attempts, store.state, err)
 	}
 }
 
 func TestCopyOnWriteStoreConcurrentEqualCommandHasOneWinner(t *testing.T) {
-	command := validCreateRunCommand()
-	store := newConformanceStore(validResolvedCreateRun(t, command))
-	service := mustCreateRunService(t, store)
-	results := make(chan CreateRunResult, 2)
+	command := validCreateInstanceCommand()
+	store := newConformanceStore(validResolvedCreateInstance(t, command))
+	service := mustCreateInstanceService(t, store)
+	results := make(chan CreateInstanceResult, 2)
 	errorsChannel := make(chan error, 2)
 	var wait sync.WaitGroup
 	for range 2 {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			result, err := service.CreateRun(context.Background(), command)
+			result, err := service.CreateInstance(context.Background(), command)
 			results <- result
 			errorsChannel <- err
 		}()
@@ -304,24 +304,24 @@ func TestCopyOnWriteStoreConcurrentEqualCommandHasOneWinner(t *testing.T) {
 }
 
 func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
-	base := validCreateRunCommand()
-	store := newConformanceStore(validResolvedCreateRun(t, base))
-	service := mustCreateRunService(t, store)
-	if _, err := service.CreateRun(context.Background(), base); err != nil {
+	base := validCreateInstanceCommand()
+	store := newConformanceStore(validResolvedCreateInstance(t, base))
+	service := mustCreateInstanceService(t, store)
+	if _, err := service.CreateInstance(context.Background(), base); err != nil {
 		t.Fatal(err)
 	}
 	changedCommand := base
 	changedCommand.EnvironmentID = "different"
-	if _, err := service.CreateRun(context.Background(), changedCommand); !fault.IsCode(err, CodeCreateInstanceCommandConflict) {
+	if _, err := service.CreateInstance(context.Background(), changedCommand); !fault.IsCode(err, CodeCreateInstanceCommandConflict) {
 		t.Fatalf("command conflict=%v", err)
 	}
-	sameRun := base
-	sameRun.CommandID = "command-2"
-	sameRun.ScreenshotPolicy.Destination = "other"
-	result, err := service.CreateRun(context.Background(), sameRun)
+	sameInstance := base
+	sameInstance.CommandID = "command-2"
+	sameInstance.ScreenshotPolicy.Destination = "other"
+	result, err := service.CreateInstance(context.Background(), sameInstance)
 	if !fault.IsCode(err, CodeCreateInstanceSnapshotConflict) ||
-		strings.Contains(err.Error(), sameRun.InstanceID.String()) ||
-		!isZeroCreateRunResult(result) {
+		strings.Contains(err.Error(), sameInstance.InstanceID.String()) ||
+		!isZeroCreateInstanceResult(result) {
 		t.Fatalf("snapshot conflict result/error=%#v/%v", result, err)
 	}
 	if len(store.state.queue) != 1 || len(store.state.positions) != 1 {
@@ -330,15 +330,15 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 }
 
 func TestCopyOnWriteStoreConflictErrorsAreTyped(t *testing.T) {
-	commandErr := createRunCommandConflictError()
+	commandErr := createInstanceCommandConflictError()
 	if !fault.IsCode(commandErr, CodeCreateInstanceCommandConflict) {
 		t.Fatalf("command conflict classification = %v", commandErr)
 	}
-	snapshotErr := createRunSnapshotConflictError()
+	snapshotErr := createInstanceSnapshotConflictError()
 	if !fault.IsCode(snapshotErr, CodeCreateInstanceSnapshotConflict) {
 		t.Fatalf("snapshot conflict classification = %v", snapshotErr)
 	}
 }
 
-var _ CreateRunStore = (*conformanceStore)(nil)
-var _ CreateRunTx = (*conformanceTx)(nil)
+var _ CreateInstanceStore = (*conformanceStore)(nil)
+var _ CreateInstanceTx = (*conformanceTx)(nil)

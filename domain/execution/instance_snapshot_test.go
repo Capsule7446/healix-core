@@ -9,21 +9,21 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func TestRunSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
+func TestInstanceSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
 	tests := []struct {
 		name   string
 		schema InstanceSnapshotSchema
 		key    string
 	}{
-		{name: "V1 malformed UTF-8", schema: RunSnapshotSchemaV1, key: string([]byte{0xff})},
-		{name: "V1 control character", schema: RunSnapshotSchemaV1, key: "bad\nkey"},
-		{name: "V2 oversized", schema: RunSnapshotSchemaV2, key: strings.Repeat("x", parameter.MaxNameBytes+1)},
+		{name: "V1 malformed UTF-8", schema: InstanceSnapshotSchemaV1, key: string([]byte{0xff})},
+		{name: "V1 control character", schema: InstanceSnapshotSchemaV1, key: "bad\nkey"},
+		{name: "V2 oversized", schema: InstanceSnapshotSchemaV2, key: strings.Repeat("x", parameter.MaxNameBytes+1)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := validInstanceSnapshotInput(t)
 			input.SchemaVersion = test.schema
-			if test.schema == RunSnapshotSchemaV1 {
+			if test.schema == InstanceSnapshotSchemaV1 {
 				input.Environment.Properties = map[string]string{test.key: "value"}
 				input.Environment.Variables = nil
 			} else {
@@ -37,7 +37,7 @@ func TestRunSnapshotEnvironmentNamesUseSharedValidation(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T) {
+func TestInstanceSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	canonical, err := SealInstanceSnapshot(input)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T)
 	}
 }
 
-func TestRunSnapshotRejectsInvocationWithMissingParentIndependentOfOrder(t *testing.T) {
+func TestInstanceSnapshotRejectsInvocationWithMissingParentIndependentOfOrder(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations[1].ParentPath = mustInvocationPath("missing")
 	input.Invocations[0], input.Invocations[1] = input.Invocations[1], input.Invocations[0]
@@ -70,7 +70,7 @@ func TestRunSnapshotRejectsInvocationWithMissingParentIndependentOfOrder(t *test
 	}
 }
 
-func TestRunSnapshotRejectsInvocationParentCycle(t *testing.T) {
+func TestInstanceSnapshotRejectsInvocationParentCycle(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
 	firstChildPath := input.Invocations[1].Path
 	secondChildPath := input.Invocations[2].Path
@@ -90,7 +90,7 @@ func validInstanceSnapshotInput(t *testing.T) InstanceSnapshotInput {
 		t.Fatal(err)
 	}
 	return InstanceSnapshotInput{
-		SchemaVersion: RunSnapshotSchemaV1,
+		SchemaVersion: InstanceSnapshotSchemaV1,
 		InstanceID:    mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3",
 		TestTaskVersionNumber: 3,
 		ExecutionFlow:         TestTaskSnapshot{ID: "task-1"},
@@ -107,7 +107,7 @@ func validInstanceSnapshotInput(t *testing.T) InstanceSnapshotInput {
 	}
 }
 
-func TestRunSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
+func TestInstanceSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
@@ -127,9 +127,9 @@ func TestRunSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T) {
+func TestInstanceSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
-	input.SchemaVersion = RunSnapshotSchemaV2
+	input.SchemaVersion = InstanceSnapshotSchemaV2
 	input.Environment.Properties = nil
 	input.Environment.Variables = map[string]parameter.Value{
 		"flag": parameter.TextValue("true"),
@@ -140,7 +140,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 		t.Fatal(err)
 	}
 	reordered := validInstanceSnapshotInput(t)
-	reordered.SchemaVersion = RunSnapshotSchemaV2
+	reordered.SchemaVersion = InstanceSnapshotSchemaV2
 	reordered.Environment.Properties = nil
 	reordered.Environment.Variables = map[string]parameter.Value{
 		"list": parameter.MultiSelectValue([]string{"east", "west"}),
@@ -151,7 +151,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 		t.Fatalf("V2 digest unstable: %q %q %v", sealed.Digest(), other.Digest(), err)
 	}
 	typed := validInstanceSnapshotInput(t)
-	typed.SchemaVersion = RunSnapshotSchemaV2
+	typed.SchemaVersion = InstanceSnapshotSchemaV2
 	typed.Environment.Properties = nil
 	typed.Environment.Variables = map[string]parameter.Value{
 		"flag": parameter.BooleanValue(true),
@@ -185,7 +185,7 @@ func TestRunSnapshotV2DigestIsStableTypeSensitiveAndOwnsMultiSelect(t *testing.T
 	}
 }
 
-func TestSealRunSnapshotOwnsDataAndHasStableCanonicalDigest(t *testing.T) {
+func TestSealInstanceSnapshotOwnsDataAndHasStableCanonicalDigest(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
@@ -212,7 +212,7 @@ func TestSealRunSnapshotOwnsDataAndHasStableCanonicalDigest(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
+func TestInstanceSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
 	base, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
 	}
 }
 
-func TestSealRunSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.T) {
+func TestSealInstanceSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*InstanceSnapshotInput)
@@ -294,7 +294,7 @@ func TestSealRunSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.
 	}
 }
 
-func TestRunSnapshotInputExportSupportsDurableHydrationWithoutAliasing(t *testing.T) {
+func TestInstanceSnapshotInputExportSupportsDurableHydrationWithoutAliasing(t *testing.T) {
 	sealed, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -312,7 +312,7 @@ func TestRunSnapshotInputExportSupportsDurableHydrationWithoutAliasing(t *testin
 	}
 }
 
-func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
+func TestHydrateInstanceRestoresPrivateSnapshotSeal(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -346,7 +346,7 @@ func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
 	}
 }
 
-func TestRunTransitionPreservesSnapshotIdentity(t *testing.T) {
+func TestInstanceTransitionPreservesSnapshotIdentity(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +359,7 @@ func TestRunTransitionPreservesSnapshotIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.SnapshotSchemaVersion != RunSnapshotSchemaV1 || next.SnapshotDigest != snapshot.Digest() || next.TestTaskVersionID != "task-v3" {
+	if next.SnapshotSchemaVersion != InstanceSnapshotSchemaV1 || next.SnapshotDigest != snapshot.Digest() || next.TestTaskVersionID != "task-v3" {
 		t.Fatal("transition lost snapshot identity")
 	}
 	invalid := run

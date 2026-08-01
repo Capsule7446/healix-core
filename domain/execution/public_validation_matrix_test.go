@@ -113,7 +113,7 @@ func TestWorkflowSnapshotValidateRejectsMissingSteps(t *testing.T) {
 	requireStepShapeViolation(t, workflow.Validate(), "steps", fault.CodeFieldRequired)
 }
 
-func TestRunConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
+func TestInstanceConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)

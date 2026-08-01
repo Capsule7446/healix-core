@@ -10,17 +10,17 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func TestBuildRunSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
+func TestBuildInstanceSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*CreateRunCommand, *ResolvedCreateRun)
+		mutate func(*CreateInstanceCommand, *ResolvedCreateInstance)
 		want   string
 	}{
-		{name: "missing item values", mutate: func(command *CreateRunCommand, _ *ResolvedCreateRun) {
+		{name: "missing item values", mutate: func(command *CreateInstanceCommand, _ *ResolvedCreateInstance) {
 			delete(command.Entries, "item-1")
 			command.Entries["unknown"] = map[string]parameter.Value{}
 		}, want: "values are missing"},
-		{name: "missing root invocation", mutate: func(_ *CreateRunCommand, resolved *ResolvedCreateRun) {
+		{name: "missing root invocation", mutate: func(_ *CreateInstanceCommand, resolved *ResolvedCreateInstance) {
 			for index := range resolved.Invocations {
 				if resolved.Invocations[index].ParentPath == (execution.InvocationPath{}) {
 					resolved.Invocations[index].ParentPath = mustInvocationPath("unexpected-parent")
@@ -28,24 +28,24 @@ func TestBuildRunSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
 				}
 			}
 		}, want: "root invocation is missing"},
-		{name: "extra item values", mutate: func(command *CreateRunCommand, _ *ResolvedCreateRun) {
+		{name: "extra item values", mutate: func(command *CreateInstanceCommand, _ *ResolvedCreateInstance) {
 			command.Entries["unknown"] = map[string]parameter.Value{}
 		}, want: "unknown test-task item values"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			command := validCreateRunCommand()
-			resolved := validResolvedCreateRun(t, command)
+			command := validCreateInstanceCommand()
+			resolved := validResolvedCreateInstance(t, command)
 			test.mutate(&command, &resolved)
-			_, err := BuildRunSnapshot(command, resolved)
+			_, err := BuildInstanceSnapshot(command, resolved)
 			if err == nil {
-				t.Fatal("BuildRunSnapshot() accepted an invalid command graph")
+				t.Fatal("BuildInstanceSnapshot() accepted an invalid command graph")
 			}
 			// The detail is now a private cause and the public code is what a host
 			// switches on, so both are asserted: the classification, and that the
 			// detail survives for diagnostics without being public text.
 			if !fault.IsCode(err, CodeCreateInstanceCatalogGraphUnresolvable) {
-				t.Fatalf("BuildRunSnapshot() error = %v, want code %s", err, CodeCreateInstanceCatalogGraphUnresolvable)
+				t.Fatalf("BuildInstanceSnapshot() error = %v, want code %s", err, CodeCreateInstanceCatalogGraphUnresolvable)
 			}
 			if descriptor, ok := fault.Describe(err); !ok || strings.Contains(descriptor.Message(), test.want) {
 				t.Fatalf("public message must not carry the detail: %#v", descriptor)
@@ -57,9 +57,9 @@ func TestBuildRunSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
 	}
 }
 
-func TestCreateRunCommandInvalidErrorExposesSafeStableContract(t *testing.T) {
+func TestCreateInstanceCommandInvalidErrorExposesSafeStableContract(t *testing.T) {
 	cause := errors.New("command-sensitive-id=cmd-secret value=credential-secret")
-	err := createRunCommandInvalidError(cause)
+	err := createInstanceCommandInvalidError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
 		descriptor.Code() != CodeCreateInstanceCommandInvalid ||
@@ -77,8 +77,8 @@ func TestCreateRunCommandInvalidErrorExposesSafeStableContract(t *testing.T) {
 	}
 }
 
-func TestCreateRunCommandConflictErrorExposesSafeStableContract(t *testing.T) {
-	err := createRunCommandConflictError()
+func TestCreateInstanceCommandConflictErrorExposesSafeStableContract(t *testing.T) {
+	err := createInstanceCommandConflictError()
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
 		descriptor.Code() != CodeCreateInstanceCommandConflict ||
@@ -95,8 +95,8 @@ func TestCreateRunCommandConflictErrorExposesSafeStableContract(t *testing.T) {
 	}
 }
 
-func TestCreateRunSnapshotConflictErrorExposesSafeStableContract(t *testing.T) {
-	err := createRunSnapshotConflictError()
+func TestCreateInstanceSnapshotConflictErrorExposesSafeStableContract(t *testing.T) {
+	err := createInstanceSnapshotConflictError()
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
 		descriptor.Code() != CodeCreateInstanceSnapshotConflict ||
@@ -113,9 +113,9 @@ func TestCreateRunSnapshotConflictErrorExposesSafeStableContract(t *testing.T) {
 	}
 }
 
-func TestCreateRunAdapterContractViolationExposesSafeStableContract(t *testing.T) {
+func TestCreateInstanceAdapterContractViolationExposesSafeStableContract(t *testing.T) {
 	cause := errors.New("operation=insert command=command-secret digest=sha256:secret payload=value-secret")
-	err := createRunAdapterContractViolationError(cause)
+	err := createInstanceAdapterContractViolationError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
 		descriptor.Code() != CodeCreateInstanceAdapterContractViolation ||
@@ -133,9 +133,9 @@ func TestCreateRunAdapterContractViolationExposesSafeStableContract(t *testing.T
 	}
 }
 
-func TestCreateRunCatalogGraphUnresolvableErrorExposesSafeStableContract(t *testing.T) {
+func TestCreateInstanceCatalogGraphUnresolvableErrorExposesSafeStableContract(t *testing.T) {
 	cause := errors.New("operation=resolve binding catalog=workflow-secret value=credential-secret")
-	err := createRunCatalogGraphUnresolvableError(cause)
+	err := createInstanceCatalogGraphUnresolvableError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
 		descriptor.Code() != CodeCreateInstanceCatalogGraphUnresolvable ||
@@ -153,9 +153,9 @@ func TestCreateRunCatalogGraphUnresolvableErrorExposesSafeStableContract(t *test
 	}
 }
 
-func TestCreateRunRetryableErrorExposesSafeStableContract(t *testing.T) {
+func TestCreateInstanceRetryableErrorExposesSafeStableContract(t *testing.T) {
 	cause := errors.New("transaction=transaction-secret command=command-secret")
-	err := createRunRetryableError(cause)
+	err := createInstanceRetryableError(cause)
 	descriptor, ok := fault.Describe(err)
 	if !ok ||
 		descriptor.Code() != CodeCreateInstanceRetryable ||

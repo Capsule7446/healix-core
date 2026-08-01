@@ -100,7 +100,7 @@ func (f executionIdentityProbeFacts) CommitTerminal(context.Context, domainexecu
 }
 
 func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 }
 
 func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 }
 
 func TestRunProgramForwardsCompleteExecutionAuthority(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}

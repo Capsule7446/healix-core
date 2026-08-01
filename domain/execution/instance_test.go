@@ -2,7 +2,7 @@ package execution
 
 import "testing"
 
-func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
+func TestInstanceTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 	}
 }
 
-func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
+func TestInstanceTransitionRoundTripsThroughHydration(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 	}
 }
 
-func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
+func TestHydrateInstanceEnforcesPersistedLifecycleShapes(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +152,7 @@ func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
 	}
 }
 
-func TestRunStatusTransitionPermitsCancellationBeforeAndDuringExecution(t *testing.T) {
+func TestInstanceStatusTransitionPermitsCancellationBeforeAndDuringExecution(t *testing.T) {
 	for _, from := range []InstanceStatus{Queued, Running} {
 		if err := ValidateInstanceStatusTransition(from, Canceled); err != nil {
 			t.Fatalf("%s -> CANCELED: %v", from, err)
@@ -160,7 +160,7 @@ func TestRunStatusTransitionPermitsCancellationBeforeAndDuringExecution(t *testi
 	}
 }
 
-func TestRunTransitionAcceptsLifecycleProgression(t *testing.T) {
+func TestInstanceTransitionAcceptsLifecycleProgression(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -178,13 +178,13 @@ func TestRunTransitionAcceptsLifecycleProgression(t *testing.T) {
 	}
 }
 
-func TestRunTransitionRejectsReopeningTerminalRun(t *testing.T) {
+func TestInstanceTransitionRejectsReopeningTerminalRun(t *testing.T) {
 	if _, err := (Instance{Status: Succeeded}).Transition(Running, 2); err == nil {
 		t.Fatal("expected terminal transition rejection")
 	}
 }
 
-func TestRunTransitionRejectsAbortingQueuedRun(t *testing.T) {
+func TestInstanceTransitionRejectsAbortingQueuedRun(t *testing.T) {
 	if _, err := (Instance{Status: Queued}).Transition(Aborted, 2); err == nil {
 		t.Fatal("expected queued abort rejection")
 	}

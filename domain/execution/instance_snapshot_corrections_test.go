@@ -12,7 +12,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
+func TestSealInstanceSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	input.Invocations[0].Bindings = map[string]parameter.Binding{
 		"count": parameter.LiteralBinding(input.Invocations[0].Values["count"]),
@@ -26,7 +26,7 @@ func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T) {
+func TestInstanceSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	input.Plan.Workflows[0].Steps[0].DisplayName = "original"
 	sealed, err := SealInstanceSnapshot(input)
@@ -52,7 +52,7 @@ func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T
 	}
 }
 
-func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.T) {
+func TestInstanceSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.T) {
 	base, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 	}
 }
 
-func TestSealRunSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
+func TestSealInstanceSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	input.Environment.Revision = 0
 
@@ -95,7 +95,7 @@ func TestSealRunSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
 	}
 }
 
-func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *testing.T) {
+func TestHydrateInstanceSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	input.Environment.Revision = 0
 	canonicalInput := cloneSnapshotInput(input)
@@ -121,7 +121,7 @@ func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *t
 	}
 }
 
-func TestHydrateRunSnapshotVerifiesStoredDigest(t *testing.T) {
+func TestHydrateInstanceSnapshotVerifiesStoredDigest(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
@@ -168,7 +168,7 @@ func normalizePolicyPositiveZero(p *HealerPolicySnapshot) {
 	}
 }
 
-func TestNewRunRejectsInvalidInitialLifecycleShape(t *testing.T) {
+func TestNewInstanceRejectsInvalidInitialLifecycleShape(t *testing.T) {
 	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)

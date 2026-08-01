@@ -115,14 +115,14 @@ func TestStepTransitionServiceRejectsInvalidInputBeforeCommit(t *testing.T) {
 	}
 }
 
-func TestStepTransitionServiceRejectsCrossRunFactsBeforeCommit(t *testing.T) {
+func TestStepTransitionServiceRejectsCrossInstanceFactsBeforeCommit(t *testing.T) {
 	tests := []struct {
 		name   string
 		commit evidence.StepTransitionCommit
 	}{
-		{name: "final validation", commit: crossRunFinalValidationCommit()},
-		{name: "validation group", commit: crossRunValidationGroupCommit()},
-		{name: "heal observation", commit: crossRunHealObservationCommit()},
+		{name: "final validation", commit: crossInstanceFinalValidationCommit()},
+		{name: "validation group", commit: crossInstanceValidationGroupCommit()},
+		{name: "heal observation", commit: crossInstanceHealObservationCommit()},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -146,7 +146,7 @@ func TestStepTransitionServiceRejectsCrossRunFactsBeforeCommit(t *testing.T) {
 	}
 }
 
-func crossRunFinalValidationCommit() evidence.StepTransitionCommit {
+func crossInstanceFinalValidationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.FinalValidations = []evidence.ValidationObservation{{
 		ID: "validation", InstanceID: mustInstanceID("other-run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
@@ -157,7 +157,7 @@ func crossRunFinalValidationCommit() evidence.StepTransitionCommit {
 	return commit
 }
 
-func crossRunValidationGroupCommit() evidence.StepTransitionCommit {
+func crossInstanceValidationGroupCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.FinalValidations = []evidence.ValidationObservation{
 		{ID: "member-a", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Passed: true, Reason: "passed", BranchDisposition: evidence.ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
@@ -170,7 +170,7 @@ func crossRunValidationGroupCommit() evidence.StepTransitionCommit {
 	return commit
 }
 
-func crossRunHealObservationCommit() evidence.StepTransitionCommit {
+func crossInstanceHealObservationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
 		ID: "heal", InstanceID: mustInstanceID("other-run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,

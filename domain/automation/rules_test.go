@@ -108,8 +108,8 @@ func TestHealStreakRetainsCompleteContributionProvenance(t *testing.T) {
 		t.Fatalf("mature streak = %#v", streak)
 	}
 	for index, contribution := range streak.Contributions {
-		wantRunID := fmt.Sprintf("run-%d", index+1)
-		if contribution.InstanceID != wantRunID || contribution.FactID != "fact-"+wantRunID || contribution.Sequence != []uint64{11, 19, 27}[index] {
+		wantInstanceID := fmt.Sprintf("run-%d", index+1)
+		if contribution.InstanceID != wantInstanceID || contribution.FactID != "fact-"+wantInstanceID || contribution.Sequence != []uint64{11, 19, 27}[index] {
 			t.Fatalf("contribution %d = %#v", index, contribution)
 		}
 	}

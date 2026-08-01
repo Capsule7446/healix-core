@@ -12,16 +12,16 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (execution.InstanceSnapshot, error) {
-	command = normalizeCreateRunCommand(command)
-	if err := preflightResolvedCreateRun(resolved); err != nil {
+func BuildInstanceSnapshot(command CreateInstanceCommand, resolved ResolvedCreateInstance) (execution.InstanceSnapshot, error) {
+	command = normalizeCreateInstanceCommand(command)
+	if err := preflightResolvedCreateInstance(resolved); err != nil {
 		return execution.InstanceSnapshot{}, err
 	}
-	if err := validateCreateRunCommand(command); err != nil {
+	if err := validateCreateInstanceCommand(command); err != nil {
 		return execution.InstanceSnapshot{}, err
 	}
 	if resolved.Plan.Task.ID != command.ExecutionFlowID || resolved.Plan.Version.ID != command.TestTaskVersionID || resolved.Environment.ID != command.EnvironmentID {
-		return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("resolved catalog assets do not match command selectors"))
+		return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(errors.New("resolved catalog assets do not match command selectors"))
 	}
 	entries := make([]executionEntryInput, len(resolved.Plan.Version.Items))
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(resolved.Plan.Version.Items))
@@ -29,7 +29,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		values, exists := command.Entries[item.ID]
 		if !exists {
 			// The item id stays in the private cause, never in public text.
-			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
+			return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
 		}
 		// The entry identity is derived from the instance id and the item id, so it
 		// is well formed by construction; a failure here means concreteRootPath
@@ -37,11 +37,11 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		spelledEntry := concreteRootPath(command.InstanceID.String(), item.ID)
 		entryID, err := execution.NewEntryID(spelledEntry)
 		if err != nil {
-			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(err)
+			return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(err)
 		}
 		resolvedRoot, exists := invocationByPath(resolved.Invocations, execution.RootInvocationPath(entryID))
 		if !exists || resolvedRoot.ParentPath != (execution.InvocationPath{}) {
-			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
+			return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
 		if err := validateSuppliedRootValues(values, resolvedRoot.WorkflowVersionID, resolved.Plan); err != nil {
 			// Constraint.Validate already returns PARAMETER_CONSTRAINT_UNSATISFIED or
@@ -59,7 +59,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: entries[index].WorkflowVersionID}
 	}
 	if len(command.Entries) != len(entries) {
-		return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("command contains unknown test-task item values"))
+		return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(errors.New("command contains unknown test-task item values"))
 	}
 	draft, err := buildExecutionDraft(buildExecutionPlanInput{InstanceID: command.InstanceID, Publication: resolved.Plan, Entries: entries})
 	if err != nil {
@@ -72,11 +72,11 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 	}
 	draft.FailurePolicy = command.FailurePolicy
 	invocations := cloneInvocationScopes(resolved.Invocations)
-	input := execution.InstanceSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, InstanceID: command.InstanceID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
+	input := execution.InstanceSnapshotInput{SchemaVersion: execution.InstanceSnapshotSchemaCurrent, InstanceID: command.InstanceID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
 	return execution.SealInstanceSnapshot(input)
 }
 
-func addResolvedValueBudget(budget *createRunRequestBudget, value parameter.Value) error {
+func addResolvedValueBudget(budget *createInstanceRequestBudget, value parameter.Value) error {
 	switch value.Type() {
 	case parameter.Text:
 		return budget.addString(value.Text())
@@ -98,7 +98,7 @@ func addResolvedValueBudget(budget *createRunRequestBudget, value parameter.Valu
 	}
 }
 
-func addResolvedValuesBudget(budget *createRunRequestBudget, values map[string]parameter.Value) error {
+func addResolvedValuesBudget(budget *createInstanceRequestBudget, values map[string]parameter.Value) error {
 	if err := budget.addParameters(len(values)); err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func addResolvedValuesBudget(budget *createRunRequestBudget, values map[string]p
 	return nil
 }
 
-func addResolvedBindingsBudget(budget *createRunRequestBudget, bindings map[string]parameter.Binding) error {
+func addResolvedBindingsBudget(budget *createInstanceRequestBudget, bindings map[string]parameter.Binding) error {
 	if err := budget.addParameters(len(bindings)); err != nil {
 		return err
 	}
@@ -135,10 +135,10 @@ func addResolvedBindingsBudget(budget *createRunRequestBudget, bindings map[stri
 	return nil
 }
 
-func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
-	budget := newCreateRunRequestBudget()
+func preflightResolvedCreateInstance(resolved ResolvedCreateInstance) error {
+	budget := newCreateInstanceRequestBudget()
 	invalid := func(reason string) error {
-		return createRunAdapterContractViolationError(errors.New(reason))
+		return createInstanceAdapterContractViolationError(errors.New(reason))
 	}
 	addStrings := func(values ...string) error {
 		for _, value := range values {
@@ -346,7 +346,7 @@ func resolvedWorkflowVersion(item automation.ExecutionFlowItem, plan automation.
 	return ""
 }
 
-func normalizeCreateRunCommand(command CreateRunCommand) CreateRunCommand {
+func normalizeCreateInstanceCommand(command CreateInstanceCommand) CreateInstanceCommand {
 	if command.FailurePolicy == "" {
 		command.FailurePolicy = execution.FailurePolicyStopOnFailure
 	}
@@ -368,10 +368,10 @@ func normalizeCreateRunCommand(command CreateRunCommand) CreateRunCommand {
 	return command
 }
 
-func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
+func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr error) {
 	defer func() {
 		if resultErr != nil && !fault.IsCode(resultErr, CodeCreateInstanceCommandInvalid) {
-			resultErr = createRunCommandInvalidError(resultErr)
+			resultErr = createInstanceCommandInvalidError(resultErr)
 		}
 	}()
 	if command.InstanceID.Validate() != nil {

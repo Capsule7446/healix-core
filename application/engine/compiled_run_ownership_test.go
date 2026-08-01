@@ -6,14 +6,14 @@ import (
 	"github.com/Capsule7446/healix-core/domain/execution"
 )
 
-func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
+func TestCompiledPlanAccessorsReturnIndependentEntries(t *testing.T) {
 	draft := minimalCompilerPlan()
 	draft.Workflows[0].Steps = []execution.Step{{
 		ID: "click", DisplayName: "Click", Kind: execution.ActionStep, Action: "click",
 		ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1,
 	}}
 	draft.Nodes = []execution.NodeSnapshot{compilerNodeSnapshot(compilerNodeV1, "submit")}
-	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(draft, map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,8 +66,8 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	}
 }
 
-func TestCompiledRunEntryRejectsCorruptedIndexedIdentity(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+func TestCompiledPlanEntryRejectsCorruptedIndexedIdentity(t *testing.T) {
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
