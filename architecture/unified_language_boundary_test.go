@@ -67,16 +67,33 @@ func TestUnpublishedSamplingAssetsCarryNoFormalIdentity(t *testing.T) {
 
 	// ExistingElementTargetID is a reference to something already published, not
 	// this asset's own identity, so it is not a formal-identity field.
+	//
+	// The Saved / Existing boundary is a semantic one, not syntactic: "Saved" says
+	// the asset holds a formal identity before publication, which is what this
+	// guard prevents; "Existing" says the asset references something already
+	// published, which is fine. Any new prefix must be evaluated against that
+	// distinction — a field starting with "Saved", "Published", "Promoted", or
+	// "Formal" is a formal identity leak unless proven otherwise.
 	forbidden := []string{"Version", "VersionNumber", "Revision", "CurrentVersionID", "ElementTargetVersionID"}
+	formalPrefixes := []string{"Saved", "Published", "Promoted", "Formal"}
 	for _, typeName := range []string{"UnpublishedElementTarget", "UnpublishedFlowFragment"} {
 		fields, found := structFields(t, sampling, typeName)
 		if !found {
 			t.Fatalf("%s no longer exists in domain/sampling; this boundary needs to move with it", typeName)
 		}
 		for _, field := range fields {
+			// A formal identity does not stop being one because the field name says
+			// the asset merely "saved" it. Substring matching against the forbidden
+			// list is not enough on its own: SavedWorkflowID contains none of those
+			// words, yet it is the same category of leak.
 			for _, banned := range forbidden {
-				if field == banned {
-					t.Errorf("%s.%s gives an unpublished asset formal identity, which only Automation may assign after a successful publication", typeName, field)
+				if strings.Contains(field, banned) {
+					t.Errorf("%s.%s gives an unpublished asset formal identity (forbidden substring %q), which only Automation may assign after a successful publication", typeName, field, banned)
+				}
+			}
+			for _, prefix := range formalPrefixes {
+				if strings.HasPrefix(field, prefix) {
+					t.Errorf("%s.%s gives an unpublished asset formal identity (forbidden prefix %q), which only Automation may assign after a successful publication", typeName, field, prefix)
 				}
 			}
 		}

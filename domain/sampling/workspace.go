@@ -94,9 +94,6 @@ type UnpublishedFlowFragment struct {
 	Steps                       []automation.FlowFragmentStep
 	Parameters                  []automation.ParameterDefinition
 	Nodes                       []UnpublishedElementTarget
-	SavedWorkflowID             string
-	SavedVersionID              string
-	SavedVersionNumber          int
 }
 
 // RebuildUnpublishedElementTargetReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
