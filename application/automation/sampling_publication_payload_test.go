@@ -19,11 +19,39 @@ import (
 // walks the payload's type graph and fails when a fourth appears, which is the
 // only way anyone finds out before the digest quietly stops distinguishing it.
 func TestEveryOpaqueTypeInThePublicationPayloadIsHandled(t *testing.T) {
+	// The canonical walk reads these three through their accessors.
 	handled := map[string]bool{
 		"parameter.Value":         true,
 		"parameter.OptionalValue": true,
 		"parameter.Binding":       true,
 	}
+	assertNoUnhandledOpaqueType(t, reflect.TypeOf(domain.SamplingPublication{}), "SamplingPublication", handled)
+}
+
+// The other two digests in this package still hash json.Marshal of their
+// payload, which is correct only while nothing in that payload hides its state.
+// Both are all-exported today; so was the step transition commit until a value
+// object landed in it, and so was the publication payload. Nothing marked the
+// difference, so nothing objected when it changed.
+//
+// json.Marshal has no handled set at all: a type it cannot see becomes {} with
+// no error, so anything opaque reaching these is a defect by arrival.
+func TestNoOpaqueTypeReachesAJSONMarshalledDigest(t *testing.T) {
+	for _, payload := range []struct {
+		name string
+		typ  reflect.Type
+	}{
+		{"HealReviewRequest", reflect.TypeOf(HealReviewRequest{})},
+		{"HealStreak", reflect.TypeOf(domain.HealStreak{})},
+	} {
+		t.Run(payload.name, func(t *testing.T) {
+			assertNoUnhandledOpaqueType(t, payload.typ, payload.name, nil)
+		})
+	}
+}
+
+func assertNoUnhandledOpaqueType(t *testing.T, root reflect.Type, rootName string, handled map[string]bool) {
+	t.Helper()
 
 	visited := map[reflect.Type]bool{}
 	var unhandled []string
@@ -58,12 +86,12 @@ func TestEveryOpaqueTypeInThePublicationPayloadIsHandled(t *testing.T) {
 			}
 		}
 	}
-	walk(reflect.TypeOf(domain.SamplingPublication{}), "SamplingPublication", 0)
+	walk(root, rootName, 0)
 
 	if len(unhandled) != 0 {
-		t.Fatalf("%d type(s) in the publication payload have no exported fields and are not handled "+
-			"by encodeCanonicalPayload, so the digest cannot tell two different values of them apart:\n  %s",
-			len(unhandled), strings.Join(unhandled, "\n  "))
+		t.Fatalf("%d type(s) reachable from %s have no exported fields and are not handled, so the "+
+			"digest cannot tell two different values of them apart:\n  %s",
+			len(unhandled), rootName, strings.Join(unhandled, "\n  "))
 	}
 }
 
