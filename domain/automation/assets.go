@@ -132,6 +132,25 @@ type ElementTargetAggregate struct {
 	Versions      []ElementTargetVersion
 }
 
+// ValidateFor validates one exact immutable version selected out of an element
+// target's history. It deliberately does not assert that the selected version is
+// still the target's current one — that is the whole point of reusing a
+// historical version — so it aims the current pointer at the selection and then
+// applies the identical content rules.
+//
+// The REUSE publication path needs this. Its projection carries the selected
+// historical version as Current while ElementTarget.CurrentVersionID still holds
+// the live pointer for the compare-and-swap, so the full aggregate check can
+// never pass by construction, and skipping it wholesale left the selected
+// version's selectors, fingerprint, version number and source unchecked on every
+// path. FlowFragmentVersion.ValidateFor already solved the same problem the same
+// way.
+func (v ElementTargetVersion) ValidateFor(target ElementTarget) error {
+	selected := target
+	selected.CurrentVersionID = v.ID
+	return (ElementTargetAggregate{ElementTarget: selected, Current: v}).Validate()
+}
+
 func (a ElementTargetAggregate) Validate() error {
 	var violations []fault.Violation
 	if strings.TrimSpace(a.ElementTarget.ID) == "" {
@@ -168,6 +187,18 @@ func (a ElementTargetAggregate) Validate() error {
 	}
 	if a.Current.Fingerprint.Attributes == nil {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "current.fingerprint.attributes", "fingerprint attributes are required"))
+	}
+	// These two mirror rules that domain/fingerprint already enforces on the same
+	// value. They were missing here, so a negative sibling index or a malformed
+	// framework stack — both rejected the moment the element is sampled — could
+	// still be written into an immutable published version through this path and
+	// then read back by heal scoring. The duplication is pinned by an agreement
+	// test; the drift is what actually caused the gap.
+	if a.Current.Fingerprint.SiblingIndex < 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "current.fingerprint.siblingIndex", "fingerprint sibling index must not be negative"))
+	}
+	if err := a.Current.Fingerprint.Framework.Validate(); err != nil {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "current.fingerprint.framework", "fingerprint framework stack is invalid"))
 	}
 	if err := a.Current.Source.Validate(); err != nil {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "current.source", "version source is unsupported"))
@@ -494,6 +525,16 @@ func (a FlowFragmentAggregate) Validate() error {
 				}
 				if strings.TrimSpace(step.ElementTargetID) != "" && strings.TrimSpace(step.ElementTargetVersionID) == "" {
 					violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.action.elementTargetVersionId", "step action requires an exact element target version"))
+				}
+				// The reverse direction. Only navigate and press may omit the element
+				// target, and every downstream gate — reference resolution, the
+				// publication decision, the dependency closure, the snapshot step
+				// shape, the compiler — keys off a non-empty ElementTargetID, so a
+				// version id left behind on one of those two actions was carried
+				// through all of them untouched and into the published version. Wait,
+				// repeat and fragment-reference steps already reject it outright.
+				if strings.TrimSpace(step.ElementTargetID) == "" && strings.TrimSpace(step.ElementTargetVersionID) != "" {
+					violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.action.elementTargetVersionId", "a step action without an element target cannot carry a version"))
 				}
 				if (step.Action == "navigate" || step.Action == "press" || step.Action == "extract") && strings.TrimSpace(step.Value) == "" {
 					violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.action.value", "step action requires a value"))

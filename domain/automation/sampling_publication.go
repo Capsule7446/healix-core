@@ -91,13 +91,30 @@ func (p SamplingPublication) validateContent() error {
 			return fmt.Errorf("duplicate sampled node at %d", index)
 		}
 		seen[node.TemporaryElementTargetID] = struct{}{}
-		if node.ResolutionMode != "REUSE" {
-			if err := node.Aggregate.Validate(); err != nil {
-				// ElementTargetAggregate.Validate already returns
-				// AUTOMATION_ELEMENT_TARGET_INVALID; wrapping it here would bury that
-				// code under an unclassified layer.
-				return err
+		// Every mode validates its content. REUSE used to skip this entirely, which
+		// assumed the aggregate had already been checked by whoever loaded it —
+		// true on the mapper path, false on this one, because Publish accepts a
+		// caller-built SamplingPublication. A REUSE node could carry a version with
+		// no selectors, a zero version number and an unknown source straight into
+		// the idempotency digest and the transaction.
+		//
+		// REUSE needs the selected-version form rather than the aggregate form: its
+		// projection deliberately holds the chosen historical version as Current
+		// while ElementTarget.CurrentVersionID still points at the live version for
+		// the compare-and-swap, so the aggregate rule that those two agree can never
+		// hold here. The authority checks below cover the pointer; this covers the
+		// content.
+		validateNode := node.Aggregate.Validate
+		if node.ResolutionMode == "REUSE" {
+			validateNode = func() error {
+				return node.Aggregate.Current.ValidateFor(node.Aggregate.ElementTarget)
 			}
+		}
+		if err := validateNode(); err != nil {
+			// ElementTargetAggregate.Validate already returns
+			// AUTOMATION_ELEMENT_TARGET_INVALID; wrapping it here would bury that
+			// code under an unclassified layer.
+			return err
 		}
 		if strings.TrimSpace(node.Aggregate.ElementTarget.ID) == "" || node.Aggregate.Current.ElementTargetID != node.Aggregate.ElementTarget.ID || node.Aggregate.Current.DeletedAt != 0 {
 			return fmt.Errorf("sampled node %d selected version is not referenceable", index)
