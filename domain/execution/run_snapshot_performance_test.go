@@ -31,8 +31,8 @@ func TestBuildSnapshotValidationIndexesIncludesEveryWorkflowReference(t *testing
 		t.Fatalf("index cardinalities = entries %d, workflows %d, resolutions %d, reference steps %d, workflow step lists %d", len(indexes.entriesByID), len(indexes.workflows), len(indexes.referenceByEdge), len(indexes.referenceSteps), len(indexes.stepsByWorkflowID))
 	}
 	for _, entry := range input.Plan.Entries {
-		if got, exists := indexes.entriesByID[entry.ExecutionID]; !exists || got.ExecutionID != entry.ExecutionID {
-			t.Fatalf("entry index missing %q", entry.ExecutionID)
+		if got, exists := indexes.entriesByID[entry.ID]; !exists || got.ID != entry.ID {
+			t.Fatalf("entry index missing %q", entry.ID)
 		}
 	}
 	for _, workflow := range input.Plan.Workflows {
@@ -71,7 +71,7 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 		itemID := fmt.Sprintf("item-%04d", index)
 		executionID := fmt.Sprintf("entry-%04d", index)
 		input.ExecutionFlowVersion.Items[index] = ExecutionFlowVersionItemSnapshot{ID: itemID, TestTaskVersionID: input.TestTaskVersionID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}
-		input.Plan.Entries[index] = Entry{ExecutionID: executionID, TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
+		input.Plan.Entries[index] = Entry{ID: mustEntryID(executionID), TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
 	}
 
 	indexes, err := buildSnapshotValidationIndexes(input.Plan)
@@ -82,9 +82,9 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 		t.Fatalf("index cardinalities = entries %d, workflows %d, resolutions %d, reference steps %d, workflow step lists %d", len(indexes.entriesByID), len(indexes.workflows), len(indexes.referenceByEdge), len(indexes.referenceSteps), len(indexes.stepsByWorkflowID))
 	}
 	for _, entry := range input.Plan.Entries {
-		got, exists := indexes.entriesByID[entry.ExecutionID]
-		if !exists || got.ExecutionID != entry.ExecutionID || got.TestTaskItemID != entry.TestTaskItemID || got.SequenceNumber != entry.SequenceNumber || got.WorkflowVersionID != entry.WorkflowVersionID {
-			t.Fatalf("entry index incomplete for %q", entry.ExecutionID)
+		got, exists := indexes.entriesByID[entry.ID]
+		if !exists || got.ID != entry.ID || got.TestTaskItemID != entry.TestTaskItemID || got.SequenceNumber != entry.SequenceNumber || got.WorkflowVersionID != entry.WorkflowVersionID {
+			t.Fatalf("entry index incomplete for %q", entry.ID)
 		}
 	}
 	for _, workflow := range input.Plan.Workflows {
@@ -128,7 +128,7 @@ func TestValidateSnapshotIndexesTestTaskVersionItems(t *testing.T) {
 			WorkflowVersionID: "workflow-v2",
 		}
 		input.Plan.Entries[index] = Entry{
-			ExecutionID:       fmt.Sprintf("entry-%04d", index),
+			ID:                mustEntryID(fmt.Sprintf("entry-%04d", index)),
 			TestTaskItemID:    itemID,
 			SequenceNumber:    index + 1,
 			FlowFragmentID:    "workflow-1",

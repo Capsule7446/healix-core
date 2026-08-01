@@ -76,7 +76,7 @@ func (s *consumerCreateRunStore) InsertCreateRun(_ context.Context, intent sched
 	}
 	entryIDs := make([]string, len(intent.Entries))
 	for index, entry := range intent.Entries {
-		entryIDs[index] = entry.ExecutionID
+		entryIDs[index] = entry.ID.String()
 	}
 	return scheduling.InsertCreateRunOutcome{Status: scheduling.InsertCreateRunApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: scheduling.StoredCreateRunResult{Run: intent.Run, Snapshot: hydrated, SnapshotDigest: hydrated.Digest(), EntryIDs: entryIDs}}, nil
 }

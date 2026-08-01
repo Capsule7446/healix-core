@@ -107,7 +107,7 @@ func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.Instance
 	invocations := make([]execution.InvocationScopeSnapshot, len(draft.Entries))
 	for index, entry := range draft.Entries {
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
-		invocations[index] = execution.InvocationScopeSnapshot{Path: entry.ExecutionID, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
+		invocations[index] = execution.InvocationScopeSnapshot{Path: entry.ID.String(), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
 	}
 	snapshot, err := execution.SealInstanceSnapshot(execution.InstanceSnapshotInput{
 		SchemaVersion: execution.RunSnapshotSchemaV1, RunID: "run", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
@@ -122,5 +122,5 @@ func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.Instance
 }
 func planDraft(policy execution.FailurePolicy) execution.PlanSnapshot {
 	workflow := execution.WorkflowSnapshot{ID: "workflow", VersionID: "workflow-v1", FlowFragmentID: "workflow", DisplayName: "FlowFragment", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "Wait", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}
-	return execution.PlanSnapshot{RunID: "run", FailurePolicy: policy, Entries: []execution.Entry{{ExecutionID: "a", TestTaskItemID: "item-a", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "b", TestTaskItemID: "item-b", SequenceNumber: 2, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ExecutionID: "c", TestTaskItemID: "item-c", SequenceNumber: 3, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
+	return execution.PlanSnapshot{RunID: "run", FailurePolicy: policy, Entries: []execution.Entry{{ID: mustEntryID("a"), TestTaskItemID: "item-a", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ID: mustEntryID("b"), TestTaskItemID: "item-b", SequenceNumber: 2, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}, {ID: mustEntryID("c"), TestTaskItemID: "item-c", SequenceNumber: 3, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
 }

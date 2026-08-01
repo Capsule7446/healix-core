@@ -34,7 +34,7 @@ func snapshotWithTwoConcreteReferenceEdges(t *testing.T) InstanceSnapshotInput {
 	item.SequenceNumber = 2
 	input.ExecutionFlowVersion.Items = append(input.ExecutionFlowVersion.Items, item)
 	entry := input.Plan.Entries[0]
-	entry.ExecutionID = "entry-2"
+	entry.ID = mustEntryID("entry-2")
 	entry.TestTaskItemID = "item-2"
 	entry.SequenceNumber = 2
 	number, _ := parameter.NewNumberValue("2")

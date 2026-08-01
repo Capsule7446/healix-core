@@ -33,11 +33,11 @@ type sessionFactoryFixture struct {
 }
 
 func (f *sessionFactoryFixture) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry) (BrowserSession, error) {
-	*f.events = append(*f.events, "create:"+entry.ExecutionID)
+	*f.events = append(*f.events, "create:"+entry.ID.String())
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
-	session := &sessionFixture{id: entry.ExecutionID, events: f.events, err: f.closeErr}
+	session := &sessionFixture{id: entry.ID.String(), events: f.events, err: f.closeErr}
 	f.sessions = append(f.sessions, session)
 	return session, nil
 }
@@ -49,7 +49,7 @@ type entryRunnerFixture struct {
 }
 
 func (r *entryRunnerFixture) RunEntry(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry, session BrowserSession) error {
-	*r.events = append(*r.events, "run:"+entry.ExecutionID)
+	*r.events = append(*r.events, "run:"+entry.ID.String())
 	r.seen = append(r.seen, session)
 	return r.err
 }
@@ -95,7 +95,7 @@ type blockingFactory struct {
 }
 
 func (f blockingFactory) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry) (BrowserSession, error) {
-	*f.events = append(*f.events, "create:"+entry.ExecutionID)
+	*f.events = append(*f.events, "create:"+entry.ID.String())
 	return blockingSession{closed: f.closed}, nil
 }
 
@@ -105,7 +105,7 @@ type panicRunner struct {
 }
 
 func (r panicRunner) RunEntry(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry, _ BrowserSession) error {
-	*r.events = append(*r.events, "run:"+entry.ExecutionID)
+	*r.events = append(*r.events, "run:"+entry.ID.String())
 	panic(r.value)
 }
 
@@ -124,7 +124,7 @@ func (s panicValidSession) Close(context.Context) error {
 type panicValidFactory struct{ events *[]string }
 
 func (f panicValidFactory) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry) (BrowserSession, error) {
-	*f.events = append(*f.events, "create:"+entry.ExecutionID)
+	*f.events = append(*f.events, "create:"+entry.ID.String())
 	return panicValidSession{events: f.events}, nil
 }
 
@@ -150,7 +150,7 @@ func TestEntryExecutorRunsOneEntryWithOneSession(t *testing.T) {
 	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
 
-	if err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), fence, domainexecution.Entry{ExecutionID: "entry"}); err != nil {
+	if err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), fence, domainexecution.Entry{ID: mustEntryID("entry")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,7 +170,7 @@ func TestEntryExecutorRejectsNormalInvalidSessionAndWrapsRunnerError(t *testing.
 	events := []string{}
 	session := &sessionFixture{id: "entry", events: &events}
 	runner := &entryRunnerFixture{events: &events}
-	err := mustEntryExecutor(t, invalidSessionFactory{session}, runner).Execute(context.Background(), fence, domainexecution.Entry{ExecutionID: "entry"})
+	err := mustEntryExecutor(t, invalidSessionFactory{session}, runner).Execute(context.Background(), fence, domainexecution.Entry{ID: mustEntryID("entry")})
 	if err == nil || !fault.IsCode(err, CodeEntryBrowserSessionAdapterContractViolation) || len(runner.seen) != 0 || !reflect.DeepEqual(events, []string{"close:entry"}) {
 		t.Fatalf("invalid session error = %v, events = %v", err, events)
 	}
@@ -180,7 +180,7 @@ func TestEntryExecutorRejectsNormalInvalidSessionAndWrapsRunnerError(t *testing.
 
 	cause := errors.New("runner failed")
 	events = []string{}
-	err = mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events, err: cause}).Execute(context.Background(), fence, domainexecution.Entry{ExecutionID: "entry"})
+	err = mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events, err: cause}).Execute(context.Background(), fence, domainexecution.Entry{ID: mustEntryID("entry")})
 	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "execute entry entry") {
 		t.Fatalf("wrapped runner error = %v", err)
 	}
@@ -198,7 +198,7 @@ func TestEntryExecutorRejectsInvalidFenceBeforeAllocatingSession(t *testing.T) {
 	events := []string{}
 	executor := mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events})
 
-	err := executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run"}, domainexecution.Entry{ExecutionID: "first"})
+	err := executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run"}, domainexecution.Entry{ID: mustEntryID("first")})
 
 	// The fence's own error now propagates unwrapped instead of behind an uncoded
 	// "execute entries" layer. Its identity check is still a bare error — that is
@@ -221,7 +221,7 @@ func TestEntryExecutorValidPanicClosesSynchronouslyAndStops(t *testing.T) {
 	var recovered any
 	func() {
 		defer func() { recovered = recover() }()
-		_ = mustEntryExecutor(t, panicValidFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+		_ = mustEntryExecutor(t, panicValidFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	}()
 	if recovered != "valid panic" || runnerCalled || !reflect.DeepEqual(events, []string{"create:first", "valid", "close"}) {
 		t.Fatalf("panic/runner/events=%#v/%v/%v", recovered, runnerCalled, events)
@@ -242,7 +242,7 @@ func (valueReceiverSession) Valid() bool                 { return true }
 func (valueReceiverSession) Close(context.Context) error { return nil }
 
 func (f typedNilFactory) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry) (BrowserSession, error) {
-	*f.events = append(*f.events, "create:"+entry.ExecutionID)
+	*f.events = append(*f.events, "create:"+entry.ID.String())
 	var session *valueReceiverSession
 	return session, nil
 }
@@ -254,7 +254,7 @@ func TestEntryExecutorRejectsTypedNilSessionWithoutCloseOrNextEntry(t *testing.T
 		called = true
 		return nil
 	})
-	err := mustEntryExecutor(t, typedNilFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+	err := mustEntryExecutor(t, typedNilFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	if err == nil || called || !reflect.DeepEqual(events, []string{"create:first"}) {
 		t.Fatalf("error/called/events=%v/%v/%v", err, called, events)
 	}
@@ -266,7 +266,7 @@ func TestEntryExecutorRejectsNilSessionBeforeRunner(t *testing.T) {
 		called = true
 		return nil
 	})
-	err := mustEntryExecutor(t, nilSessionFactory{runnerCalled: &called}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+	err := mustEntryExecutor(t, nilSessionFactory{runnerCalled: &called}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	if err == nil || called {
 		t.Fatalf("error/called=%v/%v", err, called)
 	}
@@ -287,7 +287,7 @@ func TestEntryExecutorRunnerPanicClosesSynchronouslyAndStops(t *testing.T) {
 			var recovered any
 			func() {
 				defer func() { recovered = recover() }()
-				_ = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+				_ = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 			}()
 			if recovered != "runner panic" || !reflect.DeepEqual(events, []string{"create:first", "run:first", "close:first"}) {
 				t.Fatalf("panic/events=%#v/%#v", recovered, events)
@@ -318,7 +318,7 @@ func TestEntryExecutorRetainsRunnerAndClosePanics(t *testing.T) {
 	var recovered any
 	func() {
 		defer func() { recovered = recover() }()
-		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	}()
 	joined, ok := recovered.(EntryLifecyclePanic)
 	if !ok || joined.RunnerPanic != "runner panic" || joined.ClosePanic != "close panic" {
@@ -333,7 +333,7 @@ func TestEntryExecutorPropagatesClosePanicAfterSuccessfulRunner(t *testing.T) {
 	var recovered any
 	func() {
 		defer func() { recovered = recover() }()
-		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	}()
 	if recovered != "close panic" {
 		t.Fatalf("panic = %#v", recovered)
@@ -365,7 +365,7 @@ func TestEntryExecutorRejectsInvalidSessionAndClosesBeforeStopping(t *testing.T)
 	err := mustEntryExecutor(t, observedInvalidSessionFactory{events: &events}, runner).Execute(
 		context.Background(),
 		domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
-		domainexecution.Entry{ExecutionID: "first"},
+		domainexecution.Entry{ID: mustEntryID("first")},
 	)
 	if err == nil || !fault.IsCode(err, CodeEntryBrowserSessionAdapterContractViolation) || runnerCalled {
 		t.Fatalf("error/runner = %v/%v", err, runnerCalled)
@@ -389,8 +389,8 @@ type partialSessionFactory struct {
 }
 
 func (f partialSessionFactory) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry) (BrowserSession, error) {
-	*f.events = append(*f.events, "create:"+entry.ExecutionID)
-	return &sessionFixture{id: entry.ExecutionID, events: f.events, err: f.closeErr}, f.createErr
+	*f.events = append(*f.events, "create:"+entry.ID.String())
+	return &sessionFixture{id: entry.ID.String(), events: f.events, err: f.closeErr}, f.createErr
 }
 
 func TestEntryExecutorClosesPartialSessionWhenCreateFails(t *testing.T) {
@@ -404,7 +404,7 @@ func TestEntryExecutorClosesPartialSessionWhenCreateFails(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := mustEntryExecutor(t, partialSessionFactory{events: &events, createErr: createFailure, closeErr: closeFailure}, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+	err := mustEntryExecutor(t, partialSessionFactory{events: &events, createErr: createFailure, closeErr: closeFailure}, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	if !errors.Is(err, createFailure) || !errors.Is(err, closeFailure) {
 		t.Fatalf("error = %v", err)
 	}
@@ -465,7 +465,7 @@ func TestEntryExecutorBoundsCancellationIndependentClose(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+	err = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 	if !errors.Is(err, context.Canceled) || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("execution/close errors=%v", err)
 	}
@@ -491,7 +491,7 @@ func TestEntryExecutorGivesEachEntryItsOwnSession(t *testing.T) {
 	fence := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
 
 	for _, id := range []string{"first", "second"} {
-		if err := executor.Execute(context.Background(), fence, domainexecution.Entry{ExecutionID: id}); err != nil {
+		if err := executor.Execute(context.Background(), fence, domainexecution.Entry{ID: mustEntryID(id)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -513,12 +513,12 @@ func TestEntryExecutorClosesTheSessionEvenWhenTheContextIsCancelledMidEntry(t *t
 	factory := &sessionFactoryFixture{events: &events}
 	ctx, cancel := context.WithCancel(context.Background())
 	runner := EntryRunnerFunc(func(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry, _ BrowserSession) error {
-		events = append(events, "run:"+entry.ExecutionID)
+		events = append(events, "run:"+entry.ID.String())
 		cancel()
 		return nil
 	})
 
-	err := mustEntryExecutor(t, factory, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ExecutionID: "first"})
+	err := mustEntryExecutor(t, factory, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.Entry{ID: mustEntryID("first")})
 
 	if err != nil {
 		t.Fatalf("Execute() error = %v; the entry finished, so sequencing after cancellation belongs to Scheduling", err)

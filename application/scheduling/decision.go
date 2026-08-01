@@ -67,12 +67,12 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 	}
 	ordered := make([]EntryState, len(entries))
 	for i, entry := range entries {
-		state, exists := byID[entry.ExecutionID]
+		state, exists := byID[entry.ID.String()]
 		if !exists {
 			return Decision{}, invalidEntryStatesError()
 		}
 		ordered[i] = state
-		delete(byID, entry.ExecutionID)
+		delete(byID, entry.ID.String())
 	}
 	if len(byID) != 0 {
 		return Decision{}, invalidEntryStatesError()
@@ -91,7 +91,7 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 		case execution.ExecutionRunning:
 			return Decision{}, nil
 		case execution.ExecutionPending:
-			return Decision{NextExecutionID: entries[i].ExecutionID}, nil
+			return Decision{NextExecutionID: entries[i].ID.String()}, nil
 		case execution.ExecutionFailed:
 			failed = true
 		}
@@ -180,7 +180,7 @@ func stopAfter(entries []execution.Entry, states []EntryState, index int, cause 
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {
 		if states[i].Status == execution.ExecutionPending {
-			transitions = append(transitions, ExecutionTransition{ExecutionID: entries[i].ExecutionID, From: execution.ExecutionPending, To: execution.ExecutionSkipped, Cause: cause})
+			transitions = append(transitions, ExecutionTransition{ExecutionID: entries[i].ID.String(), From: execution.ExecutionPending, To: execution.ExecutionSkipped, Cause: cause})
 		}
 	}
 	return Decision{Transitions: transitions, FinalStatus: &status}

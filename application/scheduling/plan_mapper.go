@@ -58,7 +58,12 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 	}
 	entries := make([]execution.Entry, len(input.Entries))
 	for i, item := range input.Entries {
-		entry := execution.Entry{ExecutionID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
+		// A rejected value yields the zero entry identity, which draft.Validate below
+		// rejects with the registered code and field path. Reporting it here too
+		// would mean two places describing the same malformed input differently, and
+		// the one here would be the worse of the two.
+		entryID, _ := execution.NewEntryID(item.ExecutionID)
+		entry := execution.Entry{ID: entryID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
 		if item.ParameterSnapshot.IsPresent {
 			entry.Parameters = execution.ParameterSnapshot{ID: item.ParameterSnapshot.ID, SchemaVersion: item.ParameterSnapshot.SchemaVersion, WorkflowVersionID: item.WorkflowVersionID, Values: cloneParameterValues(item.ParameterSnapshot.Values)}
 		}

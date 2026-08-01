@@ -64,7 +64,7 @@ func TestRunSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
 	}{
 		{"extra entry", func(v *InstanceSnapshotInput) {
 			entry := v.Plan.Entries[0]
-			entry.ExecutionID = "entry-2"
+			entry.ID = mustEntryID("entry-2")
 			entry.TestTaskItemID = "extra"
 			entry.SequenceNumber = 2
 			v.Plan.Entries = append(v.Plan.Entries, entry)

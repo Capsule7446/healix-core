@@ -96,7 +96,7 @@ func validRunSnapshotInput(t *testing.T) InstanceSnapshotInput {
 		ExecutionFlow:         TestTaskSnapshot{ID: "task-1"},
 		ExecutionFlowVersion:  ExecutionFlowVersionSnapshot{ID: "task-v3", ExecutionFlowID: "task-1", VersionNumber: 3, Items: []ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v3", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}}},
 		Plan: PlanSnapshot{RunID: "run-1", FailurePolicy: FailurePolicyStopOnFailure,
-			Entries:   []Entry{{ExecutionID: "entry-1", TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
+			Entries:   []Entry{{ID: mustEntryID("entry-1"), TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
 			Workflows: []WorkflowSnapshot{{ID: "workflow-1", FlowFragmentID: "workflow-1", VersionID: "workflow-v2", DisplayName: "Flow", VersionNumber: 2, Parameters: []Parameter{{Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 		},
 		Invocations:      []InvocationScopeSnapshot{{Path: "entry-1", ParentPath: "", FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}},
@@ -298,8 +298,8 @@ func TestRunSnapshotInputExportSupportsDurableHydrationWithoutAliasing(t *testin
 	}
 	exported := sealed.Input()
 	exported.Environment.Properties["region"] = "mutated"
-	exported.Plan.Entries[0].ExecutionID = "mutated"
-	if sealed.Environment().Properties["region"] != "east" || sealed.Plan().Entries[0].ExecutionID != "entry-1" {
+	exported.Plan.Entries[0].ID = mustEntryID("mutated")
+	if sealed.Environment().Properties["region"] != "east" || sealed.Plan().Entries[0].ID != mustEntryID("entry-1") {
 		t.Fatal("export aliases sealed snapshot")
 	}
 	persisted := sealed.Input()

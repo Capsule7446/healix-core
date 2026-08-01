@@ -89,7 +89,7 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaV
 	}
 	for index, entry := range draft.Entries {
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
-		if err := addInvocation(entry.ExecutionID, "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
+		if err := addInvocation(entry.ID.String(), "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
 			return execution.InstanceSnapshot{}, err
 		}
 	}

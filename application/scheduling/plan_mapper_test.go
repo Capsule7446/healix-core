@@ -21,7 +21,7 @@ func TestBuildExecutionDraftMapsOrderedRepeatedEntriesAndSnapshots(t *testing.T)
 		t.Fatalf("draft policy = %q", plan.FailurePolicy)
 	}
 	entries := plan.Entries
-	if len(entries) != 2 || entries[0].ExecutionID != "execution-1" || entries[0].SequenceNumber != 1 || entries[1].ExecutionID != "execution-2" || entries[1].SequenceNumber != 2 {
+	if len(entries) != 2 || entries[0].ID.String() != "execution-1" || entries[0].SequenceNumber != 1 || entries[1].ID.String() != "execution-2" || entries[1].SequenceNumber != 2 {
 		t.Fatalf("entries = %#v", entries)
 	}
 	if entries[0].WorkflowVersionID != "root-v1" || entries[1].WorkflowVersionID != "root-v1" {

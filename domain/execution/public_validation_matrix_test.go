@@ -44,10 +44,10 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		{name: "entry sequence outside range", build: base, mutate: func(value *PlanSnapshot) { value.Entries[0].SequenceNumber = 0 }, want: "outside contiguous range"},
 		{name: "duplicate entry sequence", build: base, mutate: func(value *PlanSnapshot) {
 			second := value.Entries[0]
-			second.ExecutionID, second.TestTaskItemID = "execution-two", "item-two"
+			second.ID, second.TestTaskItemID = mustEntryID("execution-two"), "item-two"
 			value.Entries = append(value.Entries, second)
 		}, want: "duplicate execution entry sequence"},
-		{name: "missing entry identity", build: base, mutate: func(value *PlanSnapshot) { value.Entries[0].ExecutionID = " " }, want: "requires execution"},
+		{name: "missing entry identity", build: base, mutate: func(value *PlanSnapshot) { value.Entries[0].ID = EntryID{} }, want: "requires execution"},
 		{name: "duplicate execution identity", build: base, mutate: func(value *PlanSnapshot) {
 			second := value.Entries[0]
 			second.TestTaskItemID, second.SequenceNumber = "item-two", 2
@@ -55,7 +55,7 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		}, want: "duplicate execution entry"},
 		{name: "duplicate task item identity", build: base, mutate: func(value *PlanSnapshot) {
 			second := value.Entries[0]
-			second.ExecutionID, second.SequenceNumber = "execution-two", 2
+			second.ID, second.SequenceNumber = mustEntryID("execution-two"), 2
 			value.Entries = append(value.Entries, second)
 		}, want: "duplicate test task item"},
 		{name: "workflow version identity missing", build: base, mutate: func(value *PlanSnapshot) { value.Workflows[0].VersionID = " " }, want: "empty version id"},
@@ -92,9 +92,9 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 func TestSealCanonicalizesMultipleEntryOrder(t *testing.T) {
 	draft := validDraftWithNodes(validNodeSnapshot("00000000-0000-0000-0000-000000000001", "v1"))
 	first := draft.Entries[0]
-	first.ExecutionID, first.TestTaskItemID, first.SequenceNumber = "execution-one", "item-one", 1
+	first.ID, first.TestTaskItemID, first.SequenceNumber = mustEntryID("execution-one"), "item-one", 1
 	second := first
-	second.ExecutionID, second.TestTaskItemID, second.SequenceNumber = "execution-two", "item-two", 2
+	second.ID, second.TestTaskItemID, second.SequenceNumber = mustEntryID("execution-two"), "item-two", 2
 	draft.Entries = []Entry{second, first}
 
 	plan, err := Seal(draft)

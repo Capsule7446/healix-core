@@ -158,8 +158,12 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 	environment := snapshot.Environment()
 	result := CompiledPlan{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
-		if _, exists := result.byID[entry.ExecutionID]; exists {
-			return CompiledPlan{}, fmt.Errorf("duplicate execution %s", entry.ExecutionID)
+		// The compiled plan is still keyed by plain strings, so the entry identity
+		// leaves the type system exactly once, here, and every use below reads the
+		// same spelled value rather than converting again at each site.
+		entryID := entry.ID.String()
+		if _, exists := result.byID[entryID]; exists {
+			return CompiledPlan{}, fmt.Errorf("duplicate execution %s", entryID)
 		}
 		compiler := executionCompiler{
 			versions: versions, resolutions: resolutions, nodes: nodes, invocations: invocationsByEdge,
@@ -167,17 +171,17 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 			metadata:     make(map[string]StepMetadata), runtimeNodes: make(map[string]RuntimeNodeIdentity),
 			compiledNodes: &compiledNodes,
 		}
-		rootPath := encodeRuntimeComponent(entry.ExecutionID)
-		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, entry.ExecutionID, 1)
+		rootPath := encodeRuntimeComponent(entryID)
+		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, entryID, 1)
 		if err != nil {
 			// The inner failure is already a classified fault. This wrapper both hid
 			// that classification and welded the execution id into public text.
 			return CompiledPlan{}, err
 		}
 		root.OwnsParameterScope = true
-		invocation, exists := invocationsByPath[entry.ExecutionID]
+		invocation, exists := invocationsByPath[entryID]
 		if !exists {
-			return CompiledPlan{}, fmt.Errorf("compile execution %s: root invocation is missing", entry.ExecutionID)
+			return CompiledPlan{}, fmt.Errorf("compile execution %s: root invocation is missing", entryID)
 		}
 		root.Parameters = cloneParameterValues(invocation.Values)
 		if len(environment.Variables) > 0 && root.Parameters == nil {
@@ -197,13 +201,13 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 		}
 		compiledEntry := CompiledEntry{
 			RunID: snapshot.RunID(), SnapshotDigest: snapshot.Digest(),
-			ExecutionID: entry.ExecutionID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
+			ExecutionID: entryID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
 			FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID,
 			program:  node.Program{Root: root, Specs: compiler.programSpecs},
 			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
-			identity: compiledExecutionIdentity{runID: snapshot.RunID(), snapshotDigest: snapshot.Digest(), executionID: entry.ExecutionID},
+			identity: compiledExecutionIdentity{runID: snapshot.RunID(), snapshotDigest: snapshot.Digest(), executionID: entryID},
 		}
-		result.byID[entry.ExecutionID] = len(result.entries)
+		result.byID[entryID] = len(result.entries)
 		result.entries = append(result.entries, compiledEntry)
 	}
 	return result, nil

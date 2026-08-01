@@ -371,7 +371,7 @@ type referenceEdgeKey struct {
 
 type snapshotValidationIndexes struct {
 	workflows         map[string]WorkflowSnapshot
-	entriesByID       map[string]Entry
+	entriesByID       map[EntryID]Entry
 	referenceSteps    map[referenceEdgeKey]Step
 	referenceByEdge   map[referenceEdgeKey]ReferenceResolution
 	stepsByWorkflowID map[string][]Step
@@ -380,16 +380,16 @@ type snapshotValidationIndexes struct {
 func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexes, error) {
 	indexes := snapshotValidationIndexes{
 		workflows:         make(map[string]WorkflowSnapshot, len(plan.Workflows)),
-		entriesByID:       make(map[string]Entry, len(plan.Entries)),
+		entriesByID:       make(map[EntryID]Entry, len(plan.Entries)),
 		referenceSteps:    make(map[referenceEdgeKey]Step),
 		referenceByEdge:   make(map[referenceEdgeKey]ReferenceResolution, len(plan.References)),
 		stepsByWorkflowID: make(map[string][]Step, len(plan.Workflows)),
 	}
 	for _, entry := range plan.Entries {
-		if _, exists := indexes.entriesByID[entry.ExecutionID]; exists {
-			return snapshotValidationIndexes{}, fmt.Errorf("duplicate execution entry %q", entry.ExecutionID)
+		if _, exists := indexes.entriesByID[entry.ID]; exists {
+			return snapshotValidationIndexes{}, fmt.Errorf("duplicate execution entry %q", entry.ID)
 		}
-		indexes.entriesByID[entry.ExecutionID] = entry
+		indexes.entriesByID[entry.ID] = entry
 	}
 	for _, workflow := range plan.Workflows {
 		if _, exists := indexes.workflows[workflow.VersionID]; exists {
@@ -486,7 +486,18 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 			if invocation.ParentVersionID != "" || invocation.StepID != "" {
 				return errors.New("root invocation cannot identify a reference edge")
 			}
-			entry, exists := indexes.entriesByID[invocation.Path]
+			// A root invocation's path is currently the entry id spelled as a
+			// string, which is the conflation the identity model exists to end: an
+			// entry and a call site inside it are different things, and the root
+			// path should be derived from the entry id rather than equal to it.
+			// Converting here keeps the lookup honest about which one it means
+			// while InvocationPath is still a string; adopting the path type is
+			// what removes the conversion.
+			rootEntry, conversionErr := NewEntryID(invocation.Path)
+			if conversionErr != nil {
+				return errors.New("root invocation path is not a valid entry identity")
+			}
+			entry, exists := indexes.entriesByID[rootEntry]
 			if !exists || entry.FlowFragmentID != invocation.FlowFragmentID || entry.WorkflowVersionID != invocation.WorkflowVersionID || !equalValues(entry.Parameters.Values, invocation.Values) {
 				return errors.New("root invocation and execution entry scope diverge")
 			}
@@ -693,6 +704,24 @@ func encodeCanonical(e *canonicalEncoder, value reflect.Value) {
 	}
 	if value.CanInterface() {
 		switch typed := value.Interface().(type) {
+		// Execution coordinates encode as the bare identity string they replaced.
+		// The snapshot digest is a persisted contract, and the generic struct arm
+		// below writes a field count ahead of the fields, so letting these fall
+		// through would give every stored snapshot a new digest the moment a plain
+		// string field became a value object. That is a storage migration, not a
+		// rename, and nothing the snapshot means actually changed.
+		case InstanceID:
+			e.str(typed.String())
+			return
+		case EntryID:
+			e.str(typed.String())
+			return
+		case StepExecutionID:
+			e.str(typed.String())
+			return
+		case InvocationPath:
+			e.str(typed.String())
+			return
 		case parameter.Value:
 			encodeValue(e, typed)
 			return

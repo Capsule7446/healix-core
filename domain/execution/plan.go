@@ -140,7 +140,7 @@ func (p FailurePolicy) IsValid() bool {
 }
 
 type Entry struct {
-	ExecutionID       string
+	ID                EntryID
 	TestTaskItemID    string
 	SequenceNumber    int
 	FlowFragmentID    string

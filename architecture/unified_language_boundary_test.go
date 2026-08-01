@@ -3,6 +3,7 @@ package architecture_test
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -327,6 +328,61 @@ func TestEntryExecutorTakesOneEntryNotACollection(t *testing.T) {
 	}
 	if !checked {
 		t.Fatal("EntryExecutor.Execute was not found; this boundary needs to move with it")
+	}
+}
+
+// Declaring the coordinate types was only half the work; the value arrives when
+// a plan entry can no longer spell its identity as a bare string. Both halves
+// are pinned, because either one alone regresses silently: the field must carry
+// the type, and the pre-adoption spelling must not reappear on a neighbouring
+// struct as a second, untyped way to say the same thing.
+//
+// The instance identity is deliberately not covered here. Run.ID and
+// PlanSnapshot.RunID are still plain strings, and a guard that failed for work
+// nobody has done yet would be a failing test rather than a contract.
+func TestExecutionEntryIdentityIsNeverSpelledAsAString(t *testing.T) {
+	root := repositoryRoot(t)
+	directory := filepath.Join(root, "domain", "execution")
+
+	checked := false
+	err := walkProductionGo(directory, func(path string, parsed *ast.File, fset *token.FileSet) {
+		for _, decl := range parsed.Decls {
+			generic, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range generic.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					continue
+				}
+				structType, isStruct := typeSpec.Type.(*ast.StructType)
+				if !isStruct || structType.Fields == nil {
+					continue
+				}
+				for _, field := range structType.Fields.List {
+					for _, name := range field.Names {
+						if name.Name == "ExecutionID" {
+							t.Errorf("%s.ExecutionID at %s:%d revives the pre-adoption spelling of an entry identity; the entry identity is Entry.ID typed EntryID",
+								typeSpec.Name.Name, filepath.ToSlash(mustRelative(root, path)), fset.Position(field.Pos()).Line)
+						}
+						if typeSpec.Name.Name != "Entry" || name.Name != "ID" {
+							continue
+						}
+						checked = true
+						if declared := types.ExprString(field.Type); declared != "EntryID" {
+							t.Errorf("Entry.ID is %s, want EntryID; a bare string lets an instance id, a step execution id, or an unvalidated request field be passed where an entry identity is meant", declared)
+						}
+					}
+				}
+			}
+		}
+	})
+	if err != nil {
+		t.Fatalf("walk domain/execution: %v", err)
+	}
+	if !checked {
+		t.Fatal("execution.Entry.ID was not found; this boundary needs to move with it")
 	}
 }
 

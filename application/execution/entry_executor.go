@@ -167,12 +167,12 @@ func (e EntryExecutor) executeEntry(ctx context.Context, fence domainexecution.W
 		if closePanic != nil {
 			panic(closePanic)
 		}
-		result = errors.Join(result, wrapEntryError("close browser session for", entry.ExecutionID, closeErr))
+		result = errors.Join(result, wrapEntryError("close browser session for", entry.ID.String(), closeErr))
 	}()
 	if !session.Valid() {
 		return entryBrowserSessionAdapterContractViolationError(errors.New("host returned an invalid session"))
 	}
-	result = wrapEntryError("execute", entry.ExecutionID, e.runner.RunEntry(ctx, fence, entry, session))
+	result = wrapEntryError("execute", entry.ID.String(), e.runner.RunEntry(ctx, fence, entry, session))
 	return result
 }
 

@@ -435,7 +435,7 @@ func (f *createRunFake) InsertCreateRun(_ context.Context, intent CreateRunInten
 	}
 	entries := make([]string, len(intent.Entries))
 	for i := range intent.Entries {
-		entries[i] = intent.Entries[i].ExecutionID
+		entries[i] = intent.Entries[i].ID.String()
 	}
 	outcome := InsertCreateRunOutcome{Status: InsertCreateRunApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: StoredCreateRunResult{Run: intent.Run, Snapshot: intent.Snapshot, SnapshotDigest: intent.Snapshot.Digest(), EntryIDs: entries}}
 	if f.mutateInsertOutcome != nil {
@@ -700,7 +700,7 @@ func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
 	}
 	entryIDs := make([]string, len(snapshot.Plan().Entries))
 	for index, entry := range snapshot.Plan().Entries {
-		entryIDs[index] = entry.ExecutionID
+		entryIDs[index] = entry.ID.String()
 	}
 	digest, err := CreateRunRequestDigest(command)
 	if err != nil {
@@ -732,7 +732,7 @@ func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T)
 	winnerEntries := winnerSnapshot.Plan().Entries
 	winnerIDs := make([]string, len(winnerEntries))
 	for index := range winnerEntries {
-		winnerIDs[index] = winnerEntries[index].ExecutionID
+		winnerIDs[index] = winnerEntries[index].ID.String()
 	}
 	loserResolved := validResolvedCreateRun(t, command)
 	fake := &createRunFake{resolved: loserResolved, mutateInsertOutcome: func(outcome *InsertCreateRunOutcome) {
@@ -762,7 +762,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 	entries := snapshot.Plan().Entries
 	entryIDs := make([]string, len(entries))
 	for index := range entries {
-		entryIDs[index] = entries[index].ExecutionID
+		entryIDs[index] = entries[index].ID.String()
 	}
 	base := StoredCreateRunResult{Run: run, Snapshot: snapshot, SnapshotDigest: snapshot.Digest(), EntryIDs: entryIDs}
 	tests := []struct {

@@ -235,7 +235,7 @@ func (p PlanSnapshot) validateShape() error {
 	if len(p.Entries) == 0 {
 		return errors.New("execution plan requires at least one entry")
 	}
-	entryExecutionIDs := make(map[string]struct{}, len(p.Entries))
+	entryExecutionIDs := make(map[EntryID]struct{}, len(p.Entries))
 	entryItemIDs := make(map[string]struct{}, len(p.Entries))
 	entrySequences := make(map[int]struct{}, len(p.Entries))
 	for _, entry := range p.Entries {
@@ -246,13 +246,13 @@ func (p PlanSnapshot) validateShape() error {
 			return fmt.Errorf("duplicate execution entry sequence %d", entry.SequenceNumber)
 		}
 		entrySequences[entry.SequenceNumber] = struct{}{}
-		if strings.TrimSpace(entry.ExecutionID) == "" || strings.TrimSpace(entry.TestTaskItemID) == "" || strings.TrimSpace(entry.FlowFragmentID) == "" || strings.TrimSpace(entry.WorkflowVersionID) == "" {
+		if entry.ID.Validate() != nil || strings.TrimSpace(entry.TestTaskItemID) == "" || strings.TrimSpace(entry.FlowFragmentID) == "" || strings.TrimSpace(entry.WorkflowVersionID) == "" {
 			return errors.New("execution entry requires execution, test task item, workflow, and workflow version identities")
 		}
-		if _, exists := entryExecutionIDs[entry.ExecutionID]; exists {
-			return fmt.Errorf("duplicate execution entry %q", entry.ExecutionID)
+		if _, exists := entryExecutionIDs[entry.ID]; exists {
+			return fmt.Errorf("duplicate execution entry %q", entry.ID)
 		}
-		entryExecutionIDs[entry.ExecutionID] = struct{}{}
+		entryExecutionIDs[entry.ID] = struct{}{}
 		if _, exists := entryItemIDs[entry.TestTaskItemID]; exists {
 			return fmt.Errorf("duplicate test task item entry %q", entry.TestTaskItemID)
 		}
@@ -281,15 +281,15 @@ func (p PlanSnapshot) validateShape() error {
 		}
 		if len(workflow.Parameters) == 0 {
 			if entry.Parameters.ID != "" || entry.Parameters.SchemaVersion != 0 || entry.Parameters.WorkflowVersionID != "" || len(entry.Parameters.Values) != 0 {
-				return fmt.Errorf("entry %q parameterless workflow requires an empty parameter snapshot", entry.ExecutionID)
+				return fmt.Errorf("entry %q parameterless workflow requires an empty parameter snapshot", entry.ID)
 			}
 		} else {
 			if strings.TrimSpace(entry.Parameters.ID) == "" || entry.Parameters.SchemaVersion < 1 || entry.Parameters.WorkflowVersionID != entry.WorkflowVersionID {
-				return fmt.Errorf("entry %q parameter snapshot identity is invalid", entry.ExecutionID)
+				return fmt.Errorf("entry %q parameter snapshot identity is invalid", entry.ID)
 			}
 			if err := validateSnapshotValues(workflow.Parameters, entry.Parameters.Values); err != nil {
 				return wrapOrPropagate(err, func(cause error) error {
-					return fmt.Errorf("entry %q parameter snapshot: %w", entry.ExecutionID, cause)
+					return fmt.Errorf("entry %q parameter snapshot: %w", entry.ID, cause)
 				})
 			}
 		}
@@ -427,7 +427,7 @@ func validateAggregateInputBounds(p PlanSnapshot) error {
 		return err
 	}
 	for _, entry := range p.Entries {
-		if err := addStrings(entry.ExecutionID, entry.TestTaskItemID, entry.FlowFragmentID, entry.WorkflowVersionID, entry.Parameters.ID, entry.Parameters.WorkflowVersionID); err != nil {
+		if err := addStrings(entry.ID.String(), entry.TestTaskItemID, entry.FlowFragmentID, entry.WorkflowVersionID, entry.Parameters.ID, entry.Parameters.WorkflowVersionID); err != nil {
 			return err
 		}
 		if err := addCollectionElements(len(entry.Parameters.Values)); err != nil {

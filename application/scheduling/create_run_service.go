@@ -168,7 +168,7 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		entries := snapshot.Plan().Entries
 		entryIDs := make([]string, len(entries))
 		for i := range entries {
-			entryIDs[i] = entries[i].ExecutionID
+			entryIDs[i] = entries[i].ID.String()
 		}
 		outcome, err := tx.InsertCreateRun(ctx, CreateRunIntent{CommandID: owned.CommandID, RequestDigest: digest, Run: run, Snapshot: snapshot, Entries: entries})
 		if err != nil {
@@ -217,7 +217,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	}
 	entryByItem := make(map[string]execution.Entry, len(entries))
 	for index := range entries {
-		if stored.EntryIDs[index] != entries[index].ExecutionID {
+		if stored.EntryIDs[index] != entries[index].ID.String() {
 			return invalid("stored entry identity mismatch")
 		}
 		entryByItem[entries[index].TestTaskItemID] = entries[index]
@@ -227,7 +227,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 		if !exists {
 			return invalid("command entry is missing from stored plan")
 		}
-		invocation, exists := stored.Snapshot.Invocation(entry.ExecutionID)
+		invocation, exists := stored.Snapshot.Invocation(entry.ID.String())
 		if !exists {
 			return invalid("stored root invocation is missing")
 		}
@@ -372,7 +372,7 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 		return invalid("stored result is internally inconsistent")
 	}
 	for index := range storedPlan.Entries {
-		if outcome.Result.EntryIDs[index] != storedPlan.Entries[index].ExecutionID {
+		if outcome.Result.EntryIDs[index] != storedPlan.Entries[index].ID.String() {
 			return invalid("stored entry identities are inconsistent")
 		}
 	}
