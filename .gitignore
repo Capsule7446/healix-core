@@ -14,3 +14,9 @@ coverage.out
 .vscode/
 .claude/
 .idea/
+
+# Scan artefacts. Adversarial review runs are driven from the worktree root and
+# leave their prompts and logs behind; one of those logs is 2MB.
+/scan-*.log
+/prompt-*.md
+/run-scan*.bat
