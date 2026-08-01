@@ -83,11 +83,25 @@ func TestPublicationDigestSeparatesParameterBindings(t *testing.T) {
 
 // The same payload must hash the same every time, or idempotency is broken in
 // the other direction: a genuine replay would be treated as a new request.
+//
+// The fixture carries a multi-entry map on purpose. The canonical walk sorts map
+// keys, and a payload with no map of two or more entries cannot tell whether it
+// still does — the first version of this test had none, and deleting the sort
+// left the whole suite green.
 func TestPublicationDigestIsStableAcrossRuns(t *testing.T) {
-	first := digestOf(t, publicationWithDefault(t, "alpha"))
+	build := func() domain.SamplingPublication {
+		publication := publicationWithDefault(t, "alpha")
+		publication.FlowFragment.FlowFragment.Properties = domain.Properties{
+			"zulu": "z", "alpha": "a", "mike": "m", "bravo": "b",
+		}
+		publication.FlowFragment.Versions[0] = publication.FlowFragment.Current
+		return publication
+	}
+	first := digestOf(t, build())
 	for run := 0; run < 50; run++ {
-		if again := digestOf(t, publicationWithDefault(t, "alpha")); again != first {
-			t.Fatalf("run %d produced %s, run 0 produced %s", run, again, first)
+		if again := digestOf(t, build()); again != first {
+			t.Fatalf("run %d produced %s, run 0 produced %s; a map in the payload is reaching the digest in iteration order",
+				run, again, first)
 		}
 	}
 }

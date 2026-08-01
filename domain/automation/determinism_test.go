@@ -14,33 +14,43 @@ import (
 const determinismRuns = 200
 
 func TestEnvironmentVariablesReportTheSameBadNameEveryRun(t *testing.T) {
-	// Three names carrying a control character, which parameter.ValidateName
-	// rejects. Which one is reported is decided purely by iteration order unless
-	// the walk is ordered.
 	// Built from a rune rather than written inline: a literal control byte in
 	// the source is invisible, so nobody notices when an edit drops it and the
 	// fixture quietly stops being invalid.
 	control := string(rune(1))
+	// One bad NAME and one bad VALUE, deliberately. Three bad names would not
+	// prove anything: parameter.ValidateName's error carries no parameter, and
+	// the wrapper adds none, so three of them produce byte-identical strings and
+	// the stability loop compares a constant with itself. That is what the first
+	// version of this test did, and deleting the sort it guards left it green.
+	//
+	// A bad name and a bad value take different branches with different
+	// prefixes, so which one is reported is observable — which is the only way
+	// the ordering can be asserted at all.
 	variables := EnvironmentVariables{
-		"zulu" + control:  parameter.TextValue("z"),
-		"alpha" + control: parameter.TextValue("a"),
-		"mike" + control:  parameter.TextValue("m"),
+		"alpha" + control: parameter.TextValue("fine"),
+		"zulu":            parameter.Value{},
 	}
 
 	first := ""
 	for run := 0; run < determinismRuns; run++ {
 		err := variables.Validate()
 		if err == nil {
-			t.Fatalf("run %d accepted three malformed variable names", run)
+			t.Fatalf("run %d accepted a malformed name and a malformed value", run)
 		}
 		if run == 0 {
 			first = err.Error()
 			continue
 		}
 		if err.Error() != first {
-			t.Fatalf("run %d reported %q, run 0 reported %q; the reported variable depends on map iteration order",
+			t.Fatalf("run %d reported %q, run 0 reported %q; which failure is reported depends on map iteration order",
 				run, err.Error(), first)
 		}
+	}
+	// Sorted order makes the choice predictable rather than merely stable:
+	// "alpha" sorts before "zulu", so the name branch must win every time.
+	if !strings.HasPrefix(first, "environment variable name:") {
+		t.Fatalf("reported %q, want the lexicographically first offender, which is the bad name", first)
 	}
 }
 

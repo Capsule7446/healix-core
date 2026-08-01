@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
@@ -424,12 +425,24 @@ func validateSuppliedRootValues(values map[string]parameter.Value, versionID str
 			break
 		}
 	}
-	for name, value := range values {
+	// Sorted, not map order. Both branches below return on their first offender
+	// and they return DIFFERENT KINDS of failure: an unknown name is a bare
+	// uncoded error, while a constraint failure carries the parameter's own code.
+	// With one of each present, the fault code the caller saw flipped between
+	// runs for byte-identical input. The two checks downstream of this one —
+	// validateSnapshotValues and ResolveParameterValues — were already ordered;
+	// this one sat in front of both and was not.
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		definition, exists := definitions[name]
 		if !exists {
 			return fmt.Errorf("unknown parameter %q", name)
 		}
-		if err := (parameter.Constraint{Type: definition.Type, Options: append([]string(nil), definition.Options...)}).Validate(value); err != nil {
+		if err := (parameter.Constraint{Type: definition.Type, Options: append([]string(nil), definition.Options...)}).Validate(values[name]); err != nil {
 			return fmt.Errorf("parameter %q: %w", name, err)
 		}
 	}
