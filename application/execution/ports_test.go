@@ -304,6 +304,12 @@ func stepTransitionCommitWithMeasuredSize(t *testing.T, target int) evidence.Ste
 	if measured := stepTransitionPayloadBytes(reflect.ValueOf(commit)); measured != target {
 		t.Fatalf("fixture measures %d bytes, want %d", measured, target)
 	}
+	// The boundary is only worth pinning if the domain would accept the commit
+	// on every other ground, or the test locks in a limit no caller can reach.
+	// The old fixture checked this and the rewrite dropped it.
+	if err := commit.Validate(); err != nil {
+		t.Fatalf("fixture is not a valid commit, so the byte boundary it pins is unreachable: %v", err)
+	}
 	return commit
 }
 

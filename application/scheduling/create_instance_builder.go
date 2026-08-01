@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
@@ -285,8 +284,8 @@ func preflightResolvedCreateInstance(resolved ResolvedCreateInstance) error {
 				return err
 			}
 		}
-		for key, value := range fingerprint.Attributes {
-			if err := addStrings(key, value); err != nil {
+		for _, key := range sortedKeys(fingerprint.Attributes) {
+			if err := addStrings(key, fingerprint.Attributes[key]); err != nil {
 				return err
 			}
 		}
@@ -439,12 +438,7 @@ func validateSuppliedRootValues(values map[string]parameter.Value, versionID str
 	// runs for byte-identical input. The two checks downstream of this one —
 	// validateSnapshotValues and ResolveParameterValues — were already ordered;
 	// this one sat in front of both and was not.
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range sortedKeys(values) {
 		definition, exists := definitions[name]
 		if !exists {
 			return fmt.Errorf("unknown parameter %q", name)

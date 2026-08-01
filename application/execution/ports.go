@@ -77,10 +77,25 @@ func FactCommitterRequiredError() error {
 }
 
 const (
-	// Expressed in walked content bytes. It was 1<<20 when the measure was
-	// len(json.Marshal), whose framing ran about 4.5x the content on a
-	// representative commit; 1<<18 keeps the effective ceiling where it was.
-	MaxStepTransitionPayloadBytes = 1 << 18
+	// Expressed in walked content bytes.
+	//
+	// It was the same number when the measure was len(json.Marshal), and it was
+	// briefly scaled to 1<<18 on the theory that the old framing ran about 4.5x
+	// the content, so a quarter of the limit would hold the boundary where it
+	// was. That reasoning was wrong: the ratio is not a constant. Framing is
+	// charged per field, not per byte, so a commit made of a few long strings
+	// carries almost no framing while a commit made of many short fields carries
+	// a lot. Five sixty-kilobyte strings each pass the per-string cap and total
+	// 300 KiB of content — accepted under the old megabyte of JSON, rejected by
+	// a quarter-megabyte of content.
+	//
+	// No single factor preserves a shape-dependent boundary, so there is nothing
+	// to preserve and the question is which way to be wrong. Rejecting a payload
+	// a host successfully sent yesterday is the worse failure, and the real
+	// blow-up is already bounded from two other directions:
+	// maxStepTransitionStringBytes caps any one string at 64 KiB and
+	// maxStepTransitionFacts caps the fact count at 10,000.
+	MaxStepTransitionPayloadBytes = 1 << 20
 	maxStepTransitionStringBytes  = 64 << 10
 )
 
@@ -111,12 +126,10 @@ func ownStepTransitionCommit(commit evidence.StepTransitionCommit) (evidence.Ste
 // particular encoding, and it counted each execution coordinate as the two
 // bytes of {} rather than its real length.
 //
-// The unit changed, so the budget had to move with it or quietly mean something
-// else. A representative commit measures 340 bytes encoded against 75 walked, a
-// factor of about 4.5, so the old 1<<20 would have admitted roughly four and a
-// half times as much content as it used to. MaxStepTransitionPayloadBytes is
-// scaled to hold the effective limit where it was rather than leaving a silent
-// relaxation behind a passing test.
+// The unit changed, and no scalar can carry the old boundary across: the old
+// measure charged framing per field, so its ratio to content depended on the
+// shape of the commit. See MaxStepTransitionPayloadBytes for which way that
+// leaves the limit and why.
 //
 // Unexported string fields are counted: reflect can read their length even
 // though it cannot hand them out.

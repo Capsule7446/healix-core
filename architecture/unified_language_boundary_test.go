@@ -490,7 +490,7 @@ func TestFingerprintHasExactlyOneDeepCopy(t *testing.T) {
 		return false
 	}
 
-	var copies, literals []string
+	var copies, literals, owned []string
 	for _, owner := range []string{"domain", "application"} {
 		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
 			relative := filepath.ToSlash(mustRelative(root, path))
@@ -499,7 +499,24 @@ func TestFingerprintHasExactlyOneDeepCopy(t *testing.T) {
 			ast.Inspect(parsed, func(node ast.Node) bool {
 				switch typed := node.(type) {
 				case *ast.FuncDecl:
-					if owns || typed.Type.Params == nil || typed.Type.Results == nil {
+					if typed.Type.Params == nil && typed.Type.Results == nil {
+						return true
+					}
+					if owns {
+						// Count the owner's own copy rather than skipping it. The test
+						// is named for there being exactly one, and only counting the
+						// outside would let the single implementation be deleted, or a
+						// second one added beside it, without the guard noticing.
+						if typed.Name.Name == "Clone" && typed.Recv != nil {
+							for _, receiver := range typed.Recv.List {
+								if isFingerprint(receiver.Type) {
+									owned = append(owned, relative+":"+strconv.Itoa(fset.Position(typed.Pos()).Line))
+								}
+							}
+						}
+						return true
+					}
+					if typed.Type.Params == nil || typed.Type.Results == nil {
 						return true
 					}
 					name := strings.ToLower(typed.Name.Name)
@@ -544,6 +561,10 @@ func TestFingerprintHasExactlyOneDeepCopy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("walk %s: %v", owner, err)
 		}
+	}
+	if len(owned) != 1 {
+		t.Errorf("domain/fingerprint declares %d Fingerprint.Clone methods, want exactly 1:\n  %s",
+			len(owned), strings.Join(owned, "\n  "))
 	}
 	if len(copies) != 0 {
 		t.Errorf("found %d hand-written fingerprint copies outside domain/fingerprint; Fingerprint.Clone is the only one:\n  %s",
