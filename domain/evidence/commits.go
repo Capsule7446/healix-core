@@ -11,6 +11,7 @@ import (
 type HealCandidateReset struct {
 	EntryID           execution.EntryID
 	StepExecutionID   execution.StepExecutionID
+	Occurrence        int
 	ElementTargetID   string
 	BaseNodeVersionID string
 	ObservedAt        int64
@@ -99,7 +100,7 @@ func (c StepTransitionCommit) appendFinalValidationViolations(violations []fault
 		if validation.Validate() != nil {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field, "final validation is invalid"))
 		}
-		if !validation.Final || validation.StepExecutionID != c.Event.ID || validation.EntryID != c.Event.EntryID {
+		if !validation.Final || validation.StepExecutionID != c.Event.ID || validation.EntryID != c.Event.EntryID || validation.Occurrence != c.Event.Occurrence {
 			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "final validation must belong to the committed step and execution"))
 		}
 	}
@@ -120,7 +121,7 @@ func (c StepTransitionCommit) appendHealObservationViolations(violations []fault
 		if heal.Validate() != nil {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, fmt.Sprintf("healObservations.%d", index), "heal observation is invalid"))
 		}
-		if heal.StepExecutionID != c.Event.ID || heal.EntryID != c.Event.EntryID {
+		if heal.StepExecutionID != c.Event.ID || heal.EntryID != c.Event.EntryID || heal.Occurrence != c.Event.Occurrence {
 			violations = append(violations, mustViolation(fault.CodeFieldMismatch, fmt.Sprintf("healObservations.%d", index), "heal observation must belong to the committed step and execution"))
 		}
 		if heal.Succeeded && c.Event.Phase != "SUCCEEDED" {
@@ -151,7 +152,7 @@ func (c StepTransitionCommit) appendSelectorResetViolations(violations []fault.V
 		if c.Event.Phase != "SUCCEEDED" {
 			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "an original selector reset requires a succeeded terminal step"))
 		}
-		if reset.EntryID != c.Event.EntryID || reset.StepExecutionID != c.Event.ID || reset.ElementTargetID == "" || reset.BaseNodeVersionID == "" || reset.ObservedAt <= 0 {
+		if reset.EntryID != c.Event.EntryID || reset.StepExecutionID != c.Event.ID || reset.Occurrence != c.Event.Occurrence || reset.ElementTargetID == "" || reset.BaseNodeVersionID == "" || reset.ObservedAt <= 0 {
 			violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "heal candidate reset must belong to the committed step and execution"))
 		}
 	}
@@ -201,7 +202,7 @@ func appendGroupTopologyViolations(violations []fault.Violation, event StepPhase
 			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field("id"), "final validation group id is duplicated"))
 		}
 		seenGroupIDs[group.ID] = struct{}{}
-		if group.StepExecutionID != event.ID || group.EntryID != event.EntryID {
+		if group.StepExecutionID != event.ID || group.EntryID != event.EntryID || group.Occurrence != event.Occurrence {
 			violations = append(violations, mustViolation(fault.CodeFieldMismatch, element, "final validation group must belong to the committed step and execution"))
 		}
 		if !validationTerminalMatchesPhase(group.TerminalReason, event.Phase) {

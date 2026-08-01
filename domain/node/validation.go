@@ -105,7 +105,7 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	}
 	started := time.Now()
 	validationErr := v.waitStable(ctx, rt)
-	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, FaultKind: nodeFaultKind(validationErr), FaultCode: nodeFaultCode(validationErr)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, EntryID: rt.EntryID, Occurrence: rt.mustActiveOccurrence(v.NodeID), NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, FaultKind: nodeFaultKind(validationErr), FaultCode: nodeFaultCode(validationErr)})
 	if validationErr != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, errors.Join(validationErr))
 	}

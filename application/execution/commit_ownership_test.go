@@ -26,7 +26,7 @@ func commitWithObservations(t *testing.T) evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
 		ID: "fact-1", InstanceID: mustInstanceID("instance-1"),
-		EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
+		EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: 1,
 		ElementTargetID: "node-1", BaseNodeVersionID: "base-1", CandidateHash: "candidate-1",
 		Confidence: 0.9, DecisionBand: evidence.DecisionApplied, Succeeded: true, ObservedAt: 1,
 	}}

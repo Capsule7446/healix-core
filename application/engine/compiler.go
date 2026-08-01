@@ -22,6 +22,7 @@ type StepMetadata struct {
 	ElementTargetID        string
 	ElementTargetVersionID string
 	CaptureScreenshot      bool
+	InvocationPath         execution.InvocationPath
 }
 
 // RuntimeNodeIdentity 将运行时 ElementTargetSpec ID（即精确的 ElementTargetVersion ID）映射到
@@ -269,7 +270,7 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string,
 		case execution.ValidationStep:
 			compiled, err = c.compileValidation(runtimeID, step, "", "", nil)
 		case execution.ValidationGroupStep:
-			compiled, err = c.compileValidationGroup(invocationPath, runtimeID, path, step)
+			compiled, err = c.compileValidationGroup(invocationPath, runtimeID, path, step, scopePath)
 		case execution.WaitStep:
 			compiled, err = c.compileWait(runtimeID, step)
 		case execution.RepeatStep:
@@ -311,7 +312,7 @@ func (c *executionCompiler) compileValidation(runtimeID string, step execution.S
 }
 
 func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, path string,
-	step execution.Step) (*node.ValidationGroupNode, error) {
+	step execution.Step, scopePath execution.InvocationPath) (*node.ValidationGroupNode, error) {
 	if step.ValidationGroup == nil {
 		return nil, fmt.Errorf("validation group %s has no configuration", step.ID)
 	}

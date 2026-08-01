@@ -111,7 +111,7 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		err = wrapStepConfigurationInvalidError(fmt.Errorf("unknown wait kind %q", w.Kind), mustViolation(fault.CodeFieldInvalid, "wait.kind", "wait kind is not supported"))
 	}
 
-	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, EntryID: rt.EntryID, Occurrence: rt.mustActiveOccurrence(w.NodeID), NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 	if err != nil {
 		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
 			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), emitErr)

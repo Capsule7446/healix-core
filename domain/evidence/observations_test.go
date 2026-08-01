@@ -64,7 +64,7 @@ func TestValidationValueRejectsInvalidKindFieldCombinations(t *testing.T) {
 
 func TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason(t *testing.T) {
 	base := NewValidationGroupTerminalObservation(
-		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	if err := base.Validate(); err != nil {
@@ -102,7 +102,7 @@ func TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason(t *
 	if err := missingWinner.Validate(); err == nil {
 		t.Fatal("passed group accepted a winner outside expected members")
 	}
-	empty := NewValidationGroupTerminalObservation("terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "branch", nil, 1)
+	empty := NewValidationGroupTerminalObservation("terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch", nil, 1)
 	if err := empty.Validate(); err == nil {
 		t.Fatal("group without expected members was accepted")
 	}

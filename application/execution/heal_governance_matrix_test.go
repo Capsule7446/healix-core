@@ -264,7 +264,7 @@ func TestDefaultHealGovernancePlannerRejectsMalformedNestedFactPayloads(t *testi
 
 func validResetPayload() *evidence.HealCandidateReset {
 	return &evidence.HealCandidateReset{
-		EntryID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
+		EntryID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), Occurrence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
 	}
 }
 

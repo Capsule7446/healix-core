@@ -18,10 +18,10 @@ func validGroupedStepTransitionCommit() StepTransitionCommit {
 		ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "validate",
 		Kind: "VALIDATION_GROUP", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 10,
 	}, FinalValidations: []ValidationObservation{
-		{ID: "member-a", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "selected_values", Expected: CollectionValidationValue([]string{"a, b", ""}), Actual: CollectionValidationValue([]string{"", "a, b"}), Passed: true, Reason: "passed", BranchDisposition: ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
-		{ID: "member-b", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ValidationStepID: "validation-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: ScalarValidationValue("true"), Actual: ScalarValidationValue("false"), Reason: "normal_unsatisfied", BranchDisposition: ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
+		{ID: "member-a", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "selected_values", Expected: CollectionValidationValue([]string{"a, b", ""}), Actual: CollectionValidationValue([]string{"", "a, b"}), Passed: true, Reason: "passed", BranchDisposition: ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
+		{ID: "member-b", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, ValidationStepID: "validation-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: ScalarValidationValue("true"), Actual: ScalarValidationValue("false"), Reason: "normal_unsatisfied", BranchDisposition: ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true},
 	}, FinalValidationGroups: []ValidationGroupTerminalObservation{NewValidationGroupTerminalObservation(
-		"group-final", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "branch-a",
+		"group-final", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch-a",
 		[]ValidationMemberIdentity{{BranchID: "branch-a", ElementTargetID: "node-a"}, {BranchID: "branch-b", ElementTargetID: "node-b"}}, 10,
 	)}}
 }
@@ -48,7 +48,7 @@ func TestStepTransitionCommitValidatesGroupTerminalFactsAndFinalMemberTopology(t
 		}},
 		{"duplicate group identity", func(commit *StepTransitionCommit) {
 			group := NewValidationGroupTerminalObservation(
-				commit.FinalValidationGroups[0].ID, mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "other-group", ValidationTerminalPassed, "other-branch",
+				commit.FinalValidationGroups[0].ID, mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "other-group", ValidationTerminalPassed, "other-branch",
 				[]ValidationMemberIdentity{{BranchID: "other-branch", ElementTargetID: "other-node"}}, 10,
 			)
 			commit.FinalValidationGroups = append(commit.FinalValidationGroups, group)
@@ -85,7 +85,7 @@ func TestStepTransitionCommitRejectsContradictoryGroupOutcomes(t *testing.T) {
 		}},
 		{"timeout on succeeded step", func(commit *StepTransitionCommit) {
 			commit.FinalValidationGroups[0] = NewValidationGroupTerminalObservation(
-				"group-final", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalTimeout, "",
+				"group-final", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalTimeout, "",
 				[]ValidationMemberIdentity{{BranchID: "branch-a", ElementTargetID: "node-a"}, {BranchID: "branch-b", ElementTargetID: "node-b"}}, 10,
 			)
 		}},
@@ -107,15 +107,15 @@ func TestStepTransitionCommitValidatesAtomicFactIdentity(t *testing.T) {
 		ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "提交",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 10,
 	}, FinalValidations: []ValidationObservation{{
-		ID: "validation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		ID: "validation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1,
 		ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "node-v1", AssertionKind: "visible",
 		Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 10, Final: true,
 	}}, HealObservations: []HealObservation{{
-		ID: "heal", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ElementTargetID: "node",
+		ID: "heal", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, ElementTargetID: "node",
 		BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 10,
 	}},
-		OriginalSelectorResets: []HealCandidateReset{{EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10}}}
+		OriginalSelectorResets: []HealCandidateReset{{EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 10}}}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid commit: %v", err)
 	}

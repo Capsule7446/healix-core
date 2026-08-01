@@ -83,9 +83,9 @@ type RecordingOutcome string
 type TimelineOutcome string
 
 const (
-	EntrySucceeded      ExecutionOutcome = "SUCCEEDED"
-	EntryFailed         ExecutionOutcome = "FAILED"
-	EntryCanceled       ExecutionOutcome = "CANCELED"
+	OutcomeSucceeded    ExecutionOutcome = "SUCCEEDED"
+	OutcomeFailed       ExecutionOutcome = "FAILED"
+	OutcomeCanceled     ExecutionOutcome = "CANCELED"
 	ExecutionNotStarted ExecutionOutcome = "NOT_STARTED"
 
 	RecordingDisabled    RecordingOutcome = "DISABLED"

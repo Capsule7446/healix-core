@@ -211,7 +211,7 @@ func commit(id string, revision evidence.StepRevision, instanceID string, band e
 			Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 		},
 		HealObservations: []evidence.HealObservation{{
-			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1,
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},

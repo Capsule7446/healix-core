@@ -66,6 +66,7 @@ type HealObservation struct {
 	InstanceID        execution.InstanceID
 	EntryID           execution.EntryID
 	StepExecutionID   execution.StepExecutionID
+	Occurrence        int
 	ElementTargetID   string
 	BaseNodeVersionID string
 	CandidateHash     string
@@ -215,6 +216,7 @@ type ValidationGroupTerminalObservation struct {
 	InstanceID      execution.InstanceID
 	EntryID         execution.EntryID
 	StepExecutionID execution.StepExecutionID
+	Occurrence      int
 	GroupID         string
 	TerminalReason  ValidationTerminalReason
 	WinningBranchID string
@@ -222,12 +224,13 @@ type ValidationGroupTerminalObservation struct {
 	ObservedAt      int64
 }
 
-func NewValidationGroupTerminalObservation(id string, instanceID execution.InstanceID, entryID execution.EntryID, stepExecutionID execution.StepExecutionID, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
+func NewValidationGroupTerminalObservation(id string, instanceID execution.InstanceID, entryID execution.EntryID, stepExecutionID execution.StepExecutionID, occurrence int, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
 	owned := make([]ValidationMemberIdentity, len(expectedMembers))
 	copy(owned, expectedMembers)
 	return ValidationGroupTerminalObservation{
 		ID: id, InstanceID: instanceID, EntryID: entryID, StepExecutionID: stepExecutionID,
-		GroupID: groupID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
+		Occurrence: occurrence,
+		GroupID:    groupID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
 		expectedMembers: owned, ObservedAt: observedAt,
 	}
 }
@@ -294,6 +297,7 @@ type ValidationProgressObservation struct {
 	InstanceID             execution.InstanceID
 	EntryID                execution.EntryID
 	StepExecutionID        execution.StepExecutionID
+	Occurrence             int
 	ValidationStepID       string
 	ElementTargetID        string
 	ElementTargetVersionID string
@@ -329,6 +333,7 @@ type ValidationObservation struct {
 	InstanceID             execution.InstanceID
 	EntryID                execution.EntryID
 	StepExecutionID        execution.StepExecutionID
+	Occurrence             int
 	ValidationStepID       string
 	ElementTargetID        string
 	ElementTargetVersionID string

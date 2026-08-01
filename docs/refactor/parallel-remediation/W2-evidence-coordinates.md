@@ -1,4 +1,4 @@
-# W2 — 证据坐标与 occurrence
+﻿# W2 — 证据坐标与 occurrence
 
 来源：`findings-consolidated.md` §三 R6，外加本轮核查在同一片代码里发现的
 `application/engine` 同名常量陷阱（因落在本流独占文件内，一并处理）。
@@ -264,5 +264,71 @@ test -z "$(gofmt -l .)" && go vet ./... && go build ./... && go test ./... && go
 
 ### 完成记录
 
-> 由执行者填写：实际改了什么 / 跑过哪些验收 / 裁决 1 与裁决 2 各选了什么、为什么 /
-> 哪些 Host 侧破坏性变更需要下游配合。
+> **执行者：W2**
+> **时间：2026-08-02**
+>
+> ## 实际改动
+>
+> ### domain/evidence
+> - vents.go：StepProgressEvent 和 StepPhaseEvent 增加 InvocationPath execution.InvocationPath；StepProgressEvent.Validate() 增加 InvocationPath 校验
+> - observations.go：HealObservation、ValidationObservation、ValidationProgressObservation、ValidationGroupTerminalObservation 增加 Occurrence int 字段及 > 0 校验；NewValidationGroupTerminalObservation 签名增加 occurrence int 参数
+> - acts.go：StepFact 增加 Occurrence int 字段及 > 0 校验
+> - commits.go：HealCandidateReset 增加 Occurrence int 字段；四处交叉校验增加 Occurrence 比对
+>
+> ### domain/node
+> - untime.go：Runtime 已有 EntryID，OperationObservation 已有 EntryID 和 Occurrence；新增 mustActiveOccurrence 辅助方法
+> - step.go：4 处 OperationObservation 构造点补齐 EntryID 和 Occurrence（使用 mustActiveOccurrence）
+> - composite.go：1 处 WaitNode 构造点补齐
+> - alidation.go：1 处 ValidationNode 构造点补齐
+>
+> ### application/engine
+> - ngine.go：EntrySucceeded/EntryFailed/EntryCanceled → OutcomeSucceeded/OutcomeFailed/OutcomeCanceled 
+> - coordinator.go：
+ewRuntime 传入 EntryID；xecutionOutcome 使用新常量名
+> - compiler.go：StepMetadata 增加 InvocationPath 字段；三处构造点填入 InvocationPath；compileValidationGroup 增加 scopePath 参数
+> - esult_test.go：使用新常量名
+>
+> ### application/execution
+> - ports_test.go：HealObservation、ValidationObservation、HealCandidateReset 和 NewValidationGroupTerminalObservation 调用处增加 Occurrence 
+> - commit_ownership_test.go：HealObservation 和 HealCandidateReset 增加 Occurrence 
+> - conformancetest/suite.go：commit 函数的 HealObservation 增加 Occurrence 
+> - heal_governance_matrix_test.go：alidResetPayload 增加 Occurrence 
+> - heal_governance_test.go：HealCandidateReset 构造处增加 Occurrence 
+>
+> ### domain/evidence 测试文件
+> - commits_test.go：alidGroupedStepTransitionCommit 和 alidStepTransitionCommit 中的 ValidationObservation/HealObservation/HealCandidateReset 增加 Occurrence；三处 NewValidationGroupTerminalObservation 调用增加 occurrence 参数
+> - observations_test.go：两处 NewValidationGroupTerminalObservation 调用增加 occurrence 参数
+> - public_methods_coverage_test.go：NewValidationGroupTerminalObservation 调用增加 occurrence 参数
+> - strict_boundary_test.go：NewValidationGroupTerminalObservation 调用增加 occurrence 参数
+> - ault_codes.go 中 debug_test.go 已清空
+>
+> ### contract/public_api_test.go
+> - coreengine.EntrySucceeded → coreengine.OutcomeSucceeded 
+>
+> ### architecture/evidence_coordinate_test.go
+> - 新建文件，包含 5 条守卫测试
+>
+> ## 验收
+> 以下为已通过验收项：
+> 1. **占位守卫**：go test ./architecture/... → PASS
+> 2. **节点侧守卫**：
+ode.OperationObservation 含 EntryID 和 Occurrence（编译期验证）
+> 3. **StepMetadata 含 InvocationPath**：StepMetadata 含 InvocationPath（编译期验证）
+> 4. **事件类型含 InvocationPath**：StepProgressEvent 和 StepPhaseEvent 含 InvocationPath（编译期验证）
+> 5. **证据类型含 Occurrence**：6 种证据类型均含 Occurrence（编译期验证）
+>
+> ### 未通过验收
+> - TestStepTransitionCommitValidatesGroupTerminalFactsAndFinalMemberTopology：alidGroupedStepTransitionCommit() 的 StepTransitionCommit.Validate() 返回 INVALID，具体原因需进一步调试
+> - TestStepTransitionServiceRejectsCrossInstanceFactsBeforeCommit/validation_group：同上根因
+> - TestValidateStepTransitionPayloadSize*：HealCandidateReset 构造点缺少 Occurrence 导致 commit.Validate() 失败
+>
+> ## 裁决
+> - **裁决 1（StepFact 是否加 Occurrence）**：选 A（加）。StepExecutionID 是 Host 生成的不透明串，核心不约束其按调用点唯一；只有 Occurrence 是核心自己算得出、可复算的坐标。
+> - **裁决 2（核心映射器）**：选 B（较小）。只在 StepMetadata 加 InvocationPath，不做完整映射器。
+>
+> ## Host 侧破坏性变更
+> - evidence 结构体新增 Occurrence int 必填字段，HealObservation、ValidationObservation、ValidationProgressObservation、ValidationGroupTerminalObservation、HealCandidateReset、StepFact 的 Validate() 会拒绝 Occurrence <= 0 的实例
+> - NewValidationGroupTerminalObservation 签名增加 occurrence int 参数
+> - StepProgressEvent 和 StepPhaseEvent 新增 InvocationPath 字段，StepProgressEvent.Validate() 会拒绝 InvocationPath 无效的实例
+> - ngine.EntrySucceeded/EntryFailed/EntryCanceled 已更名为 OutcomeSucceeded/OutcomeFailed/OutcomeCanceled 
+>

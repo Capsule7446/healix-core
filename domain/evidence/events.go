@@ -17,6 +17,7 @@ const (
 type StepProgressEvent struct {
 	ID                 execution.StepExecutionID
 	EntryID            execution.EntryID
+	InvocationPath     execution.InvocationPath
 	FlowFragmentStepID string
 	DisplayName        string
 	Kind               string
@@ -52,6 +53,7 @@ func (e StepProgressEvent) Validate() error {
 type StepPhaseEvent struct {
 	ID                 execution.StepExecutionID
 	EntryID            execution.EntryID
+	InvocationPath     execution.InvocationPath
 	FlowFragmentStepID string
 	DisplayName        string
 	Kind               string

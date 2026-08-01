@@ -73,7 +73,7 @@ func TestRunProgramReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
 	if !fault.IsCode(err, node.CodeStepTimelineStartFailed) {
 		t.Fatalf("error = %v, want timeline start error", err)
 	}
-	if result.ExecutionOutcome != EntryFailed || result.TimelineOutcome != TimelineStartFailed {
+	if result.ExecutionOutcome != OutcomeFailed || result.TimelineOutcome != TimelineStartFailed {
 		t.Fatalf("result = %+v", result)
 	}
 	if driver.navigated != "https://first.test" {
@@ -92,7 +92,7 @@ func TestRunProgramKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {
 	if !fault.IsCode(err, node.CodeStepTimelineFinishFailed) {
 		t.Fatalf("error = %v, want timeline finish error", err)
 	}
-	if result.ExecutionOutcome != EntrySucceeded || result.TimelineOutcome != TimelineFinishFailed || result.RecordingOutcome != RecordingSucceeded {
+	if result.ExecutionOutcome != OutcomeSucceeded || result.TimelineOutcome != TimelineFinishFailed || result.RecordingOutcome != RecordingSucceeded {
 		t.Fatalf("result = %+v", result)
 	}
 }
@@ -111,14 +111,14 @@ func TestRunProgramRejectsTimelineWithoutRecorder(t *testing.T) {
 }
 
 func TestExecutionOutcomePreservesSuccess(t *testing.T) {
-	if got := executionOutcome(nil); got != EntrySucceeded {
-		t.Fatalf("execution outcome = %s, want %s", got, EntrySucceeded)
+	if got := executionOutcome(nil); got != OutcomeSucceeded {
+		t.Fatalf("execution outcome = %s, want %s", got, OutcomeSucceeded)
 	}
 }
 
 func TestExecutionOutcomePreservesBusinessFailure(t *testing.T) {
-	if got := executionOutcome(errors.New("business failed")); got != EntryFailed {
-		t.Fatalf("execution outcome = %s, want %s", got, EntryFailed)
+	if got := executionOutcome(errors.New("business failed")); got != OutcomeFailed {
+		t.Fatalf("execution outcome = %s, want %s", got, OutcomeFailed)
 	}
 }
 
@@ -129,7 +129,7 @@ func TestRunProgramClassifiesEveryContextTerminationAsCanceled(t *testing.T) {
 			result, runErr := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: root}), Config{
 				InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{},
 			})
-			if !errors.Is(runErr, err) || result.ExecutionOutcome != EntryCanceled || root.runs != 1 {
+			if !errors.Is(runErr, err) || result.ExecutionOutcome != OutcomeCanceled || root.runs != 1 {
 				t.Fatalf("RunProgram() = (%#v, %v), runs = %d", result, runErr, root.runs)
 			}
 		})
@@ -180,7 +180,7 @@ func TestRunProgramAllowsEmptyCompletionChainWithoutBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunProgram: %v", err)
 	}
-	if root.runs != 1 || result.ExecutionOutcome != EntrySucceeded {
+	if root.runs != 1 || result.ExecutionOutcome != OutcomeSucceeded {
 		t.Fatalf("root runs = %d, result = %+v", root.runs, result)
 	}
 }
@@ -218,7 +218,7 @@ func TestRunProgramReportsObserverFailureWithoutChangingExecutionOutcome(t *test
 	if !fault.IsCode(err, node.CodeNodeCompletionObservation) || !errors.Is(err, observerErr) {
 		t.Fatalf("error = %v, want completion observation error", err)
 	}
-	if result.ExecutionOutcome != EntrySucceeded {
+	if result.ExecutionOutcome != OutcomeSucceeded {
 		t.Fatalf("execution outcome = %s", result.ExecutionOutcome)
 	}
 }

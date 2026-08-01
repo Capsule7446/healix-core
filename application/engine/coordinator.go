@@ -147,17 +147,18 @@ func validateConfig(program node.Program, cfg Config) error {
 
 func executionOutcome(err error) ExecutionOutcome {
 	if err == nil {
-		return EntrySucceeded
+		return OutcomeSucceeded
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return EntryCanceled
+		return OutcomeCanceled
 	}
-	return EntryFailed
+	return OutcomeFailed
 }
 
 func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimeline) *node.Runtime {
 	return &node.Runtime{
 		InstanceID:         cfg.InstanceID,
+		EntryID:            cfg.EntryID,
 		ClaimToken:         cfg.ClaimToken,
 		StepInterval:       cfg.StepInterval,
 		Specs:              program.Specs,

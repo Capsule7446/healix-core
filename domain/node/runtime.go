@@ -122,6 +122,8 @@ type Event struct {
 // OperationObservation is an optional, framework-neutral execution fact.
 type OperationObservation struct {
 	InstanceID domainexecution.InstanceID
+	EntryID    domainexecution.EntryID
+	Occurrence int
 	NodeID     string
 	Operation  string
 	Selector   fingerprint.Selector
@@ -209,6 +211,7 @@ type ExecutionSink interface {
 // 并发调度、资源池和跨页面生命周期属于延期能力。
 type Runtime struct {
 	InstanceID domainexecution.InstanceID
+	EntryID    domainexecution.EntryID
 	ClaimToken string
 	PageURL    string
 	Origin     string
@@ -315,6 +318,17 @@ func (rt *Runtime) activeOccurrence(nodeID string) (int, error) {
 
 // releaseOccurrence releases only the occurrence owned by one invocation. It is
 // idempotent and never pops a nested same-ID frame by position alone.
+// mustActiveOccurrence returns the active occurrence for nodeID, or 0 if
+// none is active. Observations are best-effort and must not break execution
+// when the occurrence stack is empty (e.g. during terminal cleanup).
+func (rt *Runtime) mustActiveOccurrence(nodeID string) int {
+	occurrence, err := rt.activeOccurrence(nodeID)
+	if err != nil {
+		return 0
+	}
+	return occurrence
+}
+
 func (rt *Runtime) releaseOccurrence(nodeID string, occurrence int) {
 	stack := rt.activeOccurrences[nodeID]
 	for i := len(stack) - 1; i >= 0; i-- {

@@ -136,7 +136,7 @@ func TestDefaultHealGovernancePlannerResetIsScopedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reset := evidence.HealCandidateReset{EntryID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
+	reset := evidence.HealCandidateReset{EntryID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), Occurrence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
 	plan := HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{Key: first.Snapshot.Key, CurrentNodeVersionID: "base", Revision: 2, Streak: decision.NextStreak},
 		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", InstanceID: mustInstanceID("run-2"), Sequence: 2, Reset: &reset},

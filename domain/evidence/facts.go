@@ -26,6 +26,7 @@ type StepFact struct {
 	InstanceID      execution.InstanceID
 	EntryID         execution.EntryID
 	StepExecutionID execution.StepExecutionID
+	Occurrence      int
 	Phase           Phase
 	ObservedAt      int64
 }

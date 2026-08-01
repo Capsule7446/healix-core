@@ -65,7 +65,7 @@ func (transaction *retainingTransaction) CommitStepTransition(_ context.Context,
 func TestStepTransitionServiceOwnsCommitAndReturnedPromotions(t *testing.T) {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
-		ID: "heal", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
+		ID: "heal", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: 1,
 		ElementTargetID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
 	}}
 	transaction := &retainingTransaction{result: evidence.StepTransitionCommitResult{Promotions: []evidence.NodeVersionPromotion{{ElementTargetID: "node", VersionID: "version"}}}}
@@ -148,7 +148,7 @@ func TestStepTransitionServiceRejectsCrossInstanceFactsBeforeCommit(t *testing.T
 func crossInstanceFinalValidationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.FinalValidations = []evidence.ValidationObservation{{
-		ID: "validation", InstanceID: mustInstanceID("other-run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
+		ID: "validation", InstanceID: mustInstanceID("other-run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: 1,
 		ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "node-v1", AssertionKind: "visible",
 		Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true,
@@ -159,11 +159,11 @@ func crossInstanceFinalValidationCommit() evidence.StepTransitionCommit {
 func crossInstanceValidationGroupCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.FinalValidations = []evidence.ValidationObservation{
-		{ID: "member-a", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Passed: true, Reason: "passed", BranchDisposition: evidence.ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
-		{ID: "member-b", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, ValidationStepID: "validation-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Reason: "normal_unsatisfied", BranchDisposition: evidence.ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
+		{ID: "member-a", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: 1, ValidationStepID: "validation-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v1", GroupID: "group", BranchID: "branch-a", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Passed: true, Reason: "passed", BranchDisposition: evidence.ValidationBranchWon, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
+		{ID: "member-b", InstanceID: mustInstanceID("run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: 1, ValidationStepID: "validation-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1", GroupID: "group", BranchID: "branch-b", AssertionKind: "visible", Expected: evidence.AbsentValidationValue(), Actual: evidence.AbsentValidationValue(), Reason: "normal_unsatisfied", BranchDisposition: evidence.ValidationBranchNotSatisfied, HealReviewStatus: "not_attempted", ObservedAt: 1, Final: true},
 	}
 	commit.FinalValidationGroups = []evidence.ValidationGroupTerminalObservation{evidence.NewValidationGroupTerminalObservation(
-		"group-final", mustInstanceID("other-run"), commit.Event.EntryID, commit.Event.ID, "group", evidence.ValidationTerminalPassed, "branch-a",
+		"group-final", mustInstanceID("other-run"), commit.Event.EntryID, commit.Event.ID, 1, "group", evidence.ValidationTerminalPassed, "branch-a",
 		[]evidence.ValidationMemberIdentity{{BranchID: "branch-a", ElementTargetID: "node-a"}, {BranchID: "branch-b", ElementTargetID: "node-b"}}, 1,
 	)}
 	return commit
@@ -172,7 +172,7 @@ func crossInstanceValidationGroupCommit() evidence.StepTransitionCommit {
 func crossInstanceHealObservationCommit() evidence.StepTransitionCommit {
 	commit := validStepTransitionCommit()
 	commit.HealObservations = []evidence.HealObservation{{
-		ID: "heal", InstanceID: mustInstanceID("other-run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
+		ID: "heal", InstanceID: mustInstanceID("other-run"), EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: 1,
 		ElementTargetID: "node", BaseNodeVersionID: "base", DecisionBand: evidence.DecisionUnknown, ObservedAt: 1,
 	}}
 	return commit
@@ -216,7 +216,7 @@ func TestValidateStepTransitionPayloadSizeRejectsOversizedTopLevelAndNestedStrin
 			if test.nested {
 				commit = validStepTransitionCommit()
 				commit.OriginalSelectorResets = []evidence.HealCandidateReset{{
-					EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
+					EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID, Occurrence: commit.Event.Occurrence,
 					ElementTargetID: "node", BaseNodeVersionID: test.value, ObservedAt: 1,
 				}}
 				if !test.wantError {
@@ -283,6 +283,7 @@ func stepTransitionCommitWithMeasuredSize(t *testing.T, target int) evidence.Ste
 		commit.OriginalSelectorResets[index] = evidence.HealCandidateReset{
 			EntryID:           commit.Event.EntryID,
 			StepExecutionID:   commit.Event.ID,
+			Occurrence:        commit.Event.Occurrence,
 			ElementTargetID:   "node-" + strconv.Itoa(index),
 			BaseNodeVersionID: "v",
 			ObservedAt:        1,

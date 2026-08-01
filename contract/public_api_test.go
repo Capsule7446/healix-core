@@ -115,7 +115,7 @@ func TestExternalConsumerCanImplementCreateInstancePorts(t *testing.T) {
 		ClaimToken: "claim", AuthorityVerifier: consumerAuthorityVerifier{want: authority},
 		Driver: consumerDriver{},
 	})
-	if err != nil || runResult.ExecutionOutcome != coreengine.EntrySucceeded {
+	if err != nil || runResult.ExecutionOutcome != coreengine.OutcomeSucceeded {
 		t.Fatalf("external compile/run contract: result=%+v err=%v", runResult, err)
 	}
 }

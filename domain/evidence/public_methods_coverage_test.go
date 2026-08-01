@@ -253,7 +253,7 @@ func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing
 
 func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t *testing.T) {
 	valid := NewValidationGroupTerminalObservation(
-		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	missingIdentity := valid
@@ -261,13 +261,13 @@ func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t 
 	requireViolation(t, missingIdentity.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldRequired, "identity")
 
 	missingMemberIdentity := NewValidationGroupTerminalObservation(
-		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch"}}, 1,
 	)
 	requireViolation(t, missingMemberIdentity.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldRequired, "expectedMembers.0")
 
 	duplicateMember := NewValidationGroupTerminalObservation(
-		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}, {BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	requireViolation(t, duplicateMember.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldDuplicate, "expectedMembers.1")

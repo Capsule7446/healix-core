@@ -69,7 +69,7 @@ func TestValidationValuesNilEmptyDuplicatesAndImmutability(t *testing.T) {
 
 func TestValidationGroupExpectedMembersImmutable(t *testing.T) {
 	members := []ValidationMemberIdentity{{BranchID: "分支", ElementTargetID: "节点"}}
-	value := NewValidationGroupTerminalObservation("id", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), "group", ValidationTerminalPassed, "分支", members, 1)
+	value := NewValidationGroupTerminalObservation("id", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "分支", members, 1)
 	members[0].ElementTargetID = "mutated"
 	got := value.ExpectedMembers()
 	if got[0].ElementTargetID != "节点" {
