@@ -103,11 +103,11 @@ func addResolvedValuesBudget(budget *createInstanceRequestBudget, values map[str
 	if err := budget.addParameters(len(values)); err != nil {
 		return err
 	}
-	for name, value := range values {
+	for _, name := range sortedKeys(values) {
 		if err := budget.addString(name); err != nil {
 			return err
 		}
-		if err := addResolvedValueBudget(budget, value); err != nil {
+		if err := addResolvedValueBudget(budget, values[name]); err != nil {
 			return err
 		}
 	}
@@ -118,7 +118,8 @@ func addResolvedBindingsBudget(budget *createInstanceRequestBudget, bindings map
 	if err := budget.addParameters(len(bindings)); err != nil {
 		return err
 	}
-	for name, binding := range bindings {
+	for _, name := range sortedKeys(bindings) {
+		binding := bindings[name]
 		if err := budget.addString(name); err != nil {
 			return err
 		}
@@ -243,8 +244,8 @@ func preflightResolvedCreateInstance(resolved ResolvedCreateInstance) error {
 		if err := budget.addElements(len(workflow.FlowFragment.Properties)); err != nil {
 			return invalid(err.Error())
 		}
-		for key, value := range workflow.FlowFragment.Properties {
-			if err := addStrings(key, value); err != nil {
+		for _, key := range sortedKeys(workflow.FlowFragment.Properties) {
+			if err := addStrings(key, workflow.FlowFragment.Properties[key]); err != nil {
 				return err
 			}
 		}
@@ -303,17 +304,17 @@ func preflightResolvedCreateInstance(resolved ResolvedCreateInstance) error {
 			return err
 		}
 	}
-	for name, value := range resolved.Environment.Variables {
+	for _, name := range sortedKeys(resolved.Environment.Variables) {
 		if err := parameter.ValidateName(name); err != nil {
 			return invalid(fmt.Sprintf("environment variable name: %v", err))
 		}
-		if err := value.Validate(); err != nil {
+		if err := resolved.Environment.Variables[name].Validate(); err != nil {
 			return invalid(fmt.Sprintf("environment variable %q: %v", name, err))
 		}
 		if err := budget.addString(name); err != nil {
 			return invalid(err.Error())
 		}
-		if err := addResolvedValueBudget(&budget, value); err != nil {
+		if err := addResolvedValueBudget(&budget, resolved.Environment.Variables[name]); err != nil {
 			return invalid(err.Error())
 		}
 	}
@@ -402,12 +403,18 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 			return errors.New("healer policy contains a non-finite value")
 		}
 	}
-	for itemID, values := range command.Entries {
+	// The two branches here return different KINDS of failure: a malformed item
+	// id is an uncoded error, while a bad value carries the parameter's own code.
+	// The outer envelope makes both CodeCreateInstanceCommandInvalid, but
+	// fault.IsCode walks the chain, so with one of each present the answer to
+	// IsCode(err, parameter.CodeValueInvalid) flipped between runs.
+	for _, itemID := range sortedKeys(command.Entries) {
 		if strings.TrimSpace(itemID) == "" || itemID != strings.TrimSpace(itemID) {
 			return errors.New("test-task item id is invalid")
 		}
-		for _, value := range values {
-			if err := value.Validate(); err != nil {
+		values := command.Entries[itemID]
+		for _, name := range sortedKeys(values) {
+			if err := values[name].Validate(); err != nil {
 				return err
 			}
 		}

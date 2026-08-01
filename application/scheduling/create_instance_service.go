@@ -225,7 +225,8 @@ func validateStoredCreateInstanceResult(stored StoredCreateInstanceResult, comma
 		}
 		entryByItem[entries[index].TestTaskItemID] = entries[index]
 	}
-	for itemID, requested := range command.Entries {
+	for _, itemID := range sortedKeys(command.Entries) {
+		requested := command.Entries[itemID]
 		entry, exists := entryByItem[itemID]
 		if !exists {
 			return invalid("command entry is missing from stored plan")
@@ -234,9 +235,9 @@ func validateStoredCreateInstanceResult(stored StoredCreateInstanceResult, comma
 		if !exists {
 			return invalid("stored root invocation is missing")
 		}
-		for name, value := range requested {
+		for _, name := range sortedKeys(requested) {
 			resolved, exists := invocation.Values[name]
-			if !exists || !equalParameterValues(map[string]parameter.Value{name: value}, map[string]parameter.Value{name: resolved}) {
+			if !exists || !equalParameterValues(map[string]parameter.Value{name: requested[name]}, map[string]parameter.Value{name: resolved}) {
 				return invalid("stored root parameters do not bind command values")
 			}
 		}

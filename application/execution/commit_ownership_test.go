@@ -17,50 +17,65 @@ import (
 // out. The only existing assertion on the copy looked at an exported string
 // field, which is exactly the kind that survived the round trip.
 
+// commitWithObservations is the fixture these assertions need. The shared
+// validStepTransitionCommit carries only an Event, so a test that loops over
+// FinalValidations and HealObservations with it iterates zero times and passes
+// while covering neither — which is what the first version of this test did.
+func commitWithObservations(t *testing.T) evidence.StepTransitionCommit {
+	t.Helper()
+	commit := validStepTransitionCommit()
+	commit.HealObservations = []evidence.HealObservation{{
+		ID: "fact-1", InstanceID: mustInstanceID("instance-1"),
+		EntryID: commit.Event.EntryID, StepExecutionID: commit.Event.ID,
+		ElementTargetID: "node-1", BaseNodeVersionID: "base-1", CandidateHash: "candidate-1",
+		Confidence: 0.9, DecisionBand: evidence.DecisionApplied, Succeeded: true, ObservedAt: 1,
+	}}
+	if err := commit.Validate(); err != nil {
+		t.Fatalf("fixture is not a valid commit: %v", err)
+	}
+	return commit
+}
+
 func TestOwnedCommitKeepsEveryIdentity(t *testing.T) {
-	original := validStepTransitionCommit()
+	original := commitWithObservations(t)
+	// Without this the loops below can iterate zero times and the test reports a
+	// surface it never touched.
+	if len(original.HealObservations) == 0 {
+		t.Fatal("the fixture carries no observations, so the per-observation checks would prove nothing")
+	}
+
 	owned, err := ownStepTransitionCommit(original)
 	if err != nil {
 		t.Fatalf("own commit: %v", err)
 	}
 
-	checks := []struct {
-		what string
-		got  string
-		want string
-	}{
+	type check struct{ what, got, want string }
+	checks := []check{
 		{"commit id", owned.CommitID, original.CommitID},
 		{"event step execution id", owned.Event.ID.String(), original.Event.ID.String()},
 		{"event entry id", owned.Event.EntryID.String(), original.Event.EntryID.String()},
 	}
 	for index := range original.FinalValidations {
 		checks = append(checks,
-			struct {
-				what string
-				got  string
-				want string
-			}{"final validation instance id", owned.FinalValidations[index].InstanceID.String(), original.FinalValidations[index].InstanceID.String()},
-			struct {
-				what string
-				got  string
-				want string
-			}{"final validation step execution id", owned.FinalValidations[index].StepExecutionID.String(), original.FinalValidations[index].StepExecutionID.String()},
+			check{"final validation instance id", owned.FinalValidations[index].InstanceID.String(), original.FinalValidations[index].InstanceID.String()},
+			check{"final validation step execution id", owned.FinalValidations[index].StepExecutionID.String(), original.FinalValidations[index].StepExecutionID.String()},
 		)
 	}
 	for index := range original.HealObservations {
-		checks = append(checks, struct {
-			what string
-			got  string
-			want string
-		}{"heal observation entry id", owned.HealObservations[index].EntryID.String(), original.HealObservations[index].EntryID.String()})
+		checks = append(checks,
+			check{"heal observation instance id", owned.HealObservations[index].InstanceID.String(), original.HealObservations[index].InstanceID.String()},
+			check{"heal observation entry id", owned.HealObservations[index].EntryID.String(), original.HealObservations[index].EntryID.String()},
+			check{"heal observation step execution id", owned.HealObservations[index].StepExecutionID.String(), original.HealObservations[index].StepExecutionID.String()},
+		)
 	}
 
-	for _, check := range checks {
-		if check.got != check.want {
-			t.Errorf("%s = %q, want %q; the owned copy lost it", check.what, check.got, check.want)
+	for _, item := range checks {
+		if item.want == "" {
+			t.Errorf("%s is empty in the fixture, so this case proves nothing", item.what)
+			continue
 		}
-		if check.want == "" {
-			t.Errorf("%s is empty in the fixture, so this case proves nothing", check.what)
+		if item.got != item.want {
+			t.Errorf("%s = %q, want %q; the owned copy lost it", item.what, item.got, item.want)
 		}
 	}
 }
@@ -68,7 +83,7 @@ func TestOwnedCommitKeepsEveryIdentity(t *testing.T) {
 // The copy must also still be valid. A copy that Validate rejects is one the
 // Host cannot use, and the round trip produced exactly that.
 func TestOwnedCommitStillValidates(t *testing.T) {
-	owned, err := ownStepTransitionCommit(validStepTransitionCommit())
+	owned, err := ownStepTransitionCommit(commitWithObservations(t))
 	if err != nil {
 		t.Fatalf("own commit: %v", err)
 	}
@@ -80,7 +95,7 @@ func TestOwnedCommitStillValidates(t *testing.T) {
 // Owning it means the caller can keep mutating the original without the Host's
 // copy following along.
 func TestOwnedCommitDoesNotAliasTheCaller(t *testing.T) {
-	original := validStepTransitionCommit()
+	original := commitWithObservations(t)
 	if len(original.OriginalSelectorResets) == 0 {
 		original.OriginalSelectorResets = []evidence.HealCandidateReset{{
 			EntryID:           original.Event.EntryID,
