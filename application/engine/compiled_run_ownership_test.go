@@ -36,16 +36,16 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	if metadataID == "" {
 		t.Fatal("compiled metadata is empty")
 	}
-	entries[0].ExecutionID = "mutated"
+	entries[0].ExecutionID = mustEntryID("mutated")
 	entries[0].Metadata[metadataID] = StepMetadata{DisplayName: "mutated"}
 	entries[0].RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{ElementTargetID: "mutated"}
 	entries = append(entries, CompiledEntry{})
 
-	again, ok := compiled.Entry("execution-entry")
+	again, ok := compiled.Entry(mustEntryID("execution-entry"))
 	if !ok {
 		t.Fatal("execution-entry is missing after caller mutation")
 	}
-	if again.ExecutionID != "execution-entry" {
+	if again.ExecutionID != mustEntryID("execution-entry") {
 		t.Fatalf("execution id = %q, want execution-entry", again.ExecutionID)
 	}
 	if got := again.Metadata[metadataID]; got.DisplayName != "Click" {
@@ -60,7 +60,7 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 
 	again.Metadata[metadataID] = StepMetadata{DisplayName: "mutated again"}
 	again.RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{ElementTargetID: "mutated again"}
-	third, ok := compiled.Entry("execution-entry")
+	third, ok := compiled.Entry(mustEntryID("execution-entry"))
 	if !ok || third.Metadata[metadataID].DisplayName != "Click" || third.RuntimeNodes[compilerNodeV1].ElementTargetID != compilerNodeID {
 		t.Fatalf("Entry exposed internal map ownership: %#v, ok=%t", third, ok)
 	}
@@ -75,7 +75,7 @@ func TestCompiledRunEntryRejectsCorruptedIndexedIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index := compiled.byID["execution-entry"]
+	index := compiled.byID[mustEntryID("execution-entry")]
 	original := compiled.entries[index]
 	tests := []struct {
 		name   string
@@ -85,14 +85,14 @@ func TestCompiledRunEntryRejectsCorruptedIndexedIdentity(t *testing.T) {
 		{name: "sealed run", mutate: func(entry *CompiledEntry) { entry.identity.runID = mustInstanceID("other") }},
 		{name: "public digest", mutate: func(entry *CompiledEntry) { entry.SnapshotDigest = "other" }},
 		{name: "sealed digest", mutate: func(entry *CompiledEntry) { entry.identity.snapshotDigest = "other" }},
-		{name: "public execution", mutate: func(entry *CompiledEntry) { entry.ExecutionID = "other" }},
-		{name: "sealed execution", mutate: func(entry *CompiledEntry) { entry.identity.executionID = "other" }},
+		{name: "public execution", mutate: func(entry *CompiledEntry) { entry.ExecutionID = mustEntryID("other") }},
+		{name: "sealed execution", mutate: func(entry *CompiledEntry) { entry.identity.executionID = mustEntryID("other") }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			compiled.entries[index] = original
 			test.mutate(&compiled.entries[index])
-			if _, ok := compiled.Entry("execution-entry"); ok {
+			if _, ok := compiled.Entry(mustEntryID("execution-entry")); ok {
 				t.Fatal("corrupted indexed entry was returned")
 			}
 		})

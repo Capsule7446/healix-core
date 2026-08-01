@@ -59,7 +59,7 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 		sequence := uint64(index + 1)
 		runID := fmt.Sprintf("run-prior-%d", index+1)
 		observation := evidence.HealObservation{
-			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: "execution", StepExecutionID: "step",
+			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 		}

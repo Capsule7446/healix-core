@@ -20,3 +20,13 @@ func mustInstanceID(value string) InstanceID {
 	}
 	return id
 }
+
+// mustStepExecutionID spells a coordinate in a fixture where the value is a literal the
+// test author already knows is well formed.
+func mustStepExecutionID(value string) StepExecutionID {
+	id, err := NewStepExecutionID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}

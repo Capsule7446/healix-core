@@ -186,16 +186,32 @@ func mustInstanceID(value string) domainexecution.InstanceID {
 	return id
 }
 
+func mustEntryID(value string) domainexecution.EntryID {
+	id, err := domainexecution.NewEntryID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func mustStepExecutionID(value string) domainexecution.StepExecutionID {
+	id, err := domainexecution.NewStepExecutionID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 func commit(id string, revision evidence.StepRevision, runID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
 	return evidence.StepTransitionCommit{
 		CommitID:         id,
 		ExpectedRevision: revision,
 		Event: evidence.StepPhaseEvent{
-			ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "step",
+			ID: mustStepExecutionID("step"), ExecutionID: mustEntryID("execution"), WorkflowStepID: "workflow-step", DisplayName: "step",
 			Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 		},
 		HealObservations: []evidence.HealObservation{{
-			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: "execution", StepExecutionID: "step",
+			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},

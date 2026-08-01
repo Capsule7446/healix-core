@@ -31,8 +31,15 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 			// The item id stays in the private cause, never in public text.
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
 		}
-		executionID := concreteRootPath(command.RunID.String(), item.ID)
-		resolvedRoot, exists := invocationByPath(resolved.Invocations, executionID)
+		// The entry identity is derived from the instance id and the item id, so it
+		// is well formed by construction; a failure here means concreteRootPath
+		// itself is wrong, not that the caller supplied something bad.
+		spelledEntry := concreteRootPath(command.RunID.String(), item.ID)
+		executionID, err := execution.NewEntryID(spelledEntry)
+		if err != nil {
+			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(err)
+		}
+		resolvedRoot, exists := invocationByPath(resolved.Invocations, spelledEntry)
 		if !exists || resolvedRoot.ParentPath != "" {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
@@ -46,7 +53,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		}
 		parameterSnapshot := parameterSnapshotInput{}
 		if len(resolvedRoot.Values) > 0 {
-			parameterSnapshot = parameterSnapshotInput{IsPresent: true, ID: executionID + "/scope", SchemaVersion: 1, Values: cloneParameterValues(resolvedRoot.Values)}
+			parameterSnapshot = parameterSnapshotInput{IsPresent: true, ID: spelledEntry + "/scope", SchemaVersion: 1, Values: cloneParameterValues(resolvedRoot.Values)}
 		}
 		entries[index] = executionEntryInput{ExecutionID: executionID, TestTaskItemID: item.ID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: resolvedWorkflowVersion(item, resolved.Plan), ParameterSnapshot: parameterSnapshot}
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: entries[index].WorkflowVersionID}

@@ -45,7 +45,7 @@ func ExecutionAuthorityVerifierRequiredError() error {
 type ExecutionAuthority struct {
 	RunID          execution.InstanceID
 	SnapshotDigest string
-	ExecutionID    string
+	ExecutionID    execution.EntryID
 	ClaimToken     string
 }
 
@@ -59,7 +59,7 @@ type Config struct {
 	// 执行权的权威身份，不能从待执行的 CompiledEntry 反向填充。
 	RunID             execution.InstanceID
 	SnapshotDigest    string
-	ExecutionID       string
+	ExecutionID       execution.EntryID
 	ClaimToken        string
 	AuthorityVerifier ExecutionAuthorityVerifier
 	Driver            node.Driver

@@ -21,3 +21,13 @@ func mustInstanceID(value string) domainexecution.InstanceID {
 	}
 	return id
 }
+
+// mustStepExecutionID spells a coordinate in a fixture where the value is a literal the
+// test author already knows is well formed.
+func mustStepExecutionID(value string) domainexecution.StepExecutionID {
+	id, err := domainexecution.NewStepExecutionID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}

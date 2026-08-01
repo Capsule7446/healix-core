@@ -68,7 +68,7 @@ func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	claims = &coordinatorPortStub{claim: claim, found: true}
-	states = &statePortStub{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}
+	states = &statePortStub{states: []EntryState{{ExecutionID: mustEntryID("execution-1"), Status: execution.ExecutionPending}}}
 	writer := &writerPortStub{result: ApplyDecisionResult{Fence: claim.Fence, Applied: true}}
 	claimed, err := NewCoordinator(claims, states, writer).ProcessNext(ctx, "worker-x", 42)
 	if err != nil || !claimed || claims.releaseContextErr != nil {

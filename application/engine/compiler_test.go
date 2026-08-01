@@ -323,7 +323,7 @@ func compileDraft(draft execution.PlanSnapshot) (CompiledEntry, error) {
 	if err != nil {
 		return CompiledEntry{}, err
 	}
-	entry, ok := compiled.Entry(draft.Entries[0].ID.String())
+	entry, ok := compiled.Entry(draft.Entries[0].ID)
 	if !ok {
 		return CompiledEntry{}, fmt.Errorf("compiled entry is missing")
 	}
@@ -348,24 +348,24 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("entries = %d", len(entries))
 	}
-	if entries[0].ExecutionID != "execution-a" || entries[1].ExecutionID != "execution-b" {
+	if entries[0].ExecutionID != mustEntryID("execution-a") || entries[1].ExecutionID != mustEntryID("execution-b") {
 		t.Fatalf("entry declaration order not preserved: %q, %q", entries[0].ExecutionID, entries[1].ExecutionID)
 	}
-	a, ok := compiled.Entry("execution-a")
+	a, ok := compiled.Entry(mustEntryID("execution-a"))
 	if !ok {
 		t.Fatal("execution-a is missing")
 	}
-	b, ok := compiled.Entry("execution-b")
+	b, ok := compiled.Entry(mustEntryID("execution-b"))
 	if !ok {
 		t.Fatal("execution-b is missing")
 	}
-	if _, ok := compiled.Entry("missing"); ok {
+	if _, ok := compiled.Entry(mustEntryID("missing")); ok {
 		t.Fatal("missing execution unexpectedly found")
 	}
 	lookupCopy := a
-	lookupCopy.ExecutionID = "mutated"
-	again, ok := compiled.Entry("execution-a")
-	if !ok || again.ExecutionID != "execution-a" {
+	lookupCopy.ExecutionID = mustEntryID("mutated")
+	again, ok := compiled.Entry(mustEntryID("execution-a"))
+	if !ok || again.ExecutionID != mustEntryID("execution-a") {
 		t.Fatal("lookup exposed mutable index state")
 	}
 	if a.program.Root.ID() == b.program.Root.ID() {

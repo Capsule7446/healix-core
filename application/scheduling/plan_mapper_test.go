@@ -116,7 +116,7 @@ func TestBuildExecutionDraftMapsTypedParameterSnapshot(t *testing.T) {
 	source.Publication.Version.Items[0].Parameters = map[string]parameter.Value{"count": number}
 	source.Publication.Version.Items[1].Parameters = map[string]parameter.Value{"count": number}
 	for i := range source.Entries {
-		source.Entries[i].ParameterSnapshot = parameterSnapshotInput{IsPresent: true, ID: "snapshot-" + source.Entries[i].ExecutionID, SchemaVersion: 1, Values: map[string]parameter.Value{"count": number}}
+		source.Entries[i].ParameterSnapshot = parameterSnapshotInput{IsPresent: true, ID: "snapshot-" + source.Entries[i].ExecutionID.String(), SchemaVersion: 1, Values: map[string]parameter.Value{"count": number}}
 	}
 
 	plan, err := buildExecutionDraft(source)
@@ -161,8 +161,8 @@ func validMapperSource() buildExecutionPlanInput {
 			References: []automation.FlowFragmentReferenceResolution{{ParentFlowFragmentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true}},
 		},
 		Entries: []executionEntryInput{
-			{ExecutionID: "execution-1", TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"},
-			{ExecutionID: "execution-2", TestTaskItemID: "item-2", SequenceNumber: 2, FlowFragmentID: "root", WorkflowVersionID: "root-v1"},
+			{ExecutionID: mustEntryID("execution-1"), TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"},
+			{ExecutionID: mustEntryID("execution-2"), TestTaskItemID: "item-2", SequenceNumber: 2, FlowFragmentID: "root", WorkflowVersionID: "root-v1"},
 		},
 	}
 }

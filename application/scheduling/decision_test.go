@@ -40,12 +40,12 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.NextExecutionID != test.next || len(decision.Transitions) != len(test.transitions) {
+			if decision.NextExecutionID.String() != test.next || len(decision.Transitions) != len(test.transitions) {
 				t.Fatalf("decision = %#v", decision)
 			}
 			for i, id := range test.transitions {
 				got := decision.Transitions[i]
-				if got.ExecutionID != id || got.From != execution.ExecutionPending || got.To != execution.ExecutionSkipped || got.Cause != test.cause {
+				if got.ExecutionID.String() != id || got.From != execution.ExecutionPending || got.To != execution.ExecutionSkipped || got.Cause != test.cause {
 					t.Fatalf("transition = %#v", got)
 				}
 			}
@@ -63,8 +63,8 @@ func TestDecideAdvanceRejectsMalformedStateVectors(t *testing.T) {
 		states []EntryState
 	}{
 		{"missing", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionPending)},
-		{"duplicate identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionPending}, {ExecutionID: "a", Status: execution.ExecutionPending}, {ExecutionID: "c", Status: execution.ExecutionPending}}},
-		{"unknown identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionPending}, {ExecutionID: "b", Status: execution.ExecutionPending}, {ExecutionID: "x", Status: execution.ExecutionPending}}},
+		{"duplicate identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("a"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionPending}}},
+		{"unknown identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("x"), Status: execution.ExecutionPending}}},
 		{"unknown status", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, "UNKNOWN", execution.ExecutionPending)},
 		{"pending before running", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionRunning, execution.ExecutionPending)},
 		{"terminal after pending", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionSucceeded, execution.ExecutionPending)},
@@ -72,12 +72,12 @@ func TestDecideAdvanceRejectsMalformedStateVectors(t *testing.T) {
 		{"failed after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionFailed, execution.ExecutionPending)},
 		{"canceled after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionCanceled, execution.ExecutionPending)},
 		{"aborted after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionAborted, execution.ExecutionPending)},
-		{"skipped before cause", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionSkipped, SkipCause: SkipCausePriorFailure}, {ExecutionID: "b", Status: execution.ExecutionPending}, {ExecutionID: "c", Status: execution.ExecutionPending}}},
-		{"all skipped", execution.FailurePolicyStopOnFailure, []EntryState{{"a", execution.ExecutionSkipped, SkipCausePriorFailure}, {"b", execution.ExecutionSkipped, SkipCausePriorFailure}, {"c", execution.ExecutionSkipped, SkipCausePriorFailure}}},
-		{"cause mismatch", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionFailed}, {"b", execution.ExecutionSkipped, SkipCausePriorAbort}, {"c", execution.ExecutionSkipped, SkipCausePriorFailure}}},
+		{"skipped before cause", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionSkipped, SkipCause: SkipCausePriorFailure}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionPending}}},
+		{"all skipped", execution.FailurePolicyStopOnFailure, []EntryState{{mustEntryID("a"), execution.ExecutionSkipped, SkipCausePriorFailure}, {mustEntryID("b"), execution.ExecutionSkipped, SkipCausePriorFailure}, {mustEntryID("c"), execution.ExecutionSkipped, SkipCausePriorFailure}}},
+		{"cause mismatch", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionFailed}, {mustEntryID("b"), execution.ExecutionSkipped, SkipCausePriorAbort}, {mustEntryID("c"), execution.ExecutionSkipped, SkipCausePriorFailure}}},
 		{"missing skip cause", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionSkipped, execution.ExecutionSkipped)},
-		{"cause on non-skipped", execution.FailurePolicyStopOnFailure, []EntryState{{"a", execution.ExecutionFailed, SkipCausePriorFailure}, {ExecutionID: "b", Status: execution.ExecutionPending}, {ExecutionID: "c", Status: execution.ExecutionPending}}},
-		{"continue arbitrary skipped", execution.FailurePolicyContinueOnFailure, []EntryState{{ExecutionID: "a", Status: execution.ExecutionSucceeded}, {"b", execution.ExecutionSkipped, SkipCausePriorFailure}, {"c", execution.ExecutionSkipped, SkipCausePriorFailure}}},
+		{"cause on non-skipped", execution.FailurePolicyStopOnFailure, []EntryState{{mustEntryID("a"), execution.ExecutionFailed, SkipCausePriorFailure}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionPending}}},
+		{"continue arbitrary skipped", execution.FailurePolicyContinueOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionSucceeded}, {mustEntryID("b"), execution.ExecutionSkipped, SkipCausePriorFailure}, {mustEntryID("c"), execution.ExecutionSkipped, SkipCausePriorFailure}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -93,12 +93,12 @@ func entryStates(values ...execution.ExecutionStatus) []EntryState {
 	ids := []string{"a", "b", "c"}
 	result := make([]EntryState, len(values))
 	for i, status := range values {
-		result[i] = EntryState{ExecutionID: ids[i], Status: status}
+		result[i] = EntryState{ExecutionID: mustEntryID(ids[i]), Status: status}
 	}
 	return result
 }
 func causedStates(first execution.ExecutionStatus, cause SkipCause) []EntryState {
-	return []EntryState{{ExecutionID: "a", Status: first}, {ExecutionID: "b", Status: execution.ExecutionSkipped, SkipCause: cause}, {ExecutionID: "c", Status: execution.ExecutionSkipped, SkipCause: cause}}
+	return []EntryState{{ExecutionID: mustEntryID("a"), Status: first}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionSkipped, SkipCause: cause}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionSkipped, SkipCause: cause}}
 }
 func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.InstanceSnapshot {
 	t.Helper()

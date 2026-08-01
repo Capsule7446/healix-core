@@ -74,9 +74,9 @@ func (s *consumerCreateRunStore) InsertCreateRun(_ context.Context, intent sched
 	if err != nil {
 		return scheduling.InsertCreateRunOutcome{}, err
 	}
-	entryIDs := make([]string, len(intent.Entries))
+	entryIDs := make([]execution.EntryID, len(intent.Entries))
 	for index, entry := range intent.Entries {
-		entryIDs[index] = entry.ID.String()
+		entryIDs[index] = entry.ID
 	}
 	return scheduling.InsertCreateRunOutcome{Status: scheduling.InsertCreateRunApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: scheduling.StoredCreateRunResult{Run: intent.Run, Snapshot: hydrated, SnapshotDigest: hydrated.Digest(), EntryIDs: entryIDs}}, nil
 }
@@ -103,7 +103,7 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok := compiled.Entry(path)
+	entry, ok := compiled.Entry(mustEntryID(path))
 	if !ok {
 		t.Fatalf("compiled execution %q is missing", path)
 	}

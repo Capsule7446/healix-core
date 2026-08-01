@@ -166,9 +166,9 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 			return err // execution.NewRun's own error is being classified by a parallel domain/execution migration; this boundary neither adds an uncoded layer on top nor buries a code that is already there.
 		}
 		entries := snapshot.Plan().Entries
-		entryIDs := make([]string, len(entries))
+		entryIDs := make([]execution.EntryID, len(entries))
 		for i := range entries {
-			entryIDs[i] = entries[i].ID.String()
+			entryIDs[i] = entries[i].ID
 		}
 		outcome, err := tx.InsertCreateRun(ctx, CreateRunIntent{CommandID: owned.CommandID, RequestDigest: digest, Run: run, Snapshot: snapshot, Entries: entries})
 		if err != nil {
@@ -217,7 +217,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	}
 	entryByItem := make(map[string]execution.Entry, len(entries))
 	for index := range entries {
-		if stored.EntryIDs[index] != entries[index].ID.String() {
+		if stored.EntryIDs[index] != entries[index].ID {
 			return invalid("stored entry identity mismatch")
 		}
 		entryByItem[entries[index].TestTaskItemID] = entries[index]
@@ -354,7 +354,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 	return nil
 }
 
-func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Run, snapshot execution.InstanceSnapshot, entryIDs []string) error {
+func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Run, snapshot execution.InstanceSnapshot, entryIDs []execution.EntryID) error {
 	invalid := func(reason string) error {
 		return createRunAdapterContractViolationError(errors.New(reason))
 	}
@@ -372,7 +372,7 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 		return invalid("stored result is internally inconsistent")
 	}
 	for index := range storedPlan.Entries {
-		if outcome.Result.EntryIDs[index] != storedPlan.Entries[index].ID.String() {
+		if outcome.Result.EntryIDs[index] != storedPlan.Entries[index].ID {
 			return invalid("stored entry identities are inconsistent")
 		}
 	}
@@ -405,5 +405,5 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 }
 
 func resultFromStored(stored StoredCreateRunResult, applied bool) CreateRunResult {
-	return CreateRunResult{Run: stored.Run, Snapshot: stored.Snapshot, EntryIDs: append([]string(nil), stored.EntryIDs...), WasApplied: applied}
+	return CreateRunResult{Run: stored.Run, Snapshot: stored.Snapshot, EntryIDs: append([]execution.EntryID(nil), stored.EntryIDs...), WasApplied: applied}
 }

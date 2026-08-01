@@ -23,10 +23,10 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 	source.RunID = command.RunID
 	roots := make([]execution.InvocationScopeSnapshot, 0, len(source.Entries)*2)
 	for _, entry := range source.Entries {
-		entry.ExecutionID = concreteRootPath(command.RunID.String(), entry.TestTaskItemID)
+		entry.ExecutionID = mustEntryID(concreteRootPath(command.RunID.String(), entry.TestTaskItemID))
 		roots = append(roots,
-			execution.InvocationScopeSnapshot{Path: entry.ExecutionID, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
-			execution.InvocationScopeSnapshot{Path: entry.ExecutionID + "/10:call-child", ParentPath: entry.ExecutionID, ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
+			execution.InvocationScopeSnapshot{Path: entry.ExecutionID.String(), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
+			execution.InvocationScopeSnapshot{Path: entry.ExecutionID.String() + "/10:call-child", ParentPath: entry.ExecutionID.String(), ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
 		)
 	}
 	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}, Invocations: roots}
@@ -433,9 +433,9 @@ func (f *createRunFake) InsertCreateRun(_ context.Context, intent CreateRunInten
 	if f.insertOutcome.Status != "" {
 		return f.insertOutcome, nil
 	}
-	entries := make([]string, len(intent.Entries))
+	entries := make([]execution.EntryID, len(intent.Entries))
 	for i := range intent.Entries {
-		entries[i] = intent.Entries[i].ID.String()
+		entries[i] = intent.Entries[i].ID
 	}
 	outcome := InsertCreateRunOutcome{Status: InsertCreateRunApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: StoredCreateRunResult{Run: intent.Run, Snapshot: intent.Snapshot, SnapshotDigest: intent.Snapshot.Digest(), EntryIDs: entries}}
 	if f.mutateInsertOutcome != nil {
@@ -478,7 +478,7 @@ func TestCreateRunServiceRejectsMalformedAuthoritativeOutcomes(t *testing.T) {
 		{"wrong digest", func(v *InsertCreateRunOutcome) { v.RequestDigest = "sha256:" + strings.Repeat("0", 64) }},
 		{"wrong run", func(v *InsertCreateRunOutcome) { v.Result.Run.ID = mustInstanceID("other") }},
 		{"empty snapshot", func(v *InsertCreateRunOutcome) { v.Result.Snapshot = execution.InstanceSnapshot{} }},
-		{"wrong entries", func(v *InsertCreateRunOutcome) { v.Result.EntryIDs = []string{"other"} }},
+		{"wrong entries", func(v *InsertCreateRunOutcome) { v.Result.EntryIDs = []execution.EntryID{mustEntryID("other")} }},
 	}
 	for _, test := range mutations {
 		t.Run(test.name, func(t *testing.T) {
@@ -698,9 +698,9 @@ func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entryIDs := make([]string, len(snapshot.Plan().Entries))
+	entryIDs := make([]execution.EntryID, len(snapshot.Plan().Entries))
 	for index, entry := range snapshot.Plan().Entries {
-		entryIDs[index] = entry.ID.String()
+		entryIDs[index] = entry.ID
 	}
 	digest, err := CreateRunRequestDigest(command)
 	if err != nil {
@@ -730,9 +730,9 @@ func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T)
 		t.Fatal(err)
 	}
 	winnerEntries := winnerSnapshot.Plan().Entries
-	winnerIDs := make([]string, len(winnerEntries))
+	winnerIDs := make([]execution.EntryID, len(winnerEntries))
 	for index := range winnerEntries {
-		winnerIDs[index] = winnerEntries[index].ID.String()
+		winnerIDs[index] = winnerEntries[index].ID
 	}
 	loserResolved := validResolvedCreateRun(t, command)
 	fake := &createRunFake{resolved: loserResolved, mutateInsertOutcome: func(outcome *InsertCreateRunOutcome) {
@@ -760,9 +760,9 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 		t.Fatal(err)
 	}
 	entries := snapshot.Plan().Entries
-	entryIDs := make([]string, len(entries))
+	entryIDs := make([]execution.EntryID, len(entries))
 	for index := range entries {
-		entryIDs[index] = entries[index].ID.String()
+		entryIDs[index] = entries[index].ID
 	}
 	base := StoredCreateRunResult{Run: run, Snapshot: snapshot, SnapshotDigest: snapshot.Digest(), EntryIDs: entryIDs}
 	tests := []struct {
@@ -787,7 +787,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stored := base
-			stored.EntryIDs = append([]string(nil), base.EntryIDs...)
+			stored.EntryIDs = append([]execution.EntryID(nil), base.EntryIDs...)
 			test.mutate(&stored)
 			fake := &createRunFake{resolved: resolved, mutateInsertOutcome: func(outcome *InsertCreateRunOutcome) {
 				outcome.Status = InsertCreateRunReplayed
@@ -805,7 +805,7 @@ func TestCreateRunServiceRejectsMalformedReplayWinner(t *testing.T) {
 	command := validCreateRunCommand()
 	fake := &createRunFake{resolved: validResolvedCreateRun(t, command), mutateInsertOutcome: func(outcome *InsertCreateRunOutcome) {
 		outcome.Status = InsertCreateRunReplayed
-		outcome.Result.EntryIDs[0] = "cross-run-entry"
+		outcome.Result.EntryIDs[0] = mustEntryID("cross-run-entry")
 	}}
 	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
 	if !fault.IsCode(err, CodeCreateInstanceAdapterContractViolation) || !isZeroCreateRunResult(result) {
@@ -835,7 +835,7 @@ func TestCreateRunServiceRejectsMalformedFindCommandReplay(t *testing.T) {
 	}
 	for _, test := range mutations {
 		t.Run(test.name, func(t *testing.T) {
-			stored := StoredCreateRunCommand{CommandID: command.CommandID, RequestDigest: digest, Result: StoredCreateRunResult{Run: created.Run, Snapshot: created.Snapshot, SnapshotDigest: created.Snapshot.Digest(), EntryIDs: append([]string(nil), created.EntryIDs...)}}
+			stored := StoredCreateRunCommand{CommandID: command.CommandID, RequestDigest: digest, Result: StoredCreateRunResult{Run: created.Run, Snapshot: created.Snapshot, SnapshotDigest: created.Snapshot.Digest(), EntryIDs: append([]execution.EntryID(nil), created.EntryIDs...)}}
 			test.mutate(&stored)
 			fake := &createRunFake{stored: &stored, resolved: validResolvedCreateRun(t, command)}
 			result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)

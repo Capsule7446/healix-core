@@ -16,7 +16,8 @@ type buildExecutionPlanInput struct {
 	Entries     []executionEntryInput
 }
 type executionEntryInput struct {
-	ExecutionID, TestTaskItemID       string
+	ExecutionID                       execution.EntryID
+	TestTaskItemID                    string
 	SequenceNumber                    int
 	FlowFragmentID, WorkflowVersionID string
 	ParameterSnapshot                 parameterSnapshotInput
@@ -58,12 +59,7 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 	}
 	entries := make([]execution.Entry, len(input.Entries))
 	for i, item := range input.Entries {
-		// A rejected value yields the zero entry identity, which draft.Validate below
-		// rejects with the registered code and field path. Reporting it here too
-		// would mean two places describing the same malformed input differently, and
-		// the one here would be the worse of the two.
-		entryID, _ := execution.NewEntryID(item.ExecutionID)
-		entry := execution.Entry{ID: entryID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
+		entry := execution.Entry{ID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
 		if item.ParameterSnapshot.IsPresent {
 			entry.Parameters = execution.ParameterSnapshot{ID: item.ParameterSnapshot.ID, SchemaVersion: item.ParameterSnapshot.SchemaVersion, WorkflowVersionID: item.WorkflowVersionID, Values: cloneParameterValues(item.ParameterSnapshot.Values)}
 		}
@@ -88,7 +84,7 @@ func validateEntries(input buildExecutionPlanInput) error {
 	for _, dependency := range input.Publication.Workflows {
 		deps[dependencyKey{workflowID: dependency.FlowFragment.ID, versionID: dependency.Version.ID}] = dependency
 	}
-	seen := map[string]bool{}
+	seen := map[execution.EntryID]bool{}
 	for i, e := range input.Entries {
 		item := items[i]
 		if e.TestTaskItemID != item.ID || e.SequenceNumber != item.SequenceNumber || e.FlowFragmentID != item.FlowFragmentID {

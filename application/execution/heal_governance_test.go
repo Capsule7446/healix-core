@@ -13,7 +13,7 @@ import (
 
 func healGovernancePlan(runID string, sequence uint64, band evidence.DecisionBand, streak domainautomation.HealStreak) HealGovernancePlan {
 	observation := evidence.HealObservation{
-		ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: "execution-" + runID, StepExecutionID: "step-" + runID,
+		ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: mustEntryID("execution-" + runID), StepExecutionID: mustStepExecutionID("step-" + runID),
 		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 		DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 	}
@@ -136,7 +136,7 @@ func TestDefaultHealGovernancePlannerResetIsScopedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reset := evidence.HealCandidateReset{ExecutionID: "execution-reset", StepExecutionID: "step-reset", ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
+	reset := evidence.HealCandidateReset{ExecutionID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
 	plan := HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{Key: first.Snapshot.Key, CurrentNodeVersionID: "base", Revision: 2, Streak: decision.NextStreak},
 		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: mustInstanceID("run-2"), Sequence: 2, Reset: &reset},

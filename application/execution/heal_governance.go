@@ -324,8 +324,8 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		for _, identity := range []string{
 			observation.ID,
 			observation.RunID.String(),
-			observation.ExecutionID,
-			observation.StepExecutionID,
+			observation.ExecutionID.String(),
+			observation.StepExecutionID.String(),
 			observation.ElementTargetID,
 			observation.BaseNodeVersionID,
 		} {
@@ -351,7 +351,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		return domainautomation.HealObservation{
 			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID.String(),
-			ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: fact.Sequence,
+			ExecutionID: observation.ExecutionID.String(), StepExecutionID: observation.StepExecutionID.String(), Sequence: fact.Sequence,
 			ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 			CandidateHash: observation.CandidateHash, Band: band, Outcome: outcome, BaseIsCurrent: baseIsCurrent,
 		}, nil
@@ -361,8 +361,8 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		reset := *fact.Reset
 		for _, identity := range []string{
-			reset.ExecutionID,
-			reset.StepExecutionID,
+			reset.ExecutionID.String(),
+			reset.StepExecutionID.String(),
 			reset.ElementTargetID,
 			reset.BaseNodeVersionID,
 		} {
@@ -375,7 +375,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		return domainautomation.HealObservation{
 			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID.String(),
-			ExecutionID: reset.ExecutionID, StepExecutionID: reset.StepExecutionID, Sequence: fact.Sequence,
+			ExecutionID: reset.ExecutionID.String(), StepExecutionID: reset.StepExecutionID.String(), Sequence: fact.Sequence,
 			ElementTargetID: reset.ElementTargetID, BaseNodeVersionID: reset.BaseNodeVersionID,
 			Outcome: domainautomation.HealOriginalRecovered, BaseIsCurrent: baseIsCurrent,
 		}, nil

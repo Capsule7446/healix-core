@@ -240,14 +240,16 @@ func TestDefaultHealGovernancePlannerRejectsMalformedNestedFactPayloads(t *testi
 		name   string
 		mutate func(*HealGovernancePlan)
 	}{
-		{name: "observation execution control", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ExecutionID = "secret\x00execution" }},
-		{name: "observation step format", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.StepExecutionID = "secret​step" }},
+		{name: "observation execution control", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ExecutionID = mustEntryID("secret\x00execution") }},
+		{name: "observation step format", mutate: func(plan *HealGovernancePlan) {
+			plan.Fact.Observation.StepExecutionID = mustStepExecutionID("secret​step")
+		}},
 		{name: "observation candidate invalid UTF-8", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.CandidateHash = string([]byte{0xff}) }},
 		{name: "observation candidate whitespace", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.CandidateHash = "   " }},
 		{name: "observation invalid confidence", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.Confidence = math.NaN() }},
 		{name: "reset execution control", mutate: func(plan *HealGovernancePlan) {
 			plan.Fact.Kind, plan.Fact.Observation, plan.Fact.Reset = HealAcceptedReset, nil, validResetPayload()
-			plan.Fact.Reset.ExecutionID = "secret\x00execution"
+			plan.Fact.Reset.ExecutionID = mustEntryID("secret\x00execution")
 		}},
 	}
 	for _, test := range tests {
@@ -262,7 +264,7 @@ func TestDefaultHealGovernancePlannerRejectsMalformedNestedFactPayloads(t *testi
 
 func validResetPayload() *evidence.HealCandidateReset {
 	return &evidence.HealCandidateReset{
-		ExecutionID: "execution-reset", StepExecutionID: "step-reset", ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
+		ExecutionID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
 	}
 }
 

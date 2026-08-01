@@ -1,6 +1,9 @@
 package evidence
 
-import "github.com/Capsule7446/healix-core/domain/fault"
+import (
+	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
+)
 
 type ProgressPhase string
 
@@ -12,8 +15,8 @@ const (
 )
 
 type StepProgressEvent struct {
-	ID             string
-	ExecutionID    string
+	ID             execution.StepExecutionID
+	ExecutionID    execution.EntryID
 	WorkflowStepID string
 	DisplayName    string
 	Kind           string
@@ -25,7 +28,7 @@ type StepProgressEvent struct {
 
 func (e StepProgressEvent) Validate() error {
 	var violations []fault.Violation
-	if e.ID == "" || e.ExecutionID == "" || e.WorkflowStepID == "" || e.DisplayName == "" || e.Kind == "" {
+	if e.ID.Validate() != nil || e.ExecutionID.Validate() != nil || e.WorkflowStepID == "" || e.DisplayName == "" || e.Kind == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "event identity is required"))
 	}
 	switch e.Phase {
@@ -47,8 +50,8 @@ func (e StepProgressEvent) Validate() error {
 
 // StepPhaseEvent is the framework-neutral terminal execution timeline event.
 type StepPhaseEvent struct {
-	ID             string
-	ExecutionID    string
+	ID             execution.StepExecutionID
+	ExecutionID    execution.EntryID
 	WorkflowStepID string
 	DisplayName    string
 	Kind           string

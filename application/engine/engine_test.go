@@ -191,7 +191,7 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 
 func compiledEntry(runID domainexecution.InstanceID, program node.Program) CompiledEntry {
 	const snapshotDigest = "sha256:test-snapshot-digest"
-	const executionID = "test-execution"
+	executionID := mustEntryID("test-execution")
 	return CompiledEntry{
 		RunID: runID, SnapshotDigest: snapshotDigest, ExecutionID: executionID,
 		program: program,

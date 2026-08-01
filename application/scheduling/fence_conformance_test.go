@@ -45,7 +45,7 @@ func (s *fencedSchedulingStore) ApplyDecision(_ context.Context, claim Claim, de
 	if claim.Fence != s.active {
 		return ApplyDecisionResult{}, execution.NewStaleWorkerFenceError()
 	}
-	if decision.NextExecutionID != "" {
+	if decision.NextExecutionID != (execution.EntryID{}) {
 		s.starts++
 	}
 	return ApplyDecisionResult{Fence: claim.Fence, Applied: true}, nil
@@ -80,7 +80,7 @@ func TestClaimAndDecisionFenceConformance(t *testing.T) {
 	}
 	stale := winner
 	stale.Fence.ClaimToken = "stale"
-	decision := Decision{NextExecutionID: "execution-1"}
+	decision := Decision{NextExecutionID: mustEntryID("execution-1")}
 	if _, err := store.ApplyDecision(context.Background(), stale, decision, 2); !fault.IsCode(err, execution.CodeWorkerFenceStale) {
 		t.Fatalf("stale decision error=%v", err)
 	}

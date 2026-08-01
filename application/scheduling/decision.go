@@ -28,20 +28,20 @@ const (
 )
 
 type EntryState struct {
-	ExecutionID string
+	ExecutionID execution.EntryID
 	Status      execution.ExecutionStatus
 	SkipCause   SkipCause
 }
 
 type ExecutionTransition struct {
-	ExecutionID string
+	ExecutionID execution.EntryID
 	From        execution.ExecutionStatus
 	To          execution.ExecutionStatus
 	Cause       SkipCause
 }
 
 type Decision struct {
-	NextExecutionID string
+	NextExecutionID execution.EntryID
 	Transitions     []ExecutionTransition
 	FinalStatus     *execution.InstanceStatus
 }
@@ -58,7 +58,7 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 		return Decision{}, invalidEntryStatesError()
 	}
 
-	byID := make(map[string]EntryState, len(states))
+	byID := make(map[execution.EntryID]EntryState, len(states))
 	for _, state := range states {
 		if _, exists := byID[state.ExecutionID]; exists {
 			return Decision{}, invalidEntryStatesError()
@@ -67,12 +67,12 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 	}
 	ordered := make([]EntryState, len(entries))
 	for i, entry := range entries {
-		state, exists := byID[entry.ID.String()]
+		state, exists := byID[entry.ID]
 		if !exists {
 			return Decision{}, invalidEntryStatesError()
 		}
 		ordered[i] = state
-		delete(byID, entry.ID.String())
+		delete(byID, entry.ID)
 	}
 	if len(byID) != 0 {
 		return Decision{}, invalidEntryStatesError()
@@ -91,7 +91,7 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 		case execution.ExecutionRunning:
 			return Decision{}, nil
 		case execution.ExecutionPending:
-			return Decision{NextExecutionID: entries[i].ID.String()}, nil
+			return Decision{NextExecutionID: entries[i].ID}, nil
 		case execution.ExecutionFailed:
 			failed = true
 		}
@@ -180,7 +180,7 @@ func stopAfter(entries []execution.Entry, states []EntryState, index int, cause 
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {
 		if states[i].Status == execution.ExecutionPending {
-			transitions = append(transitions, ExecutionTransition{ExecutionID: entries[i].ID.String(), From: execution.ExecutionPending, To: execution.ExecutionSkipped, Cause: cause})
+			transitions = append(transitions, ExecutionTransition{ExecutionID: entries[i].ID, From: execution.ExecutionPending, To: execution.ExecutionSkipped, Cause: cause})
 		}
 	}
 	return Decision{Transitions: transitions, FinalStatus: &status}

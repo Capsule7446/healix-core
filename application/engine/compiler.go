@@ -34,13 +34,13 @@ type RuntimeNodeIdentity struct {
 type compiledExecutionIdentity struct {
 	runID          execution.InstanceID
 	snapshotDigest string
-	executionID    string
+	executionID    execution.EntryID
 }
 
 type CompiledEntry struct {
 	RunID             execution.InstanceID
 	SnapshotDigest    string
-	ExecutionID       string
+	ExecutionID       execution.EntryID
 	TestTaskItemID    string
 	SequenceNumber    int
 	FlowFragmentID    string
@@ -53,7 +53,7 @@ type CompiledEntry struct {
 
 type CompiledPlan struct {
 	entries []CompiledEntry
-	byID    map[string]int
+	byID    map[execution.EntryID]int
 }
 
 // Entries returns the compiled entries in execution order. The returned slice
@@ -68,7 +68,7 @@ func (r CompiledPlan) Entries() []CompiledEntry {
 
 // Entry returns the compiled entry identified by executionID without exposing
 // the run's private lookup index.
-func (r CompiledPlan) Entry(executionID string) (CompiledEntry, bool) {
+func (r CompiledPlan) Entry(executionID execution.EntryID) (CompiledEntry, bool) {
 	index, ok := r.byID[executionID]
 	if !ok || index < 0 || index >= len(r.entries) {
 		return CompiledEntry{}, false
@@ -80,8 +80,8 @@ func (r CompiledPlan) Entry(executionID string) (CompiledEntry, bool) {
 	return cloneCompiledEntry(entry), true
 }
 
-func (entry CompiledEntry) hasIdentity(executionID string) bool {
-	return executionID != "" &&
+func (entry CompiledEntry) hasIdentity(executionID execution.EntryID) bool {
+	return executionID.Validate() == nil &&
 		entry.RunID.Validate() == nil && entry.RunID == entry.identity.runID &&
 		entry.SnapshotDigest != "" && entry.SnapshotDigest == entry.identity.snapshotDigest &&
 		entry.ExecutionID == executionID && entry.ExecutionID == entry.identity.executionID
@@ -156,12 +156,10 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 		invocationsByPath[invocation.Path] = invocation
 	}
 	environment := snapshot.Environment()
-	result := CompiledPlan{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[string]int, len(draft.Entries))}
+	result := CompiledPlan{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[execution.EntryID]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
-		// The compiled plan is still keyed by plain strings, so the entry identity
-		// leaves the type system exactly once, here, and every use below reads the
-		// same spelled value rather than converting again at each site.
-		entryID := entry.ID.String()
+		entryID := entry.ID
+		spelled := entryID.String()
 		if _, exists := result.byID[entryID]; exists {
 			return CompiledPlan{}, fmt.Errorf("duplicate execution %s", entryID)
 		}
@@ -171,15 +169,15 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 			metadata:     make(map[string]StepMetadata), runtimeNodes: make(map[string]RuntimeNodeIdentity),
 			compiledNodes: &compiledNodes,
 		}
-		rootPath := encodeRuntimeComponent(entryID)
-		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, entryID, 1)
+		rootPath := encodeRuntimeComponent(spelled)
+		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, spelled, 1)
 		if err != nil {
 			// The inner failure is already a classified fault. This wrapper both hid
 			// that classification and welded the execution id into public text.
 			return CompiledPlan{}, err
 		}
 		root.OwnsParameterScope = true
-		invocation, exists := invocationsByPath[entryID]
+		invocation, exists := invocationsByPath[spelled]
 		if !exists {
 			return CompiledPlan{}, fmt.Errorf("compile execution %s: root invocation is missing", entryID)
 		}

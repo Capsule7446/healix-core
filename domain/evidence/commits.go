@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type HealCandidateReset struct {
-	ExecutionID       string
-	StepExecutionID   string
+	ExecutionID       execution.EntryID
+	StepExecutionID   execution.StepExecutionID
 	ElementTargetID   string
 	BaseNodeVersionID string
 	ObservedAt        int64
@@ -48,7 +49,7 @@ func (c StepTransitionCommit) Validate() error {
 	if c.ExpectedRevision == 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "expectedRevision", "expected revision must be non-zero"))
 	}
-	if c.Event.ID == "" || c.Event.ExecutionID == "" || c.Event.WorkflowStepID == "" || c.Event.DisplayName == "" || c.Event.Kind == "" {
+	if c.Event.ID.Validate() != nil || c.Event.ExecutionID.Validate() != nil || c.Event.WorkflowStepID == "" || c.Event.DisplayName == "" || c.Event.Kind == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "event.identity", "event identity is required"))
 	}
 	if !isTerminalPhase(c.Event.Phase) {
@@ -131,8 +132,8 @@ func (c StepTransitionCommit) appendHealObservationViolations(violations []fault
 
 func (c StepTransitionCommit) appendSelectorResetViolations(violations []fault.Violation) []fault.Violation {
 	type resetIdentity struct {
-		ExecutionID       string
-		StepExecutionID   string
+		ExecutionID       execution.EntryID
+		StepExecutionID   execution.StepExecutionID
 		ElementTargetID   string
 		BaseNodeVersionID string
 	}

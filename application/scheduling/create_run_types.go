@@ -32,7 +32,7 @@ type ResolvedCreateRun struct {
 type CreateRunResult struct {
 	Run        execution.Run
 	Snapshot   execution.InstanceSnapshot
-	EntryIDs   []string
+	EntryIDs   []execution.EntryID
 	WasApplied bool
 }
 
@@ -40,7 +40,7 @@ type StoredCreateRunResult struct {
 	Run            execution.Run
 	Snapshot       execution.InstanceSnapshot
 	SnapshotDigest string
-	EntryIDs       []string
+	EntryIDs       []execution.EntryID
 }
 
 type StoredCreateRunCommand struct {

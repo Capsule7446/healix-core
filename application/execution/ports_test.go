@@ -45,7 +45,7 @@ func (*plannerFixture) PlanHealGovernance(HealGovernancePlan) (HealGovernanceDec
 
 func validStepTransitionCommit() evidence.StepTransitionCommit {
 	return evidence.StepTransitionCommit{CommitID: "commit", ExpectedRevision: 1, Event: evidence.StepPhaseEvent{
-		ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "step",
+		ID: mustStepExecutionID("step"), ExecutionID: mustEntryID("execution"), WorkflowStepID: "workflow-step", DisplayName: "step",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 	}}
 }

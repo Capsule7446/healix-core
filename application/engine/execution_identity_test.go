@@ -114,18 +114,18 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 	}{
 		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.RunID = mustInstanceID("wrong-run") }},
 		{name: "config snapshot", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.SnapshotDigest = "wrong-digest" }},
-		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.ExecutionID = "wrong-execution" }},
+		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.ExecutionID = mustEntryID("wrong-execution") }},
 		{name: "missing claim token without facts", mutate: func(_ *CompiledEntry, cfg *Config) {
 			cfg.ClaimToken = ""
 			cfg.Facts = nil
 		}},
 		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.RunID = mustInstanceID("wrong-run") }},
 		{name: "entry snapshot", mutate: func(entry *CompiledEntry, _ *Config) { entry.SnapshotDigest = "wrong-digest" }},
-		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.ExecutionID = "wrong-execution" }},
+		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.ExecutionID = mustEntryID("wrong-execution") }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entry, ok := compiled.Entry("execution-entry")
+			entry, ok := compiled.Entry(mustEntryID("execution-entry"))
 			if !ok {
 				t.Fatal("execution-entry is missing")
 			}
@@ -166,7 +166,7 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok := compiled.Entry("execution-entry")
+	entry, ok := compiled.Entry(mustEntryID("execution-entry"))
 	if !ok {
 		t.Fatal("execution-entry is missing")
 	}
@@ -211,7 +211,7 @@ func TestRunProgramForwardsCompleteExecutionAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok := compiled.Entry("execution-entry")
+	entry, ok := compiled.Entry(mustEntryID("execution-entry"))
 	if !ok {
 		t.Fatal("execution-entry is missing")
 	}

@@ -182,9 +182,9 @@ func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunInte
 	if err := fail(stageCommand); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}
-	entryIDs := make([]string, len(intent.Entries))
+	entryIDs := make([]execution.EntryID, len(intent.Entries))
 	for index := range intent.Entries {
-		entryIDs[index] = intent.Entries[index].ID.String()
+		entryIDs[index] = intent.Entries[index].ID
 	}
 	stored := StoredCreateRunResult{Run: intent.Run, Snapshot: intent.Snapshot, SnapshotDigest: intent.Snapshot.Digest(), EntryIDs: entryIDs}
 	tx.state.commands[intent.CommandID] = StoredCreateRunCommand{CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: stored}

@@ -11,3 +11,23 @@ func mustInstanceID(value string) domain.InstanceID {
 	}
 	return id
 }
+
+// mustEntryID spells a coordinate in a fixture where the value is a literal the
+// test author already knows is well formed.
+func mustEntryID(value string) domain.EntryID {
+	id, err := domain.NewEntryID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+// mustStepExecutionID spells a coordinate in a fixture where the value is a literal the
+// test author already knows is well formed.
+func mustStepExecutionID(value string) domain.StepExecutionID {
+	id, err := domain.NewStepExecutionID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
