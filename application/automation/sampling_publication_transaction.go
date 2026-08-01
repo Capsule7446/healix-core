@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
@@ -171,16 +171,11 @@ func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (strin
 	if err := validateSamplingPublicationCommand(owned); err != nil {
 		return "", err
 	}
-	payload, err := json.Marshal(struct {
-		Schema        string
-		PublicationID string
-		Publication   domain.SamplingPublication
-	}{samplingPublicationDigestV1, owned.PublicationID, owned.Publication})
-	if err != nil {
-		return "", fmt.Errorf("encode sampling publication request: %w", err)
-	}
-	digest := sha256.Sum256(payload)
-	return "sha256:" + hex.EncodeToString(digest[:]), nil
+	h := sha256.New()
+	writeDigestString(h, samplingPublicationDigestV1)
+	writeDigestString(h, owned.PublicationID)
+	encodeCanonicalPayload(h, reflect.ValueOf(owned.Publication))
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (s SamplingPublicationService) Publish(ctx context.Context, command SamplingPublicationCommand) (domain.SamplingPublicationResult, error) {
