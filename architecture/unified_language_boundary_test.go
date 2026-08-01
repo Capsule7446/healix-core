@@ -288,3 +288,52 @@ func TestFlowFragmentStepHasExactlyOneDeepCopy(t *testing.T) {
 			len(found), strings.Join(found, "\n  "))
 	}
 }
+
+// The entry executor runs one authorized entry. It used to take a slice and
+// loop, which put the order entries run in — and the decision to stop after a
+// failure — inside the executor. Both belong to Scheduling: it is the only
+// component that sees the whole instance and the only one that commits terminal
+// state, so an executor that also sequenced meant two components could disagree
+// about what ran with no way to settle it afterwards.
+func TestEntryExecutorTakesOneEntryNotACollection(t *testing.T) {
+	root := repositoryRoot(t)
+	checked := false
+	err := walkProductionGo(filepath.Join(root, "application", "execution"), func(path string, parsed *ast.File, fset *token.FileSet) {
+		for _, decl := range parsed.Decls {
+			function, ok := decl.(*ast.FuncDecl)
+			if !ok || function.Name.Name != "Execute" || function.Recv == nil {
+				continue
+			}
+			receiver := ""
+			if len(function.Recv.List) == 1 {
+				if identifier, ok := function.Recv.List[0].Type.(*ast.Ident); ok {
+					receiver = identifier.Name
+				}
+			}
+			if receiver != "EntryExecutor" {
+				continue
+			}
+			checked = true
+			for _, param := range function.Type.Params.List {
+				if _, isSlice := param.Type.(*ast.ArrayType); isSlice {
+					t.Errorf("%s:%d EntryExecutor.Execute takes a collection; sequencing entries is Scheduling's authority, not the executor's",
+						filepath.ToSlash(mustRelative(root, path)), fset.Position(function.Pos()).Line)
+				}
+			}
+		}
+	})
+	if err != nil {
+		t.Fatalf("walk application/execution: %v", err)
+	}
+	if !checked {
+		t.Fatal("EntryExecutor.Execute was not found; this boundary needs to move with it")
+	}
+}
+
+func mustRelative(root, path string) string {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return path
+	}
+	return relative
+}

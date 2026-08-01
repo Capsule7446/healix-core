@@ -140,25 +140,28 @@ func (factory invalidSessionFactory) Create(context.Context, domainexecution.Wor
 	return invalidSession{factory.session}, nil
 }
 
-func TestEntryExecutorExecuteCollectionBranchesAndForwarding(t *testing.T) {
+// The executor now runs exactly one entry, so there is no empty-collection case
+// to branch on: an instance with no entries is Scheduling's to recognise before
+// it authorizes anything. What is left to pin is that one entry produces exactly
+// one session, created before the runner and closed after it.
+func TestEntryExecutorRunsOneEntryWithOneSession(t *testing.T) {
 	fence := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
-	for _, entries := range [][]domainexecution.WorkflowEntry{nil, {}} {
-		events := []string{}
-		executor := mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events})
-		if err := executor.Execute(context.Background(), fence, entries); err != nil || len(events) != 0 {
-			t.Fatalf("Execute(%#v) error = %v, events = %v", entries, err, events)
-		}
-	}
-
 	events := []string{}
 	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
-	entry := domainexecution.WorkflowEntry{ExecutionID: "entry"}
-	if err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{entry}); err != nil {
+
+	if err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), fence, domainexecution.WorkflowEntry{ExecutionID: "entry"}); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(events, []string{"create:entry", "run:entry", "close:entry"}) || len(runner.seen) != 1 || runner.seen[0] != factory.sessions[0] {
-		t.Fatalf("events = %v, sessions = %#v", events, runner.seen)
+
+	if !reflect.DeepEqual(events, []string{"create:entry", "run:entry", "close:entry"}) {
+		t.Fatalf("events = %v, want create then run then close, once each", events)
+	}
+	if len(factory.sessions) != 1 {
+		t.Fatalf("created %d sessions for one entry, want exactly one", len(factory.sessions))
+	}
+	if len(runner.seen) != 1 || runner.seen[0] != factory.sessions[0] {
+		t.Fatalf("the runner did not receive the session that was created for it: %#v", runner.seen)
 	}
 }
 
@@ -167,7 +170,7 @@ func TestEntryExecutorRejectsNormalInvalidSessionAndWrapsRunnerError(t *testing.
 	events := []string{}
 	session := &sessionFixture{id: "entry", events: &events}
 	runner := &entryRunnerFixture{events: &events}
-	err := mustEntryExecutor(t, invalidSessionFactory{session}, runner).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{{ExecutionID: "entry"}})
+	err := mustEntryExecutor(t, invalidSessionFactory{session}, runner).Execute(context.Background(), fence, domainexecution.WorkflowEntry{ExecutionID: "entry"})
 	if err == nil || !fault.IsCode(err, CodeEntryBrowserSessionAdapterContractViolation) || len(runner.seen) != 0 || !reflect.DeepEqual(events, []string{"close:entry"}) {
 		t.Fatalf("invalid session error = %v, events = %v", err, events)
 	}
@@ -177,7 +180,7 @@ func TestEntryExecutorRejectsNormalInvalidSessionAndWrapsRunnerError(t *testing.
 
 	cause := errors.New("runner failed")
 	events = []string{}
-	err = mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events, err: cause}).Execute(context.Background(), fence, []domainexecution.WorkflowEntry{{ExecutionID: "entry"}})
+	err = mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events, err: cause}).Execute(context.Background(), fence, domainexecution.WorkflowEntry{ExecutionID: "entry"})
 	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "execute entry entry") {
 		t.Fatalf("wrapped runner error = %v", err)
 	}
@@ -195,7 +198,7 @@ func TestEntryExecutorRejectsInvalidFenceBeforeAllocatingSession(t *testing.T) {
 	events := []string{}
 	executor := mustEntryExecutor(t, &sessionFactoryFixture{events: &events}, &entryRunnerFixture{events: &events})
 
-	err := executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}})
+	err := executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 
 	// The fence's own error now propagates unwrapped instead of behind an uncoded
 	// "execute entries" layer. Its identity check is still a bare error — that is
@@ -218,7 +221,7 @@ func TestEntryExecutorValidPanicClosesSynchronouslyAndStops(t *testing.T) {
 	var recovered any
 	func() {
 		defer func() { recovered = recover() }()
-		_ = mustEntryExecutor(t, panicValidFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+		_ = mustEntryExecutor(t, panicValidFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	}()
 	if recovered != "valid panic" || runnerCalled || !reflect.DeepEqual(events, []string{"create:first", "valid", "close"}) {
 		t.Fatalf("panic/runner/events=%#v/%v/%v", recovered, runnerCalled, events)
@@ -251,7 +254,7 @@ func TestEntryExecutorRejectsTypedNilSessionWithoutCloseOrNextEntry(t *testing.T
 		called = true
 		return nil
 	})
-	err := mustEntryExecutor(t, typedNilFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+	err := mustEntryExecutor(t, typedNilFactory{events: &events}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	if err == nil || called || !reflect.DeepEqual(events, []string{"create:first"}) {
 		t.Fatalf("error/called/events=%v/%v/%v", err, called, events)
 	}
@@ -263,7 +266,7 @@ func TestEntryExecutorRejectsNilSessionBeforeRunner(t *testing.T) {
 		called = true
 		return nil
 	})
-	err := mustEntryExecutor(t, nilSessionFactory{runnerCalled: &called}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}})
+	err := mustEntryExecutor(t, nilSessionFactory{runnerCalled: &called}, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	if err == nil || called {
 		t.Fatalf("error/called=%v/%v", err, called)
 	}
@@ -284,7 +287,7 @@ func TestEntryExecutorRunnerPanicClosesSynchronouslyAndStops(t *testing.T) {
 			var recovered any
 			func() {
 				defer func() { recovered = recover() }()
-				_ = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+				_ = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 			}()
 			if recovered != "runner panic" || !reflect.DeepEqual(events, []string{"create:first", "run:first", "close:first"}) {
 				t.Fatalf("panic/events=%#v/%#v", recovered, events)
@@ -315,7 +318,7 @@ func TestEntryExecutorRetainsRunnerAndClosePanics(t *testing.T) {
 	var recovered any
 	func() {
 		defer func() { recovered = recover() }()
-		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}})
+		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	}()
 	joined, ok := recovered.(EntryLifecyclePanic)
 	if !ok || joined.RunnerPanic != "runner panic" || joined.ClosePanic != "close panic" {
@@ -330,7 +333,7 @@ func TestEntryExecutorPropagatesClosePanicAfterSuccessfulRunner(t *testing.T) {
 	var recovered any
 	func() {
 		defer func() { recovered = recover() }()
-		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+		_ = executor.Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	}()
 	if recovered != "close panic" {
 		t.Fatalf("panic = %#v", recovered)
@@ -362,7 +365,7 @@ func TestEntryExecutorRejectsInvalidSessionAndClosesBeforeStopping(t *testing.T)
 	err := mustEntryExecutor(t, observedInvalidSessionFactory{events: &events}, runner).Execute(
 		context.Background(),
 		domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
-		[]domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}},
+		domainexecution.WorkflowEntry{ExecutionID: "first"},
 	)
 	if err == nil || !fault.IsCode(err, CodeEntryBrowserSessionAdapterContractViolation) || runnerCalled {
 		t.Fatalf("error/runner = %v/%v", err, runnerCalled)
@@ -401,7 +404,7 @@ func TestEntryExecutorClosesPartialSessionWhenCreateFails(t *testing.T) {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := mustEntryExecutor(t, partialSessionFactory{events: &events, createErr: createFailure, closeErr: closeFailure}, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+	err := mustEntryExecutor(t, partialSessionFactory{events: &events, createErr: createFailure, closeErr: closeFailure}, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	if !errors.Is(err, createFailure) || !errors.Is(err, closeFailure) {
 		t.Fatalf("error = %v", err)
 	}
@@ -462,7 +465,7 @@ func TestEntryExecutorBoundsCancellationIndependentClose(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+	err = executor.Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 	if !errors.Is(err, context.Canceled) || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("execution/close errors=%v", err)
 	}
@@ -476,22 +479,36 @@ func TestEntryExecutorBoundsCancellationIndependentClose(t *testing.T) {
 	}
 }
 
-func TestEntryExecutorUsesFreshSerialBrowserSessions(t *testing.T) {
+// Each entry gets its own browser session, created and closed inside the one
+// Execute call. Serialising several entries is Scheduling's job now, so what is
+// left to pin here is that two separate calls never share a session — the
+// property that made serial execution safe in the first place.
+func TestEntryExecutorGivesEachEntryItsOwnSession(t *testing.T) {
 	events := []string{}
 	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
-	entries := []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}}
-	err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, entries)
-	if err != nil {
-		t.Fatal(err)
+	executor := mustEntryExecutor(t, factory, runner)
+	fence := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
+
+	for _, id := range []string{"first", "second"} {
+		if err := executor.Execute(context.Background(), fence, domainexecution.WorkflowEntry{ExecutionID: id}); err != nil {
+			t.Fatal(err)
+		}
 	}
+
 	want := []string{"create:first", "run:first", "close:first", "create:second", "run:second", "close:second"}
-	if !reflect.DeepEqual(events, want) || len(runner.seen) != 2 || runner.seen[0] == runner.seen[1] {
-		t.Fatalf("events/sessions=%#v/%#v", events, runner.seen)
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %#v, want %#v", events, want)
+	}
+	if len(runner.seen) != 2 || runner.seen[0] == runner.seen[1] {
+		t.Fatalf("the two entries shared a browser session: %#v", runner.seen)
 	}
 }
 
-func TestEntryExecutorStopsAfterCancellationEvenWhenRunnerReturnsNil(t *testing.T) {
+// Cancellation during an entry no longer becomes the executor's error: the
+// entry itself completed, and whether the instance continues is Scheduling's
+// decision. What must still hold is that the session is closed regardless.
+func TestEntryExecutorClosesTheSessionEvenWhenTheContextIsCancelledMidEntry(t *testing.T) {
 	events := []string{}
 	factory := &sessionFactoryFixture{events: &events}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -501,48 +518,12 @@ func TestEntryExecutorStopsAfterCancellationEvenWhenRunnerReturnsNil(t *testing.
 		return nil
 	})
 
-	err := mustEntryExecutor(t, factory, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
+	err := mustEntryExecutor(t, factory, runner).Execute(ctx, domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, domainexecution.WorkflowEntry{ExecutionID: "first"})
 
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Execute() error = %v, want context canceled", err)
+	if err != nil {
+		t.Fatalf("Execute() error = %v; the entry finished, so sequencing after cancellation belongs to Scheduling", err)
 	}
 	if want := []string{"create:first", "run:first", "close:first"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %#v, want %#v", events, want)
-	}
-}
-
-func TestEntryExecutorClosesBeforeStoppingOnEveryFailure(t *testing.T) {
-	runFailure := errors.New("execution failed")
-	closeFailure := errors.New("close failed")
-	createFailure := errors.New("create failed")
-	tests := []struct {
-		name      string
-		createErr error
-		runErr    error
-		closeErr  error
-		want      []string
-		targets   []error
-	}{
-		{"create", createFailure, nil, nil, []string{"create:first"}, []error{createFailure}},
-		{"execution", nil, runFailure, nil, []string{"create:first", "run:first", "close:first"}, []error{runFailure}},
-		{"close", nil, nil, closeFailure, []string{"create:first", "run:first", "close:first"}, []error{closeFailure}},
-		{"execution and close", nil, runFailure, closeFailure, []string{"create:first", "run:first", "close:first"}, []error{runFailure, closeFailure}},
-		{"cancel", nil, context.Canceled, nil, []string{"create:first", "run:first", "close:first"}, []error{context.Canceled}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			events := []string{}
-			factory := &sessionFactoryFixture{events: &events, createErr: test.createErr, closeErr: test.closeErr}
-			runner := &entryRunnerFixture{events: &events, err: test.runErr}
-			err := mustEntryExecutor(t, factory, runner).Execute(context.Background(), domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}, []domainexecution.WorkflowEntry{{ExecutionID: "first"}, {ExecutionID: "second"}})
-			if !reflect.DeepEqual(events, test.want) {
-				t.Fatalf("events=%#v", events)
-			}
-			for _, target := range test.targets {
-				if !errors.Is(err, target) {
-					t.Fatalf("error=%v missing %v", err, target)
-				}
-			}
-		})
 	}
 }

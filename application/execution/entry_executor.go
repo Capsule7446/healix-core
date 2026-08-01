@@ -109,21 +109,21 @@ func NewEntryExecutor(factory BrowserSessionFactory, runner EntryRunner, closeTi
 	return EntryExecutor{factory: factory, runner: runner, closeTimeout: closeTimeout}, nil
 }
 
-func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.WorkerFence, entries []domainexecution.WorkflowEntry) error {
+// Execute runs exactly one authorized entry.
+//
+// It used to take a slice and loop, which put the order entries run in, and the
+// decision to stop after a failure, inside the executor. Both belong to
+// Scheduling: it is the only component that can see the whole instance, and it
+// is the one that commits terminal state. An executor that also sequenced meant
+// two components could disagree about what ran, with no way to tell which was
+// right after the fact.
+func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.WorkerFence, entry domainexecution.WorkflowEntry) error {
 	// The fence returns its own classified fault; an uncoded wrapper here would
 	// hide that classification behind an unclassified outer error.
 	if err := fence.Validate(); err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		if err := e.executeEntry(ctx, fence, entry); err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return e.executeEntry(ctx, fence, entry)
 }
 
 func (e EntryExecutor) executeEntry(ctx context.Context, fence domainexecution.WorkerFence, entry domainexecution.WorkflowEntry) (result error) {
