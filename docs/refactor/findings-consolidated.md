@@ -8,7 +8,8 @@
 - **C1** codex `gpt-5.6-luna` max（别名 / 非确定性 / 并发）
 - **C2** codex `gpt-5.6-sol` max（同上三份）
 - **C3** codex 第三轮（automation 侧非确定性与排序）
-- **X1** 修复落地后的交叉审核（4 问 × 3 个模型层级，27 agent；每条发现再过一轮对抗性反驳）
+- **X1** 第一轮交叉审核（4 问 × 3 个模型层级，27 agent）
+- **X2** 第二轮交叉审核（针对 X1 的修复本身，3 视角 × 3 层级，23 agent）
 
 ## 裁定标准
 
@@ -107,6 +108,20 @@ X1 提出 28 条候选，22 条被反驳，6 条存活。**存活的没有一条
 
 本模块三处 `json.Marshal` 摘要里两处出过同一个缺陷。剩下两处（`HealReviewRequestIdentityDigest`、`HealReviewStreakDigest`）目前正确，因为载荷全是导出字段——而这正是出事前那两处的状态。守卫现在遍历全部三个载荷的类型图，出现零导出字段类型即失败。提交：`3eb6d21`
 
+### F12 第二轮交叉审核的三条
+
+X2 提出 17 条，13 条被驳倒，**3 条存活**（1 medium / 2 low），无一是修复引入的回归。
+
+- **`validateCreateInstanceCommand` 的 fault 链会翻转**（medium）。两个分支返回的**失败种类不同**：畸形 item id 是无 code 的裸 error，坏参数值带 `PARAMETER_VALUE_INVALID`。外层信封把两者都包成 `CodeCreateInstanceCommandInvalid`，所以 `CodeOf` 与渲染文本纹丝不动——**没有任何既有测试能看见它**。但 `fault.IsCode` 是 `errors.Is`、走整条链，于是同一份字节的输入，`IsCode(err, parameter.CodeValueInvalid)` 时真时假。按更深的 code 分支的 Host 会把同一请求路由到两条路上。`domain/fault` 的注释里亲自点名了这个陷阱。
+- **application 层是未清扫的类，不是漏网单点**（low）。X2 另点了四处同型：环境变量遍历、两处预算遍历、以及 service 侧的已存计划比对。前两轮各自逐个修，各自漏了兄弟。现在把有序迭代命名为 `sortedKeys` 一次，所有站点统一使用。
+- **`TestOwnedCommitKeepsEveryIdentity` 部分空转**（low）。共享 fixture 只有 Event，两个遍历观察项的循环零次迭代，而"值为空即无意义"的自检对空集合不触发。已换成带观察项的 fixture 并拒绝在无观察项时运行。
+
+提交：`2cb10f3`
+
+### F13 字节预算的量纲漂移（自查）
+
+把 `len(json.Marshal)` 换成走值遍历后，**量纲变了而上限没变**。实测同一 commit：JSON 340 字节 vs 走值 75 字节，倍率 4.53——`1<<20` 静默放宽了约 4.5 倍，而全部测试照过，因为它们断言的是"边界被强制"而非"边界在哪"。改为 `1<<18` 并在常量与遍历上都标注单位。同时给遍历加深度上限：旧的 `json.Marshal` 遇环报错，新的会爆栈。提交：`34b5f3b`
+
 ---
 
 ## 二、裁定为不成立（附依据）
@@ -123,7 +138,10 @@ X1 提出 28 条候选，22 条被反驳，6 条存活。**存活的没有一条
 | 自查 | 公共文本泄漏 | `fault.New`/`fault.Wrap` 消息无格式化动词；`mustViolation` 的 `%d` 是契约允许的 0-based 索引，`%q` 均在私有 cause |
 | A2 | `mapSamplingNode` 不拷 Selectors/Fingerprint | `NewElementTarget` 内部 `cloneNodeAggregate` 兜住 |
 | A2 | `execution/validation.go:306` spec 别名 | 局部值仅供 `spec.Validate()`，不逃逸 |
-| X1 | 22 条候选被对抗性反驳驳倒 | 多为"下游已有兜底""调用方不可达""严重度虚高"。反驳环节把 28 条压到 6 条，比例本身说明单轮审核的误报率 |
+| X1 | 22 条候选被对抗性反驳驳倒 | 多为"下游已有兜底""调用方不可达""严重度虚高" |
+| X2 | 13 条候选被驳倒 | 含三个 lens 各报一次的 `HealObservation.Fingerprint` 别名——该字段全树无人写、无人读、Validate 不看，所报的失败场景实际会 nil-map panic。另有数条是对着过期工作区状态写的 |
+
+两轮反驳环节合计把 45 条候选压到 9 条真发现。**单轮审核的误报率是 80%**——这是必须配对抗性验证环节的直接依据，也是我不逐条复核就不采信任何审计结论的原因。
 
 ---
 
@@ -170,3 +188,6 @@ X1 提出 28 条候选，22 条被反驳，6 条存活。**存活的没有一条
 1. **假绿的测试比没有测试更糟。** `TestDraftEditingNeverAliasesStepContentWithItsSource` 直接调用了出问题的函数，但 fixture 里既没 Parameters 也没 Nodes，被测的两个分支从未执行。同理弃用守卫扫的是空集。
 2. **修实例不等于消除类别。** fingerprint 修了两处之后仍有三处；结构守卫一跑就抓出第五份。
 3. **一次调用永远通过。** map 顺序缺陷只能靠重复调用断言，单次调用总会选中某一个。
+4. **公共契约稳定不等于没有非确定性。** `validateCreateInstanceCommand` 的顶层 code 和消息全程不动，唯一会变的是错误链深处——而 `IsCode` 走整条链。只断言顶层 code 的测试对这类缺陷完全失明。
+5. **换度量要连同阈值一起换。** 预算从 JSON 长度改成内容字节后，`1<<20` 就不再是同一个意思了。所有测试断言的是"边界被强制"，没有一条断言"边界在哪"，所以 4.5 倍的放宽是静默的。
+6. **收敛是可观测的。** 两轮交叉审核：28 条 → 6 条真发现，17 条 → 3 条真发现，且第二轮的三条全部是第一轮已知类的旁支，无新类出现。
