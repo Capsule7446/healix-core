@@ -39,8 +39,8 @@ func (n *executionIdentityProbeNode) Run(ctx context.Context, runtime *node.Runt
 		return err
 	}
 	return runtime.Facts.RecordProgress(ctx,
-		domainexecution.WorkerFence{RunID: runtime.RunID, ClaimToken: runtime.ClaimToken},
-		node.Event{RunID: runtime.RunID, NodeID: n.ID(), Occurrence: 1, Phase: node.PhaseRunning},
+		domainexecution.WorkerFence{InstanceID: runtime.InstanceID, ClaimToken: runtime.ClaimToken},
+		node.Event{InstanceID: runtime.InstanceID, NodeID: n.ID(), Occurrence: 1, Phase: node.PhaseRunning},
 	)
 }
 
@@ -112,14 +112,14 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 		name   string
 		mutate func(*CompiledEntry, *Config)
 	}{
-		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.RunID = mustInstanceID("wrong-run") }},
+		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.InstanceID = mustInstanceID("wrong-run") }},
 		{name: "config snapshot", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.SnapshotDigest = "wrong-digest" }},
 		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.ExecutionID = mustEntryID("wrong-execution") }},
 		{name: "missing claim token without facts", mutate: func(_ *CompiledEntry, cfg *Config) {
 			cfg.ClaimToken = ""
 			cfg.Facts = nil
 		}},
-		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.RunID = mustInstanceID("wrong-run") }},
+		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.InstanceID = mustInstanceID("wrong-run") }},
 		{name: "entry snapshot", mutate: func(entry *CompiledEntry, _ *Config) { entry.SnapshotDigest = "wrong-digest" }},
 		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.ExecutionID = mustEntryID("wrong-execution") }},
 	}
@@ -132,7 +132,7 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 			probe := &executionIdentityProbe{}
 			entry.program.Root = &executionIdentityProbeNode{probe: probe}
 			cfg := Config{
-				RunID:             entry.RunID,
+				InstanceID:        entry.InstanceID,
 				SnapshotDigest:    entry.SnapshotDigest,
 				ExecutionID:       entry.ExecutionID,
 				ClaimToken:        "claim",
@@ -184,7 +184,7 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 			probe := &executionIdentityProbe{}
 			entryCopy := entry
 			entryCopy.program.Root = &executionIdentityProbeNode{probe: probe}
-			cfg := Config{RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+			cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
 				ClaimToken: "claim", AuthorityVerifier: test.verifier, Driver: executionIdentityProbeDriver{probe: probe},
 				Recorder: executionIdentityProbeRecorder{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 			result, err := RunProgram(context.Background(), entryCopy, cfg)
@@ -217,12 +217,12 @@ func TestRunProgramForwardsCompleteExecutionAuthority(t *testing.T) {
 	}
 	probe := &executionIdentityProbe{}
 	entry.program.Root = &executionIdentityProbeNode{probe: probe}
-	cfg := Config{RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+	cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
 		ClaimToken: "claim", AuthorityVerifier: probe, Driver: executionIdentityProbeDriver{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 	if _, err := RunProgram(context.Background(), entry, cfg); err != nil {
 		t.Fatal(err)
 	}
-	want := ExecutionAuthority{RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim"}
+	want := ExecutionAuthority{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim"}
 	if probe.authorityCalls != 1 || probe.authority != want {
 		t.Fatalf("authority calls = %d, authority = %+v, want %+v", probe.authorityCalls, probe.authority, want)
 	}

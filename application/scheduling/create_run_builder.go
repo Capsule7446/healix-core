@@ -34,7 +34,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		// The entry identity is derived from the instance id and the item id, so it
 		// is well formed by construction; a failure here means concreteRootPath
 		// itself is wrong, not that the caller supplied something bad.
-		spelledEntry := concreteRootPath(command.RunID.String(), item.ID)
+		spelledEntry := concreteRootPath(command.InstanceID.String(), item.ID)
 		executionID, err := execution.NewEntryID(spelledEntry)
 		if err != nil {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(err)
@@ -61,7 +61,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 	if len(command.Entries) != len(entries) {
 		return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(errors.New("command contains unknown test-task item values"))
 	}
-	draft, err := buildExecutionDraft(buildExecutionPlanInput{RunID: command.RunID, Publication: resolved.Plan, Entries: entries})
+	draft, err := buildExecutionDraft(buildExecutionPlanInput{InstanceID: command.InstanceID, Publication: resolved.Plan, Entries: entries})
 	if err != nil {
 		// This is the boundary for the whole draft-building tree. Its internal
 		// invariant checks stay ordinary Go errors, as the contract permits, and are
@@ -72,7 +72,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 	}
 	draft.FailurePolicy = command.FailurePolicy
 	invocations := cloneInvocationScopes(resolved.Invocations)
-	input := execution.InstanceSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, RunID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
+	input := execution.InstanceSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaCurrent, InstanceID: command.InstanceID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, TestTaskVersionNumber: resolved.Plan.Version.VersionNumber, ExecutionFlow: execution.TestTaskSnapshot{ID: resolved.Plan.Task.ID}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: resolved.Plan.Version.ID, ExecutionFlowID: resolved.Plan.Version.ExecutionFlowID, VersionNumber: resolved.Plan.Version.VersionNumber, Items: items}, Plan: draft, Invocations: invocations, Environment: execution.EnvironmentSnapshot{ID: resolved.Environment.ID, DisplayName: resolved.Environment.DisplayName, BaseURL: resolved.Environment.BaseURL, Revision: uint64(resolved.Environment.Revision), Variables: cloneParameterValues(resolved.Environment.Variables)}, FailurePolicy: command.FailurePolicy, ScreenshotPolicy: command.ScreenshotPolicy, HealerPolicy: command.HealerPolicy}
 	return execution.SealInstanceSnapshot(input)
 }
 
@@ -330,8 +330,8 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 	return nil
 }
 
-func concreteRootPath(runID, itemID string) string {
-	return fmt.Sprintf("%d:%s%d:%s", len(runID), runID, len(itemID), itemID)
+func concreteRootPath(instanceID, itemID string) string {
+	return fmt.Sprintf("%d:%s%d:%s", len(instanceID), instanceID, len(itemID), itemID)
 }
 
 func resolvedWorkflowVersion(item automation.ExecutionFlowItem, plan automation.ResolvedExecutionFlow) string {
@@ -374,7 +374,7 @@ func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
 			resultErr = createRunCommandInvalidError(resultErr)
 		}
 	}()
-	if command.RunID.Validate() != nil {
+	if command.InstanceID.Validate() != nil {
 		return errors.New("run id is required and must be normalized")
 	}
 	for name, value := range map[string]string{"command id": command.CommandID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {

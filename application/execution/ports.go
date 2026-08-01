@@ -19,8 +19,8 @@ const (
 	// budget and any one string exceeding its own byte limit: the remediation is
 	// always to shrink the commit, never to correct a specific field's value.
 	CodeStepTransitionCommitPayloadTooLarge fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_PAYLOAD_TOO_LARGE"
-	// CodeStepTransitionCommitRunMismatch covers a commit fact whose own RunID
-	// disagrees with the claimed worker fence's RunID. FAILED_PRECONDITION: the
+	// CodeStepTransitionCommitRunMismatch covers a commit fact whose own InstanceID
+	// disagrees with the claimed worker fence's InstanceID. FAILED_PRECONDITION: the
 	// caller must re-read the authoritative claim, not supply a different value.
 	CodeStepTransitionCommitRunMismatch fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_RUN_MISMATCH"
 )
@@ -194,7 +194,7 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	if err := commit.Validate(); err != nil {
 		return evidence.StepTransitionCommitResult{}, err
 	}
-	if err := validateCommitRunBinding(fence.RunID, commit); err != nil {
+	if err := validateCommitRunBinding(fence.InstanceID, commit); err != nil {
 		return evidence.StepTransitionCommitResult{}, err
 	}
 	owned, err := ownStepTransitionCommit(commit)
@@ -209,20 +209,20 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	return result, nil
 }
 
-func validateCommitRunBinding(runID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
+func validateCommitRunBinding(instanceID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
 	for _, observation := range commit.FinalValidations {
-		if observation.RunID != runID {
-			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.RunID, runID))
+		if observation.InstanceID != instanceID {
+			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
 		}
 	}
 	for _, group := range commit.FinalValidationGroups {
-		if group.RunID != runID {
-			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation group run %q does not match worker fence run %q", group.RunID, runID))
+		if group.InstanceID != instanceID {
+			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation group run %q does not match worker fence run %q", group.InstanceID, instanceID))
 		}
 	}
 	for _, observation := range commit.HealObservations {
-		if observation.RunID != runID {
-			return stepTransitionCommitRunMismatchError(fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.RunID, runID))
+		if observation.InstanceID != instanceID {
+			return stepTransitionCommitRunMismatchError(fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
 		}
 	}
 	return nil

@@ -151,9 +151,9 @@ func healReviewFixture(t *testing.T) (*healReviewSourceFake, *nodeRepositoryFake
 		Status: domain.HealCandidateAwaitingApproval, PageURL: "https://example.test", Origin: "https://example.test",
 		Selectors: version.Selectors, Fingerprint: version.Fingerprint, Revision: 1}
 	contributions := []domain.ContributingHealFact{
-		{FactID: "f1", CommitID: "c1", RunID: "r1", ExecutionID: "e1", StepExecutionID: "s1", Sequence: 1},
-		{FactID: "f2", CommitID: "c2", RunID: "r2", ExecutionID: "e2", StepExecutionID: "s2", Sequence: 2},
-		{FactID: "f3", CommitID: "c3", RunID: "r3", ExecutionID: "e3", StepExecutionID: "s3", Sequence: 3},
+		{FactID: "f1", CommitID: "c1", InstanceID: "r1", ExecutionID: "e1", StepExecutionID: "s1", Sequence: 1},
+		{FactID: "f2", CommitID: "c2", InstanceID: "r2", ExecutionID: "e2", StepExecutionID: "s2", Sequence: 2},
+		{FactID: "f3", CommitID: "c3", InstanceID: "r3", ExecutionID: "e3", StepExecutionID: "s3", Sequence: 3},
 	}
 	streak := domain.HealStreak{ElementTargetID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", Band: domain.HealDecisionBandBelowCap, Contributions: contributions, LastSequence: 3, Disposition: domain.HealStreakAwaitApproval}
 	command := domain.HealCandidateReviewCommand{CommandID: "review-1", ElementTargetID: "node", BaseNodeVersionID: "node-v1", CandidateHash: "candidate", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}

@@ -38,7 +38,7 @@ func TestRunProgramReportsTimelineStartFailureBeforeLeafExecution(t *testing.T) 
 	driver := &engineTestDriver{}
 	startErr := errors.New("start rejected")
 	result, err := runProgramForTest(context.Background(), navigationCompiledEntry(mustInstanceID("run-timeline-start"), "timeline-start", "https://example.test"), Config{
-		RunID:        mustInstanceID("run-timeline-start"),
+		InstanceID:   mustInstanceID("run-timeline-start"),
 		Driver:       driver,
 		Recorder:     &engineTestRecorder{},
 		StepTimeline: &resultTimelineSink{startErr: startErr},
@@ -65,7 +65,7 @@ func TestRunProgramReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
 		},
 	}}
 	result, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run-second-timeline-start"), program), Config{
-		RunID:        mustInstanceID("run-second-timeline-start"),
+		InstanceID:   mustInstanceID("run-second-timeline-start"),
 		Driver:       driver,
 		Recorder:     &engineTestRecorder{},
 		StepTimeline: &resultTimelineSink{startErr: startErr, failStartAt: 2},
@@ -84,7 +84,7 @@ func TestRunProgramReportsFailureWhenLaterLeafTimelineStartFails(t *testing.T) {
 func TestRunProgramKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {
 	finishErr := errors.New("finish rejected")
 	result, err := runProgramForTest(context.Background(), navigationCompiledEntry(mustInstanceID("run-result"), "result", "https://example.test"), Config{
-		RunID:        mustInstanceID("run-result"),
+		InstanceID:   mustInstanceID("run-result"),
 		Driver:       &engineTestDriver{},
 		Recorder:     &engineTestRecorder{},
 		StepTimeline: &resultTimelineSink{finishErr: finishErr},
@@ -100,7 +100,7 @@ func TestRunProgramKeepsExecutionSuccessWhenTimelineFinishFails(t *testing.T) {
 func TestRunProgramRejectsTimelineWithoutRecorder(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	result, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: root}), Config{
-		RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, StepTimeline: &resultTimelineSink{},
+		InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, StepTimeline: &resultTimelineSink{},
 	})
 	if !fault.IsCode(err, CodeTimelineConfigurationInvalid) {
 		t.Fatalf("error = %v, want timeline configuration error", err)
@@ -127,7 +127,7 @@ func TestRunProgramClassifiesEveryContextTerminationAsCanceled(t *testing.T) {
 		t.Run(err.Error(), func(t *testing.T) {
 			root := &runtimeCaptureNode{err: err}
 			result, runErr := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: root}), Config{
-				RunID: mustInstanceID("run"), Driver: &engineTestDriver{},
+				InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{},
 			})
 			if !errors.Is(runErr, err) || result.ExecutionOutcome != ExecutionCanceled || root.runs != 1 {
 				t.Fatalf("RunProgram() = (%#v, %v), runs = %d", result, runErr, root.runs)
@@ -140,7 +140,7 @@ func TestRunProgramRejectsNilRecorderTimelineBeforeExecution(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	recorder := &engineTestRecorder{nilTimeline: true}
 	result, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: root}), Config{
-		RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, Recorder: recorder, StepTimeline: &resultTimelineSink{},
+		InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, Recorder: recorder, StepTimeline: &resultTimelineSink{},
 	})
 	if !fault.IsCode(err, CodeTimelineConfigurationInvalid) || strings.Contains(err.Error(), "nil timeline") {
 		t.Fatalf("error = %v, want nil timeline configuration error", err)
@@ -155,7 +155,7 @@ func TestRunProgramRejectsNilRecorderTimelineBeforeExecution(t *testing.T) {
 
 func TestRunProgramReportsTimelineStartFailureWhenRecorderStartFails(t *testing.T) {
 	result, err := runProgramForTest(context.Background(), navigationCompiledEntry(mustInstanceID("run-start-failure"), "start-failure", "https://example.test"), Config{
-		RunID:        mustInstanceID("run-start-failure"),
+		InstanceID:   mustInstanceID("run-start-failure"),
 		Driver:       &engineTestDriver{},
 		Recorder:     &engineTestRecorder{startErr: errors.New("start failed")},
 		StepTimeline: &resultTimelineSink{},
@@ -175,7 +175,7 @@ func TestRunProgramAllowsEmptyCompletionChainWithoutBrowser(t *testing.T) {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
 	result, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: root}), Config{
-		RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, CompletionChain: chain,
+		InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, CompletionChain: chain,
 	})
 	if err != nil {
 		t.Fatalf("RunProgram: %v", err)
@@ -192,7 +192,7 @@ func TestRunProgramClassifiesMissingCompletionBrowser(t *testing.T) {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
 	result, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: root}), Config{
-		RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, CompletionChain: chain,
+		InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, CompletionChain: chain,
 	})
 	if !fault.IsCode(err, CodeCompletionConfigurationInvalid) {
 		t.Fatalf("error = %v, want completion configuration error", err)
@@ -209,7 +209,7 @@ func TestRunProgramReportsObserverFailureWithoutChangingExecutionOutcome(t *test
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
 	result, err := runProgramForTest(context.Background(), navigationCompiledEntry(mustInstanceID("run-observer"), "observer", "https://example.test"), Config{
-		RunID:              mustInstanceID("run-observer"),
+		InstanceID:         mustInstanceID("run-observer"),
 		Driver:             &engineTestDriver{},
 		CompletionChain:    chain,
 		ReadOnlyBrowser:    readOnlyBrowserNoop{},

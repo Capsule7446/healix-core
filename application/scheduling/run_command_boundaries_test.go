@@ -62,13 +62,13 @@ func TestRunSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing
 }
 
 func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
-	valid := CancelRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1}
+	valid := CancelRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1}
 	tests := []struct {
 		name   string
 		mutate func(*CancelRunCommand)
 	}{
 		{name: "blank command id", mutate: func(command *CancelRunCommand) { command.CommandID = " \t\n" }},
-		{name: "unset run id", mutate: func(command *CancelRunCommand) { command.RunID = domainexecution.InstanceID{} }},
+		{name: "unset run id", mutate: func(command *CancelRunCommand) { command.InstanceID = domainexecution.InstanceID{} }},
 		{name: "negative revision", mutate: func(command *CancelRunCommand) { command.ExpectedRevision = -1 }},
 		{name: "zero timestamp", mutate: func(command *CancelRunCommand) { command.At = 0 }},
 		{name: "negative timestamp", mutate: func(command *CancelRunCommand) { command.At = -1 }},
@@ -94,19 +94,19 @@ func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 
 func TestAbortRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 	valid := AbortRunCommand{
-		CommandID: "command", RunID: mustInstanceID("run"), ExpectedRevision: 0, At: 1,
-		Fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"},
+		CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 0, At: 1,
+		Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
 	}
 	tests := []struct {
 		name   string
 		mutate func(*AbortRunCommand)
 	}{
 		{name: "blank command id", mutate: func(command *AbortRunCommand) { command.CommandID = " \t\n" }},
-		{name: "unset run id", mutate: func(command *AbortRunCommand) { command.RunID = domainexecution.InstanceID{} }},
+		{name: "unset run id", mutate: func(command *AbortRunCommand) { command.InstanceID = domainexecution.InstanceID{} }},
 		{name: "negative revision", mutate: func(command *AbortRunCommand) { command.ExpectedRevision = -1 }},
 		{name: "zero timestamp", mutate: func(command *AbortRunCommand) { command.At = 0 }},
 		{name: "negative timestamp", mutate: func(command *AbortRunCommand) { command.At = -1 }},
-		{name: "foreign fence", mutate: func(command *AbortRunCommand) { command.Fence.RunID = mustInstanceID("other") }},
+		{name: "foreign fence", mutate: func(command *AbortRunCommand) { command.Fence.InstanceID = mustInstanceID("other") }},
 		{name: "empty claim token", mutate: func(command *AbortRunCommand) { command.Fence.ClaimToken = "" }},
 	}
 
@@ -134,9 +134,9 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			var result RunCommandResult
 			var err error
 			if operation == "cancel" {
-				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1})
+				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1})
 			} else {
-				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedRevision: 0, At: 1, Fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"}})
+				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 0, At: 1, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}})
 			}
 			if !errors.Is(err, transactionFailure) || result != (RunCommandResult{}) {
 				t.Fatalf("result/error = %#v/%v", result, err)
@@ -162,9 +162,9 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			var result RunCommandResult
 			var err error
 			if operation == "cancel" {
-				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
+				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
 			} else {
-				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"}})
+				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}})
 			}
 			if !fault.IsCode(err, CodeInstanceSignalRetryable) || !result.WasApplied || result.Revision != 2 {
 				t.Fatalf("result/error = %#v/%v", result, err)
@@ -184,7 +184,7 @@ func TestQueuedCancelReturnsWithoutSignaling(t *testing.T) {
 		Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true,
 	}}
 	result, err := NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{
-		CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2,
+		CommandID: "command", InstanceID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2,
 	})
 	if err != nil || !result.WasApplied || result.SignalRequired {
 		t.Fatalf("CancelRun() = (%#v, %v)", result, err)
@@ -206,7 +206,7 @@ func (store *countingQueueStore) Reorder(context.Context, ReorderQueueCommand) (
 }
 
 func TestReorderQueueRejectsEachInvalidCommandBeforeStore(t *testing.T) {
-	valid := ReorderQueueCommand{CommandID: "command", ScopeID: "scope", ExpectedRevision: 0, RunIDs: []string{"a", "b"}}
+	valid := ReorderQueueCommand{CommandID: "command", ScopeID: "scope", ExpectedRevision: 0, InstanceIDs: []string{"a", "b"}}
 	tests := []struct {
 		name   string
 		mutate func(*ReorderQueueCommand)
@@ -215,16 +215,16 @@ func TestReorderQueueRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 		{name: "blank command id", mutate: func(command *ReorderQueueCommand) { command.CommandID = " \t\n" }},
 		{name: "blank scope id", mutate: func(command *ReorderQueueCommand) { command.ScopeID = " \t\n" }},
 		{name: "negative revision", mutate: func(command *ReorderQueueCommand) { command.ExpectedRevision = -1 }},
-		{name: "nil members", mutate: func(command *ReorderQueueCommand) { command.RunIDs = nil }},
-		{name: "empty members", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{} }},
-		{name: "blank member", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{"a", " \t\n"} }},
-		{name: "duplicate member", mutate: func(command *ReorderQueueCommand) { command.RunIDs = []string{"a", "a"} }, target: CodeQueueMembershipConflict},
+		{name: "nil members", mutate: func(command *ReorderQueueCommand) { command.InstanceIDs = nil }},
+		{name: "empty members", mutate: func(command *ReorderQueueCommand) { command.InstanceIDs = []string{} }},
+		{name: "blank member", mutate: func(command *ReorderQueueCommand) { command.InstanceIDs = []string{"a", " \t\n"} }},
+		{name: "duplicate member", mutate: func(command *ReorderQueueCommand) { command.InstanceIDs = []string{"a", "a"} }, target: CodeQueueMembershipConflict},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			command := valid
-			command.RunIDs = append([]string(nil), valid.RunIDs...)
+			command.InstanceIDs = append([]string(nil), valid.InstanceIDs...)
 			test.mutate(&command)
 			store := &countingQueueStore{}
 			result, err := NewReorderQueueService(store).ReorderQueue(context.Background(), command)
@@ -245,7 +245,7 @@ func TestReorderQueueRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 }
 
 func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *testing.T) {
-	command := ReorderQueueCommand{CommandID: "command", ScopeID: "scope", ExpectedRevision: 1, RunIDs: []string{"b", "a"}}
+	command := ReorderQueueCommand{CommandID: "command", ScopeID: "scope", ExpectedRevision: 1, InstanceIDs: []string{"b", "a"}}
 	dependencyFailure := errors.New("queue transaction failed")
 	tests := []struct {
 		name   string
@@ -253,11 +253,11 @@ func TestReorderQueueRejectsDependencyAndEveryMalformedAuthoritativeResult(t *te
 		err    error
 	}{
 		{name: "dependency failure", err: dependencyFailure},
-		{name: "wrong scope", result: ReorderQueueResult{ScopeID: "other", Revision: 2, RunIDs: []string{"b", "a"}}},
-		{name: "wrong revision", result: ReorderQueueResult{ScopeID: "scope", Revision: 3, RunIDs: []string{"b", "a"}}},
-		{name: "missing member", result: ReorderQueueResult{ScopeID: "scope", Revision: 2, RunIDs: []string{"b"}}},
-		{name: "extra member", result: ReorderQueueResult{ScopeID: "scope", Revision: 2, RunIDs: []string{"b", "a", "c"}}},
-		{name: "wrong order", result: ReorderQueueResult{ScopeID: "scope", Revision: 2, RunIDs: []string{"a", "b"}}},
+		{name: "wrong scope", result: ReorderQueueResult{ScopeID: "other", Revision: 2, InstanceIDs: []string{"b", "a"}}},
+		{name: "wrong revision", result: ReorderQueueResult{ScopeID: "scope", Revision: 3, InstanceIDs: []string{"b", "a"}}},
+		{name: "missing member", result: ReorderQueueResult{ScopeID: "scope", Revision: 2, InstanceIDs: []string{"b"}}},
+		{name: "extra member", result: ReorderQueueResult{ScopeID: "scope", Revision: 2, InstanceIDs: []string{"b", "a", "c"}}},
+		{name: "wrong order", result: ReorderQueueResult{ScopeID: "scope", Revision: 2, InstanceIDs: []string{"a", "b"}}},
 	}
 
 	for _, test := range tests {

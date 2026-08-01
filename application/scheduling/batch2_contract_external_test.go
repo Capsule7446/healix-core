@@ -9,9 +9,9 @@ import (
 )
 
 func TestBatch2PublicCommandContractsCompile(t *testing.T) {
-	_ = app.CancelRunCommand{CommandID: "cancel-1", RunID: mustInstanceID("run-1"), ExpectedStatus: domain.Queued, ExpectedRevision: 3, At: 10}
-	_ = app.AbortRunCommand{CommandID: "abort-1", RunID: mustInstanceID("run-1"), ExpectedRevision: 3, Fence: domain.WorkerFence{RunID: mustInstanceID("run-1"), ClaimToken: "claim-1"}, At: 10}
-	_ = app.ReorderQueueCommand{CommandID: "reorder-1", ScopeID: "scope-1", ExpectedRevision: 3, RunIDs: []string{"run-2", "run-1"}}
+	_ = app.CancelRunCommand{CommandID: "cancel-1", InstanceID: mustInstanceID("run-1"), ExpectedStatus: domain.Queued, ExpectedRevision: 3, At: 10}
+	_ = app.AbortRunCommand{CommandID: "abort-1", InstanceID: mustInstanceID("run-1"), ExpectedRevision: 3, Fence: domain.WorkerFence{InstanceID: mustInstanceID("run-1"), ClaimToken: "claim-1"}, At: 10}
+	_ = app.ReorderQueueCommand{CommandID: "reorder-1", ScopeID: "scope-1", ExpectedRevision: 3, InstanceIDs: []string{"run-2", "run-1"}}
 	var cancel *app.CancelRunService
 	var abort *app.AbortRunService
 	var reorder *app.ReorderQueueService

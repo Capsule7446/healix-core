@@ -13,7 +13,7 @@ import (
 )
 
 func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	input.Invocations[0].Bindings = map[string]parameter.Binding{
 		"count": parameter.LiteralBinding(input.Invocations[0].Values["count"]),
 	}
@@ -27,7 +27,7 @@ func TestSealRunSnapshotRejectsBindingsOnRootInvocation(t *testing.T) {
 }
 
 func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	input.Plan.Workflows[0].Steps[0].DisplayName = "original"
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T
 	if sealed.Plan().Workflows[0].Steps[0].DisplayName != "original" {
 		t.Fatal("plan getter aliases snapshot")
 	}
-	changed := validRunSnapshotInput(t)
+	changed := validInstanceSnapshotInput(t)
 	changed.Plan.Workflows[0].Steps[0].DisplayName = "changed"
 	other, err := SealInstanceSnapshot(changed)
 	if err != nil || other.Digest() == firstDigest {
@@ -53,7 +53,7 @@ func TestRunSnapshotFreezesCompleteExecutionPlanAndInvocationScopes(t *testing.T
 }
 
 func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.T) {
-	base, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	base, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: mustInvocationPath("entry-1/4:call"), ParentPath: mustInvocationPath("entry-1"), ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
 		},
 	} {
-		input := validRunSnapshotInput(t)
+		input := validInstanceSnapshotInput(t)
 		mutate(&input)
 		got, err := SealInstanceSnapshot(input)
 		if err != nil {
@@ -79,7 +79,7 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 }
 
 func TestSealRunSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	input.Environment.Revision = 0
 
 	snapshot, err := SealInstanceSnapshot(input)
@@ -96,7 +96,7 @@ func TestSealRunSnapshotRejectsZeroEnvironmentRevision(t *testing.T) {
 }
 
 func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	input.Environment.Revision = 0
 	canonicalInput := cloneSnapshotInput(input)
 	sort.Slice(canonicalInput.Invocations, func(i, j int) bool {
@@ -122,7 +122,7 @@ func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *t
 }
 
 func TestHydrateRunSnapshotVerifiesStoredDigest(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
@@ -141,8 +141,8 @@ func TestPolicyNegativeZeroHasCanonicalDigest(t *testing.T) {
 		func(p *HealerPolicySnapshot) { p.Weights.Tag = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.ID = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.RoleName = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.Class = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.Attrs = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.Text = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.Index = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.Neighbor = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.LabelText = math.Copysign(0, -1) }, func(p *HealerPolicySnapshot) { p.Weights.Container = math.Copysign(0, -1) },
 	}
 	for i, set := range fields {
-		negative := validRunSnapshotInput(t)
-		positive := validRunSnapshotInput(t)
+		negative := validInstanceSnapshotInput(t)
+		positive := validInstanceSnapshotInput(t)
 		set(&negative.HealerPolicy)
 		set(&positive.HealerPolicy)
 		normalizePolicyPositiveZero(&positive.HealerPolicy)
@@ -169,13 +169,13 @@ func normalizePolicyPositiveZero(p *HealerPolicySnapshot) {
 }
 
 func TestNewRunRejectsInvalidInitialLifecycleShape(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests := []Run{{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Running, CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Succeeded, CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: "UNKNOWN", CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 0, QueuedAt: 0}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 2, QueuedAt: 1}}
+	tests := []Instance{{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Running, CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Succeeded, CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: "UNKNOWN", CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 0, QueuedAt: 0}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 2, QueuedAt: 1}}
 	for _, run := range tests {
-		if _, err := NewRun(run, snapshot); err == nil {
+		if _, err := NewInstance(run, snapshot); err == nil {
 			t.Fatalf("accepted %#v", run)
 		}
 	}

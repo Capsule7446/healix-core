@@ -63,7 +63,7 @@ func TestDraftValidatePublicRuleMatrix(t *testing.T) {
 		{name: "entry workflow missing", build: base, mutate: func(value *PlanSnapshot) { value.Entries[0].WorkflowVersionID = "missing" }, want: "entry workflow version"},
 		{name: "entry workflow owner mismatch", build: base, mutate: func(value *PlanSnapshot) { value.Entries[0].FlowFragmentID = "other" }, want: "belongs to workflow"},
 		{name: "parameterless workflow carries snapshot", build: base, mutate: func(value *PlanSnapshot) { value.Entries[0].Parameters.ID = "scope" }, want: "requires an empty parameter snapshot"},
-		{name: "parameter snapshot identity invalid", build: func() PlanSnapshot { return validRunSnapshotInput(t).Plan }, mutate: func(value *PlanSnapshot) { value.Entries[0].Parameters.ID = " " }, want: "parameter snapshot identity"},
+		{name: "parameter snapshot identity invalid", build: func() PlanSnapshot { return validInstanceSnapshotInput(t).Plan }, mutate: func(value *PlanSnapshot) { value.Entries[0].Parameters.ID = " " }, want: "parameter snapshot identity"},
 		{name: "node identity missing", build: base, mutate: func(value *PlanSnapshot) { value.Nodes[0].ElementTargetID = " " }, want: "node dependency requires"},
 		{name: "node version has different owners", build: base, mutate: func(value *PlanSnapshot) {
 			value.Nodes = append(value.Nodes, validNodeSnapshot("00000000-0000-0000-0000-000000000002", "v1"))
@@ -114,16 +114,16 @@ func TestWorkflowSnapshotValidateRejectsMissingSteps(t *testing.T) {
 }
 
 func TestRunConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
+	base := Instance{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
 	mismatch := base
 	mismatch.ID = mustInstanceID("other")
-	_, err = NewRun(mismatch, snapshot)
+	_, err = NewInstance(mismatch, snapshot)
 	requireCreateInstanceSnapshotRejection(t, err, "identity must match")
-	queued, err := NewRun(base, snapshot)
+	queued, err := NewInstance(base, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

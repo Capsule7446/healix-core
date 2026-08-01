@@ -55,7 +55,7 @@ type HealAcceptedFact struct {
 	Kind        HealAcceptedFactKind
 	FactID      string
 	CommitID    string
-	RunID       domainexecution.InstanceID
+	InstanceID  domainexecution.InstanceID
 	Sequence    uint64
 	Observation *evidence.HealObservation
 	Reset       *evidence.HealCandidateReset
@@ -64,7 +64,7 @@ type HealAcceptedFact struct {
 type HealContributionSnapshot struct {
 	FactID          string
 	CommitID        string
-	RunID           string
+	InstanceID      string
 	ExecutionID     string
 	StepExecutionID string
 	Sequence        uint64
@@ -160,7 +160,7 @@ func validateHealContributionIdentities(contribution domainautomation.Contributi
 	for _, identity := range []string{
 		contribution.FactID,
 		contribution.CommitID,
-		contribution.RunID,
+		contribution.InstanceID,
 		contribution.ExecutionID,
 		contribution.StepExecutionID,
 	} {
@@ -221,7 +221,7 @@ func validateHealGovernancePlan(plan HealGovernancePlan) error {
 	if err := validateExistingHealEffect(plan.Snapshot.ExistingTerminalEffect, streak); err != nil {
 		return healTerminalEffectConflictError(err)
 	}
-	for _, identity := range []string{plan.Fact.FactID, plan.Fact.CommitID, plan.Fact.RunID.String()} {
+	for _, identity := range []string{plan.Fact.FactID, plan.Fact.CommitID, plan.Fact.InstanceID.String()} {
 		if err := validateCanonicalHealIdentity(identity); err != nil {
 			return healAcceptedFactInvalidError(err)
 		}
@@ -323,7 +323,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		for _, identity := range []string{
 			observation.ID,
-			observation.RunID.String(),
+			observation.InstanceID.String(),
 			observation.ExecutionID.String(),
 			observation.StepExecutionID.String(),
 			observation.ElementTargetID,
@@ -338,7 +338,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 				return domainautomation.HealObservation{}, err
 			}
 		}
-		if observation.ID != fact.FactID || observation.RunID != fact.RunID || observation.ElementTargetID != snapshot.Key.ElementTargetID || observation.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
+		if observation.ID != fact.FactID || observation.InstanceID != fact.InstanceID || observation.ElementTargetID != snapshot.Key.ElementTargetID || observation.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted observation does not match governance identity")
 		}
 		band, err := mapHealDecisionBand(observation.DecisionBand)
@@ -350,7 +350,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			outcome = domainautomation.HealSucceeded
 		}
 		return domainautomation.HealObservation{
-			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID.String(),
+			FactID: fact.FactID, CommitID: fact.CommitID, InstanceID: fact.InstanceID.String(),
 			ExecutionID: observation.ExecutionID.String(), StepExecutionID: observation.StepExecutionID.String(), Sequence: fact.Sequence,
 			ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 			CandidateHash: observation.CandidateHash, Band: band, Outcome: outcome, BaseIsCurrent: baseIsCurrent,
@@ -374,7 +374,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted reset does not match governance identity")
 		}
 		return domainautomation.HealObservation{
-			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID.String(),
+			FactID: fact.FactID, CommitID: fact.CommitID, InstanceID: fact.InstanceID.String(),
 			ExecutionID: reset.ExecutionID.String(), StepExecutionID: reset.StepExecutionID.String(), Sequence: fact.Sequence,
 			ElementTargetID: reset.ElementTargetID, BaseNodeVersionID: reset.BaseNodeVersionID,
 			Outcome: domainautomation.HealOriginalRecovered, BaseIsCurrent: baseIsCurrent,

@@ -225,7 +225,7 @@ const (
 type ContributingHealFact struct {
 	FactID          string
 	CommitID        string
-	RunID           string
+	InstanceID      string
 	ExecutionID     string
 	StepExecutionID string
 	Sequence        uint64
@@ -234,7 +234,7 @@ type ContributingHealFact struct {
 type HealObservation struct {
 	FactID            string
 	CommitID          string
-	RunID             string
+	InstanceID        string
 	ExecutionID       string
 	StepExecutionID   string
 	Sequence          uint64
@@ -274,7 +274,7 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 		if existing == contribution {
 			return HealStreakDecision{Next: streak.clone()}, nil
 		}
-		if existing.FactID == contribution.FactID || existing.CommitID == contribution.CommitID || existing.RunID == contribution.RunID || existing.Sequence == contribution.Sequence {
+		if existing.FactID == contribution.FactID || existing.CommitID == contribution.CommitID || existing.InstanceID == contribution.InstanceID || existing.Sequence == contribution.Sequence {
 			return HealStreakDecision{}, healProvenanceConflictError(errors.New("heal contribution replay conflicts with persisted provenance"))
 		}
 	}
@@ -431,7 +431,7 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 			return fmt.Errorf("heal contribution sequences must be strictly increasing")
 		}
 		for _, earlier := range contributions[:index] {
-			if earlier.FactID == contribution.FactID || earlier.CommitID == contribution.CommitID || earlier.RunID == contribution.RunID || earlier.Sequence == contribution.Sequence {
+			if earlier.FactID == contribution.FactID || earlier.CommitID == contribution.CommitID || earlier.InstanceID == contribution.InstanceID || earlier.Sequence == contribution.Sequence {
 				return fmt.Errorf("heal contribution identity is duplicated")
 			}
 		}
@@ -440,14 +440,14 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 }
 
 func (contribution ContributingHealFact) validate() error {
-	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.RunID) == "" || strings.TrimSpace(contribution.ExecutionID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
+	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.InstanceID) == "" || strings.TrimSpace(contribution.ExecutionID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
 		return fmt.Errorf("heal contribution requires fact, commit, run, execution, step, and sequence identity")
 	}
 	return nil
 }
 
 func (observation HealObservation) validate() error {
-	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.RunID) == "" || strings.TrimSpace(observation.ExecutionID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
+	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.InstanceID) == "" || strings.TrimSpace(observation.ExecutionID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
 		return fmt.Errorf("heal observation requires fact, commit, run, execution, step, sequence, node, and base version identity")
 	}
 	if observation.Outcome != HealSucceeded && observation.Outcome != HealOriginalRecovered && observation.Outcome != HealFailed {
@@ -464,7 +464,7 @@ func (observation HealObservation) validate() error {
 
 func (observation HealObservation) contribution() ContributingHealFact {
 	return ContributingHealFact{
-		FactID: observation.FactID, CommitID: observation.CommitID, RunID: observation.RunID,
+		FactID: observation.FactID, CommitID: observation.CommitID, InstanceID: observation.InstanceID,
 		ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: observation.Sequence,
 	}
 }

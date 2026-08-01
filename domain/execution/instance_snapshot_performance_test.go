@@ -7,7 +7,7 @@ import (
 
 func TestBuildSnapshotValidationIndexesIncludesEveryWorkflowReference(t *testing.T) {
 	const childCount = 128
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	root := &input.Plan.Workflows[0]
 	root.Steps = make([]Step, childCount)
 	input.Plan.References = make([]ReferenceResolution, childCount)
@@ -63,7 +63,7 @@ func TestBuildSnapshotValidationIndexesIncludesEveryWorkflowReference(t *testing
 
 func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 	const entryCount = 128
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	parameters := input.Plan.Entries[0].Parameters
 	input.ExecutionFlowVersion.Items = make([]ExecutionFlowVersionItemSnapshot, entryCount)
 	input.Plan.Entries = make([]Entry, entryCount)
@@ -115,7 +115,7 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 
 func TestValidateSnapshotIndexesTestTaskVersionItems(t *testing.T) {
 	const itemCount = 256
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	input.ExecutionFlowVersion.Items = make([]ExecutionFlowVersionItemSnapshot, itemCount)
 	input.Plan.Entries = make([]Entry, itemCount)
 	for index := 0; index < itemCount; index++ {

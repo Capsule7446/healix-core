@@ -46,10 +46,10 @@ func TestStepTimelineEventValidate(t *testing.T) {
 		event StepTimelineEvent
 		valid bool
 	}{
-		{name: "started", event: StepTimelineEvent{Step: StepExecutionRef{RunID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1}}, valid: true},
-		{name: "finished", event: StepTimelineEvent{Step: StepExecutionRef{RunID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryFinished, Outcome: StepOutcomeSucceeded, Mark: TimelineMark{Offset: time.Millisecond, Sequence: 2}}, valid: true},
-		{name: "started with outcome", event: StepTimelineEvent{Step: StepExecutionRef{RunID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryStarted, Outcome: StepOutcomeSucceeded, Mark: TimelineMark{Sequence: 1}}},
-		{name: "finished without outcome", event: StepTimelineEvent{Step: StepExecutionRef{RunID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryFinished, Mark: TimelineMark{Sequence: 2}}},
+		{name: "started", event: StepTimelineEvent{Step: StepExecutionRef{InstanceID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1}}, valid: true},
+		{name: "finished", event: StepTimelineEvent{Step: StepExecutionRef{InstanceID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryFinished, Outcome: StepOutcomeSucceeded, Mark: TimelineMark{Offset: time.Millisecond, Sequence: 2}}, valid: true},
+		{name: "started with outcome", event: StepTimelineEvent{Step: StepExecutionRef{InstanceID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryStarted, Outcome: StepOutcomeSucceeded, Mark: TimelineMark{Sequence: 1}}},
+		{name: "finished without outcome", event: StepTimelineEvent{Step: StepExecutionRef{InstanceID: mustInstanceID("run"), NodeID: "step", Occurrence: 1}, Boundary: StepBoundaryFinished, Mark: TimelineMark{Sequence: 2}}},
 		{name: "invalid identity", event: StepTimelineEvent{Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1}}},
 	}
 	for _, test := range tests {
@@ -72,7 +72,7 @@ func TestCompletionChainBlocksNextLeafAndIgnoresHandlerFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	rt := &Runtime{RunID: mustInstanceID("run"), CompletionChain: chain}
+	rt := &Runtime{InstanceID: mustInstanceID("run"), CompletionChain: chain}
 	for _, nodeID := range []string{"first", "second"} {
 		lifecycle, beginErr := rt.beginLeafLifecycle(context.Background(), nodeID, "STEP", 1)
 		if beginErr != nil {
@@ -191,7 +191,7 @@ func TestLeafLifecyclePreservesBusinessFailureAfterContextCancellation(t *testin
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	lifecycle, err := (&Runtime{RunID: mustInstanceID("run"), CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	lifecycle, err := (&Runtime{InstanceID: mustInstanceID("run"), CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if err != nil {
 		t.Fatalf("beginLeafLifecycle: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestCompletionChainIsolatesSnapshotErrorBetweenHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	lifecycle, err := (&Runtime{RunID: mustInstanceID("run"), CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	lifecycle, err := (&Runtime{InstanceID: mustInstanceID("run"), CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if err != nil {
 		t.Fatalf("beginLeafLifecycle: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestCompletionSnapshotDurationExcludesHandlerTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	lifecycle, err := (&Runtime{RunID: mustInstanceID("run"), CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
+	lifecycle, err := (&Runtime{InstanceID: mustInstanceID("run"), CompletionChain: chain}).beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if err != nil {
 		t.Fatalf("beginLeafLifecycle: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestLeafLifecycleRecordsTimelineAndRunsCompletionHandlersInOrder(t *testing
 	if err != nil {
 		t.Fatalf("NewNodeCompletionChain: %v", err)
 	}
-	rt := &Runtime{RunID: mustInstanceID("run"), Timeline: timeline, StepTimeline: sink, CompletionChain: chain}
+	rt := &Runtime{InstanceID: mustInstanceID("run"), Timeline: timeline, StepTimeline: sink, CompletionChain: chain}
 
 	lifecycle, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if err != nil {
@@ -290,7 +290,7 @@ func TestLeafLifecycleRecordsTimelineAndRunsCompletionHandlersInOrder(t *testing
 func TestLeafLifecycleStartFailurePreventsExecution(t *testing.T) {
 	original := errors.New("timeline rejected")
 	sink := &timelineSinkStub{errAt: StepBoundaryStarted, err: original}
-	rt := &Runtime{RunID: mustInstanceID("run"), Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}}}, StepTimeline: sink}
+	rt := &Runtime{InstanceID: mustInstanceID("run"), Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}}}, StepTimeline: sink}
 	_, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if !fault.IsCode(err, CodeStepTimelineStartFailed) || !errors.Is(err, original) {
 		t.Fatalf("error = %v, want start sentinel and original error", err)
@@ -301,7 +301,7 @@ func TestLeafLifecycleFinishFailurePreservesOriginalFailure(t *testing.T) {
 	nodeErr := errors.New("node failed")
 	timelineErr := errors.New("timeline rejected")
 	sink := &timelineSinkStub{errAt: StepBoundaryFinished, err: timelineErr}
-	rt := &Runtime{RunID: mustInstanceID("run"), Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}, {Sequence: 2}}}, StepTimeline: sink}
+	rt := &Runtime{InstanceID: mustInstanceID("run"), Timeline: &timelineStub{marks: []TimelineMark{{Sequence: 1}, {Sequence: 2}}}, StepTimeline: sink}
 	lifecycle, err := rt.beginLeafLifecycle(context.Background(), "step", "STEP", 1)
 	if err != nil {
 		t.Fatalf("beginLeafLifecycle: %v", err)

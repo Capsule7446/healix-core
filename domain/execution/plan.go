@@ -149,7 +149,7 @@ type Entry struct {
 }
 
 type PlanSnapshot struct {
-	RunID         InstanceID
+	InstanceID    InstanceID
 	FailurePolicy FailurePolicy
 	Entries       []Entry
 	Workflows     []WorkflowSnapshot
@@ -186,7 +186,7 @@ func (p Plan) Validate() error {
 
 func (p Plan) Snapshot() PlanSnapshot { return cloneDraft(p.draft) }
 
-func (p Plan) RunID() InstanceID { return p.draft.RunID }
+func (p Plan) InstanceID() InstanceID { return p.draft.InstanceID }
 
 func (p Plan) FailurePolicy() FailurePolicy { return p.draft.FailurePolicy }
 
@@ -212,7 +212,7 @@ func cloneDraft(draft PlanSnapshot) PlanSnapshot {
 		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
 	}
 	return PlanSnapshot{
-		RunID: draft.RunID, FailurePolicy: draft.FailurePolicy,
+		InstanceID: draft.InstanceID, FailurePolicy: draft.FailurePolicy,
 		Entries:   entries,
 		Workflows: cloneWorkflows(draft.Workflows), Nodes: cloneNodes(draft.Nodes),
 		References: append([]ReferenceResolution(nil), draft.References...),

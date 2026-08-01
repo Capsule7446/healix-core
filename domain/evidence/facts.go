@@ -23,7 +23,7 @@ func (p Phase) IsTerminal() bool {
 
 type StepFact struct {
 	ID            string
-	RunID         execution.InstanceID
+	InstanceID    execution.InstanceID
 	ExecutionID   execution.EntryID
 	StepExecution execution.StepExecutionID
 	Phase         Phase
@@ -35,7 +35,7 @@ type StepFact struct {
 // caller can read its own phase back from the fact either way.
 func (f StepFact) Validate() error {
 	var violations []fault.Violation
-	if strings.TrimSpace(f.ID) == "" || f.RunID.Validate() != nil || f.ExecutionID.Validate() != nil || f.StepExecution.Validate() != nil {
+	if strings.TrimSpace(f.ID) == "" || f.InstanceID.Validate() != nil || f.ExecutionID.Validate() != nil || f.StepExecution.Validate() != nil {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "step fact identity is required"))
 	}
 	if !f.Phase.IsTerminal() {

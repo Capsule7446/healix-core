@@ -25,7 +25,7 @@ func (s *fencedSchedulingStore) ClaimNext(_ context.Context, worker string, _ in
 		return Claim{}, false, nil
 	}
 	s.claims++
-	s.active = execution.WorkerFence{RunID: s.snapshot.RunID(), ClaimToken: fmt.Sprintf("%s-%d", worker, s.claims)}
+	s.active = execution.WorkerFence{InstanceID: s.snapshot.InstanceID(), ClaimToken: fmt.Sprintf("%s-%d", worker, s.claims)}
 	return Claim{Snapshot: s.snapshot, Fence: s.active}, true, nil
 }
 

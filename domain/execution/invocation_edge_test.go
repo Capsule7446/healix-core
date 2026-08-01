@@ -19,7 +19,7 @@ func TestInvocationEdgeKeyDoesNotCollideLikeDelimitedStrings(t *testing.T) {
 }
 
 func snapshotWithTwoConcreteReferenceEdges(t *testing.T) InstanceSnapshotInput {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	root := &input.Plan.Workflows[0]
 	root.Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("count")}}}}
 	child := WorkflowSnapshot{ID: "child", FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Parameters: []Parameter{{Name: "value", DisplayName: "Value", Type: parameter.Number, Required: true}}, Steps: []Step{{ID: "call-grandchild", DisplayName: "Call grandchild", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1"}}}}

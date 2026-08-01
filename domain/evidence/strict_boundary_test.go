@@ -82,7 +82,7 @@ func TestValidationGroupExpectedMembersImmutable(t *testing.T) {
 }
 
 func TestStepFactRejectsWhitespaceIdentity(t *testing.T) {
-	fact := StepFact{ID: " ", RunID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecution: mustStepExecutionID("step"), Phase: PhaseSucceeded, ObservedAt: 1}
+	fact := StepFact{ID: " ", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecution: mustStepExecutionID("step"), Phase: PhaseSucceeded, ObservedAt: 1}
 	if err := fact.Validate(); err == nil {
 		t.Fatal("whitespace-only identity accepted")
 	}

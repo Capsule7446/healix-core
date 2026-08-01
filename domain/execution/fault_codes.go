@@ -54,7 +54,7 @@ func classifyCreateInstancePlan(cause error) error {
 }
 
 // classifyCreateInstanceSnapshot is the equivalent boundary for
-// SealInstanceSnapshot, HydrateInstanceSnapshot, and NewRun: an uncoded snapshot-shape
+// SealInstanceSnapshot, HydrateInstanceSnapshot, and NewInstance: an uncoded snapshot-shape
 // failure becomes EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, while a plan,
 // step-shape, or environment fault reached while validating the snapshot
 // passes through unchanged.
@@ -92,7 +92,7 @@ func stepShapeInvalidError(violations []fault.Violation) error {
 }
 
 // environmentSnapshotInvalidError is the aggregate validation envelope for the
-// run's environment, screenshot, and healer policy snapshots.
+// instance's environment, screenshot, and healer policy snapshots.
 func environmentSnapshotInvalidError(violations []fault.Violation) error {
 	return mustExecutionFault(fault.InvalidArgument, CodeEnvironmentSnapshotInvalid, "environment snapshot is invalid", fault.WithViolations(capViolations(violations)...))
 }

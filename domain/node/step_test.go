@@ -136,14 +136,14 @@ func validDecision(selector fingerprint.Selector) heal.Decision {
 
 func TestExecutionFactsUseWorkerFenceForProgressAndTerminalCommit(t *testing.T) {
 	sink := &testFacts{}
-	runtime := &Runtime{RunID: mustInstanceID("run"), ClaimToken: "claim", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), ClaimToken: "claim", Facts: sink}
 	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.emitTerminal(context.Background(), "step", PhaseSucceeded); err != nil {
 		t.Fatal(err)
 	}
-	want := domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"}
+	want := domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}
 	if len(sink.fences) != 2 || sink.fences[0] != want || sink.fences[1] != want {
 		t.Fatalf("fences = %#v, want progress and terminal fenced by %#v", sink.fences, want)
 	}
@@ -151,7 +151,7 @@ func TestExecutionFactsUseWorkerFenceForProgressAndTerminalCommit(t *testing.T) 
 
 func TestEmitRunningRollbackPreservesSuccessfulOccurrenceSequence(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{errors.New("persist failed"), nil, nil}}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
 		t.Fatal("first RUNNING emit should fail")
@@ -169,7 +169,7 @@ func TestEmitRunningRollbackPreservesSuccessfulOccurrenceSequence(t *testing.T) 
 
 func TestEmitRunningRollbackHandlesRepeatedFailures(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{errors.New("one"), errors.New("two"), nil}}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	for i := 0; i < 2; i++ {
 		if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
@@ -186,7 +186,7 @@ func TestEmitRunningRollbackHandlesRepeatedFailures(t *testing.T) {
 
 func TestEmitRunningRollbackPreservesNestedSameIDLIFO(t *testing.T) {
 	sink := &testFacts{}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestEmitRunningRollbackPreservesNestedSameIDLIFO(t *testing.T) {
 
 func TestEmitTerminalFailureRetainsOccurrenceForFallback(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{nil, errors.New("succeeded failed"), nil}}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	occurrence, err := runtime.beginOccurrence(context.Background(), "step")
 	if err != nil {
@@ -233,7 +233,7 @@ func TestEmitTerminalFailureRetainsOccurrenceForFallback(t *testing.T) {
 
 func TestOccurrenceCleanupAfterAllTerminalWritesFailAllowsReuse(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{nil, errors.New("succeeded failed"), errors.New("failed failed"), nil, nil}}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	occurrence, err := runtime.beginOccurrence(context.Background(), "step")
 	if err != nil {
@@ -259,7 +259,7 @@ func TestOccurrenceCleanupAfterAllTerminalWritesFailAllowsReuse(t *testing.T) {
 
 func TestOccurrenceCleanupPreservesNestedSameIDLIFO(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{nil, nil, errors.New("inner canceled failed"), nil}}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	outer, err := runtime.beginOccurrence(context.Background(), "step")
 	if err != nil {
@@ -321,11 +321,11 @@ func TestHealedSelectorOverlayIsSharedBySpecID(t *testing.T) {
 	healer := &testHealer{decision: validDecision(newSelector)}
 	facts := &testFacts{}
 	rt := &Runtime{
-		RunID:  mustInstanceID("run-1"),
-		Specs:  map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
-		Driver: driver,
-		Healer: healer,
-		Facts:  facts,
+		InstanceID: mustInstanceID("run-1"),
+		Specs:      map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
+		Driver:     driver,
+		Healer:     healer,
+		Facts:      facts,
 	}
 	first := &StepNode{NodeID: "click-submit", Target: spec, Action: Action{Kind: ActionNoop}}
 	second := &StepNode{NodeID: "check-submit", Target: spec, Action: Action{Kind: ActionNoop}}
@@ -397,7 +397,7 @@ func TestOptionalStepSkipsMissingTargetWithoutHealing(t *testing.T) {
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 	facts := &testFacts{}
 	step := &StepNode{NodeID: "close-modal", Target: fingerprint.ElementTargetSpec{ID: "modal.close"}, Optional: true}
-	err := step.Run(context.Background(), &Runtime{RunID: mustInstanceID("run-1"), Driver: driver, Healer: healer, Facts: facts})
+	err := step.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run-1"), Driver: driver, Healer: healer, Facts: facts})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestStepPersistsCanceledEventAfterExecutionContextCancellation(t *testing.T
 	}}
 	facts := &testFacts{rejectCanceled: true}
 	step := &StepNode{NodeID: "cancelled", Target: fingerprint.ElementTargetSpec{ID: "target"}}
-	err := step.Run(ctx, &Runtime{RunID: mustInstanceID("run-1"), Driver: driver, Facts: facts})
+	err := step.Run(ctx, &Runtime{InstanceID: mustInstanceID("run-1"), Driver: driver, Facts: facts})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error = %v, want context canceled", err)
 	}
@@ -494,7 +494,7 @@ func TestStepPropagatesCriticalFactErrors(t *testing.T) {
 		healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 		facts := &testFacts{healDecisionErr: auditErr}
 		step := &StepNode{NodeID: "submit", Target: spec}
-		err := step.Run(context.Background(), &Runtime{RunID: mustInstanceID("run-1"), Driver: driver, Healer: healer, Facts: facts})
+		err := step.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run-1"), Driver: driver, Healer: healer, Facts: facts})
 		if !errors.Is(err, auditErr) {
 			t.Fatalf("Run error = %v, want audit error", err)
 		}

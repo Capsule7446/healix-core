@@ -197,7 +197,7 @@ func TestHealStreakObserveRejectsInvalidInputsAndStateBoundaries(t *testing.T) {
 	ordering.LastSequence = 5
 	staleSequence := valid
 	staleSequence.Sequence = 4
-	staleSequence.FactID, staleSequence.CommitID, staleSequence.RunID = "fact-new", "commit-new", "run-new"
+	staleSequence.FactID, staleSequence.CommitID, staleSequence.InstanceID = "fact-new", "commit-new", "run-new"
 	if _, err := ordering.Observe(staleSequence); err == nil {
 		t.Fatal("non-increasing observation sequence accepted")
 	}

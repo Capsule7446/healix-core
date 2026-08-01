@@ -27,7 +27,7 @@ type RecordingTimeline interface {
 }
 
 type StepExecutionRef struct {
-	RunID      domainexecution.InstanceID
+	InstanceID domainexecution.InstanceID
 	NodeID     string
 	Occurrence int
 }
@@ -55,7 +55,7 @@ type StepTimelineEvent struct {
 }
 
 func (e StepTimelineEvent) Validate() error {
-	if e.Step.RunID.Validate() != nil || e.Step.NodeID == "" || e.Step.Occurrence < 1 {
+	if e.Step.InstanceID.Validate() != nil || e.Step.NodeID == "" || e.Step.Occurrence < 1 {
 		return errors.New("step execution identity is invalid")
 	}
 	if e.Mark.Offset < 0 || e.Mark.Sequence < 1 {
@@ -435,7 +435,7 @@ type leafLifecycle struct {
 func (rt *Runtime) beginLeafLifecycle(ctx context.Context, nodeID, nodeKind string, occurrence int) (*leafLifecycle, error) {
 	lifecycle := &leafLifecycle{
 		runtime:   rt,
-		execution: StepExecutionRef{RunID: rt.RunID, NodeID: nodeID, Occurrence: occurrence},
+		execution: StepExecutionRef{InstanceID: rt.InstanceID, NodeID: nodeID, Occurrence: occurrence},
 		nodeKind:  nodeKind,
 		startedAt: time.Now(),
 	}

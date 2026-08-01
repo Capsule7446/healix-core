@@ -10,13 +10,13 @@ import (
 )
 
 // validateEnvironmentSnapshot builds one aggregate violation envelope for the
-// run's environment, screenshot, and healer policy snapshots. Every sub-check
+// instance's environment, screenshot, and healer policy snapshots. Every sub-check
 // stays an ordinary Go error and is discarded once recorded as a generic
 // violation, so an environment property or variable name — caller-declared,
 // and never useful to echo back — never reaches public text. Property and
 // variable maps are walked in sorted key order so violation order is a
 // function of the input alone.
-func validateEnvironmentSnapshot(schemaVersion RunSnapshotSchema, env EnvironmentSnapshot, screenshot ScreenshotPolicySnapshot, healer HealerPolicySnapshot) error {
+func validateEnvironmentSnapshot(schemaVersion InstanceSnapshotSchema, env EnvironmentSnapshot, screenshot ScreenshotPolicySnapshot, healer HealerPolicySnapshot) error {
 	var violations []fault.Violation
 	violations = appendEnvironmentIdentityViolations(violations, env)
 	violations = appendEnvironmentVariableViolations(violations, schemaVersion, env)
@@ -47,7 +47,7 @@ func appendEnvironmentIdentityViolations(violations []fault.Violation, v Environ
 	return violations
 }
 
-func appendEnvironmentVariableViolations(violations []fault.Violation, schemaVersion RunSnapshotSchema, v EnvironmentSnapshot) []fault.Violation {
+func appendEnvironmentVariableViolations(violations []fault.Violation, schemaVersion InstanceSnapshotSchema, v EnvironmentSnapshot) []fault.Violation {
 	if schemaVersion == RunSnapshotSchemaV1 {
 		if len(v.Variables) != 0 {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.variables", "a V1 environment snapshot cannot contain typed variables"))

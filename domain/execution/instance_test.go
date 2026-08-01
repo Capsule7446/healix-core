@@ -3,11 +3,11 @@ package execution
 import "testing"
 
 func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
+	queued, err := NewInstance(Instance{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,24 +22,24 @@ func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 	canceledRunning, _ := running.Transition(Canceled, 12)
 	tests := []struct {
 		name   string
-		source Run
+		source Instance
 		to     InstanceStatus
-		mutate func(*Run)
+		mutate func(*Instance)
 	}{
-		{"queued forbidden start", queued, Running, func(run *Run) { run.StartedAt = 10 }},
-		{"queued forbidden finish", queued, Canceled, func(run *Run) { run.FinishedAt = 10 }},
-		{"queued before created", queued, Running, func(run *Run) { run.QueuedAt = 9 }},
-		{"queued missing created", queued, Running, func(run *Run) { run.CreatedAt = 0 }},
-		{"queued negative position", queued, Running, func(run *Run) { run.QueuePosition = -1 }},
-		{"running missing start", running, Succeeded, func(run *Run) { run.StartedAt = 0 }},
-		{"running start before queue", running, Failed, func(run *Run) { run.StartedAt = 9 }},
-		{"running forbidden finish", running, Aborted, func(run *Run) { run.FinishedAt = 12 }},
-		{"running queue before created", running, Canceled, func(run *Run) { run.QueuedAt = 9 }},
-		{"succeeded missing finish", succeeded, Running, func(run *Run) { run.FinishedAt = 0 }},
-		{"failed reversed finish", failed, Running, func(run *Run) { run.FinishedAt = 10 }},
-		{"aborted missing start", aborted, Running, func(run *Run) { run.StartedAt = 0 }},
-		{"queued cancellation missing finish", canceledQueued, Running, func(run *Run) { run.FinishedAt = 0 }},
-		{"running cancellation reversed", canceledRunning, Running, func(run *Run) { run.FinishedAt = 10 }},
+		{"queued forbidden start", queued, Running, func(run *Instance) { run.StartedAt = 10 }},
+		{"queued forbidden finish", queued, Canceled, func(run *Instance) { run.FinishedAt = 10 }},
+		{"queued before created", queued, Running, func(run *Instance) { run.QueuedAt = 9 }},
+		{"queued missing created", queued, Running, func(run *Instance) { run.CreatedAt = 0 }},
+		{"queued negative position", queued, Running, func(run *Instance) { run.QueuePosition = -1 }},
+		{"running missing start", running, Succeeded, func(run *Instance) { run.StartedAt = 0 }},
+		{"running start before queue", running, Failed, func(run *Instance) { run.StartedAt = 9 }},
+		{"running forbidden finish", running, Aborted, func(run *Instance) { run.FinishedAt = 12 }},
+		{"running queue before created", running, Canceled, func(run *Instance) { run.QueuedAt = 9 }},
+		{"succeeded missing finish", succeeded, Running, func(run *Instance) { run.FinishedAt = 0 }},
+		{"failed reversed finish", failed, Running, func(run *Instance) { run.FinishedAt = 10 }},
+		{"aborted missing start", aborted, Running, func(run *Instance) { run.StartedAt = 0 }},
+		{"queued cancellation missing finish", canceledQueued, Running, func(run *Instance) { run.FinishedAt = 0 }},
+		{"running cancellation reversed", canceledRunning, Running, func(run *Instance) { run.FinishedAt = 10 }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -53,11 +53,11 @@ func TestRunTransitionRejectsMalformedReceiverLifecycle(t *testing.T) {
 }
 
 func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
+	queued, err := NewInstance(Instance{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 	}
 	tests := []struct {
 		name   string
-		source Run
+		source Instance
 		status InstanceStatus
 		at     int64
 	}{
@@ -83,7 +83,7 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := HydrateRun(next, snapshot); err != nil {
+			if _, err := HydrateInstance(next, snapshot); err != nil {
 				t.Fatalf("transition produced non-hydratable run: %v", err)
 			}
 		})
@@ -97,11 +97,11 @@ func TestRunTransitionRoundTripsThroughHydration(t *testing.T) {
 }
 
 func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
+	base, err := NewInstance(Instance{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 10, QueuedAt: 10}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,19 +134,19 @@ func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			run := base
 			run.Status, run.StartedAt, run.FinishedAt = test.status, test.start, test.finish
-			_, err := HydrateRun(run, snapshot)
+			_, err := HydrateInstance(run, snapshot)
 			if (err == nil) != test.valid {
 				t.Fatalf("valid=%v error=%v", test.valid, err)
 			}
 		})
 	}
-	for _, mutate := range []func(*Run){
-		func(run *Run) { run.QueuedAt = 9 },
-		func(run *Run) { run.Status, run.StartedAt = Running, 9 },
+	for _, mutate := range []func(*Instance){
+		func(run *Instance) { run.QueuedAt = 9 },
+		func(run *Instance) { run.Status, run.StartedAt = Running, 9 },
 	} {
 		run := base
 		mutate(&run)
-		if _, err := HydrateRun(run, snapshot); err == nil {
+		if _, err := HydrateInstance(run, snapshot); err == nil {
 			t.Fatal("non-monotonic lifecycle accepted")
 		}
 	}
@@ -154,18 +154,18 @@ func TestHydrateRunEnforcesPersistedLifecycleShapes(t *testing.T) {
 
 func TestRunStatusTransitionPermitsCancellationBeforeAndDuringExecution(t *testing.T) {
 	for _, from := range []InstanceStatus{Queued, Running} {
-		if err := ValidateRunStatusTransition(from, Canceled); err != nil {
+		if err := ValidateInstanceStatusTransition(from, Canceled); err != nil {
 			t.Fatalf("%s -> CANCELED: %v", from, err)
 		}
 	}
 }
 
 func TestRunTransitionAcceptsLifecycleProgression(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	initial, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	initial, err := NewInstance(Instance{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,13 +179,13 @@ func TestRunTransitionAcceptsLifecycleProgression(t *testing.T) {
 }
 
 func TestRunTransitionRejectsReopeningTerminalRun(t *testing.T) {
-	if _, err := (Run{Status: Succeeded}).Transition(Running, 2); err == nil {
+	if _, err := (Instance{Status: Succeeded}).Transition(Running, 2); err == nil {
 		t.Fatal("expected terminal transition rejection")
 	}
 }
 
 func TestRunTransitionRejectsAbortingQueuedRun(t *testing.T) {
-	if _, err := (Run{Status: Queued}).Transition(Aborted, 2); err == nil {
+	if _, err := (Instance{Status: Queued}).Transition(Aborted, 2); err == nil {
 		t.Fatal("expected queued abort rejection")
 	}
 }

@@ -24,7 +24,7 @@ const (
 
 type conformanceState struct {
 	commands  map[string]StoredCreateRunCommand
-	runs      map[string]execution.Run
+	runs      map[string]execution.Instance
 	entries   map[string][]execution.Entry
 	inputs    map[string]execution.InstanceSnapshotInput
 	digests   map[string]string
@@ -33,7 +33,7 @@ type conformanceState struct {
 }
 
 func emptyConformanceState() conformanceState {
-	return conformanceState{commands: map[string]StoredCreateRunCommand{}, runs: map[string]execution.Run{}, entries: map[string][]execution.Entry{}, inputs: map[string]execution.InstanceSnapshotInput{}, digests: map[string]string{}, positions: map[string]int{}}
+	return conformanceState{commands: map[string]StoredCreateRunCommand{}, runs: map[string]execution.Instance{}, entries: map[string][]execution.Entry{}, inputs: map[string]execution.InstanceSnapshotInput{}, digests: map[string]string{}, positions: map[string]int{}}
 }
 func cloneConformanceState(source conformanceState) conformanceState {
 	out := emptyConformanceState()
@@ -320,7 +320,7 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 	sameRun.ScreenshotPolicy.Destination = "other"
 	result, err := service.CreateRun(context.Background(), sameRun)
 	if !fault.IsCode(err, CodeCreateInstanceSnapshotConflict) ||
-		strings.Contains(err.Error(), sameRun.RunID.String()) ||
+		strings.Contains(err.Error(), sameRun.InstanceID.String()) ||
 		!isZeroCreateRunResult(result) {
 		t.Fatalf("snapshot conflict result/error=%#v/%v", result, err)
 	}

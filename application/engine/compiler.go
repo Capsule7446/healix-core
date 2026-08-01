@@ -32,13 +32,13 @@ type RuntimeNodeIdentity struct {
 }
 
 type compiledExecutionIdentity struct {
-	runID          execution.InstanceID
+	instanceID     execution.InstanceID
 	snapshotDigest string
 	executionID    execution.EntryID
 }
 
 type CompiledEntry struct {
-	RunID             execution.InstanceID
+	InstanceID        execution.InstanceID
 	SnapshotDigest    string
 	ExecutionID       execution.EntryID
 	TestTaskItemID    string
@@ -82,7 +82,7 @@ func (r CompiledPlan) Entry(executionID execution.EntryID) (CompiledEntry, bool)
 
 func (entry CompiledEntry) hasIdentity(executionID execution.EntryID) bool {
 	return executionID.Validate() == nil &&
-		entry.RunID.Validate() == nil && entry.RunID == entry.identity.runID &&
+		entry.InstanceID.Validate() == nil && entry.InstanceID == entry.identity.instanceID &&
 		entry.SnapshotDigest != "" && entry.SnapshotDigest == entry.identity.snapshotDigest &&
 		entry.ExecutionID == executionID && entry.ExecutionID == entry.identity.executionID
 }
@@ -197,12 +197,12 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 			root.Parameters[key] = value.Clone()
 		}
 		compiledEntry := CompiledEntry{
-			RunID: snapshot.RunID(), SnapshotDigest: snapshot.Digest(),
+			InstanceID: snapshot.InstanceID(), SnapshotDigest: snapshot.Digest(),
 			ExecutionID: entryID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
 			FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID,
 			program:  node.Program{Root: root, Specs: compiler.programSpecs},
 			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
-			identity: compiledExecutionIdentity{runID: snapshot.RunID(), snapshotDigest: snapshot.Digest(), executionID: entryID},
+			identity: compiledExecutionIdentity{instanceID: snapshot.InstanceID(), snapshotDigest: snapshot.Digest(), executionID: entryID},
 		}
 		result.byID[entryID] = len(result.entries)
 		result.entries = append(result.entries, compiledEntry)

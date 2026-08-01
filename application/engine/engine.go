@@ -43,7 +43,7 @@ func ExecutionAuthorityVerifierRequiredError() error {
 }
 
 type ExecutionAuthority struct {
-	RunID          execution.InstanceID
+	InstanceID     execution.InstanceID
 	SnapshotDigest string
 	ExecutionID    execution.EntryID
 	ClaimToken     string
@@ -55,9 +55,9 @@ type ExecutionAuthorityVerifier interface {
 
 // Config 打包了一次 Program 执行所需的领域端口与运行变量。
 type Config struct {
-	// RunID、SnapshotDigest、ExecutionID 与 ClaimToken 必须来自本次已领取
+	// InstanceID、SnapshotDigest、ExecutionID 与 ClaimToken 必须来自本次已领取
 	// 执行权的权威身份，不能从待执行的 CompiledEntry 反向填充。
-	RunID             execution.InstanceID
+	InstanceID        execution.InstanceID
 	SnapshotDigest    string
 	ExecutionID       execution.EntryID
 	ClaimToken        string
@@ -109,11 +109,11 @@ type EntryResult struct {
 // validated before any runtime port can be observed.
 func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResult, error) {
 	result := EntryResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
-	if entry.identity.runID.Validate() != nil ||
-		entry.RunID != entry.identity.runID ||
+	if entry.identity.instanceID.Validate() != nil ||
+		entry.InstanceID != entry.identity.instanceID ||
 		entry.SnapshotDigest != entry.identity.snapshotDigest ||
 		entry.ExecutionID != entry.identity.executionID ||
-		cfg.RunID != entry.identity.runID ||
+		cfg.InstanceID != entry.identity.instanceID ||
 		cfg.SnapshotDigest != entry.identity.snapshotDigest ||
 		cfg.ExecutionID != entry.identity.executionID ||
 		cfg.ClaimToken == "" {
@@ -123,7 +123,7 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResu
 		return result, ExecutionAuthorityVerifierRequiredError()
 	}
 	authority := ExecutionAuthority{
-		RunID: cfg.RunID, SnapshotDigest: cfg.SnapshotDigest,
+		InstanceID: cfg.InstanceID, SnapshotDigest: cfg.SnapshotDigest,
 		ExecutionID: cfg.ExecutionID, ClaimToken: cfg.ClaimToken,
 	}
 	if err := cfg.AuthorityVerifier.VerifyExecutionAuthority(ctx, authority); err != nil {

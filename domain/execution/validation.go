@@ -226,8 +226,8 @@ func (p PlanSnapshot) validateShape() error {
 	if err := validateAggregateInputBounds(p); err != nil {
 		return err
 	}
-	if p.RunID.Validate() != nil {
-		return errors.New("execution plan requires a run identity")
+	if p.InstanceID.Validate() != nil {
+		return errors.New("execution plan requires an instance identity")
 	}
 	if !p.FailurePolicy.IsValid() {
 		return fmt.Errorf("invalid failure policy %q", p.FailurePolicy)
@@ -261,7 +261,7 @@ func (p PlanSnapshot) validateShape() error {
 	workflows := make(map[string]WorkflowSnapshot, len(p.Workflows))
 	for _, workflow := range p.Workflows {
 		if strings.TrimSpace(workflow.VersionID) == "" {
-			return errors.New("run snapshot contains a workflow with an empty version id")
+			return errors.New("instance snapshot contains a workflow with an empty version id")
 		}
 		if _, exists := workflows[workflow.VersionID]; exists {
 			return fmt.Errorf("execution plan contains duplicate workflow version %q", workflow.VersionID)
@@ -423,7 +423,7 @@ func validateAggregateInputBounds(p PlanSnapshot) error {
 			return value.Validate()
 		}
 	}
-	if err := addString(p.RunID.String()); err != nil {
+	if err := addString(p.InstanceID.String()); err != nil {
 		return err
 	}
 	for _, entry := range p.Entries {

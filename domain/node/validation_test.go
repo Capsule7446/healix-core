@@ -48,7 +48,7 @@ func TestValidationGroupDoesNotLatchSeparateANDPasses(t *testing.T) {
 			{NodeID: "a", Target: fingerprint.ElementTargetSpec{ID: "a"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
 			{NodeID: "b", Target: fingerprint.ElementTargetSpec{ID: "b"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
 		}}}}
-	err := group.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver})
+	err := group.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver})
 	if err == nil || !strings.Contains(err.Error(), "no validation branch") {
 		t.Fatalf("group Run error = %v, want same-round AND timeout", err)
 	}
@@ -63,7 +63,7 @@ func TestValidationGroupPassesWhenBranchStaysTrue(t *testing.T) {
 			{NodeID: "a", Target: fingerprint.ElementTargetSpec{ID: "a"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
 			{NodeID: "b", Target: fingerprint.ElementTargetSpec{ID: "b"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}},
 		}}}}
-	if err := group.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver}); err != nil {
+	if err := group.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver}); err != nil {
 		t.Fatalf("group Run: %v", err)
 	}
 }
@@ -81,7 +81,7 @@ func TestValidationGroupRecordsWinnerAndEveryFinalMember(t *testing.T) {
 		{ID: "first", Nodes: []*ValidationNode{{NodeID: "winner", GroupID: "group", BranchID: "first", Target: fingerprint.ElementTargetSpec{ID: "winner"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
 		{ID: "second", Nodes: []*ValidationNode{{NodeID: "loser", GroupID: "group", BranchID: "second", Target: fingerprint.ElementTargetSpec{ID: "loser"}, Assertion: ValidationAssertion{Kind: "text_equals", Expected: "yes"}}}},
 	}}
-	if err := group.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver, Facts: facts}); err != nil {
+	if err := group.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, Facts: facts}); err != nil {
 		t.Fatalf("group Run: %v", err)
 	}
 	if len(facts.validationGroups) != 1 {
@@ -109,7 +109,7 @@ func TestValidationGroupDeduplicatesRepeatedMemberIdentity(t *testing.T) {
 	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return &scriptedValidationElement{values: []string{"yes"}}, nil
 	}}
-	if err := group.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver, Facts: facts}); err != nil {
+	if err := group.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, Facts: facts}); err != nil {
 		t.Fatalf("group Run: %v", err)
 	}
 	if len(facts.validationGroups) != 1 || len(facts.validationGroups[0].ExpectedMembers) != 1 {
@@ -151,7 +151,7 @@ func TestValidationTerminalReasonClassification(t *testing.T) {
 func TestValidationGroupRecordsCanceledTerminalReason(t *testing.T) {
 	facts := &testFacts{}
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: time.Second, Branches: []ValidationBranch{{ID: "branch", Nodes: []*ValidationNode{{NodeID: "member", GroupID: "group", BranchID: "branch", Target: fingerprint.ElementTargetSpec{ID: "member"}, Assertion: ValidationAssertion{Kind: "visible"}}}}}}
-	err := group.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+	err := group.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, context.Canceled
 	}}, Facts: facts})
 	if err == nil {
@@ -174,7 +174,7 @@ func TestValidationGroupRecordsCanceledTerminalReason(t *testing.T) {
 func TestValidationEvaluationErrorRecordsOneFinalObservation(t *testing.T) {
 	facts := &testFacts{}
 	validation := &ValidationNode{NodeID: "validation", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: ValidationAssertion{Kind: "visible"}, MaxWait: time.Second}
-	err := validation.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+	err := validation.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, errors.New("driver failure")
 	}}, Facts: facts})
 	if err == nil {
@@ -196,7 +196,7 @@ func TestValidationObservationRecordsFirstChangeAndFinal(t *testing.T) {
 	facts := &testFacts{}
 	validation := &ValidationNode{NodeID: "status", Target: fingerprint.ElementTargetSpec{ID: "status", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#status"}}},
 		Assertion: ValidationAssertion{Kind: "text_equals", Expected: "成功"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
-	err := validation.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+	err := validation.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return element, nil
 	}}, Facts: facts})
 	if err != nil {
@@ -219,7 +219,7 @@ func TestValidationExpandsRuntimeVariablesWithoutPersistingResolvedExpectation(t
 	facts := &testFacts{}
 	validation := &ValidationNode{NodeID: "status", Target: fingerprint.ElementTargetSpec{ID: "status"},
 		Assertion: ValidationAssertion{Kind: "text_equals", Expected: "${expected_status}"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
-	err := validation.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Scratchpad: map[string]any{"expected_status": "READY"}, Facts: facts,
+	err := validation.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Scratchpad: map[string]any{"expected_status": "READY"}, Facts: facts,
 		Driver: &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return element, nil }}})
 	if err != nil {
 		t.Fatalf("validation Run: %v", err)
@@ -266,7 +266,7 @@ func TestValidationGroupExpandsRuntimeVariablesForEachBranchMember(t *testing.T)
 	group := &ValidationGroupNode{NodeID: "group", MaxWait: time.Second, Stability: 200 * time.Millisecond,
 		Branches: []ValidationBranch{{ID: "expected", Nodes: []*ValidationNode{{NodeID: "member", Target: fingerprint.ElementTargetSpec{ID: "member"},
 			Assertion: ValidationAssertion{Kind: "text_equals", Expected: "${expected_status}"}}}}}}
-	if err := group.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver, Scratchpad: map[string]any{"expected_status": "READY"}}); err != nil {
+	if err := group.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, Scratchpad: map[string]any{"expected_status": "READY"}}); err != nil {
 		t.Fatalf("validation group Run: %v", err)
 	}
 }
@@ -286,7 +286,7 @@ func TestValidationSetObservationPreservesTypedSourceCollection(t *testing.T) {
 	}
 	element := &matrixElement{exists: true, visible: true, state: ValidationState{SelectedTexts: selected}}
 
-	if err := validation.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: &matrixDriver{element: element}, Facts: facts}); err != nil {
+	if err := validation.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: &matrixDriver{element: element}, Facts: facts}); err != nil {
 		t.Fatalf("validation Run: %v", err)
 	}
 	final := facts.validationObservations[len(facts.validationObservations)-1]
@@ -330,7 +330,7 @@ func TestSensitiveSetObservationRedactsTypedValues(t *testing.T) {
 		MaxWait:   time.Second, Stability: time.Nanosecond,
 	}
 	element := &matrixElement{exists: true, visible: true, state: ValidationState{SelectedTexts: []string{"secret"}}}
-	if err := validation.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: &matrixDriver{element: element}, Facts: facts}); err != nil {
+	if err := validation.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: &matrixDriver{element: element}, Facts: facts}); err != nil {
 		t.Fatalf("validation Run: %v", err)
 	}
 	final := facts.validationObservations[len(facts.validationObservations)-1]
@@ -364,7 +364,7 @@ func TestNotExistsRequiresNoApplicableHealCandidate(t *testing.T) {
 	healer := &testHealer{decision: validDecision(newSelector)}
 	node := &ValidationNode{NodeID: "missing", Target: fingerprint.ElementTargetSpec{ID: "missing", Selectors: []fingerprint.Selector{old}},
 		Assertion: ValidationAssertion{Kind: "not_exists"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
-	err := node.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver, Healer: healer})
+	err := node.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, Healer: healer})
 	if err == nil || !strings.Contains(err.Error(), "not continuously satisfied") {
 		t.Fatalf("not_exists Run error = %v, want failure because heal found a candidate", err)
 	}
@@ -379,7 +379,7 @@ func TestNotExistsPassesOnlyAfterNoCandidate(t *testing.T) {
 	}}
 	node := &ValidationNode{NodeID: "missing", Target: fingerprint.ElementTargetSpec{ID: "missing", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#missing"}}},
 		Assertion: ValidationAssertion{Kind: "not_exists"}, MaxWait: time.Second, Stability: 200 * time.Millisecond}
-	if err := node.Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: driver, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}}); err != nil {
+	if err := node.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}}); err != nil {
 		t.Fatalf("not_exists Run: %v", err)
 	}
 }

@@ -14,16 +14,16 @@ import (
 )
 
 func validCreateRunCommand() CreateRunCommand {
-	return CreateRunCommand{CommandID: "command-1", RunID: mustInstanceID("run-1"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item-1": {}, "item-2": {}}, FailurePolicy: execution.FailurePolicyContinueOnFailure, CreatedAt: 10, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
+	return CreateRunCommand{CommandID: "command-1", InstanceID: mustInstanceID("run-1"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item-1": {}, "item-2": {}}, FailurePolicy: execution.FailurePolicyContinueOnFailure, CreatedAt: 10, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
 }
 
 func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCreateRun {
 	t.Helper()
 	source := validMapperSource()
-	source.RunID = command.RunID
+	source.InstanceID = command.InstanceID
 	roots := make([]execution.InvocationScopeSnapshot, 0, len(source.Entries)*2)
 	for _, entry := range source.Entries {
-		entry.ExecutionID = mustEntryID(concreteRootPath(command.RunID.String(), entry.TestTaskItemID))
+		entry.ExecutionID = mustEntryID(concreteRootPath(command.InstanceID.String(), entry.TestTaskItemID))
 		roots = append(roots,
 			execution.InvocationScopeSnapshot{Path: execution.RootInvocationPath(entry.ExecutionID), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
 			execution.InvocationScopeSnapshot{Path: mustInvocationPath(entry.ExecutionID.String() + "/10:call-child"), ParentPath: execution.RootInvocationPath(entry.ExecutionID), ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
@@ -58,7 +58,7 @@ func TestCreateRunRequestDigestMatrix(t *testing.T) {
 		edit(&changed)
 		variants = append(variants, changed)
 	}
-	add(func(v *CreateRunCommand) { v.RunID = mustInstanceID("other") })
+	add(func(v *CreateRunCommand) { v.InstanceID = mustInstanceID("other") })
 	add(func(v *CreateRunCommand) { v.ExecutionFlowID = "other" })
 	add(func(v *CreateRunCommand) { v.TestTaskVersionID = "other" })
 	add(func(v *CreateRunCommand) { v.EnvironmentID = "other" })
@@ -127,7 +127,7 @@ func assertDifferentDigest(t *testing.T, left, right CreateRunCommand, index int
 
 func TestCreateRunRequestDigestRejectsInvalidBeforeHashing(t *testing.T) {
 	tests := []func(*CreateRunCommand){
-		func(v *CreateRunCommand) { v.RunID = execution.InstanceID{} },
+		func(v *CreateRunCommand) { v.InstanceID = execution.InstanceID{} },
 		func(v *CreateRunCommand) { v.FailurePolicy = "UNKNOWN" },
 		func(v *CreateRunCommand) { v.ScreenshotPolicy.Version++ },
 		func(v *CreateRunCommand) { v.HealerPolicy.Version++ },
@@ -694,7 +694,7 @@ func TestCreateRunServiceReplaysSupportedV1StoredResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := execution.NewRun(execution.Run{ID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
+	run, err := execution.NewInstance(execution.Instance{ID: command.InstanceID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,7 +725,7 @@ func TestCreateRunServiceReturnsAuthoritativeDivergentReplayWinner(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	winnerRun, err := execution.NewRun(execution.Run{ID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, Status: execution.Queued, EnvironmentID: command.EnvironmentID, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, winnerSnapshot)
+	winnerRun, err := execution.NewInstance(execution.Instance{ID: command.InstanceID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, Status: execution.Queued, EnvironmentID: command.EnvironmentID, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, winnerSnapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +755,7 @@ func TestCreateRunServiceRejectsReplayCommandAndSnapshotTampering(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := execution.NewRun(execution.Run{ID: command.RunID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
+	run, err := execution.NewInstance(execution.Instance{ID: command.InstanceID, ExecutionFlowID: command.ExecutionFlowID, TestTaskVersionID: command.TestTaskVersionID, EnvironmentID: command.EnvironmentID, Status: execution.Queued, CreatedAt: command.CreatedAt, QueuedAt: command.CreatedAt}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,9 +850,9 @@ func TestCreateRunServiceRejectsAppliedRunFieldDrift(t *testing.T) {
 	command := validCreateRunCommand()
 	mutations := []struct {
 		name   string
-		mutate func(*execution.Run)
+		mutate func(*execution.Instance)
 	}{
-		{"task", func(v *execution.Run) { v.ExecutionFlowID = "other" }}, {"version", func(v *execution.Run) { v.TestTaskVersionID = "other" }}, {"environment", func(v *execution.Run) { v.EnvironmentID = "other" }}, {"status", func(v *execution.Run) { v.Status = execution.Running }}, {"created", func(v *execution.Run) { v.CreatedAt++ }}, {"queued", func(v *execution.Run) { v.QueuedAt++ }},
+		{"task", func(v *execution.Instance) { v.ExecutionFlowID = "other" }}, {"version", func(v *execution.Instance) { v.TestTaskVersionID = "other" }}, {"environment", func(v *execution.Instance) { v.EnvironmentID = "other" }}, {"status", func(v *execution.Instance) { v.Status = execution.Running }}, {"created", func(v *execution.Instance) { v.CreatedAt++ }}, {"queued", func(v *execution.Instance) { v.QueuedAt++ }},
 	}
 	for _, test := range mutations {
 		t.Run(test.name, func(t *testing.T) {
@@ -1062,7 +1062,7 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 		target    error
 		wantCode  fault.Code
 	}{
-		{"invalid command", func() CreateRunCommand { value := base; value.RunID = execution.InstanceID{}; return value }(), func(*createRunFake) {}, nil, CodeCreateInstanceCommandInvalid},
+		{"invalid command", func() CreateRunCommand { value := base; value.InstanceID = execution.InstanceID{}; return value }(), func(*createRunFake) {}, nil, CodeCreateInstanceCommandInvalid},
 		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil, CodeSchedulingAdapterUnavailable},
 		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil, ""},
 		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil, ""},

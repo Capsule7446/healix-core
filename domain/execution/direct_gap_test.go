@@ -17,7 +17,7 @@ func TestFailurePolicyAndPlanFailurePolicyDirect(t *testing.T) {
 		}
 	}
 	for _, policy := range []FailurePolicy{FailurePolicyStopOnFailure, FailurePolicyContinueOnFailure} {
-		input := validRunSnapshotInput(t)
+		input := validInstanceSnapshotInput(t)
 		input.Plan.FailurePolicy = policy
 		plan, err := Seal(input.Plan)
 		if err != nil {
@@ -30,27 +30,27 @@ func TestFailurePolicyAndPlanFailurePolicyDirect(t *testing.T) {
 }
 
 func TestValidateRunDirect(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	valid, err := NewInstance(Instance{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tests := []struct {
 		name    string
-		mutate  func(Run) Run
+		mutate  func(Instance) Instance
 		wantErr bool
 	}{
-		{"valid", func(r Run) Run { return r }, false},
-		{"missing identity", func(r Run) Run { r.EnvironmentID = ""; return r }, true},
-		{"broken digest", func(r Run) Run { r.SnapshotDigest = "sha256:bad"; return r }, true},
-		{"invalid lifecycle", func(r Run) Run { r.Status = Running; return r }, true},
+		{"valid", func(r Instance) Instance { return r }, false},
+		{"missing identity", func(r Instance) Instance { r.EnvironmentID = ""; return r }, true},
+		{"broken digest", func(r Instance) Instance { r.SnapshotDigest = "sha256:bad"; return r }, true},
+		{"invalid lifecycle", func(r Instance) Instance { r.Status = Running; return r }, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ValidateRun(tt.mutate(valid)); (got != nil) != tt.wantErr {
+			if got := ValidateInstance(tt.mutate(valid)); (got != nil) != tt.wantErr {
 				t.Fatalf("error=%v wantErr=%v", got, tt.wantErr)
 			}
 		})
@@ -58,7 +58,7 @@ func TestValidateRunDirect(t *testing.T) {
 }
 
 func TestRunSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}

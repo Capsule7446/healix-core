@@ -11,7 +11,7 @@ import (
 // CreateRunCommand is the sole authority for caller-supplied create data.
 type CreateRunCommand struct {
 	CommandID         string
-	RunID             execution.InstanceID
+	InstanceID        execution.InstanceID
 	ExecutionFlowID   string
 	TestTaskVersionID string
 	EnvironmentID     string
@@ -30,14 +30,14 @@ type ResolvedCreateRun struct {
 }
 
 type CreateRunResult struct {
-	Run        execution.Run
+	Run        execution.Instance
 	Snapshot   execution.InstanceSnapshot
 	EntryIDs   []execution.EntryID
 	WasApplied bool
 }
 
 type StoredCreateRunResult struct {
-	Run            execution.Run
+	Run            execution.Instance
 	Snapshot       execution.InstanceSnapshot
 	SnapshotDigest string
 	EntryIDs       []execution.EntryID
@@ -66,7 +66,7 @@ type InsertCreateRunOutcome struct {
 type CreateRunIntent struct {
 	CommandID     string
 	RequestDigest string
-	Run           execution.Run
+	Run           execution.Instance
 	Snapshot      execution.InstanceSnapshot
 	Entries       []execution.Entry
 }

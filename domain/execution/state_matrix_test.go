@@ -27,7 +27,7 @@ func TestRunStatusTransitionMatrix(t *testing.T) {
 			name := string(from) + "_to_" + string(to)
 			t.Run(name, func(t *testing.T) {
 				_, wantAllowed := allowed[transition{from: from, to: to}]
-				err := ValidateRunStatusTransition(from, to)
+				err := ValidateInstanceStatusTransition(from, to)
 				if wantAllowed && err != nil {
 					t.Fatalf("legal transition rejected: %v", err)
 				}
@@ -103,9 +103,9 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 	}{
 		{name: "missing both", wantError: true},
 		{name: "missing run", fence: WorkerFence{ClaimToken: "claim"}, wantError: true},
-		{name: "missing claim", fence: WorkerFence{RunID: mustInstanceID("run")}, wantError: true},
-		{name: "minimal opaque identities", fence: WorkerFence{RunID: mustInstanceID("r"), ClaimToken: "c"}},
-		{name: "unicode opaque identities", fence: WorkerFence{RunID: mustInstanceID("执行-一"), ClaimToken: "领取-一"}},
+		{name: "missing claim", fence: WorkerFence{InstanceID: mustInstanceID("run")}, wantError: true},
+		{name: "minimal opaque identities", fence: WorkerFence{InstanceID: mustInstanceID("r"), ClaimToken: "c"}},
+		{name: "unicode opaque identities", fence: WorkerFence{InstanceID: mustInstanceID("执行-一"), ClaimToken: "领取-一"}},
 	}
 
 	for _, test := range tests {
@@ -117,23 +117,23 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 		})
 	}
 
-	fence := WorkerFence{RunID: mustInstanceID("run-sensitive"), ClaimToken: "secret-claim-token"}
+	fence := WorkerFence{InstanceID: mustInstanceID("run-sensitive"), ClaimToken: "secret-claim-token"}
 	err := NewStaleWorkerFenceError()
 	descriptor, ok := fault.Describe(err)
 	if !ok || descriptor.Code() != CodeWorkerFenceStale || descriptor.Kind() != fault.Conflict || descriptor.Message() != "worker execution authority is stale" {
 		t.Fatalf("stale fence descriptor = %#v, %v", descriptor, ok)
 	}
-	if strings.Contains(err.Error(), fence.RunID.String()) || strings.Contains(err.Error(), fence.ClaimToken) {
+	if strings.Contains(err.Error(), fence.InstanceID.String()) || strings.Contains(err.Error(), fence.ClaimToken) {
 		t.Fatalf("stale fence error exposes identity: %q", err)
 	}
 }
 
 func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	queued, err := NewRun(Run{
+	queued, err := NewInstance(Instance{
 		ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
 		Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10,
 	}, snapshot)
@@ -152,7 +152,7 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 
 	for _, test := range []struct {
 		name string
-		run  Run
+		run  Instance
 	}{
 		{name: "queued", run: queued},
 		{name: "running at queue boundary", run: running},
@@ -163,7 +163,7 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 		{name: "aborted at boundary", run: aborted},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if err := ValidateRun(test.run); err != nil {
+			if err := ValidateInstance(test.run); err != nil {
 				t.Fatalf("legal lifecycle rejected: %v", err)
 			}
 		})
@@ -171,11 +171,11 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 }
 
 func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
-	snapshot, err := SealInstanceSnapshot(validRunSnapshotInput(t))
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	base, err := NewRun(Run{
+	base, err := NewInstance(Instance{
 		ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
 		Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10,
 	}, snapshot)
@@ -185,28 +185,28 @@ func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		mutate func(*Run)
+		mutate func(*Instance)
 	}{
-		{name: "unset run id", mutate: func(run *Run) { run.ID = InstanceID{} }},
-		{name: "blank task id", mutate: func(run *Run) { run.ExecutionFlowID = "\n" }},
-		{name: "blank task version id", mutate: func(run *Run) { run.TestTaskVersionID = " " }},
-		{name: "blank environment id", mutate: func(run *Run) { run.EnvironmentID = " " }},
-		{name: "schema below boundary", mutate: func(run *Run) { run.SnapshotSchemaVersion = RunSnapshotSchemaV1 - 1 }},
-		{name: "digest missing prefix", mutate: func(run *Run) { run.SnapshotDigest = strings.Repeat("0", 71) }},
-		{name: "digest differs from seal", mutate: func(run *Run) { run.SnapshotDigest = "sha256:" + strings.Repeat("0", 64) }},
-		{name: "private seal missing", mutate: func(run *Run) { run.sealedSnapshotDigest = "" }},
-		{name: "queue position below boundary", mutate: func(run *Run) { run.QueuePosition = -1 }},
-		{name: "created timestamp below boundary", mutate: func(run *Run) { run.CreatedAt = 0 }},
-		{name: "queue timestamp before creation", mutate: func(run *Run) { run.QueuedAt = run.CreatedAt - 1 }},
-		{name: "queued run has start", mutate: func(run *Run) { run.StartedAt = run.QueuedAt }},
-		{name: "unknown status", mutate: func(run *Run) { run.Status = "UNKNOWN" }},
+		{name: "unset run id", mutate: func(run *Instance) { run.ID = InstanceID{} }},
+		{name: "blank task id", mutate: func(run *Instance) { run.ExecutionFlowID = "\n" }},
+		{name: "blank task version id", mutate: func(run *Instance) { run.TestTaskVersionID = " " }},
+		{name: "blank environment id", mutate: func(run *Instance) { run.EnvironmentID = " " }},
+		{name: "schema below boundary", mutate: func(run *Instance) { run.SnapshotSchemaVersion = RunSnapshotSchemaV1 - 1 }},
+		{name: "digest missing prefix", mutate: func(run *Instance) { run.SnapshotDigest = strings.Repeat("0", 71) }},
+		{name: "digest differs from seal", mutate: func(run *Instance) { run.SnapshotDigest = "sha256:" + strings.Repeat("0", 64) }},
+		{name: "private seal missing", mutate: func(run *Instance) { run.sealedSnapshotDigest = "" }},
+		{name: "queue position below boundary", mutate: func(run *Instance) { run.QueuePosition = -1 }},
+		{name: "created timestamp below boundary", mutate: func(run *Instance) { run.CreatedAt = 0 }},
+		{name: "queue timestamp before creation", mutate: func(run *Instance) { run.QueuedAt = run.CreatedAt - 1 }},
+		{name: "queued run has start", mutate: func(run *Instance) { run.StartedAt = run.QueuedAt }},
+		{name: "unknown status", mutate: func(run *Instance) { run.Status = "UNKNOWN" }},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			run := base
 			test.mutate(&run)
-			if err := ValidateRun(run); err == nil {
+			if err := ValidateInstance(run); err == nil {
 				t.Fatal("invalid run accepted")
 			}
 		})

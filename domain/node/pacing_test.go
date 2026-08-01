@@ -31,7 +31,7 @@ func (d *pacingDriver) WaitNetworkIdle(context.Context) error { return nil }
 func TestRuntimePacesLeafStepsAcrossWorkflowRepeatAndReferenceBoundaries(t *testing.T) {
 	driver := &pacingDriver{}
 	var waits []time.Duration
-	runtime := &Runtime{RunID: mustInstanceID("run"), Driver: driver, StepInterval: 500 * time.Millisecond,
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, StepInterval: 500 * time.Millisecond,
 		pacer: stepPacer{wait: func(_ context.Context, duration time.Duration) error {
 			waits = append(waits, duration)
 			return nil
@@ -68,7 +68,7 @@ func TestRuntimePacesLeafStepsAcrossWorkflowRepeatAndReferenceBoundaries(t *test
 
 func TestRuntimeStepIntervalCancellationPreventsNextLeafFromStarting(t *testing.T) {
 	driver := &pacingDriver{}
-	runtime := &Runtime{RunID: mustInstanceID("run"), Driver: driver, StepInterval: time.Hour}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Driver: driver, StepInterval: time.Hour}
 	first := &StepNode{NodeID: "first", Action: Action{Kind: ActionNavigate, Value: "https://example.test/first"}}
 	if err := first.Run(context.Background(), runtime); err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestValidationLeavesConsumeOneIntervalWithoutPacingGroupMembers(t *testing.
 		{name: "validation group", run: (&ValidationGroupNode{NodeID: "group"}).Run},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			runtime := &Runtime{RunID: mustInstanceID("run"), StepInterval: time.Millisecond,
+			runtime := &Runtime{InstanceID: mustInstanceID("run"), StepInterval: time.Millisecond,
 				pacer: stepPacer{started: true, wait: func(context.Context, time.Duration) error { return sentinel }}}
 			if err := test.run(context.Background(), runtime); !errors.Is(err, sentinel) {
 				t.Fatalf("Run error = %v, want pacing sentinel", err)

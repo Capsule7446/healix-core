@@ -27,7 +27,7 @@ func CreateRunRequestDigest(owned CreateRunCommand) (string, error) {
 	}
 	h := sha256.New()
 	writeDigestString(h, createRunRequestDigestV1)
-	for _, value := range []string{owned.RunID.String(), owned.ExecutionFlowID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
+	for _, value := range []string{owned.InstanceID.String(), owned.ExecutionFlowID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
 		writeDigestString(h, value)
 	}
 	writeDigestUint64(h, uint64(owned.CreatedAt))
@@ -161,9 +161,9 @@ func (s CreateRunService) CreateRun(ctx context.Context, command CreateRunComman
 		if err != nil {
 			return err
 		}
-		run, err := execution.NewRun(execution.Run{ID: owned.RunID, ExecutionFlowID: owned.ExecutionFlowID, TestTaskVersionID: owned.TestTaskVersionID, Status: execution.Queued, EnvironmentID: owned.EnvironmentID, CreatedAt: owned.CreatedAt, QueuedAt: owned.CreatedAt}, snapshot)
+		run, err := execution.NewInstance(execution.Instance{ID: owned.InstanceID, ExecutionFlowID: owned.ExecutionFlowID, TestTaskVersionID: owned.TestTaskVersionID, Status: execution.Queued, EnvironmentID: owned.EnvironmentID, CreatedAt: owned.CreatedAt, QueuedAt: owned.CreatedAt}, snapshot)
 		if err != nil {
-			return err // execution.NewRun's own error is being classified by a parallel domain/execution migration; this boundary neither adds an uncoded layer on top nor buries a code that is already there.
+			return err // execution.NewInstance's own error is being classified by a parallel domain/execution migration; this boundary neither adds an uncoded layer on top nor buries a code that is already there.
 		}
 		entries := snapshot.Plan().Entries
 		entryIDs := make([]execution.EntryID, len(entries))
@@ -199,16 +199,16 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	if stored.SnapshotDigest == "" || stored.SnapshotDigest != stored.Snapshot.Digest() || stored.Run.SnapshotDigest != stored.SnapshotDigest {
 		return invalid("stored snapshot digest identity is inconsistent")
 	}
-	if stored.Run.ID != command.RunID || stored.Run.ExecutionFlowID != command.ExecutionFlowID || stored.Run.TestTaskVersionID != command.TestTaskVersionID || stored.Run.EnvironmentID != command.EnvironmentID || stored.Run.CreatedAt != command.CreatedAt {
+	if stored.Run.ID != command.InstanceID || stored.Run.ExecutionFlowID != command.ExecutionFlowID || stored.Run.TestTaskVersionID != command.TestTaskVersionID || stored.Run.EnvironmentID != command.EnvironmentID || stored.Run.CreatedAt != command.CreatedAt {
 		return invalid("stored run identity does not match command")
 	}
-	if stored.Snapshot.RunID() != command.RunID || stored.Snapshot.ExecutionFlowID() != command.ExecutionFlowID || stored.Snapshot.TestTaskVersionID() != command.TestTaskVersionID || stored.Snapshot.Environment().ID != command.EnvironmentID {
+	if stored.Snapshot.InstanceID() != command.InstanceID || stored.Snapshot.ExecutionFlowID() != command.ExecutionFlowID || stored.Snapshot.TestTaskVersionID() != command.TestTaskVersionID || stored.Snapshot.Environment().ID != command.EnvironmentID {
 		return invalid("stored snapshot identity does not match command")
 	}
 	if input.FailurePolicy != command.FailurePolicy || input.ScreenshotPolicy != command.ScreenshotPolicy || input.HealerPolicy != command.HealerPolicy {
 		return invalid("stored snapshot policies do not match command")
 	}
-	if _, err := execution.HydrateRun(stored.Run, stored.Snapshot); err != nil {
+	if _, err := execution.HydrateInstance(stored.Run, stored.Snapshot); err != nil {
 		return invalid("stored run cannot restore snapshot seal: " + err.Error())
 	}
 	entries := stored.Snapshot.Plan().Entries
@@ -241,9 +241,9 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 	return nil
 }
 
-func equalAppliedRun(returned, intended execution.Run, snapshot execution.InstanceSnapshot) bool {
+func equalAppliedRun(returned, intended execution.Instance, snapshot execution.InstanceSnapshot) bool {
 	// QueuePosition is assigned atomically by the adapter; every other persisted field is intent-owned.
-	hydrated, err := execution.HydrateRun(returned, snapshot)
+	hydrated, err := execution.HydrateInstance(returned, snapshot)
 	if err != nil {
 		return false
 	}
@@ -305,7 +305,7 @@ func (b *createRunRequestBudget) addElements(count int) error {
 
 func preflightCreateRunCommand(command CreateRunCommand) error {
 	budget := newCreateRunRequestBudget()
-	for _, value := range []string{command.CommandID, command.RunID.String(), command.ExecutionFlowID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
+	for _, value := range []string{command.CommandID, command.InstanceID.String(), command.ExecutionFlowID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
 		if err := budget.addString(value); err != nil {
 			return err
 		}
@@ -354,7 +354,7 @@ func preflightCreateRunCommand(command CreateRunCommand) error {
 	return nil
 }
 
-func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Run, snapshot execution.InstanceSnapshot, entryIDs []execution.EntryID) error {
+func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command CreateRunCommand, digest string, intendedRun execution.Instance, snapshot execution.InstanceSnapshot, entryIDs []execution.EntryID) error {
 	invalid := func(reason string) error {
 		return createRunAdapterContractViolationError(errors.New(reason))
 	}
@@ -364,11 +364,11 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 	if outcome.CommandID != command.CommandID || outcome.RequestDigest != digest {
 		return invalid("command identity or request digest mismatch")
 	}
-	if outcome.Result.Run.ID != command.RunID || outcome.Result.Snapshot.Digest() == "" {
+	if outcome.Result.Run.ID != command.InstanceID || outcome.Result.Snapshot.Digest() == "" {
 		return invalid("run or snapshot is incomplete")
 	}
 	storedPlan := outcome.Result.Snapshot.Plan()
-	if outcome.Result.Snapshot.RunID() != outcome.Result.Run.ID || outcome.Result.Snapshot.TestTaskVersionID() != outcome.Result.Run.TestTaskVersionID || len(outcome.Result.EntryIDs) != len(storedPlan.Entries) {
+	if outcome.Result.Snapshot.InstanceID() != outcome.Result.Run.ID || outcome.Result.Snapshot.TestTaskVersionID() != outcome.Result.Run.TestTaskVersionID || len(outcome.Result.EntryIDs) != len(storedPlan.Entries) {
 		return invalid("stored result is internally inconsistent")
 	}
 	for index := range storedPlan.Entries {
@@ -389,7 +389,7 @@ func validateInsertCreateRunOutcome(outcome InsertCreateRunOutcome, command Crea
 		if !equalAppliedRun(outcome.Result.Run, intendedRun, outcome.Result.Snapshot) {
 			return invalid("applied run does not match submitted intent")
 		}
-		if _, err := execution.HydrateRun(outcome.Result.Run, outcome.Result.Snapshot); err != nil {
+		if _, err := execution.HydrateInstance(outcome.Result.Run, outcome.Result.Snapshot); err != nil {
 			return invalid("applied run cannot restore snapshot seal")
 		}
 		if outcome.Result.Snapshot.Digest() != snapshot.Digest() || len(outcome.Result.EntryIDs) != len(entryIDs) {

@@ -126,7 +126,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 			resultErr = errors.Join(resultErr, classifySchedulingAdapterFailure(err))
 		}
 	}()
-	if claim.Fence.Validate() != nil || claim.Fence.RunID != claim.Snapshot.RunID() || claim.Snapshot.Digest() == "" {
+	if claim.Fence.Validate() != nil || claim.Fence.InstanceID != claim.Snapshot.InstanceID() || claim.Snapshot.Digest() == "" {
 		return true, schedulingClaimInvalidError()
 	}
 	states, err := c.states.LoadEntryStates(ctx, claim)

@@ -53,7 +53,7 @@ func (n *runtimeCaptureNode) Run(_ context.Context, runtime *node.Runtime) error
 func TestRunProgramPropagatesStepIntervalToRuntime(t *testing.T) {
 	capture := &runtimeCaptureNode{}
 	_, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run-paced"), node.Program{Root: capture}), Config{
-		RunID: mustInstanceID("run-paced"), Driver: &engineTestDriver{}, StepInterval: 750 * time.Millisecond,
+		InstanceID: mustInstanceID("run-paced"), Driver: &engineTestDriver{}, StepInterval: 750 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -95,8 +95,8 @@ type engineTestRecorder struct {
 	nilTimeline  bool
 }
 
-func (r *engineTestRecorder) Start(_ context.Context, runID domainexecution.InstanceID) (node.RecordingTimeline, error) {
-	r.startedRunID = runID.String()
+func (r *engineTestRecorder) Start(_ context.Context, instanceID domainexecution.InstanceID) (node.RecordingTimeline, error) {
+	r.startedRunID = instanceID.String()
 	if r.startErr != nil {
 		return nil, r.startErr
 	}
@@ -116,9 +116,9 @@ func (r *engineTestRecorder) Stop(ctx context.Context, retain bool) error {
 func TestRunProgramRetainsSuccessfulRecording(t *testing.T) {
 	recorder := &engineTestRecorder{}
 	_, err := runProgramForTest(context.Background(), navigationCompiledEntry(mustInstanceID("run-retain-success"), "retain-success", "https://example.test"), Config{
-		RunID:    mustInstanceID("run-retain-success"),
-		Driver:   &engineTestDriver{},
-		Recorder: recorder,
+		InstanceID: mustInstanceID("run-retain-success"),
+		Driver:     &engineTestDriver{},
+		Recorder:   recorder,
 	})
 	if err != nil {
 		t.Fatalf("RunProgram: %v", err)
@@ -136,13 +136,13 @@ func TestRunProgramRejectsIncompleteConfigurationBeforeExecution(t *testing.T) {
 		config  Config
 	}{
 		{"missing run id", node.Program{Root: root}, Config{Driver: &engineTestDriver{}}},
-		{"missing claim token with facts", node.Program{Root: root}, Config{RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, Facts: noopExecutionSink{}}},
-		{"missing driver", node.Program{Root: root}, Config{RunID: mustInstanceID("run")}},
-		{"missing root", node.Program{}, Config{RunID: mustInstanceID("run"), Driver: &engineTestDriver{}}},
+		{"missing claim token with facts", node.Program{Root: root}, Config{InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, Facts: noopExecutionSink{}}},
+		{"missing driver", node.Program{Root: root}, Config{InstanceID: mustInstanceID("run")}},
+		{"missing root", node.Program{}, Config{InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := runProgramForTest(context.Background(), compiledEntry(test.config.RunID, test.program), test.config); err == nil {
+			if _, err := runProgramForTest(context.Background(), compiledEntry(test.config.InstanceID, test.program), test.config); err == nil {
 				t.Fatal("incomplete engine configuration was accepted")
 			}
 		})
@@ -156,7 +156,7 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	root := &runtimeCaptureNode{}
 	startFailure := &engineTestRecorder{startErr: errors.New("start failed")}
 	_, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run-start-failure"), node.Program{Root: root}), Config{
-		RunID: mustInstanceID("run-start-failure"), Driver: &engineTestDriver{}, Recorder: startFailure,
+		InstanceID: mustInstanceID("run-start-failure"), Driver: &engineTestDriver{}, Recorder: startFailure,
 	})
 	if err == nil || !fault.IsCode(err, CodeSchedulingAdapterUnavailable) {
 		t.Fatalf("recorder start error = %v, want code %s", err, CodeSchedulingAdapterUnavailable)
@@ -179,7 +179,7 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err = runProgramForTest(ctx, compiledEntry(mustInstanceID("run-cleanup"), node.Program{Root: root}), Config{
-		RunID: mustInstanceID("run-cleanup"), Driver: &engineTestDriver{}, Recorder: recorder,
+		InstanceID: mustInstanceID("run-cleanup"), Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, rootFailure) || !errors.Is(err, stopFailure) {
 		t.Fatalf("combined run/stop error = %v", err)
@@ -189,14 +189,14 @@ func TestRunProgramRecorderFailureAndDetachedCleanupContract(t *testing.T) {
 	}
 }
 
-func compiledEntry(runID domainexecution.InstanceID, program node.Program) CompiledEntry {
+func compiledEntry(instanceID domainexecution.InstanceID, program node.Program) CompiledEntry {
 	const snapshotDigest = "sha256:test-snapshot-digest"
 	executionID := mustEntryID("test-execution")
 	return CompiledEntry{
-		RunID: runID, SnapshotDigest: snapshotDigest, ExecutionID: executionID,
+		InstanceID: instanceID, SnapshotDigest: snapshotDigest, ExecutionID: executionID,
 		program: program,
 		identity: compiledExecutionIdentity{
-			runID: runID, snapshotDigest: snapshotDigest, executionID: executionID,
+			instanceID: instanceID, snapshotDigest: snapshotDigest, executionID: executionID,
 		},
 	}
 }
@@ -205,7 +205,7 @@ func runProgramForTest(ctx context.Context, entry CompiledEntry, cfg Config) (En
 	return runProgram(ctx, entry.program, cfg)
 }
 
-func navigationCompiledEntry(runID domainexecution.InstanceID, id, url string) CompiledEntry {
-	return compiledEntry(runID, node.Program{Root: &node.WorkflowNode{NodeID: id,
+func navigationCompiledEntry(instanceID domainexecution.InstanceID, id, url string) CompiledEntry {
+	return compiledEntry(instanceID, node.Program{Root: &node.WorkflowNode{NodeID: id,
 		Children: []node.Node{&node.StepNode{NodeID: "open", Action: node.Action{Kind: node.ActionNavigate, Value: url}}}}})
 }

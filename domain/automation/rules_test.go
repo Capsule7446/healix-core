@@ -10,18 +10,18 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func contributions(runIDs ...string) []ContributingHealFact {
-	result := make([]ContributingHealFact, len(runIDs))
-	for index, runID := range runIDs {
-		result[index] = acceptedHealObservation(runID, uint64(index+1), "candidate", HealDecisionBandApplied).contribution()
+func contributions(instanceIDs ...string) []ContributingHealFact {
+	result := make([]ContributingHealFact, len(instanceIDs))
+	for index, instanceID := range instanceIDs {
+		result[index] = acceptedHealObservation(instanceID, uint64(index+1), "candidate", HealDecisionBandApplied).contribution()
 	}
 	return result
 }
 
-func acceptedHealObservation(runID string, sequence uint64, candidateHash string, band HealDecisionBand) HealObservation {
+func acceptedHealObservation(instanceID string, sequence uint64, candidateHash string, band HealDecisionBand) HealObservation {
 	return HealObservation{
-		FactID: "fact-" + runID, CommitID: "commit-" + runID, RunID: runID,
-		ExecutionID: "execution-" + runID, StepExecutionID: "step-" + runID, Sequence: sequence,
+		FactID: "fact-" + instanceID, CommitID: "commit-" + instanceID, InstanceID: instanceID,
+		ExecutionID: "execution-" + instanceID, StepExecutionID: "step-" + instanceID, Sequence: sequence,
 		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: candidateHash,
 		Band: band, Outcome: HealSucceeded, BaseIsCurrent: true,
 	}
@@ -109,7 +109,7 @@ func TestHealStreakRetainsCompleteContributionProvenance(t *testing.T) {
 	}
 	for index, contribution := range streak.Contributions {
 		wantRunID := fmt.Sprintf("run-%d", index+1)
-		if contribution.RunID != wantRunID || contribution.FactID != "fact-"+wantRunID || contribution.Sequence != []uint64{11, 19, 27}[index] {
+		if contribution.InstanceID != wantRunID || contribution.FactID != "fact-"+wantRunID || contribution.Sequence != []uint64{11, 19, 27}[index] {
 			t.Fatalf("contribution %d = %#v", index, contribution)
 		}
 	}
@@ -168,14 +168,14 @@ func TestHealStreakCountsDistinctRunsAndSeparatesMaturityDisposition(t *testing.
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			streak := HealStreak{}
-			for sequence, runID := range []string{"run-1", "run-2", "run-2", "run-3"} {
+			for sequence, instanceID := range []string{"run-1", "run-2", "run-2", "run-3"} {
 				observationSequence := uint64(sequence + 1)
-				if runID == "run-2" && sequence == 2 {
+				if instanceID == "run-2" && sequence == 2 {
 					observationSequence = 2
 				}
-				decision, err := streak.Observe(HealObservation{FactID: "fact-" + runID, CommitID: "commit-" + runID, ExecutionID: "execution-" + runID, StepExecutionID: "step-" + runID, RunID: runID, Sequence: observationSequence, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: test.band, Outcome: HealSucceeded, BaseIsCurrent: true})
+				decision, err := streak.Observe(HealObservation{FactID: "fact-" + instanceID, CommitID: "commit-" + instanceID, ExecutionID: "execution-" + instanceID, StepExecutionID: "step-" + instanceID, InstanceID: instanceID, Sequence: observationSequence, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: test.band, Outcome: HealSucceeded, BaseIsCurrent: true})
 				if err != nil {
-					t.Fatalf("Observe(%s): %v", runID, err)
+					t.Fatalf("Observe(%s): %v", instanceID, err)
 				}
 				streak = decision.Next
 			}
@@ -188,22 +188,22 @@ func TestHealStreakCountsDistinctRunsAndSeparatesMaturityDisposition(t *testing.
 
 func TestHealStreakIdentityChangeStartsNewConsecutiveSequence(t *testing.T) {
 	streak := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "old", Band: HealDecisionBandApplied, Contributions: contributions("run-1", "run-2"), LastSequence: 2, Observing: true, Disposition: HealStreakObserving}
-	decision, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-3", Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "new", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
+	decision, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-3", Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "new", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
-	if len(decision.Next.Contributions) != 1 || decision.Next.Contributions[0].RunID != "run-3" || decision.Next.Disposition != HealStreakObserving {
+	if len(decision.Next.Contributions) != 1 || decision.Next.Contributions[0].InstanceID != "run-3" || decision.Next.Disposition != HealStreakObserving {
 		t.Fatalf("changed identity decision = %#v", decision)
 	}
 }
 
 func TestHealStreakFailurePreservesAndRecoveryIsScoped(t *testing.T) {
 	streak := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1", "run-2"), LastSequence: 2, Observing: true, Disposition: HealStreakObserving}
-	failed, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-3", Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealFailed, BaseIsCurrent: true})
+	failed, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-3", Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealFailed, BaseIsCurrent: true})
 	if err != nil || len(failed.Next.Contributions) != 2 || failed.Next.LastSequence != 3 {
 		t.Fatalf("failed observation changed maturity evidence or ordering: %#v, %v", failed, err)
 	}
-	other, err := failed.Next.Observe(HealObservation{FactID: "fact-4", CommitID: "commit-4", ExecutionID: "execution-4", StepExecutionID: "step-4", RunID: "run-4", Sequence: 4, ElementTargetID: "other", BaseNodeVersionID: "base", Outcome: HealOriginalRecovered, BaseIsCurrent: true})
+	other, err := failed.Next.Observe(HealObservation{FactID: "fact-4", CommitID: "commit-4", ExecutionID: "execution-4", StepExecutionID: "step-4", InstanceID: "run-4", Sequence: 4, ElementTargetID: "other", BaseNodeVersionID: "base", Outcome: HealOriginalRecovered, BaseIsCurrent: true})
 	if err != nil || other.Next.Disposition != HealStreakObserving || other.Next.LastSequence != 4 {
 		t.Fatalf("other-node recovery reset streak: %#v, %v", other, err)
 	}
@@ -211,7 +211,7 @@ func TestHealStreakFailurePreservesAndRecoveryIsScoped(t *testing.T) {
 
 func TestHealStreakRejectsStaleReplayAfterIdentityChange(t *testing.T) {
 	streak := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-2"), LastSequence: 2, Observing: true, Disposition: HealStreakObserving}
-	_, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-1", Sequence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "other", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
+	_, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-1", Sequence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "other", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
 	if err == nil {
 		t.Fatal("stale replay was accepted")
 	}
@@ -235,11 +235,11 @@ func TestHealStreakRejectIsImmutableAndTerminal(t *testing.T) {
 	if rejected.Next.Disposition != HealStreakRejected || rejected.Next.Observing || rejected.Next.LastSequence != 4 {
 		t.Fatalf("rejected streak = %#v", rejected.Next)
 	}
-	frozen, err := rejected.Next.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-4", Sequence: 5, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandBelowCap, Outcome: HealSucceeded, BaseIsCurrent: true})
+	frozen, err := rejected.Next.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-4", Sequence: 5, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandBelowCap, Outcome: HealSucceeded, BaseIsCurrent: true})
 	if err != nil || frozen.Next.Disposition != HealStreakRejected || len(frozen.Next.Contributions) != 3 {
 		t.Fatalf("matching observation reopened rejected streak: %#v, %v", frozen.Next, err)
 	}
-	restarted, err := frozen.Next.Observe(HealObservation{FactID: "fact-6", CommitID: "commit-6", ExecutionID: "execution-6", StepExecutionID: "step-6", RunID: "run-5", Sequence: 6, ElementTargetID: "node", BaseNodeVersionID: "base-v2", CandidateHash: "candidate-v2", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
+	restarted, err := frozen.Next.Observe(HealObservation{FactID: "fact-6", CommitID: "commit-6", ExecutionID: "execution-6", StepExecutionID: "step-6", InstanceID: "run-5", Sequence: 6, ElementTargetID: "node", BaseNodeVersionID: "base-v2", CandidateHash: "candidate-v2", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
 	if err != nil || !restarted.Next.Observing || restarted.Next.BaseNodeVersionID != "base-v2" || len(restarted.Next.Contributions) != 1 {
 		t.Fatalf("new-base observation did not restart rejected streak: %#v, %v", restarted.Next, err)
 	}
@@ -251,7 +251,7 @@ func TestHealStreakRejectIsImmutableAndTerminal(t *testing.T) {
 func TestHealStreakStaleOldBaseAllowsCurrentNewBaseObservation(t *testing.T) {
 	stale := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base-v1", LastSequence: 2, Disposition: HealStreakStale}
 	decision, err := stale.Observe(HealObservation{
-		FactID: "fact-run-3", CommitID: "commit-run-3", RunID: "run-3", ExecutionID: "execution-run-3", StepExecutionID: "step-run-3",
+		FactID: "fact-run-3", CommitID: "commit-run-3", InstanceID: "run-3", ExecutionID: "execution-run-3", StepExecutionID: "step-run-3",
 		Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base-v2",
 		CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true,
 	})
@@ -265,20 +265,20 @@ func TestHealStreakStaleOldBaseAllowsCurrentNewBaseObservation(t *testing.T) {
 
 func TestHealStreakTerminalAndResetReplayAreIdempotent(t *testing.T) {
 	mature := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1", "run-2", "run-3"), LastSequence: 3, Disposition: HealStreakAutoPublish}
-	replayed, err := mature.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-4", Sequence: 4, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded})
+	replayed, err := mature.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-4", Sequence: 4, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded})
 	if err != nil || replayed.Next.Disposition != HealStreakAutoPublish || replayed.Next.Observing {
 		t.Fatalf("terminal replay = %#v, %v", replayed, err)
 	}
 
-	reset, err := (HealStreak{}).Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-1", Sequence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealOriginalRecovered, BaseIsCurrent: true})
+	reset, err := (HealStreak{}).Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-1", Sequence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealOriginalRecovered, BaseIsCurrent: true})
 	if err != nil || reset.Next.Disposition != HealStreakReset || reset.Next.ElementTargetID != "node" || reset.Next.LastSequence != 1 {
 		t.Fatalf("reset = %#v, %v", reset, err)
 	}
-	resetReplay, err := reset.Next.Observe(HealObservation{FactID: "fact-2", CommitID: "commit-2", ExecutionID: "execution-2", StepExecutionID: "step-2", RunID: "run-2", Sequence: 2, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealFailed})
+	resetReplay, err := reset.Next.Observe(HealObservation{FactID: "fact-2", CommitID: "commit-2", ExecutionID: "execution-2", StepExecutionID: "step-2", InstanceID: "run-2", Sequence: 2, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealFailed})
 	if err != nil || resetReplay.Next.Disposition != HealStreakReset || resetReplay.Next.LastSequence != 2 {
 		t.Fatalf("reset replay = %#v, %v", resetReplay, err)
 	}
-	restarted, err := resetReplay.Next.Observe(HealObservation{FactID: "fact-3", CommitID: "commit-3", ExecutionID: "execution-3", StepExecutionID: "step-3", RunID: "run-3", Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
+	restarted, err := resetReplay.Next.Observe(HealObservation{FactID: "fact-3", CommitID: "commit-3", ExecutionID: "execution-3", StepExecutionID: "step-3", InstanceID: "run-3", Sequence: 3, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
 	if err != nil || !restarted.Next.Observing || len(restarted.Next.Contributions) != 1 {
 		t.Fatalf("restart after reset = %#v, %v", restarted, err)
 	}
@@ -286,11 +286,11 @@ func TestHealStreakTerminalAndResetReplayAreIdempotent(t *testing.T) {
 
 func TestHealStreakIgnoredObservationAdvancesOrdering(t *testing.T) {
 	streak := HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Contributions: contributions("run-1"), LastSequence: 1, Observing: true, Disposition: HealStreakObserving}
-	ignored, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-10", Sequence: 10, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealFailed, BaseIsCurrent: true})
+	ignored, err := streak.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-10", Sequence: 10, ElementTargetID: "node", BaseNodeVersionID: "base", Outcome: HealFailed, BaseIsCurrent: true})
 	if err != nil || ignored.Next.LastSequence != 10 || len(ignored.Next.Contributions) != 1 {
 		t.Fatalf("ignored observation = %#v, %v", ignored, err)
 	}
-	_, err = ignored.Next.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", RunID: "run-9", Sequence: 9, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
+	_, err = ignored.Next.Observe(HealObservation{FactID: "fact", CommitID: "commit", ExecutionID: "execution", StepExecutionID: "step", InstanceID: "run-9", Sequence: 9, ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true})
 	if err == nil {
 		t.Fatal("older observation after ignored newer fact was accepted")
 	}
@@ -315,7 +315,7 @@ func TestTerminalHealStreakCannotRestartForAnotherNode(t *testing.T) {
 				streak.CandidateHash = "candidate-a"
 			}
 			decision, err := streak.Observe(HealObservation{
-				FactID: "fact-3", CommitID: "commit-3", RunID: "run-3", ExecutionID: "execution-3", StepExecutionID: "step-3",
+				FactID: "fact-3", CommitID: "commit-3", InstanceID: "run-3", ExecutionID: "execution-3", StepExecutionID: "step-3",
 				Sequence: 3, ElementTargetID: "node-b", BaseNodeVersionID: "base-v2", CandidateHash: "candidate-b",
 				Band: HealDecisionBandApplied, Outcome: HealSucceeded, BaseIsCurrent: true,
 			})

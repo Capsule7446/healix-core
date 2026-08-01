@@ -55,7 +55,7 @@ func (s *writerPortStub) ApplyDecision(_ context.Context, claim Claim, decision 
 
 func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
-	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "token"}}
+	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
 	releaseFailure, stateFailure := errors.New("release"), errors.New("states")
 
 	claims := &coordinatorPortStub{claim: claim, found: true, releaseErr: releaseFailure}
@@ -100,15 +100,15 @@ func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 }
 
 func validCancelCommand() CancelRunCommand {
-	return CancelRunCommand{CommandID: "c", RunID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: 1, At: 2}
+	return CancelRunCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: 1, At: 2}
 }
 func validAbortCommand() AbortRunCommand {
-	return AbortRunCommand{CommandID: "a", RunID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "token"}}
+	return AbortRunCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
 }
 
 func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
-	cancelInvalid := []CancelRunCommand{{}, {CommandID: "c", RunID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: -1, At: 2}, {CommandID: "c", RunID: mustInstanceID("run"), ExpectedStatus: execution.Running, At: 0}, {CommandID: "c", RunID: mustInstanceID("run"), ExpectedStatus: execution.Succeeded, At: 2}}
-	abortInvalid := []AbortRunCommand{{}, {CommandID: "a", RunID: mustInstanceID("run"), ExpectedRevision: -1, At: 2, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", RunID: mustInstanceID("run"), At: 0, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", RunID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{RunID: mustInstanceID("other"), ClaimToken: "t"}}, {CommandID: "a", RunID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{RunID: mustInstanceID("run")}}}
+	cancelInvalid := []CancelRunCommand{{}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: -1, At: 2}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, At: 0}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Succeeded, At: 2}}
+	abortInvalid := []AbortRunCommand{{}, {CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: -1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 0, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("other"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run")}}}
 	for _, command := range cancelInvalid {
 		if result, err := NewCancelRunService(nil, nil).CancelRun(context.Background(), command); err == nil || result != (RunCommandResult{}) {
 			t.Fatalf("cancel invalid result/error=%#v/%v", result, err)
@@ -161,7 +161,7 @@ func TestCancelSignalFailureReturnsCommittedResult(t *testing.T) {
 }
 
 func TestReorderQueueExportedBoundaryAndOwnership(t *testing.T) {
-	invalid := []ReorderQueueCommand{{}, {CommandID: "r", ScopeID: "s", ExpectedRevision: -1, RunIDs: []string{"a"}}, {CommandID: "r", ScopeID: "s", RunIDs: nil}, {CommandID: "r", ScopeID: "s", RunIDs: []string{" "}}}
+	invalid := []ReorderQueueCommand{{}, {CommandID: "r", ScopeID: "s", ExpectedRevision: -1, InstanceIDs: []string{"a"}}, {CommandID: "r", ScopeID: "s", InstanceIDs: nil}, {CommandID: "r", ScopeID: "s", InstanceIDs: []string{" "}}}
 	for _, command := range invalid {
 		if result, err := NewReorderQueueService(nil).ReorderQueue(context.Background(), command); err == nil || !reflect.DeepEqual(result, ReorderQueueResult{}) {
 			t.Fatalf("invalid result/error=%#v/%v", result, err)
@@ -175,22 +175,22 @@ func TestReorderQueueExportedBoundaryAndOwnership(t *testing.T) {
 					t.Fatal("nil store panicked")
 				}
 			}()
-			if _, err := NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", RunIDs: []string{"a"}}); err == nil {
+			if _, err := NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", InstanceIDs: []string{"a"}}); err == nil {
 				t.Fatal("expected error")
 			}
 		}()
 	}
 	failure := errors.New("store")
-	result, err := NewReorderQueueService(&queueStoreStub{result: ReorderQueueResult{ScopeID: "bad"}, err: failure}).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", RunIDs: []string{"a"}})
+	result, err := NewReorderQueueService(&queueStoreStub{result: ReorderQueueResult{ScopeID: "bad"}, err: failure}).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", InstanceIDs: []string{"a"}})
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, ReorderQueueResult{}) {
 		t.Fatalf("store result/error=%#v/%v", result, err)
 	}
 	input := []string{"b", "a"}
-	store := &queueStoreStub{result: ReorderQueueResult{ScopeID: "s", Revision: 1, RunIDs: []string{"b", "a"}, WasApplied: true}}
-	result, err = NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", RunIDs: input})
+	store := &queueStoreStub{result: ReorderQueueResult{ScopeID: "s", Revision: 1, InstanceIDs: []string{"b", "a"}, WasApplied: true}}
+	result, err = NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", InstanceIDs: input})
 	input[0] = "changed"
-	store.seen.RunIDs[1] = "changed"
-	if err != nil || !reflect.DeepEqual(result.RunIDs, []string{"b", "a"}) {
+	store.seen.InstanceIDs[1] = "changed"
+	if err != nil || !reflect.DeepEqual(result.InstanceIDs, []string{"b", "a"}) {
 		t.Fatalf("owned result/error=%#v/%v", result, err)
 	}
 }

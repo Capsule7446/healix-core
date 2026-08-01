@@ -79,7 +79,7 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result E
 	var timeline node.RecordingTimeline
 	if cfg.Recorder != nil {
 		var err error
-		timeline, err = cfg.Recorder.Start(ctx, cfg.RunID)
+		timeline, err = cfg.Recorder.Start(ctx, cfg.InstanceID)
 		if err != nil {
 			result.RecordingOutcome = RecordingStartFailed
 			if cfg.StepTimeline != nil {
@@ -121,7 +121,7 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result E
 }
 
 func validateConfig(program node.Program, cfg Config) error {
-	if cfg.RunID.Validate() != nil {
+	if cfg.InstanceID.Validate() != nil {
 		return runtimeConfigurationInvalidError(errors.New("run ID is required"))
 	}
 	if cfg.Facts != nil && cfg.ClaimToken == "" {
@@ -157,7 +157,7 @@ func executionOutcome(err error) ExecutionOutcome {
 
 func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimeline) *node.Runtime {
 	return &node.Runtime{
-		RunID:              cfg.RunID,
+		InstanceID:         cfg.InstanceID,
 		ClaimToken:         cfg.ClaimToken,
 		StepInterval:       cfg.StepInterval,
 		Specs:              program.Specs,

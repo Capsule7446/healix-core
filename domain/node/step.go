@@ -124,7 +124,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		}
 		started := time.Now()
 		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Navigate(ctx, action.Value) })
-		rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
+		rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: navigate failed: %w", s.NodeID, classifyNodeFault(err)))
 		}
@@ -133,7 +133,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if action.Kind == ActionPress {
 		started := time.Now()
 		attempts, err := rt.operationRunner().Run(func() error { return rt.Driver.Press(ctx, action.Value) })
-		rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
+		rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, NodeID: s.NodeID, Operation: string(action.Kind), Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 		if err != nil {
 			return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: press failed: %w", s.NodeID, classifyNodeFault(err)))
 		}
@@ -149,7 +149,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		el, locateErr = rt.locator().Locate(ctx, target)
 		return locateErr
 	})
-	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
+	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{InstanceID: rt.InstanceID, NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 	if err != nil {
 		if !isExclusiveElementNotFound(err) {
 			// Mirrors the navigate and press branches above, which already classify.
@@ -185,7 +185,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if len(target.Selectors) > 0 {
 		selector = target.Selectors[0]
 	}
-	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: s.NodeID, Operation: string(action.Kind), Selector: selector, Healed: healed, Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: actionErr == nil, FaultKind: nodeFaultKind(actionErr), FaultCode: nodeFaultCode(actionErr)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, NodeID: s.NodeID, Operation: string(action.Kind), Selector: selector, Healed: healed, Attempt: attempts, DurationMS: time.Since(started).Milliseconds(), Succeeded: actionErr == nil, FaultKind: nodeFaultKind(actionErr), FaultCode: nodeFaultCode(actionErr)})
 	if actionErr != nil {
 		return s.fail(ctx, parentCtx, rt, execution, fmt.Errorf("node %s: action failed: %w", s.NodeID, classifyNodeFault(actionErr)))
 	}
@@ -210,7 +210,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 	if err := decision.Validate(); err != nil {
 		return nil, classifyNodeFault(err)
 	}
-	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: s.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{InstanceID: rt.InstanceID, NodeID: s.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
 		return nil, evidenceRecordFailedError(err)
 	}
 	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
@@ -220,7 +220,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome == heal.OutcomeNoCandidate {
 			if rt.Facts != nil {
-				if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+				if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 					return nil, evidenceRecordFailedError(recordErr)
 				}
 			}
@@ -232,7 +232,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 		}
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
-			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, oldSelector, decision); recordErr != nil {
 				return nil, evidenceRecordFailedError(recordErr)
 			}
 		}
@@ -240,7 +240,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 				return nil, evidenceRecordFailedError(recordErr)
 			}
 		}
@@ -256,7 +256,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 	}
 
 	if rt.Facts != nil {
-		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, s.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, evidenceRecordFailedError(recordErr)
 		}
 	}

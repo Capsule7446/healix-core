@@ -31,7 +31,7 @@ func runSnapshotForCompilerTypedEnvironmentTest(draft execution.PlanSnapshot, en
 	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV2, nil, environmentVariables)
 }
 
-func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaVersion execution.RunSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
+func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaVersion execution.InstanceSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
 	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
@@ -95,7 +95,7 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaV
 	}
 	input := execution.InstanceSnapshotInput{
 		SchemaVersion: schemaVersion,
-		RunID:         draft.RunID, ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
+		InstanceID:    draft.InstanceID, ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
 		ExecutionFlow:        execution.TestTaskSnapshot{ID: "task"},
 		ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: items},
 		Plan:                 draft, Invocations: invocations,

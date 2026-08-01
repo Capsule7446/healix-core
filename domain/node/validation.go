@@ -105,7 +105,7 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	}
 	started := time.Now()
 	validationErr := v.waitStable(ctx, rt)
-	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, FaultKind: nodeFaultKind(validationErr), FaultCode: nodeFaultCode(validationErr)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, FaultKind: nodeFaultKind(validationErr), FaultCode: nodeFaultCode(validationErr)})
 	if validationErr != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, errors.Join(validationErr))
 	}
@@ -339,12 +339,12 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	if err := decision.Validate(); err != nil {
 		return nil, false, classifyNodeFault(err)
 	}
-	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{InstanceID: rt.InstanceID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
 		return nil, false, evidenceRecordFailedError(err)
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate {
 		if rt.Facts != nil {
-			if err := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
+			if err := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
 				return nil, false, evidenceRecordFailedError(err)
 			}
 		}
@@ -361,7 +361,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
-			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
 				return nil, false, evidenceRecordFailedError(recordErr)
 			}
 		}
@@ -369,7 +369,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 				return nil, false, evidenceRecordFailedError(recordErr)
 			}
 		}
@@ -382,7 +382,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
 	if rt.Facts != nil {
-		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
 			return nil, false, evidenceRecordFailedError(recordErr)
 		}
 	}
@@ -640,7 +640,7 @@ func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime,
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
 		Assertion: assertion, Actual: actual, ActualValues: append([]string(nil), actualValues...), Passed: passed, Reason: reason,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: final,
@@ -683,7 +683,7 @@ func (r *validationObservationRecorder) recordGroupFinal(ctx context.Context, rt
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
 	defer cancel()
-	return rt.Facts.StageValidationGroupTerminal(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationGroupTerminalObservation{
+	return rt.Facts.StageValidationGroupTerminal(cleanupCtx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, ValidationGroupTerminalObservation{
 		GroupID: group.NodeID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
 		ExpectedMembers: members, ObservedAtMS: time.Now().UnixMilli(),
 	})
@@ -713,7 +713,7 @@ func (r *validationObservationRecorder) recordWithDisposition(ctx context.Contex
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
 		Assertion: assertion, Actual: actual, ActualValues: append([]string(nil), actualValues...), Passed: passed, Reason: reason, BranchDisposition: disposition,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: true,

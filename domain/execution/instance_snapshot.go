@@ -15,15 +15,15 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-type RunSnapshotSchema int
+type InstanceSnapshotSchema int
 
 const (
-	RunSnapshotSchemaV1      RunSnapshotSchema = 1
-	RunSnapshotSchemaV2      RunSnapshotSchema = 2
-	RunSnapshotSchemaCurrent                   = RunSnapshotSchemaV2
-	ScreenshotPolicyV1                         = 1
-	HealerPolicyV1                             = 1
-	MaxSnapshotStringBytes                     = 64 * 1024
+	RunSnapshotSchemaV1      InstanceSnapshotSchema = 1
+	RunSnapshotSchemaV2      InstanceSnapshotSchema = 2
+	RunSnapshotSchemaCurrent                        = RunSnapshotSchemaV2
+	ScreenshotPolicyV1                              = 1
+	HealerPolicyV1                                  = 1
+	MaxSnapshotStringBytes                          = 64 * 1024
 )
 
 type EnvironmentSnapshot struct {
@@ -85,8 +85,8 @@ type InvocationScopeSnapshot struct {
 }
 
 type InstanceSnapshotInput struct {
-	SchemaVersion                      RunSnapshotSchema
-	RunID                              InstanceID
+	SchemaVersion                      InstanceSnapshotSchema
+	InstanceID                         InstanceID
 	ExecutionFlowID, TestTaskVersionID string
 	TestTaskVersionNumber              int
 	ExecutionFlow                      TestTaskSnapshot
@@ -104,13 +104,13 @@ type InstanceSnapshot struct {
 	digest string
 }
 
-func (s InstanceSnapshot) Digest() string                   { return s.digest }
-func (s InstanceSnapshot) SchemaVersion() RunSnapshotSchema { return s.input.SchemaVersion }
-func (s InstanceSnapshot) RunID() InstanceID                { return s.input.RunID }
-func (s InstanceSnapshot) ExecutionFlowID() string          { return s.input.ExecutionFlowID }
-func (s InstanceSnapshot) TestTaskVersionID() string        { return s.input.TestTaskVersionID }
-func (s InstanceSnapshot) Input() InstanceSnapshotInput     { return cloneSnapshotInput(s.input) }
-func (s InstanceSnapshot) Plan() PlanSnapshot               { return cloneDraft(s.input.Plan) }
+func (s InstanceSnapshot) Digest() string                        { return s.digest }
+func (s InstanceSnapshot) SchemaVersion() InstanceSnapshotSchema { return s.input.SchemaVersion }
+func (s InstanceSnapshot) InstanceID() InstanceID                { return s.input.InstanceID }
+func (s InstanceSnapshot) ExecutionFlowID() string               { return s.input.ExecutionFlowID }
+func (s InstanceSnapshot) TestTaskVersionID() string             { return s.input.TestTaskVersionID }
+func (s InstanceSnapshot) Input() InstanceSnapshotInput          { return cloneSnapshotInput(s.input) }
+func (s InstanceSnapshot) Plan() PlanSnapshot                    { return cloneDraft(s.input.Plan) }
 func (s InstanceSnapshot) Invocations() []InvocationScopeSnapshot {
 	return cloneInvocations(s.input.Invocations)
 }
@@ -139,15 +139,15 @@ func (s InstanceSnapshot) Environment() EnvironmentSnapshot {
 // classified by the execution plan, a workflow's step-shape envelope, or the
 // environment/screenshot/healer envelope passes through unchanged.
 func SealInstanceSnapshot(input InstanceSnapshotInput) (InstanceSnapshot, error) {
-	sealed, err := sealRunSnapshotShape(input)
+	sealed, err := sealInstanceSnapshotShape(input)
 	if err != nil {
 		return InstanceSnapshot{}, classifyCreateInstanceSnapshot(err)
 	}
 	return sealed, nil
 }
 
-func sealRunSnapshotShape(input InstanceSnapshotInput) (InstanceSnapshot, error) {
-	if err := preflightRunSnapshot(input); err != nil {
+func sealInstanceSnapshotShape(input InstanceSnapshotInput) (InstanceSnapshot, error) {
+	if err := preflightInstanceSnapshot(input); err != nil {
 		return InstanceSnapshot{}, err
 	}
 	input = cloneSnapshotInput(input)
@@ -221,9 +221,9 @@ func normalizeHealerZeros(policy *HealerPolicySnapshot) {
 const maxSnapshotElements = 100000
 const maxSnapshotDepth = 64
 
-func preflightRunSnapshot(input InstanceSnapshotInput) error {
+func preflightInstanceSnapshot(input InstanceSnapshotInput) error {
 	if err := validateAggregateInputBounds(input.Plan); err != nil {
-		return fmt.Errorf("run snapshot plan bounds: %w", err)
+		return fmt.Errorf("instance snapshot plan bounds: %w", err)
 	}
 	remainingBytes := MaxAggregateStringBytes
 	remainingElements := maxSnapshotElements
@@ -231,7 +231,7 @@ func preflightRunSnapshot(input InstanceSnapshotInput) error {
 }
 func consumeSnapshotResources(value reflect.Value, bytes, elements *int, depth int) error {
 	if depth > maxSnapshotDepth {
-		return errors.New("run snapshot exceeds resource depth limit")
+		return errors.New("instance snapshot exceeds resource depth limit")
 	}
 	if value.Kind() == reflect.Interface {
 		if value.IsNil() {
@@ -317,7 +317,7 @@ func consumeStrings(values []string, bytes, elements *int) error {
 	}
 	for _, value := range values {
 		if len(value) > MaxStringBytes || len(value) > *bytes {
-			return errors.New("run snapshot aggregate string bytes exceed limit")
+			return errors.New("instance snapshot aggregate string bytes exceed limit")
 		}
 		*bytes -= len(value)
 	}
@@ -325,7 +325,7 @@ func consumeStrings(values []string, bytes, elements *int) error {
 }
 func consumeElements(count int, remaining *int) error {
 	if count < 0 || count > *remaining {
-		return errors.New("run snapshot aggregate elements exceed limit")
+		return errors.New("instance snapshot aggregate elements exceed limit")
 	}
 	*remaining -= count
 	return nil
@@ -423,10 +423,10 @@ func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexe
 
 func validateSnapshot(v InstanceSnapshotInput) error {
 	if v.SchemaVersion != RunSnapshotSchemaV1 && v.SchemaVersion != RunSnapshotSchemaV2 {
-		return fmt.Errorf("unsupported run snapshot schema %d", v.SchemaVersion)
+		return fmt.Errorf("unsupported instance snapshot schema %d", v.SchemaVersion)
 	}
-	if !validString(v.RunID.String(), true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
-		return errors.New("run and test-task version identity is required")
+	if !validString(v.InstanceID.String(), true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
+		return errors.New("instance and test-task version identity is required")
 	}
 	if v.ExecutionFlow.ID != v.ExecutionFlowID ||
 		v.ExecutionFlowVersion.ID != v.TestTaskVersionID || v.ExecutionFlowVersion.ExecutionFlowID != v.ExecutionFlowID ||
@@ -436,7 +436,7 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 	if err := validateTestTaskVersionItemEntries(v.TestTaskVersionID, v.ExecutionFlowVersion.Items, v.Plan.Entries); err != nil {
 		return err
 	}
-	if v.Plan.RunID != v.RunID || v.Plan.FailurePolicy != v.FailurePolicy {
+	if v.Plan.InstanceID != v.InstanceID || v.Plan.FailurePolicy != v.FailurePolicy {
 		return errors.New("execution plan identity is inconsistent")
 	}
 	if err := v.Plan.Validate(); err != nil {
@@ -656,9 +656,12 @@ func (e *canonicalEncoder) boolean(v bool) {
 	}
 }
 func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
+	// A wire tag, not a Go name. Every stored snapshot was digested with these
+	// exact bytes, so renaming the type must not touch them: the plan schedules
+	// a new snapshot encoding as its own deliberate step with its own migration.
 	e.str("healix.run-snapshot")
 	e.u64(uint64(v.SchemaVersion))
-	e.str(v.RunID.String())
+	e.str(v.InstanceID.String())
 	e.str(v.ExecutionFlowID)
 	e.str(v.TestTaskVersionID)
 	e.u64(uint64(v.TestTaskVersionNumber))

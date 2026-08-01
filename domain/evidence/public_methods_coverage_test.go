@@ -10,7 +10,7 @@ import (
 
 func validValidationProgressObservation() ValidationProgressObservation {
 	return ValidationProgressObservation{
-		ID: "observation", RunID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		ID: "observation", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
@@ -70,7 +70,7 @@ func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 
 func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 	valid := HealObservation{
-		ID: "observation", RunID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		ID: "observation", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 		ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
 		DecisionBand: DecisionUnknown,
 	}
@@ -160,7 +160,7 @@ func TestValidationValueEqualityKindsAndCollectionOwnership(t *testing.T) {
 
 func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 	valid := ValidationObservation{
-		ID: "observation", RunID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		ID: "observation", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
@@ -202,7 +202,7 @@ func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 }
 
 func TestStepFactTerminalPhaseAndBoundaryMatrix(t *testing.T) {
-	valid := StepFact{ID: "fact", RunID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecution: mustStepExecutionID("step"), Phase: PhaseSucceeded, ObservedAt: 1}
+	valid := StepFact{ID: "fact", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecution: mustStepExecutionID("step"), Phase: PhaseSucceeded, ObservedAt: 1}
 	tests := []struct {
 		name      string
 		mutate    func(*StepFact)
@@ -245,7 +245,7 @@ func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing
 		ID: mustStepExecutionID("step"), ExecutionID: mustEntryID("execution"), WorkflowStepID: "workflow-step", DisplayName: "Step",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 	}, HealObservations: []HealObservation{{
-		ID: "heal", RunID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("other-step"),
+		ID: "heal", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("other-step"),
 		ElementTargetID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 1,
 	}}}
 	requireViolation(t, crossStep.Validate(), CodeStepTransitionCommitInvalid, fault.CodeFieldMismatch, "healObservations.0")

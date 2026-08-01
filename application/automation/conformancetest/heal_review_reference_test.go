@@ -98,7 +98,7 @@ func (f *healFixture) rejectIntent() application.HealReviewIntent {
 	next := expected
 	next.Disposition = domain.HealStreakRejected
 	next.LastSequence++
-	next.Contributions = append(next.Contributions, domain.ContributingHealFact{FactID: "review", CommitID: "review", RunID: "review", Sequence: next.LastSequence})
+	next.Contributions = append(next.Contributions, domain.ContributingHealFact{FactID: "review", CommitID: "review", InstanceID: "review", Sequence: next.LastSequence})
 	i.ExpectedStreak = &expected
 	i.ExpectedStreakDigest, _ = application.HealReviewStreakDigest(expected)
 	i.NextStreak = &next

@@ -44,7 +44,7 @@ type referenceFixture struct {
 
 func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyingRuns int) conformancetest.Fixture {
 	fixture := &referenceFixture{
-		fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"},
+		fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
 		band:  band,
 		state: referenceState{
 			stepRevision:       1,
@@ -57,9 +57,9 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 	planner := execution.NewDefaultHealGovernancePlanner()
 	for index := 0; index < priorQualifyingRuns; index++ {
 		sequence := uint64(index + 1)
-		runID := fmt.Sprintf("run-prior-%d", index+1)
+		instanceID := fmt.Sprintf("run-prior-%d", index+1)
 		observation := evidence.HealObservation{
-			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 		}
@@ -69,8 +69,8 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 				CurrentNodeVersionID: "base", Revision: fixture.state.governanceRevision, Streak: fixture.state.streak,
 			},
 			Fact: execution.HealAcceptedFact{
-				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + runID,
-				RunID: mustInstanceID(runID), Sequence: sequence, Observation: &observation,
+				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + instanceID,
+				InstanceID: mustInstanceID(instanceID), Sequence: sequence, Observation: &observation,
 			},
 		})
 		if err != nil {
@@ -177,7 +177,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 			},
 			Fact: execution.HealAcceptedFact{
 				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: commit.CommitID,
-				RunID: observation.RunID, Sequence: next.lastSequence, Observation: &observation,
+				InstanceID: observation.InstanceID, Sequence: next.lastSequence, Observation: &observation,
 			},
 		})
 		if err != nil {
@@ -243,7 +243,7 @@ func TestReferenceStateCloneIsIndependent(t *testing.T) {
 	fixture := newReferenceFixture(t, evidence.DecisionApplied, 2).(*referenceFixture)
 	clone := cloneState(fixture.state)
 	clone.acceptedFacts["other"] = struct{}{}
-	clone.streak.Contributions[0].RunID = "other"
+	clone.streak.Contributions[0].InstanceID = "other"
 	if reflect.DeepEqual(clone, fixture.state) {
 		t.Fatal("reference state clone aliases source")
 	}

@@ -103,33 +103,33 @@ func runSignalRetryableError(cause error) error {
 
 type CancelRunCommand struct {
 	CommandID            string
-	RunID                domainexecution.InstanceID
+	InstanceID           domainexecution.InstanceID
 	ExpectedStatus       domainexecution.InstanceStatus
 	ExpectedRevision, At int64
 }
 type AbortRunCommand struct {
 	CommandID            string
-	RunID                domainexecution.InstanceID
+	InstanceID           domainexecution.InstanceID
 	ExpectedRevision, At int64
 	Fence                domainexecution.WorkerFence
 }
 type ReorderQueueCommand struct {
 	CommandID, ScopeID string
 	ExpectedRevision   int64
-	RunIDs             []string
+	InstanceIDs        []string
 }
 
 type RunCommandResult struct {
-	Run            domainexecution.Run
+	Run            domainexecution.Instance
 	Revision       int64
 	WasApplied     bool
 	SignalRequired bool
 }
 type ReorderQueueResult struct {
-	ScopeID    string
-	Revision   int64
-	RunIDs     []string
-	WasApplied bool
+	ScopeID     string
+	Revision    int64
+	InstanceIDs []string
+	WasApplied  bool
 }
 
 // RunCommandStore must canonicalize CommandID payloads and execute each method
@@ -142,7 +142,7 @@ type RunCommandStore interface {
 	Abort(context.Context, AbortRunCommand) (RunCommandResult, error)
 }
 
-// QueueCommandStore atomically applies a queue revision CAS. RunIDs must be the
+// QueueCommandStore atomically applies a queue revision CAS. InstanceIDs must be the
 // full exact permutation of all currently unclaimed QUEUED Runs in ScopeID; the
 // store rejects duplicates, omissions, foreign, claimed, or nonqueued members.
 type QueueCommandStore interface {
@@ -172,7 +172,7 @@ func (s CancelRunService) CancelRun(ctx context.Context, command CancelRunComman
 	if err != nil {
 		return RunCommandResult{}, classifySchedulingAdapterFailure(err)
 	}
-	if err := validateRunResult(command.RunID, domainexecution.Canceled, command.ExpectedRevision, result); err != nil {
+	if err := validateRunResult(command.InstanceID, domainexecution.Canceled, command.ExpectedRevision, result); err != nil {
 		// validateRunResult already returns
 		// EXECUTION_INSTANCE_COMMAND_ADAPTER_CONTRACT_VIOLATION.
 		return RunCommandResult{}, err
@@ -203,7 +203,7 @@ func (s AbortRunService) AbortRun(ctx context.Context, command AbortRunCommand) 
 	if err != nil {
 		return RunCommandResult{}, classifySchedulingAdapterFailure(err)
 	}
-	if err := validateRunResult(command.RunID, domainexecution.Aborted, command.ExpectedRevision, result); err != nil {
+	if err := validateRunResult(command.InstanceID, domainexecution.Aborted, command.ExpectedRevision, result); err != nil {
 		return RunCommandResult{}, err
 	}
 	if !result.SignalRequired {
@@ -226,14 +226,14 @@ func signalIfRequired(ctx context.Context, signaler RunCancellationSignaler, res
 }
 
 func validateCancel(command CancelRunCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || command.RunID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
+	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
 		return cancelRunCommandInvalidError(nil)
 	}
 	return nil
 }
 
 func validateAbort(command AbortRunCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || command.RunID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.RunID != command.RunID {
+	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.InstanceID != command.InstanceID {
 		return abortRunCommandInvalidError(nil)
 	}
 	if err := command.Fence.Validate(); err != nil {
@@ -255,24 +255,24 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 		return ReorderQueueResult{}, schedulingDependencyRequiredError()
 	}
 	ownedCommand := command
-	ownedCommand.RunIDs = append([]string(nil), command.RunIDs...)
+	ownedCommand.InstanceIDs = append([]string(nil), command.InstanceIDs...)
 	result, err := s.store.Reorder(ctx, ownedCommand)
 	if err != nil {
 		return ReorderQueueResult{}, classifySchedulingAdapterFailure(err)
 	}
-	if result.ScopeID != command.ScopeID || result.Revision != command.ExpectedRevision+1 || len(result.RunIDs) != len(command.RunIDs) {
+	if result.ScopeID != command.ScopeID || result.Revision != command.ExpectedRevision+1 || len(result.InstanceIDs) != len(command.InstanceIDs) {
 		return ReorderQueueResult{}, runAdapterContractViolationError(errors.New("reorder result identity, revision, or membership count is invalid"))
 	}
-	for index := range command.RunIDs {
-		if result.RunIDs[index] != command.RunIDs[index] {
+	for index := range command.InstanceIDs {
+		if result.InstanceIDs[index] != command.InstanceIDs[index] {
 			return ReorderQueueResult{}, runAdapterContractViolationError(errors.New("reorder result membership order is invalid"))
 		}
 	}
-	result.RunIDs = append([]string(nil), result.RunIDs...)
+	result.InstanceIDs = append([]string(nil), result.InstanceIDs...)
 	return result, nil
 }
-func validateRunResult(runID domainexecution.InstanceID, status domainexecution.InstanceStatus, expectedRevision int64, result RunCommandResult) error {
-	if result.Run.ID != runID {
+func validateRunResult(instanceID domainexecution.InstanceID, status domainexecution.InstanceStatus, expectedRevision int64, result RunCommandResult) error {
+	if result.Run.ID != instanceID {
 		return runAdapterContractViolationError(runIdentityConflictError())
 	}
 	if result.Run.Status != status {
@@ -281,7 +281,7 @@ func validateRunResult(runID domainexecution.InstanceID, status domainexecution.
 	if result.Revision != expectedRevision+1 {
 		return runAdapterContractViolationError(runRevisionConflictError())
 	}
-	if err := domainexecution.ValidateRun(result.Run); err != nil {
+	if err := domainexecution.ValidateInstance(result.Run); err != nil {
 		return runAdapterContractViolationError(err)
 	}
 	return nil
@@ -306,16 +306,16 @@ func AbortRunRequestDigest(command AbortRunCommand) (string, error) {
 
 func ReorderQueueRequestDigest(command ReorderQueueCommand) (string, error) {
 	owned := command
-	owned.RunIDs = append([]string(nil), command.RunIDs...)
+	owned.InstanceIDs = append([]string(nil), command.InstanceIDs...)
 	return canonicalDigest(owned)
 }
 
 func validateReorder(command ReorderQueueCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ScopeID) == "" || command.ExpectedRevision < 0 || len(command.RunIDs) == 0 {
+	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ScopeID) == "" || command.ExpectedRevision < 0 || len(command.InstanceIDs) == 0 {
 		return reorderQueueCommandInvalidError(nil)
 	}
-	seen := make(map[string]struct{}, len(command.RunIDs))
-	for _, id := range command.RunIDs {
+	seen := make(map[string]struct{}, len(command.InstanceIDs))
+	for _, id := range command.InstanceIDs {
 		if strings.TrimSpace(id) == "" {
 			return reorderQueueCommandInvalidError(nil)
 		}

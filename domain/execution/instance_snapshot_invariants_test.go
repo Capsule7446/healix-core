@@ -75,7 +75,7 @@ func TestRunSnapshotRejectsTestTaskEntryBijectionDefects(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			input := validRunSnapshotInput(t)
+			input := validInstanceSnapshotInput(t)
 			test.mutate(&input)
 			if _, err := SealInstanceSnapshot(input); err == nil {
 				t.Fatal("invalid correspondence accepted")
@@ -98,12 +98,12 @@ func TestValidateBindingsRejectsUnknownLiteralAndParentNames(t *testing.T) {
 }
 
 func TestRunSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	input.Environment.Properties["large"] = strings.Repeat("x", MaxStringBytes+1)
 	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("oversized environment property accepted")
 	}
-	input = validRunSnapshotInput(t)
+	input = validInstanceSnapshotInput(t)
 	// An oversized path can no longer be constructed at all, so what the seal
 	// can still be handed is an unset one. The byte bound moved to
 	// ParseInvocationPath, where the coordinate tests cover it.
@@ -114,7 +114,7 @@ func TestRunSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *test
 }
 
 func TestRunSnapshotSharesAggregateStringBudgetAcrossPlanAndEnvelope(t *testing.T) {
-	input := validRunSnapshotInput(t)
+	input := validInstanceSnapshotInput(t)
 	chunk := strings.Repeat("x", MaxStringBytes)
 	for index := 0; index < MaxAggregateStringBytes/MaxStringBytes; index++ {
 		input.Environment.Properties[string(rune('a'+index%26))+strings.Repeat("k", index/26)] = chunk

@@ -407,7 +407,7 @@ func TestExecutionCoordinateFieldsAreNeverSpelledAsStrings(t *testing.T) {
 	}
 	mirrorsAutomationRecord := map[string]bool{"HealContributionSnapshot": true}
 	wantType := map[string]string{
-		"RunID":           "InstanceID",
+		"InstanceID":      "InstanceID",
 		"ExecutionID":     "EntryID",
 		"NextExecutionID": "EntryID",
 		"StepExecutionID": "StepExecutionID",

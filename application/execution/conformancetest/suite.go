@@ -202,7 +202,7 @@ func mustStepExecutionID(value string) domainexecution.StepExecutionID {
 	return id
 }
 
-func commit(id string, revision evidence.StepRevision, runID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
+func commit(id string, revision evidence.StepRevision, instanceID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
 	return evidence.StepTransitionCommit{
 		CommitID:         id,
 		ExpectedRevision: revision,
@@ -211,7 +211,7 @@ func commit(id string, revision evidence.StepRevision, runID string, band eviden
 			Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 		},
 		HealObservations: []evidence.HealObservation{{
-			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},

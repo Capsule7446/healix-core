@@ -249,7 +249,7 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 		if err != nil {
 			return ResolvedCreateRun{}, createRunCatalogGraphUnresolvableError(err)
 		}
-		if err := resolveWorkflow(versionID, latest, concreteRootPath(command.RunID.String(), item.ID), "", "", values, nil, 0); err != nil {
+		if err := resolveWorkflow(versionID, latest, concreteRootPath(command.InstanceID.String(), item.ID), "", "", values, nil, 0); err != nil {
 			return ResolvedCreateRun{}, err
 		}
 	}

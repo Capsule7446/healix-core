@@ -27,7 +27,7 @@ func (n *runtimeIsolationNode) Run(_ context.Context, runtime *node.Runtime) err
 func TestRunProgramCreatesAnExecutionLocalRuntime(t *testing.T) {
 	capture := &runtimeIsolationNode{}
 	program := node.Program{Root: capture}
-	config := Config{RunID: mustInstanceID("run"), Driver: &engineTestDriver{}}
+	config := Config{InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}}
 
 	if _, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), program), config); err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestRunProgramCreatesAnExecutionLocalRuntime(t *testing.T) {
 	if _, exists := capture.runtimes[1].Scratchpad["only-first"]; exists {
 		t.Fatal("execution scratchpads share one map")
 	}
-	if capture.runtimes[0].RunID != mustInstanceID("run") || capture.runtimes[0].Driver != config.Driver {
+	if capture.runtimes[0].InstanceID != mustInstanceID("run") || capture.runtimes[0].Driver != config.Driver {
 		t.Fatalf("runtime lost injected configuration: %#v", capture.runtimes[0])
 	}
 }
@@ -54,7 +54,7 @@ func TestRunProgramReturnsRecorderStopFailureAfterSuccessfulRoot(t *testing.T) {
 	stopErr := errors.New("stop failed")
 	recorder := &engineTestRecorder{stopErr: stopErr}
 	_, err := runProgramForTest(context.Background(), compiledEntry(mustInstanceID("run"), node.Program{Root: &runtimeCaptureNode{}}), Config{
-		RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, Recorder: recorder,
+		InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, Recorder: recorder,
 	})
 	if !errors.Is(err, stopErr) || !recorder.stopped || !recorder.retained {
 		t.Fatalf("error=%v recorder=%+v", err, recorder)

@@ -11,7 +11,7 @@ import (
 )
 
 type buildExecutionPlanInput struct {
-	RunID       execution.InstanceID
+	InstanceID  execution.InstanceID
 	Publication automation.ResolvedExecutionFlow
 	Entries     []executionEntryInput
 }
@@ -36,7 +36,7 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 		// classification behind an unpublished code at this boundary.
 		return execution.PlanSnapshot{}, err
 	}
-	if input.RunID.Validate() != nil {
+	if input.InstanceID.Validate() != nil {
 		return execution.PlanSnapshot{}, errors.New("run id is required")
 	}
 	if err := validateEntries(input); err != nil {
@@ -65,7 +65,7 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 		}
 		entries[i] = entry
 	}
-	draft := execution.PlanSnapshot{RunID: input.RunID, FailurePolicy: policy, Entries: entries, Workflows: workflows, Nodes: mapNodes(input.Publication.Nodes), References: references}
+	draft := execution.PlanSnapshot{InstanceID: input.InstanceID, FailurePolicy: policy, Entries: entries, Workflows: workflows, Nodes: mapNodes(input.Publication.Nodes), References: references}
 	if err := draft.Validate(); err != nil {
 		return execution.PlanSnapshot{}, fmt.Errorf("validate execution draft: %w", err)
 	}
