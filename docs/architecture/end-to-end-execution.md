@@ -22,13 +22,13 @@ flowchart TD
 
 自动化领域负责手工发布 TestTask 版本及 Workflow/Node 等资产版本。采样和自愈可以发布其他资产，但 TestTask 版本不由它们自动生成。
 
-[`CreateRunService`](../../application/scheduling/create_run_service.go) 是冻结边界：它在调度创建事务中读取一致版本的发布物，把所有 `latest` 解析为具体版本，并调用 [`create_run_builder.go`](../../application/scheduling/create_run_builder.go) 构造并封存不可变的 [`execution.RunSnapshot`](../../domain/execution/run_snapshot.go)。执行实例快照保存顶层执行项、环境 `Properties`、截图/修复策略、类型化参数、Workflow/Node 快照和引用闭包；执行期不得回读可变的自动化聚合。
+[`CreateRunService`](../../application/scheduling/create_instance_service.go) 是冻结边界：它在调度创建事务中读取一致版本的发布物，把所有 `latest` 解析为具体版本，并调用 [`create_instance_builder.go`](../../application/scheduling/create_instance_builder.go) 构造并封存不可变的 [`execution.RunSnapshot`](../../domain/execution/instance_snapshot.go)。执行实例快照保存顶层执行项、环境 `Properties`、截图/修复策略、类型化参数、Workflow/Node 快照和引用闭包；执行期不得回读可变的自动化聚合。
 
 参数使用共享内核 [`parameter.Value`](../../domain/parameter/value.go) 与 [`parameter.Binding`](../../domain/parameter/binding.go)，支持标量和复合值。环境是普通 Properties，并在执行绑定中出现在 `env.` 命名空间；不存在 CredentialReference、CredentialReader 或 CredentialService 子系统。
 
 ## 2. 调度与状态
 
-调度命令服务负责领取执行权、串行顶层执行项顺序、失败策略、取消和中止。所有写入必须受当前工作器栅栏保护，并在宿主事务中原子兑现。显式中止由 `AbortRunService` 要求宿主事务先原子提交权威的 `execution.Aborted` 并失效栅栏，再发送取消信号；信号失败不回滚提交，而是携带已提交结果返回 `ErrRunSignalRetryable`。普通执行上下文取消仍映射为 `CANCELED`，属于不同操作。实现与验收见 [`run_command_services.go`](../../application/scheduling/run_command_services.go)、[`run_command_services_test.go`](../../application/scheduling/run_command_services_test.go) 和 [`run_command_transaction_conformance_test.go`](../../application/scheduling/run_command_transaction_conformance_test.go)。
+调度命令服务负责领取执行权、串行顶层执行项顺序、失败策略、取消和中止。所有写入必须受当前工作器栅栏保护，并在宿主事务中原子兑现。显式中止由 `AbortRunService` 要求宿主事务先原子提交权威的 `execution.Aborted` 并失效栅栏，再发送取消信号；信号失败不回滚提交，而是携带已提交结果返回 `ErrRunSignalRetryable`。普通执行上下文取消仍映射为 `CANCELED`，属于不同操作。实现与验收见 [`instance_command_services.go`](../../application/scheduling/instance_command_services.go)、[`instance_command_services_test.go`](../../application/scheduling/instance_command_services_test.go) 和 [`instance_command_transaction_conformance_test.go`](../../application/scheduling/instance_command_transaction_conformance_test.go)。
 
 ## 3. 编译与运行时
 
@@ -56,7 +56,7 @@ Node 通过执行端口写非终态进度和终态提交。[`StepTransitionCommi
 
 ## 关键源码与测试
 
-- [执行实例创建服务](../../application/scheduling/create_run_service.go)、[执行实例创建测试](../../application/scheduling/create_run_test.go)
-- [不可变执行实例快照](../../domain/execution/run_snapshot.go)、[快照不变量测试](../../domain/execution/run_snapshot_invariants_test.go)
+- [执行实例创建服务](../../application/scheduling/create_instance_service.go)、[执行实例创建测试](../../application/scheduling/create_instance_test.go)
+- [不可变执行实例快照](../../domain/execution/instance_snapshot.go)、[快照不变量测试](../../domain/execution/instance_snapshot_invariants_test.go)
 - [顶层执行项执行器](../../application/execution/entry_executor.go)、[执行器测试](../../application/execution/entry_executor_test.go)
 - [执行引擎编译器](../../application/engine/compiler.go)、[参数绑定测试](../../application/engine/binding_test.go)

@@ -1,4 +1,4 @@
-# 公共契约
+﻿# 公共契约
 
 ## 稳定入口
 
@@ -23,6 +23,7 @@ flowchart LR
 - 宿主负责生成唯一 RunID/ExecutionID 并持久化发布快照。
 - 领取执行权适配器负责栅栏校验、原子应用决策与安全释放。
 - Core 的 `CancelRunService` 与 `AbortRunService` 实现取消/中止编排；宿主实现 `RunCommandStore`，原子持久化权威执行实例状态、队列成员关系与栅栏失效，并实现 `RunCancellationSignaler` 发送活动执行取消信号。提交后的信号失败不得回滚事务，而应由调用方按 `ErrRunSignalRetryable` 重试信号。
+- `EntryExecutor` 新增必填端口 `EntryAuthorizer`：`NewEntryExecutor(authorizer, factory, runner, closeTimeout)`。授权在 `factory.Create` 之前执行，授权失败原样透传。
 - `QueueCommandStore` 是宿主必须原子兑现的队列修订 CAS 与完整排列写入契约。
 - 错误应通过 `errors.Is/As` 保持类别，不应依赖完整错误字符串。
 - `node.Recorder.Start` 成功后返回本次执行唯一的 `RecordingTimeline`；启用 `StepTimelineSink` 时不得返回 nil。如需消费叶子步骤时间线，可实现 `StepTimelineSink`。
@@ -36,7 +37,7 @@ flowchart LR
 
 - [`contract/public_api_test.go`](../../contract/public_api_test.go)
 - [`architecture/dependencies_test.go`](../../architecture/dependencies_test.go)
-- [`application/scheduling/run_command_services.go`](../../application/scheduling/run_command_services.go)
-- [`application/scheduling/run_command_services_test.go`](../../application/scheduling/run_command_services_test.go)
-- [`application/scheduling/run_command_transaction_conformance_test.go`](../../application/scheduling/run_command_transaction_conformance_test.go)
+- [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go)
+- [`application/scheduling/instance_command_services_test.go`](../../application/scheduling/instance_command_services_test.go)
+- [`application/scheduling/instance_command_transaction_conformance_test.go`](../../application/scheduling/instance_command_transaction_conformance_test.go)
 - [`application/scheduling/ports.go`](../../application/scheduling/ports.go)

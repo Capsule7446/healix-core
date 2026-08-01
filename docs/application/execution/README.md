@@ -1,6 +1,6 @@
-# 执行应用层
+﻿# 执行应用层
 
-该模块拥有已领取执行权的顶层执行项的浏览器会话生命周期编排和带栅栏校验的写入边界。`EntryExecutor` 校验 `WorkerFence`，并围绕注入的 `EntryRunner` 顺序执行调用方提供的顶层 `execution.WorkflowEntry`：每个执行项恰好调用一次 `BrowserSessionFactory.Create`，同步关闭会话后才继续，且遇到创建、运行或关闭错误时停止；运行或关闭发生 panic 时，完成同步关闭尝试后停止并继续传播 panic。嵌套工作流通过 `EntryRunner` 契约复用该顶层执行项的浏览器。`EntryExecutor` 不接收 `execution.RunSnapshot`，也不调用引擎编译；宿主组合层负责调用 `engine.CompilePlan` 编译冻结快照并将相应运行器接入执行生命周期。进度、终态、修复观察和晋升/重置提交通过限定工作器的带栅栏校验端口原子写入执行证据。
+该模块拥有已领取执行权的顶层执行项的浏览器会话生命周期编排和带栅栏校验的写入边界。`EntryExecutor` 通过 `EntryAuthorizer` 校验 `WorkerFence`（授权在 `factory.Create` 之前执行），并围绕注入的 `EntryRunner` 顺序执行调用方提供的顶层 `execution.WorkflowEntry`：每个执行项恰好调用一次 `BrowserSessionFactory.Create`，同步关闭会话后才继续，且遇到创建、运行或关闭错误时停止；运行或关闭发生 panic 时，完成同步关闭尝试后停止并继续传播 panic。嵌套工作流通过 `EntryRunner` 契约复用该顶层执行项的浏览器。`EntryExecutor` 不接收 `execution.RunSnapshot`，也不调用引擎编译；宿主组合层负责调用 `engine.CompilePlan` 编译冻结快照并将相应运行器接入执行生命周期。进度、终态、修复观察和晋升/重置提交通过限定工作器的带栅栏校验端口原子写入执行证据。
 
 - [记录进度](record-progress.md)
 - [提交步骤迁移](commit-step-transition.md)

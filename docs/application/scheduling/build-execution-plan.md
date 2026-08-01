@@ -33,6 +33,6 @@ Scheduling 只拥有 Run 创建、队列/claim 和状态推进。它不打开浏
 
 ## 源码与测试
 
-- 源码：[`application/scheduling/create_run_service.go`](../../../application/scheduling/create_run_service.go)、[`application/scheduling/create_run_builder.go`](../../../application/scheduling/create_run_builder.go)
-- 快照：[`domain/execution/run_snapshot.go`](../../../domain/execution/run_snapshot.go)
-- 测试：[`application/scheduling/create_run_test.go`](../../../application/scheduling/create_run_test.go)、[`application/scheduling/create_run_transaction_test.go`](../../../application/scheduling/create_run_transaction_test.go)
+- 源码：[`application/scheduling/create_instance_service.go`](../../../application/scheduling/create_instance_service.go)、[`application/scheduling/create_instance_builder.go`](../../../application/scheduling/create_instance_builder.go)
+- 快照：[`domain/execution/instance_snapshot.go`](../../../domain/execution/instance_snapshot.go)
+- 测试：[`application/scheduling/create_instance_test.go`](../../../application/scheduling/create_instance_test.go)、[`application/scheduling/create_instance_transaction_test.go`](../../../application/scheduling/create_instance_transaction_test.go)

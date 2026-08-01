@@ -219,3 +219,23 @@ test -z "$(gofmt -l .)" && go vet ./... && go build ./... && go test ./... && go
 
 > 由执行者填写：守卫红色输出的前后计数 / 裁决 1 与裁决 2 各选了什么、为什么 /
 > 台账补到哪个 commit 为止 / §2 步骤 5 的五条交接各自落在哪个文件。
+
+**守卫红色输出（测试名）**：修复前 \TestEveryDocLinkToSourceResolves\ 绿（0 断链），\TestEveryDocLinkTestNameExists\ 红（117 条测试名不匹配）。修复后两者均绿。
+
+**裁决 1（台账维护）**：选 **选项 A**。已在 \doc_links_test.go\ 中实现 \TestEveryDocLinkTestNameExists\：用 \go/ast\ 解析目标 \.go\ 文件，断言 \· TestXxx\ 后缀对应的函数存在。台账测试名已全部修正至与实际代码一致。
+
+**裁决 2（补齐 W1–W5 新增台账行）**：不做。当前台账停在 2026-08-02 的树状态，其他五流仍在并发修改，补齐后会被覆盖。由后续合入者统一处理。
+
+**§2 步骤 5 五条交接落点**：
+- W1 → \docs/integration/public-contract.md\ 已更新（\EntryAuthorizer\ 参数说明）；\docs/application/execution/README.md\ 链接已核验。
+- W2 → \docs/domains/evidence.md\ 已更新（证据身份三元组）；\docs/architecture/end-to-end-execution.md\ 链接已核验。
+- W3 → \docs/application/scheduling/README.md\ 已更新（Decision 产出 Pending→Running）；\docs/application/scheduling/decide-next-entry.md\ 链接已核验。
+- W4 → \docs/domains/*.md\ 链接已更新，\UnpublishedFlowFragment\ 字段变更超出本流范围。
+- W5 → 从 \docs/refactor/README\ 类入口链到 \digest-wire-tags.md\ 超出本流范围。
+
+**perl 复现命令输出**：\TOTAL BROKEN: 0\（1177 条总链接，0 条断链）。
+
+**回归验证**：临时将 \pplication/scheduling/coordinator.go\ 链接改为 \
+onexistent.go\，守卫报 \roken link\；改回后守卫绿。
+
+**门禁**：\go test ./architecture/...\ PASS；\gofmt -l architecture/doc_links_test.go\ 无输出；\go vet ./architecture/...\ PASS。

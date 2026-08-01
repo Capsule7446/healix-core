@@ -39,10 +39,10 @@ flowchart LR
 调度创建并持久化执行实例、冻结 `latest`，并决定串行推进；执行引擎从单个执行实例的顶层执行项编译临时执行程序；每个顶层执行项使用新的运行时和浏览器会话；Evidence 接收进度与终态结果。嵌套工作流共享该顶层执行项的运行时和浏览器会话，但每条调用路径拥有根据绑定派生的独立类型化参数作用域。
 
 ## 已实现
-已实现：不可变执行实例快照、类型化参数与绑定、创建事务/解析一致性、工作器栅栏、编译与执行入口服务，以及显式中止的 `ABORTED` 原子提交、提交后信号和可重试信号失败语义。中止实现与验收见 [`run_command_services.go`](../../application/scheduling/run_command_services.go)、[`run_command_services_test.go`](../../application/scheduling/run_command_services_test.go) 和 [`run_command_transaction_conformance_test.go`](../../application/scheduling/run_command_transaction_conformance_test.go)。
+已实现：不可变执行实例快照、类型化参数与绑定、创建事务/解析一致性、工作器栅栏、编译与执行入口服务，以及显式中止的 `ABORTED` 原子提交、提交后信号和可重试信号失败语义。中止实现与验收见 [`instance_command_services.go`](../../application/scheduling/instance_command_services.go)、[`instance_command_services_test.go`](../../application/scheduling/instance_command_services_test.go) 和 [`instance_command_transaction_conformance_test.go`](../../application/scheduling/instance_command_transaction_conformance_test.go)。
 
 ## 源码与测试
-- [运行与状态](../../domain/execution/run.go)、[不可变 执行实例 快照](../../domain/execution/run_snapshot.go)、[校验与上限](../../domain/execution/validation.go)、[工作器 栅栏](../../domain/execution/worker_fence.go)
+- [运行与状态](../../domain/execution/instance.go)、[不可变 执行实例 快照](../../domain/execution/instance_snapshot.go)、[校验与上限](../../domain/execution/validation.go)、[工作器 栅栏](../../domain/execution/worker_fence.go)
 - [类型化参数](../../domain/parameter/value.go)、[参数绑定](../../domain/parameter/binding.go)
-- [执行实例创建](../../application/scheduling/create_run_service.go)、[创建构建器](../../application/scheduling/create_run_builder.go)、[顶层执行项执行器](../../application/execution/entry_executor.go)
-- [执行实例快照测试](../../domain/execution/run_snapshot_test.go)、[参数校验测试](../../domain/execution/parameter_validation_test.go)、[执行实例创建测试](../../application/scheduling/create_run_test.go)
+- [执行实例创建](../../application/scheduling/create_instance_service.go)、[创建构建器](../../application/scheduling/create_instance_builder.go)、[顶层执行项执行器](../../application/execution/entry_executor.go)
+- [执行实例快照测试](../../domain/execution/instance_snapshot_test.go)、[参数校验测试](../../domain/execution/parameter_validation_test.go)、[执行实例创建测试](../../application/scheduling/create_instance_test.go)

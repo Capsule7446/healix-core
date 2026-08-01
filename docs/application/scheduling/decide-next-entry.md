@@ -1,4 +1,4 @@
-# 决定下一入口
+﻿# 决定下一入口
 
 ## 目标
 
@@ -11,7 +11,7 @@
 
 ## 输出
 
-`Decision`：`NextExecutionID`、零或多个 `ExecutionTransition`、可选 `FinalStatus`；校验失败返回 `ErrInvalidEntryStates` 包装错误。
+`Decision`：`NextExecutionID`、`ExecutionTransition`（含 Pending→Running）、可选 `FinalStatus`；校验失败返回 `ErrInvalidEntryStates` 包装错误。
 
 ## 时序
 

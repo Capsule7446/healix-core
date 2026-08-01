@@ -1,4 +1,4 @@
-# 执行证据领域
+﻿# 执行证据领域
 
 ## 目的与边界
 执行证据 定义执行期间可持久化事实、进度事件、验证观察、修复观察和原子步骤提交协议。它拥有“什么可作为证据”的校验语义；不执行步骤、不评分候选，也不实现数据库、事件总线或重试。
@@ -15,10 +15,10 @@ flowchart LR
 ```
 
 ## 术语与公开模型
-`StepProgressEvent` 是 RUNNING/HEALING/TRANSITIONING/VALIDATING 非终态进度；`StepFact` 是 SUCCEEDED/FAILED/CANCELED/ABORTED 终态事实。`StepRevision` 是步骤提交并发版本。`StepTransitionCommit` 把终态事件、最终验证、修复观察和原选择器重置组合为单个提交意图；结果含 `WasApplied` 与 Promotions。`HealObservation` 是提交输入的观察事实，不包含 晋升；权威的已晋升 NodeVersion 身份由 `StepTransitionCommitResult.Promotions` 返回，后续治理由应用层决定。`DecisionBand` 明确区分 APPLIED、BELOW_CAP 和 UNKNOWN。
+`StepProgressEvent` 和 `StepPhaseEvent` 均携带证据身份三元组 (EntryID, InvocationPath, Occurrence)；`StepFact` 是 SUCCEEDED/FAILED/CANCELED/ABORTED 终态事实。`StepRevision` 是步骤提交并发版本。`StepTransitionCommit` 把终态事件、最终验证、修复观察和原选择器重置组合为单个提交意图；结果含 `WasApplied` 与 Promotions。`HealObservation` 是提交输入的观察事实，不包含 晋升；权威的已晋升 NodeVersion 身份由 `StepTransitionCommitResult.Promotions` 返回，后续治理由应用层决定。`DecisionBand` 明确区分 APPLIED、BELOW_CAP 和 UNKNOWN。
 
 ## 不变量
-- 所有事实必须有稳定 ID、执行实例/顶层执行项/步骤坐标和正时间；Occurrence 有效。
+- 所有事实必须有稳定 ID、执行实例/顶层执行项/步骤坐标/调用路径（EntryID, InvocationPath, Occurrence）和正时间。
 - Progress 只接受非终态运行相位；StepFact 只接受终态。
 - 最终提交中的验证必须为 `Final=true`，观察身份需与提交事件一致。
 - `HealObservation` 的置信度有限且在 `[0,1]`；候选哈希与 DecisionBand 的组合一致。

@@ -160,32 +160,44 @@ X2 提出 17 条，13 条被驳倒，**3 条存活**（1 medium / 2 low），无
 
 ## 三、未修复（已证实，按阻塞度排序）
 
+- [W1-runbook](parallel-remediation/W1-execution-authorization.md)
+- [W2-runbook](parallel-remediation/W2-evidence-coordinates.md)
+- [W3-runbook](parallel-remediation/W3-entry-status-machine.md)
+- [W4-runbook](parallel-remediation/W4-unpublished-asset-identity.md)
+- [W5-runbook](parallel-remediation/W5-digest-wire-tags.md)
+- [W6-runbook](parallel-remediation/W6-doc-links.md)
+
 ### R5 EntryExecutor 在授权前创建 BrowserSession —— 高
 
 - `Execute` 只做 `fence.Validate()`（非空形状检查）；真正的租约校验在 `engine.go:129`，发生在 `factory.Create` 之后
 - 过期或伪造的 claim 会实打实开一个浏览器再关掉
+- 对应 W1-runbook。
 
-### R6 Evidence 缺 InvocationPath，retry 无独立 occurrence —— 高
+### R6 Evidence 缺 InvocationPath，retry occurrence 已存在但止于 Event —— 高
 
 - 同一 Entry 内经不同调用点两次调用同一 fragment，证据无法区分
 - retry 只体现为 `OperationObservation.Attempt`，而它不带任何 step-execution 身份
+- occurrence 存在且是真计数器（`domain/node/runtime.go:341-372`），`StepProgressEvent` / `StepPhaseEvent` 都带它并校验 > 0。真实缺口是 occurrence 只到 event 为止，全部 observation 与 fact 都没有；且 `node.OperationObservation` 连 EntryID 都没有。
+- 对应 W2-runbook。
 
 ### R7 Scheduling 从不提交 Entry 终态 —— 高
 
 - 唯一的 transition 产出点只做 Pending→Skipped
+- 对应 W3-runbook。
 
 ### R8 `UnpublishedFlowFragment.Saved*` 三字段 —— 中
 
 - 未发布资产上的正式身份，全仓无读无写，与 `SamplingPublicationResult` 重复
 - 现有守卫因精确字符串比较（`"VersionNumber"` vs `SavedVersionNumber`）抓不到
+- 对应 W4-runbook。
 
-### R9 Phase 6「Snapshot/Evidence 新编码」—— 刻意未做，需要 Host 迁移
+### R9 Phase 6 摘要标记已改，wire tag 仍需 Host 迁移 —— 高
 
-计划第 6 行的验收是「全仓术语清理、Snapshot/Evidence **新编码**、文档」，门槛「无旧业务
-API/schema/**digest**」。术语清理完成，**编码未动**——这是决策，不是遗漏，记在这里免得被
-当成后者。
+计划第 6 行的验收是「全仓术语清理、Snapshot/Evidence **新编码**、文档」。
+术语清理完成，`5ecfde2` 已经重新编码了 cancel / abort / reorder 三个摘要
+并引入三个新 tag，存量幂等记录随之失效且未记录。实际是「两个保留、三个已改」。
 
-两个字符串直接进 sha256，是持久化格式而不是 Go 名字：
+两个 wire tag 字符串直接进 sha256，是持久化格式而不是 Go 名字：
 
 | 字节 | 位置 | 谁依赖它 |
 |---|---|---|
@@ -205,7 +217,31 @@ API/schema/**digest**」。术语清理完成，**编码未动**——这是决�
 要完成这一行，需要的是一次**独立的存储迁移**：Host 侧重算全部已存 digest，或实现双读
 （旧 tag 与新 tag 都接受）过渡一个版本。它不该作为一次改名的副产品滑进去。
 
+对应 W5-runbook。
+
+### R10 畸形 fence 从两个公共边界逃逸时没有 code —— 中，已修复
+
+- `WorkerFence.Validate()` 返回裸 `errors.New`。`entry_executor.go:121-122` 与
+  `ports.go:249-252` 的注释都声称它返回已分类的 fault，并据此论证「所以这里不要包一层」——
+  两条注释的前提都不成立。后者还亲自写明了后果：hosts 只能回落到 blanket INTERNAL。
+- 没有测试能看见：两份 fence conformance 只断言 `CodeWorkerFenceStale`（Host 产的**另一个**
+  错误），`state_matrix_test.go:113` 只断言有错/无错。
+- 已在 `1048c60` 修复：`Validate()` 在源头返回 `EXECUTION_WORKER_FENCE_INVALID`
+  （`INVALID_ARGUMENT`），两个消费点零改动，两条注释随之成为真话。该 code 与
+  `EXECUTION_WORKER_FENCE_STALE` 是两回事——一个说 fence 畸形，一个说合法 fence 已失去权限，
+  补救动作不同。
+- 对应 [W1-runbook](parallel-remediation/W1-execution-authorization.md)。
+
+### R11 文档链接指向已不存在的 .go 文件 —— 中
+
+- `refactor/execution-instance` 重命名提交（`ade72b2` → `813a545`）改了 182 条 `.go` 文件名，但指向它们的 markdown 链接未更新。
+- 182 条断链分布在 10 个文档中，覆盖 `application/scheduling/` 和 `domain/execution/` 的 run→instance 改名。
+- 已修复并建立守卫 `TestEveryDocLinkToSourceResolves`，未来重命名会立即报红。
+- 对应 W6-runbook。
+
 ---
+
+
 
 ## 四、需要裁决
 

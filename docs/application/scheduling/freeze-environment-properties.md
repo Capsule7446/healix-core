@@ -47,7 +47,7 @@ sequenceDiagram
 ## 源码与测试
 
 - [`domain/automation/assets.go`](../../../domain/automation/assets.go)：Environment 与 `EnvironmentVariables` 规则。
-- [`domain/execution/run_snapshot.go`](../../../domain/execution/run_snapshot.go)：不可变环境快照。
-- [`application/scheduling/create_run_builder.go`](../../../application/scheduling/create_run_builder.go)：创建 Run 时组装输入。
+- [`domain/execution/instance_snapshot.go`](../../../domain/execution/instance_snapshot.go)：不可变环境快照。
+- [`application/scheduling/create_instance_builder.go`](../../../application/scheduling/create_instance_builder.go)：创建 Run 时组装输入。
 - [`domain/automation/lifecycle_test.go`](../../../domain/automation/lifecycle_test.go)：普通属性与 Base URL 规则。
-- [`domain/execution/run_snapshot_corrections_test.go`](../../../domain/execution/run_snapshot_corrections_test.go)：快照复制和环境语义。
+- [`domain/execution/instance_snapshot_corrections_test.go`](../../../domain/execution/instance_snapshot_corrections_test.go)：快照复制和环境语义。
