@@ -212,17 +212,17 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 func validateCommitInstanceBinding(instanceID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
 	for _, observation := range commit.FinalValidations {
 		if observation.InstanceID != instanceID {
-			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation observation instance %q does not match worker fence instance %q", observation.InstanceID, instanceID))
 		}
 	}
 	for _, group := range commit.FinalValidationGroups {
 		if group.InstanceID != instanceID {
-			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation group run %q does not match worker fence run %q", group.InstanceID, instanceID))
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation group instance %q does not match worker fence instance %q", group.InstanceID, instanceID))
 		}
 	}
 	for _, observation := range commit.HealObservations {
 		if observation.InstanceID != instanceID {
-			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.InstanceID, instanceID))
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("heal observation instance %q does not match worker fence instance %q", observation.InstanceID, instanceID))
 		}
 	}
 	return nil

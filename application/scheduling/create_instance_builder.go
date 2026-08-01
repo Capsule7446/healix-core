@@ -375,7 +375,7 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 		}
 	}()
 	if command.InstanceID.Validate() != nil {
-		return errors.New("run id is required and must be normalized")
+		return errors.New("instance id is required and must be normalized")
 	}
 	for name, value := range map[string]string{"command id": command.CommandID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {
 		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {

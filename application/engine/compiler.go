@@ -227,7 +227,7 @@ func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, sc
 	}
 	dependency, ok := c.versions[versionID]
 	if !ok {
-		return nil, fmt.Errorf("workflow version %s is missing from the run snapshot", versionID)
+		return nil, fmt.Errorf("workflow version %s is missing from the instance snapshot", versionID)
 	}
 	workflowRuntimeID := "workflow|" + invocationPath
 	c.metadata[workflowRuntimeID] = StepMetadata{FlowFragmentStepID: versionID, DisplayName: dependency.DisplayName,
@@ -442,7 +442,7 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 	identity := nodeDependencyIdentity(nodeID, versionID)
 	dependency, ok := c.nodes[identity]
 	if !ok {
-		return fingerprint.ElementTargetSpec{}, fmt.Errorf("node %s version %s is missing from the run snapshot", nodeID, versionID)
+		return fingerprint.ElementTargetSpec{}, fmt.Errorf("node %s version %s is missing from the instance snapshot", nodeID, versionID)
 	}
 	if existing, ok := c.programSpecs[versionID]; ok {
 		mapped := c.runtimeNodes[versionID]

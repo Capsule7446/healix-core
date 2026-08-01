@@ -139,7 +139,7 @@ func TestStepTransitionServiceRejectsCrossInstanceFactsBeforeCommit(t *testing.T
 			if !ok || strings.Contains(descriptor.Message(), "other-run") {
 				t.Fatalf("public message = %#v (ok=%v), must not carry the run id", descriptor, ok)
 			}
-			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "does not match worker fence run") {
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), "does not match worker fence instance") {
 				t.Fatalf("private cause = %v, want it to retain the detail", cause)
 			}
 		})

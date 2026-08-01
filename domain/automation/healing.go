@@ -441,14 +441,14 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 
 func (contribution ContributingHealFact) validate() error {
 	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.InstanceID) == "" || strings.TrimSpace(contribution.EntryID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
-		return fmt.Errorf("heal contribution requires fact, commit, run, execution, step, and sequence identity")
+		return fmt.Errorf("heal contribution requires fact, commit, instance, entry, step, and sequence identity")
 	}
 	return nil
 }
 
 func (observation HealObservation) validate() error {
 	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.InstanceID) == "" || strings.TrimSpace(observation.EntryID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
-		return fmt.Errorf("heal observation requires fact, commit, run, execution, step, sequence, node, and base version identity")
+		return fmt.Errorf("heal observation requires fact, commit, instance, entry, step, sequence, node, and base version identity")
 	}
 	if observation.Outcome != HealSucceeded && observation.Outcome != HealOriginalRecovered && observation.Outcome != HealFailed {
 		return fmt.Errorf("unsupported heal outcome %q", observation.Outcome)

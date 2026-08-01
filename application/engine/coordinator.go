@@ -122,7 +122,7 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result E
 
 func validateConfig(program node.Program, cfg Config) error {
 	if cfg.InstanceID.Validate() != nil {
-		return runtimeConfigurationInvalidError(errors.New("run ID is required"))
+		return runtimeConfigurationInvalidError(errors.New("instance ID is required"))
 	}
 	if cfg.Facts != nil && cfg.ClaimToken == "" {
 		return runtimeConfigurationInvalidError(errors.New("claim token is required when execution facts are enabled"))

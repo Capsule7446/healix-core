@@ -15,6 +15,9 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// A digest domain-separation tag, not a Go name. Every idempotency record
+// stored so far was hashed with these exact bytes, so the terminology rename
+// must not touch them.
 const createInstanceRequestDigestV1 = "create-run-request-v1"
 
 func CreateInstanceRequestDigest(owned CreateInstanceCommand) (string, error) {
