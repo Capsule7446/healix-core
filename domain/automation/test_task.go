@@ -284,6 +284,9 @@ func validateReferenceBindings(parent, child []ParameterDefinition, bindings map
 			return fmt.Errorf("parameter %q parent reference type mismatch", definition.Name)
 		}
 	}
+	// Sorted, not map order: the automation twin of the execution binding walk.
+	// Two unknown bindings used to name whichever one iteration reached first.
+	unknown := make([]string, 0, len(bindings))
 	for name := range bindings {
 		found := false
 		for _, definition := range child {
@@ -293,8 +296,12 @@ func validateReferenceBindings(parent, child []ParameterDefinition, bindings map
 			}
 		}
 		if !found {
-			return fmt.Errorf("parameter %q is unknown", name)
+			unknown = append(unknown, name)
 		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return fmt.Errorf("parameter %q is unknown", unknown[0])
 	}
 	return nil
 }

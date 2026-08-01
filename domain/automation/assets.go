@@ -39,11 +39,19 @@ func (v EnvironmentVariables) Clone() EnvironmentVariables {
 // this failure into its own violation, so the variable name never reaches
 // public text.
 func (v EnvironmentVariables) Validate() error {
-	for name, value := range v {
+	// Sorted, not map order: two bad variables used to report whichever one Go
+	// visited first. Environment.Validate folds this into one fixed violation, so
+	// the public contract never moved, but the private cause a host logs did.
+	names := make([]string, 0, len(v))
+	for name := range v {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
 		if err := parameter.ValidateName(name); err != nil {
 			return fmt.Errorf("environment variable name: %w", err)
 		}
-		if err := value.Validate(); err != nil {
+		if err := v[name].Validate(); err != nil {
 			return fmt.Errorf("environment variable: %w", err)
 		}
 	}

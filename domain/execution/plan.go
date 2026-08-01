@@ -167,8 +167,15 @@ func Seal(draft PlanSnapshot) (Plan, error) {
 		return Plan{}, err
 	}
 	canonical := cloneDraft(draft)
+	// The entry identity is the tie-break, so the canonical order does not depend
+	// on Validate having already rejected duplicate sequence numbers. It has, but
+	// an ordering that is only total because of a check made somewhere else is
+	// one relaxed constraint away from being unstable.
 	sort.Slice(canonical.Entries, func(i, j int) bool {
-		return canonical.Entries[i].SequenceNumber < canonical.Entries[j].SequenceNumber
+		if canonical.Entries[i].SequenceNumber != canonical.Entries[j].SequenceNumber {
+			return canonical.Entries[i].SequenceNumber < canonical.Entries[j].SequenceNumber
+		}
+		return canonical.Entries[i].ID.String() < canonical.Entries[j].ID.String()
 	})
 	return Plan{draft: canonical, seal: sealedPlanToken}, nil
 }
