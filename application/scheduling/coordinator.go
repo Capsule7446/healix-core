@@ -138,7 +138,7 @@ func (c Coordinator) ProcessNext(ctx context.Context, workerID string, occurredA
 		// DecideAdvance already returns EXECUTION_ENTRY_STATES_INVALID.
 		return true, err
 	}
-	if decision.NextExecutionID.Validate() != nil && len(decision.Transitions) == 0 && decision.FinalStatus == nil {
+	if decision.NextEntryID.Validate() != nil && len(decision.Transitions) == 0 && decision.FinalStatus == nil {
 		return true, nil
 	}
 	applied, err := c.writer.ApplyDecision(ctx, claim, decision, occurredAt)

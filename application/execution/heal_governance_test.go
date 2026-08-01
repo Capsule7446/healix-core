@@ -13,7 +13,7 @@ import (
 
 func healGovernancePlan(instanceID string, sequence uint64, band evidence.DecisionBand, streak domainautomation.HealStreak) HealGovernancePlan {
 	observation := evidence.HealObservation{
-		ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), ExecutionID: mustEntryID("execution-" + instanceID), StepExecutionID: mustStepExecutionID("step-" + instanceID),
+		ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), EntryID: mustEntryID("execution-" + instanceID), StepExecutionID: mustStepExecutionID("step-" + instanceID),
 		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 		DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 	}
@@ -136,7 +136,7 @@ func TestDefaultHealGovernancePlannerResetIsScopedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reset := evidence.HealCandidateReset{ExecutionID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
+	reset := evidence.HealCandidateReset{EntryID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
 	plan := HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{Key: first.Snapshot.Key, CurrentNodeVersionID: "base", Revision: 2, Streak: decision.NextStreak},
 		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", InstanceID: mustInstanceID("run-2"), Sequence: 2, Reset: &reset},
@@ -246,7 +246,7 @@ func TestDefaultHealGovernancePlannerRejectsStreakOutsideGovernanceKey(t *testin
 		t.Run(field, func(t *testing.T) {
 			plan := healGovernancePlan("run-2", 2, evidence.DecisionApplied, domainautomation.HealStreak{
 				ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: domainautomation.HealDecisionBandApplied,
-				Contributions: []domainautomation.ContributingHealFact{{FactID: "fact-run-1", CommitID: "commit-run-1", InstanceID: "run-1", ExecutionID: "execution-run-1", StepExecutionID: "step-run-1", Sequence: 1}},
+				Contributions: []domainautomation.ContributingHealFact{{FactID: "fact-run-1", CommitID: "commit-run-1", InstanceID: "run-1", EntryID: "execution-run-1", StepExecutionID: "step-run-1", Sequence: 1}},
 				LastSequence:  1, Observing: true, Disposition: domainautomation.HealStreakObserving,
 			})
 			if field == "node" {

@@ -28,22 +28,22 @@ const (
 )
 
 type EntryState struct {
-	ExecutionID execution.EntryID
-	Status      execution.ExecutionStatus
-	SkipCause   SkipCause
+	EntryID   execution.EntryID
+	Status    execution.EntryStatus
+	SkipCause SkipCause
 }
 
 type ExecutionTransition struct {
-	ExecutionID execution.EntryID
-	From        execution.ExecutionStatus
-	To          execution.ExecutionStatus
-	Cause       SkipCause
+	EntryID execution.EntryID
+	From    execution.EntryStatus
+	To      execution.EntryStatus
+	Cause   SkipCause
 }
 
 type Decision struct {
-	NextExecutionID execution.EntryID
-	Transitions     []ExecutionTransition
-	FinalStatus     *execution.InstanceStatus
+	NextEntryID execution.EntryID
+	Transitions []ExecutionTransition
+	FinalStatus *execution.InstanceStatus
 }
 
 // DecideAdvance makes a serial scheduling decision using the run snapshot as the
@@ -60,10 +60,10 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 
 	byID := make(map[execution.EntryID]EntryState, len(states))
 	for _, state := range states {
-		if _, exists := byID[state.ExecutionID]; exists {
+		if _, exists := byID[state.EntryID]; exists {
 			return Decision{}, invalidEntryStatesError()
 		}
-		byID[state.ExecutionID] = state
+		byID[state.EntryID] = state
 	}
 	ordered := make([]EntryState, len(entries))
 	for i, entry := range entries {
@@ -88,11 +88,11 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 	failed := false
 	for i, state := range ordered {
 		switch state.Status {
-		case execution.ExecutionRunning:
+		case execution.EntryRunning:
 			return Decision{}, nil
-		case execution.ExecutionPending:
-			return Decision{NextExecutionID: entries[i].ID}, nil
-		case execution.ExecutionFailed:
+		case execution.EntryPending:
+			return Decision{NextEntryID: entries[i].ID}, nil
+		case execution.EntryFailed:
 			failed = true
 		}
 	}
@@ -113,7 +113,7 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 		if !isKnownStatus(status) {
 			return -1, "", "", invalidEntryStatesError()
 		}
-		if status == execution.ExecutionSkipped {
+		if status == execution.EntrySkipped {
 			if state.SkipCause == "" {
 				return -1, "", "", invalidEntryStatesError()
 			}
@@ -122,10 +122,10 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 		}
 
 		if stopIndex >= 0 {
-			if status == execution.ExecutionPending {
+			if status == execution.EntryPending {
 				continue
 			}
-			if status != execution.ExecutionSkipped {
+			if status != execution.EntrySkipped {
 				return -1, "", "", invalidEntryStatesError()
 			}
 			if state.SkipCause != expectedCause {
@@ -133,14 +133,14 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 			}
 			continue
 		}
-		if status == execution.ExecutionSkipped {
+		if status == execution.EntrySkipped {
 			return -1, "", "", invalidEntryStatesError()
 		}
-		if status == execution.ExecutionPending {
+		if status == execution.EntryPending {
 			frontierSeen = true
 			continue
 		}
-		if status == execution.ExecutionRunning {
+		if status == execution.EntryRunning {
 			if frontierSeen {
 				return -1, "", "", invalidEntryStatesError()
 			}
@@ -158,29 +158,29 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 	return stopIndex, expectedCause, finalStatus, nil
 }
 
-func stopFor(status execution.ExecutionStatus, policy execution.FailurePolicy) (SkipCause, execution.InstanceStatus) {
+func stopFor(status execution.EntryStatus, policy execution.FailurePolicy) (SkipCause, execution.InstanceStatus) {
 	switch status {
-	case execution.ExecutionFailed:
+	case execution.EntryFailed:
 		if policy == execution.FailurePolicyStopOnFailure {
 			return SkipCausePriorFailure, execution.Failed
 		}
-	case execution.ExecutionCanceled:
+	case execution.EntryCanceled:
 		return SkipCausePriorCancellation, execution.Canceled
-	case execution.ExecutionAborted:
+	case execution.EntryAborted:
 		return SkipCausePriorAbort, execution.Aborted
 	}
 	return "", ""
 }
 
-func isKnownStatus(status execution.ExecutionStatus) bool {
-	return status == execution.ExecutionPending || status == execution.ExecutionRunning || execution.IsTerminalExecutionStatus(status)
+func isKnownStatus(status execution.EntryStatus) bool {
+	return status == execution.EntryPending || status == execution.EntryRunning || execution.IsTerminalEntryStatus(status)
 }
 
 func stopAfter(entries []execution.Entry, states []EntryState, index int, cause SkipCause, status execution.InstanceStatus) Decision {
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {
-		if states[i].Status == execution.ExecutionPending {
-			transitions = append(transitions, ExecutionTransition{ExecutionID: entries[i].ID, From: execution.ExecutionPending, To: execution.ExecutionSkipped, Cause: cause})
+		if states[i].Status == execution.EntryPending {
+			transitions = append(transitions, ExecutionTransition{EntryID: entries[i].ID, From: execution.EntryPending, To: execution.EntrySkipped, Cause: cause})
 		}
 	}
 	return Decision{Transitions: transitions, FinalStatus: &status}

@@ -28,7 +28,7 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	}
 	metadataID := ""
 	for id, metadata := range entries[0].Metadata {
-		if metadata.WorkflowStepID == "click" {
+		if metadata.FlowFragmentStepID == "click" {
 			metadataID = id
 			break
 		}
@@ -36,7 +36,7 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	if metadataID == "" {
 		t.Fatal("compiled metadata is empty")
 	}
-	entries[0].ExecutionID = mustEntryID("mutated")
+	entries[0].EntryID = mustEntryID("mutated")
 	entries[0].Metadata[metadataID] = StepMetadata{DisplayName: "mutated"}
 	entries[0].RuntimeNodes[compilerNodeV1] = RuntimeNodeIdentity{ElementTargetID: "mutated"}
 	entries = append(entries, CompiledEntry{})
@@ -45,8 +45,8 @@ func TestCompiledRunAccessorsReturnIndependentEntries(t *testing.T) {
 	if !ok {
 		t.Fatal("execution-entry is missing after caller mutation")
 	}
-	if again.ExecutionID != mustEntryID("execution-entry") {
-		t.Fatalf("execution id = %q, want execution-entry", again.ExecutionID)
+	if again.EntryID != mustEntryID("execution-entry") {
+		t.Fatalf("execution id = %q, want execution-entry", again.EntryID)
 	}
 	if got := again.Metadata[metadataID]; got.DisplayName != "Click" {
 		t.Fatalf("metadata aliases caller-owned map: %#v", got)
@@ -85,8 +85,8 @@ func TestCompiledRunEntryRejectsCorruptedIndexedIdentity(t *testing.T) {
 		{name: "sealed run", mutate: func(entry *CompiledEntry) { entry.identity.instanceID = mustInstanceID("other") }},
 		{name: "public digest", mutate: func(entry *CompiledEntry) { entry.SnapshotDigest = "other" }},
 		{name: "sealed digest", mutate: func(entry *CompiledEntry) { entry.identity.snapshotDigest = "other" }},
-		{name: "public execution", mutate: func(entry *CompiledEntry) { entry.ExecutionID = mustEntryID("other") }},
-		{name: "sealed execution", mutate: func(entry *CompiledEntry) { entry.identity.executionID = mustEntryID("other") }},
+		{name: "public execution", mutate: func(entry *CompiledEntry) { entry.EntryID = mustEntryID("other") }},
+		{name: "sealed execution", mutate: func(entry *CompiledEntry) { entry.identity.entryID = mustEntryID("other") }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

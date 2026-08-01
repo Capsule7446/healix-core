@@ -114,14 +114,14 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 	}{
 		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.InstanceID = mustInstanceID("wrong-run") }},
 		{name: "config snapshot", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.SnapshotDigest = "wrong-digest" }},
-		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.ExecutionID = mustEntryID("wrong-execution") }},
+		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.EntryID = mustEntryID("wrong-execution") }},
 		{name: "missing claim token without facts", mutate: func(_ *CompiledEntry, cfg *Config) {
 			cfg.ClaimToken = ""
 			cfg.Facts = nil
 		}},
 		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.InstanceID = mustInstanceID("wrong-run") }},
 		{name: "entry snapshot", mutate: func(entry *CompiledEntry, _ *Config) { entry.SnapshotDigest = "wrong-digest" }},
-		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.ExecutionID = mustEntryID("wrong-execution") }},
+		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.EntryID = mustEntryID("wrong-execution") }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 			cfg := Config{
 				InstanceID:        entry.InstanceID,
 				SnapshotDigest:    entry.SnapshotDigest,
-				ExecutionID:       entry.ExecutionID,
+				EntryID:           entry.EntryID,
 				ClaimToken:        "claim",
 				AuthorityVerifier: probe,
 				Driver:            executionIdentityProbeDriver{probe: probe},
@@ -184,7 +184,7 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 			probe := &executionIdentityProbe{}
 			entryCopy := entry
 			entryCopy.program.Root = &executionIdentityProbeNode{probe: probe}
-			cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+			cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID,
 				ClaimToken: "claim", AuthorityVerifier: test.verifier, Driver: executionIdentityProbeDriver{probe: probe},
 				Recorder: executionIdentityProbeRecorder{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 			result, err := RunProgram(context.Background(), entryCopy, cfg)
@@ -217,12 +217,12 @@ func TestRunProgramForwardsCompleteExecutionAuthority(t *testing.T) {
 	}
 	probe := &executionIdentityProbe{}
 	entry.program.Root = &executionIdentityProbeNode{probe: probe}
-	cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+	cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID,
 		ClaimToken: "claim", AuthorityVerifier: probe, Driver: executionIdentityProbeDriver{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 	if _, err := RunProgram(context.Background(), entry, cfg); err != nil {
 		t.Fatal(err)
 	}
-	want := ExecutionAuthority{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim"}
+	want := ExecutionAuthority{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID, ClaimToken: "claim"}
 	if probe.authorityCalls != 1 || probe.authority != want {
 		t.Fatalf("authority calls = %d, authority = %+v, want %+v", probe.authorityCalls, probe.authority, want)
 	}

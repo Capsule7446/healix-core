@@ -45,7 +45,7 @@ func ExecutionAuthorityVerifierRequiredError() error {
 type ExecutionAuthority struct {
 	InstanceID     execution.InstanceID
 	SnapshotDigest string
-	ExecutionID    execution.EntryID
+	EntryID        execution.EntryID
 	ClaimToken     string
 }
 
@@ -55,11 +55,11 @@ type ExecutionAuthorityVerifier interface {
 
 // Config 打包了一次 Program 执行所需的领域端口与运行变量。
 type Config struct {
-	// InstanceID、SnapshotDigest、ExecutionID 与 ClaimToken 必须来自本次已领取
+	// InstanceID、SnapshotDigest、EntryID 与 ClaimToken 必须来自本次已领取
 	// 执行权的权威身份，不能从待执行的 CompiledEntry 反向填充。
 	InstanceID        execution.InstanceID
 	SnapshotDigest    string
-	ExecutionID       execution.EntryID
+	EntryID           execution.EntryID
 	ClaimToken        string
 	AuthorityVerifier ExecutionAuthorityVerifier
 	Driver            node.Driver
@@ -83,9 +83,9 @@ type RecordingOutcome string
 type TimelineOutcome string
 
 const (
-	ExecutionSucceeded  ExecutionOutcome = "SUCCEEDED"
-	ExecutionFailed     ExecutionOutcome = "FAILED"
-	ExecutionCanceled   ExecutionOutcome = "CANCELED"
+	EntrySucceeded      ExecutionOutcome = "SUCCEEDED"
+	EntryFailed         ExecutionOutcome = "FAILED"
+	EntryCanceled       ExecutionOutcome = "CANCELED"
 	ExecutionNotStarted ExecutionOutcome = "NOT_STARTED"
 
 	RecordingDisabled    RecordingOutcome = "DISABLED"
@@ -112,10 +112,10 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResu
 	if entry.identity.instanceID.Validate() != nil ||
 		entry.InstanceID != entry.identity.instanceID ||
 		entry.SnapshotDigest != entry.identity.snapshotDigest ||
-		entry.ExecutionID != entry.identity.executionID ||
+		entry.EntryID != entry.identity.entryID ||
 		cfg.InstanceID != entry.identity.instanceID ||
 		cfg.SnapshotDigest != entry.identity.snapshotDigest ||
-		cfg.ExecutionID != entry.identity.executionID ||
+		cfg.EntryID != entry.identity.entryID ||
 		cfg.ClaimToken == "" {
 		return result, ExecutionIdentityMismatchError()
 	}
@@ -124,7 +124,7 @@ func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResu
 	}
 	authority := ExecutionAuthority{
 		InstanceID: cfg.InstanceID, SnapshotDigest: cfg.SnapshotDigest,
-		ExecutionID: cfg.ExecutionID, ClaimToken: cfg.ClaimToken,
+		EntryID: cfg.EntryID, ClaimToken: cfg.ClaimToken,
 	}
 	if err := cfg.AuthorityVerifier.VerifyExecutionAuthority(ctx, authority); err != nil {
 		return result, err

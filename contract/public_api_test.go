@@ -108,14 +108,14 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 		t.Fatalf("compiled execution %q is missing", path)
 	}
 	authority := coreengine.ExecutionAuthority{
-		InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim",
+		InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID, ClaimToken: "claim",
 	}
 	runResult, err := coreengine.RunProgram(context.Background(), entry, coreengine.Config{
-		InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+		InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID,
 		ClaimToken: "claim", AuthorityVerifier: consumerAuthorityVerifier{want: authority},
 		Driver: consumerDriver{},
 	})
-	if err != nil || runResult.ExecutionOutcome != coreengine.ExecutionSucceeded {
+	if err != nil || runResult.ExecutionOutcome != coreengine.EntrySucceeded {
 		t.Fatalf("external compile/run contract: result=%+v err=%v", runResult, err)
 	}
 }

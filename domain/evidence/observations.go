@@ -64,7 +64,7 @@ func joinField(prefix, name string) string {
 type HealObservation struct {
 	ID                string
 	InstanceID        execution.InstanceID
-	ExecutionID       execution.EntryID
+	EntryID           execution.EntryID
 	StepExecutionID   execution.StepExecutionID
 	ElementTargetID   string
 	BaseNodeVersionID string
@@ -79,7 +79,7 @@ type HealObservation struct {
 
 func (o HealObservation) Validate() error {
 	var violations []fault.Violation
-	if o.ID == "" || o.InstanceID.Validate() != nil || o.ExecutionID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ElementTargetID == "" || o.BaseNodeVersionID == "" {
+	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ElementTargetID == "" || o.BaseNodeVersionID == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "heal observation identity is required"))
 	}
 	if o.ObservedAt <= 0 {
@@ -213,7 +213,7 @@ type ValidationMemberIdentity struct {
 type ValidationGroupTerminalObservation struct {
 	ID              string
 	InstanceID      execution.InstanceID
-	ExecutionID     execution.EntryID
+	EntryID         execution.EntryID
 	StepExecutionID execution.StepExecutionID
 	GroupID         string
 	TerminalReason  ValidationTerminalReason
@@ -222,11 +222,11 @@ type ValidationGroupTerminalObservation struct {
 	ObservedAt      int64
 }
 
-func NewValidationGroupTerminalObservation(id string, instanceID execution.InstanceID, executionID execution.EntryID, stepExecutionID execution.StepExecutionID, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
+func NewValidationGroupTerminalObservation(id string, instanceID execution.InstanceID, entryID execution.EntryID, stepExecutionID execution.StepExecutionID, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
 	owned := make([]ValidationMemberIdentity, len(expectedMembers))
 	copy(owned, expectedMembers)
 	return ValidationGroupTerminalObservation{
-		ID: id, InstanceID: instanceID, ExecutionID: executionID, StepExecutionID: stepExecutionID,
+		ID: id, InstanceID: instanceID, EntryID: entryID, StepExecutionID: stepExecutionID,
 		GroupID: groupID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
 		expectedMembers: owned, ObservedAt: observedAt,
 	}
@@ -243,7 +243,7 @@ func (o ValidationGroupTerminalObservation) ExpectedMembers() []ValidationMember
 // out of public text.
 func (o ValidationGroupTerminalObservation) Validate() error {
 	var violations []fault.Violation
-	if o.ID == "" || o.InstanceID.Validate() != nil || o.ExecutionID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.GroupID == "" {
+	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.GroupID == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "validation group observation identity is required"))
 	}
 	if o.ObservedAt <= 0 {
@@ -292,7 +292,7 @@ func (o ValidationGroupTerminalObservation) Validate() error {
 type ValidationProgressObservation struct {
 	ID                     string
 	InstanceID             execution.InstanceID
-	ExecutionID            execution.EntryID
+	EntryID                execution.EntryID
 	StepExecutionID        execution.StepExecutionID
 	ValidationStepID       string
 	ElementTargetID        string
@@ -313,7 +313,7 @@ type ValidationProgressObservation struct {
 
 func (o ValidationProgressObservation) Validate() error {
 	return ValidationObservation{
-		ID: o.ID, InstanceID: o.InstanceID, ExecutionID: o.ExecutionID,
+		ID: o.ID, InstanceID: o.InstanceID, EntryID: o.EntryID,
 		StepExecutionID: o.StepExecutionID, ValidationStepID: o.ValidationStepID,
 		ElementTargetID: o.ElementTargetID, ElementTargetVersionID: o.ElementTargetVersionID,
 		GroupID: o.GroupID, BranchID: o.BranchID,
@@ -327,7 +327,7 @@ func (o ValidationProgressObservation) Validate() error {
 type ValidationObservation struct {
 	ID                     string
 	InstanceID             execution.InstanceID
-	ExecutionID            execution.EntryID
+	EntryID                execution.EntryID
 	StepExecutionID        execution.StepExecutionID
 	ValidationStepID       string
 	ElementTargetID        string
@@ -354,7 +354,7 @@ type ValidationObservation struct {
 // whose text could carry that content.
 func (o ValidationObservation) Validate() error {
 	var violations []fault.Violation
-	if o.ID == "" || o.InstanceID.Validate() != nil || o.ExecutionID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ValidationStepID == "" || o.ElementTargetID == "" || o.ElementTargetVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
+	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ValidationStepID == "" || o.ElementTargetID == "" || o.ElementTargetVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "validation observation identity and reason are required"))
 	}
 	if o.ObservedAt <= 0 {

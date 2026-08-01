@@ -85,18 +85,18 @@ func TestRunSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
 
 func TestExecutionStatusDirect(t *testing.T) {
 	for _, tt := range []struct {
-		status   ExecutionStatus
+		status   EntryStatus
 		terminal bool
-	}{{ExecutionPending, false}, {ExecutionRunning, false}, {ExecutionSucceeded, true}, {ExecutionFailed, true}, {ExecutionCanceled, true}, {ExecutionAborted, true}, {ExecutionSkipped, true}, {ExecutionStatus(""), false}} {
-		if got := IsTerminalExecutionStatus(tt.status); got != tt.terminal {
+	}{{EntryPending, false}, {EntryRunning, false}, {EntrySucceeded, true}, {EntryFailed, true}, {EntryCanceled, true}, {EntryAborted, true}, {EntrySkipped, true}, {EntryStatus(""), false}} {
+		if got := IsTerminalEntryStatus(tt.status); got != tt.terminal {
 			t.Errorf("terminal(%q)=%v", tt.status, got)
 		}
 	}
 	for _, tt := range []struct {
 		name     string
-		from, to ExecutionStatus
+		from, to EntryStatus
 		allowed  bool
-	}{{"pending running", ExecutionPending, ExecutionRunning, true}, {"pending failed", ExecutionPending, ExecutionFailed, true}, {"running succeeded", ExecutionRunning, ExecutionSucceeded, true}, {"terminal cannot move", ExecutionSucceeded, ExecutionRunning, false}, {"same", ExecutionRunning, ExecutionRunning, false}, {"unknown", ExecutionStatus(""), ExecutionRunning, false}} {
+	}{{"pending running", EntryPending, EntryRunning, true}, {"pending failed", EntryPending, EntryFailed, true}, {"running succeeded", EntryRunning, EntrySucceeded, true}, {"terminal cannot move", EntrySucceeded, EntryRunning, false}, {"same", EntryRunning, EntryRunning, false}, {"unknown", EntryStatus(""), EntryRunning, false}} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.from.CanTransitionTo(tt.to)
 			if (err == nil) != tt.allowed {

@@ -358,8 +358,8 @@ func TestExecutionEntryIdentityIsNeverSpelledAsAString(t *testing.T) {
 				}
 				for _, field := range structType.Fields.List {
 					for _, name := range field.Names {
-						if name.Name == "ExecutionID" {
-							t.Errorf("%s.ExecutionID at %s:%d revives the pre-adoption spelling of an entry identity; the entry identity is Entry.ID typed EntryID",
+						if name.Name == "EntryID" {
+							t.Errorf("%s.EntryID at %s:%d revives the pre-adoption spelling of an entry identity; the entry identity is Entry.ID typed EntryID",
 								typeSpec.Name.Name, filepath.ToSlash(mustRelative(root, path)), fset.Position(field.Pos()).Line)
 						}
 						if typeSpec.Name.Name != "Entry" || name.Name != "ID" {
@@ -408,10 +408,9 @@ func TestExecutionCoordinateFieldsAreNeverSpelledAsStrings(t *testing.T) {
 	mirrorsAutomationRecord := map[string]bool{"HealContributionSnapshot": true}
 	wantType := map[string]string{
 		"InstanceID":      "InstanceID",
-		"ExecutionID":     "EntryID",
-		"NextExecutionID": "EntryID",
+		"EntryID":         "EntryID",
+		"NextEntryID":     "EntryID",
 		"StepExecutionID": "StepExecutionID",
-		"StepExecution":   "StepExecutionID",
 		"Path":            "InvocationPath",
 		"ParentPath":      "InvocationPath",
 	}

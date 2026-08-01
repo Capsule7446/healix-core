@@ -491,15 +491,15 @@ func TestAggregateCollectionLimitsRejectEmptyEntriesBeforeSealClone(t *testing.T
 }
 
 func TestExecutionStatusTransitionMatrix(t *testing.T) {
-	statuses := []ExecutionStatus{ExecutionPending, ExecutionRunning, ExecutionSucceeded, ExecutionFailed, ExecutionCanceled, ExecutionAborted}
-	allowed := map[[2]ExecutionStatus]bool{
-		{ExecutionPending, ExecutionRunning}: true, {ExecutionPending, ExecutionFailed}: true, {ExecutionPending, ExecutionCanceled}: true,
-		{ExecutionRunning, ExecutionSucceeded}: true, {ExecutionRunning, ExecutionFailed}: true, {ExecutionRunning, ExecutionCanceled}: true, {ExecutionRunning, ExecutionAborted}: true,
+	statuses := []EntryStatus{EntryPending, EntryRunning, EntrySucceeded, EntryFailed, EntryCanceled, EntryAborted}
+	allowed := map[[2]EntryStatus]bool{
+		{EntryPending, EntryRunning}: true, {EntryPending, EntryFailed}: true, {EntryPending, EntryCanceled}: true,
+		{EntryRunning, EntrySucceeded}: true, {EntryRunning, EntryFailed}: true, {EntryRunning, EntryCanceled}: true, {EntryRunning, EntryAborted}: true,
 	}
 	for _, from := range statuses {
 		for _, to := range statuses {
-			err := ValidateExecutionStatusTransition(from, to)
-			if (err == nil) != allowed[[2]ExecutionStatus{from, to}] {
+			err := ValidateEntryStatusTransition(from, to)
+			if (err == nil) != allowed[[2]EntryStatus{from, to}] {
 				t.Fatalf("transition %s -> %s error = %v", from, to, err)
 			}
 		}
@@ -509,19 +509,19 @@ func TestExecutionStatusTransitionMatrix(t *testing.T) {
 func TestExecutionStatusRejectsUnknownAndTerminalTransitions(t *testing.T) {
 	tests := []struct {
 		name string
-		from ExecutionStatus
-		to   ExecutionStatus
+		from EntryStatus
+		to   EntryStatus
 	}{
-		{"unknown source", ExecutionStatus("UNKNOWN"), ExecutionRunning},
-		{"unknown target", ExecutionRunning, ExecutionStatus("UNKNOWN")},
-		{"succeeded is terminal", ExecutionSucceeded, ExecutionRunning},
-		{"failed is terminal", ExecutionFailed, ExecutionRunning},
-		{"canceled is terminal", ExecutionCanceled, ExecutionRunning},
-		{"aborted is terminal", ExecutionAborted, ExecutionRunning},
+		{"unknown source", EntryStatus("UNKNOWN"), EntryRunning},
+		{"unknown target", EntryRunning, EntryStatus("UNKNOWN")},
+		{"succeeded is terminal", EntrySucceeded, EntryRunning},
+		{"failed is terminal", EntryFailed, EntryRunning},
+		{"canceled is terminal", EntryCanceled, EntryRunning},
+		{"aborted is terminal", EntryAborted, EntryRunning},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := ValidateExecutionStatusTransition(test.from, test.to); !fault.IsCode(err, CodeStatusTransitionInvalid) {
+			if err := ValidateEntryStatusTransition(test.from, test.to); !fault.IsCode(err, CodeStatusTransitionInvalid) {
 				t.Fatalf("transition %s -> %s error = %v, want ErrInvalidExecutionStatusTransition", test.from, test.to, err)
 			}
 		})

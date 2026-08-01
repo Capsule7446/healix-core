@@ -35,11 +35,11 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		// is well formed by construction; a failure here means concreteRootPath
 		// itself is wrong, not that the caller supplied something bad.
 		spelledEntry := concreteRootPath(command.InstanceID.String(), item.ID)
-		executionID, err := execution.NewEntryID(spelledEntry)
+		entryID, err := execution.NewEntryID(spelledEntry)
 		if err != nil {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(err)
 		}
-		resolvedRoot, exists := invocationByPath(resolved.Invocations, execution.RootInvocationPath(executionID))
+		resolvedRoot, exists := invocationByPath(resolved.Invocations, execution.RootInvocationPath(entryID))
 		if !exists || resolvedRoot.ParentPath != (execution.InvocationPath{}) {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
@@ -55,7 +55,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		if len(resolvedRoot.Values) > 0 {
 			parameterSnapshot = parameterSnapshotInput{IsPresent: true, ID: spelledEntry + "/scope", SchemaVersion: 1, Values: cloneParameterValues(resolvedRoot.Values)}
 		}
-		entries[index] = executionEntryInput{ExecutionID: executionID, TestTaskItemID: item.ID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: resolvedWorkflowVersion(item, resolved.Plan), ParameterSnapshot: parameterSnapshot}
+		entries[index] = executionEntryInput{EntryID: entryID, TestTaskItemID: item.ID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: resolvedWorkflowVersion(item, resolved.Plan), ParameterSnapshot: parameterSnapshot}
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: item.ID, TestTaskVersionID: item.TestTaskVersionID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: entries[index].WorkflowVersionID}
 	}
 	if len(command.Entries) != len(entries) {

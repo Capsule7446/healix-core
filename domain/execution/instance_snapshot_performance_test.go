@@ -69,9 +69,9 @@ func TestBuildSnapshotValidationIndexesIncludesEveryEntry(t *testing.T) {
 	input.Plan.Entries = make([]Entry, entryCount)
 	for index := 0; index < entryCount; index++ {
 		itemID := fmt.Sprintf("item-%04d", index)
-		executionID := fmt.Sprintf("entry-%04d", index)
+		entryID := fmt.Sprintf("entry-%04d", index)
 		input.ExecutionFlowVersion.Items[index] = ExecutionFlowVersionItemSnapshot{ID: itemID, TestTaskVersionID: input.TestTaskVersionID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}
-		input.Plan.Entries[index] = Entry{ID: mustEntryID(executionID), TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
+		input.Plan.Entries[index] = Entry{ID: mustEntryID(entryID), TestTaskItemID: itemID, SequenceNumber: index + 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: parameters}
 	}
 
 	indexes, err := buildSnapshotValidationIndexes(input.Plan)

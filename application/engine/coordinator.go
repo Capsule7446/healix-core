@@ -147,12 +147,12 @@ func validateConfig(program node.Program, cfg Config) error {
 
 func executionOutcome(err error) ExecutionOutcome {
 	if err == nil {
-		return ExecutionSucceeded
+		return EntrySucceeded
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return ExecutionCanceled
+		return EntryCanceled
 	}
-	return ExecutionFailed
+	return EntryFailed
 }
 
 func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimeline) *node.Runtime {

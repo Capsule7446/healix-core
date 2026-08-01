@@ -7,7 +7,7 @@ import (
 )
 
 func validProgressEvent(phase ProgressPhase) StepProgressEvent {
-	return StepProgressEvent{ID: mustStepExecutionID("step"), ExecutionID: mustEntryID("execution"), WorkflowStepID: "workflow-step", DisplayName: "Step", Kind: "action", Phase: phase, Occurrence: 1, Timestamp: 1}
+	return StepProgressEvent{ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "Step", Kind: "action", Phase: phase, Occurrence: 1, Timestamp: 1}
 }
 
 func TestStepProgressEventAcceptsOnlyRuntimeNonTerminalPhases(t *testing.T) {

@@ -65,7 +65,7 @@ type HealContributionSnapshot struct {
 	FactID          string
 	CommitID        string
 	InstanceID      string
-	ExecutionID     string
+	EntryID         string
 	StepExecutionID string
 	Sequence        uint64
 }
@@ -161,7 +161,7 @@ func validateHealContributionIdentities(contribution domainautomation.Contributi
 		contribution.FactID,
 		contribution.CommitID,
 		contribution.InstanceID,
-		contribution.ExecutionID,
+		contribution.EntryID,
 		contribution.StepExecutionID,
 	} {
 		if err := validateCanonicalHealIdentity(identity); err != nil {
@@ -324,7 +324,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		for _, identity := range []string{
 			observation.ID,
 			observation.InstanceID.String(),
-			observation.ExecutionID.String(),
+			observation.EntryID.String(),
 			observation.StepExecutionID.String(),
 			observation.ElementTargetID,
 			observation.BaseNodeVersionID,
@@ -351,7 +351,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		return domainautomation.HealObservation{
 			FactID: fact.FactID, CommitID: fact.CommitID, InstanceID: fact.InstanceID.String(),
-			ExecutionID: observation.ExecutionID.String(), StepExecutionID: observation.StepExecutionID.String(), Sequence: fact.Sequence,
+			EntryID: observation.EntryID.String(), StepExecutionID: observation.StepExecutionID.String(), Sequence: fact.Sequence,
 			ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 			CandidateHash: observation.CandidateHash, Band: band, Outcome: outcome, BaseIsCurrent: baseIsCurrent,
 		}, nil
@@ -361,7 +361,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		reset := *fact.Reset
 		for _, identity := range []string{
-			reset.ExecutionID.String(),
+			reset.EntryID.String(),
 			reset.StepExecutionID.String(),
 			reset.ElementTargetID,
 			reset.BaseNodeVersionID,
@@ -375,7 +375,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		return domainautomation.HealObservation{
 			FactID: fact.FactID, CommitID: fact.CommitID, InstanceID: fact.InstanceID.String(),
-			ExecutionID: reset.ExecutionID.String(), StepExecutionID: reset.StepExecutionID.String(), Sequence: fact.Sequence,
+			EntryID: reset.EntryID.String(), StepExecutionID: reset.StepExecutionID.String(), Sequence: fact.Sequence,
 			ElementTargetID: reset.ElementTargetID, BaseNodeVersionID: reset.BaseNodeVersionID,
 			Outcome: domainautomation.HealOriginalRecovered, BaseIsCurrent: baseIsCurrent,
 		}, nil

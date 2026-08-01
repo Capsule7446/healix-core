@@ -3,7 +3,7 @@ package evidence
 import "testing"
 
 func TestHealObservationUsesEvidenceOwnedDecisionBand(t *testing.T) {
-	observation := HealObservation{ID: "observation", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ElementTargetID: "node", BaseNodeVersionID: "version", Confidence: 0.8, DecisionBand: DecisionUnknown, ObservedAt: 1}
+	observation := HealObservation{ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ElementTargetID: "node", BaseNodeVersionID: "version", Confidence: 0.8, DecisionBand: DecisionUnknown, ObservedAt: 1}
 	if err := observation.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason(t *
 }
 
 func TestValidationObservationRejectsUnknownReviewStatus(t *testing.T) {
-	observation := ValidationObservation{ID: "validation", InstanceID: mustInstanceID("run"), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "version", AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(), Reason: "final", HealReviewStatus: "unknown", ObservedAt: 1}
+	observation := ValidationObservation{ID: "validation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "version", AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(), Reason: "final", HealReviewStatus: "unknown", ObservedAt: 1}
 	if err := observation.Validate(); err == nil {
 		t.Fatal("expected review status rejection")
 	}

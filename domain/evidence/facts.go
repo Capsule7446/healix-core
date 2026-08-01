@@ -22,12 +22,12 @@ func (p Phase) IsTerminal() bool {
 }
 
 type StepFact struct {
-	ID            string
-	InstanceID    execution.InstanceID
-	ExecutionID   execution.EntryID
-	StepExecution execution.StepExecutionID
-	Phase         Phase
-	ObservedAt    int64
+	ID              string
+	InstanceID      execution.InstanceID
+	EntryID         execution.EntryID
+	StepExecutionID execution.StepExecutionID
+	Phase           Phase
+	ObservedAt      int64
 }
 
 // Validate never echoes the phase. Phase is a closed set, so a non-terminal value
@@ -35,7 +35,7 @@ type StepFact struct {
 // caller can read its own phase back from the fact either way.
 func (f StepFact) Validate() error {
 	var violations []fault.Violation
-	if strings.TrimSpace(f.ID) == "" || f.InstanceID.Validate() != nil || f.ExecutionID.Validate() != nil || f.StepExecution.Validate() != nil {
+	if strings.TrimSpace(f.ID) == "" || f.InstanceID.Validate() != nil || f.EntryID.Validate() != nil || f.StepExecutionID.Validate() != nil {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "step fact identity is required"))
 	}
 	if !f.Phase.IsTerminal() {

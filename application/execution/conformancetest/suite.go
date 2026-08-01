@@ -207,11 +207,11 @@ func commit(id string, revision evidence.StepRevision, instanceID string, band e
 		CommitID:         id,
 		ExpectedRevision: revision,
 		Event: evidence.StepPhaseEvent{
-			ID: mustStepExecutionID("step"), ExecutionID: mustEntryID("execution"), WorkflowStepID: "workflow-step", DisplayName: "step",
+			ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "step",
 			Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 		},
 		HealObservations: []evidence.HealObservation{{
-			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), ExecutionID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},

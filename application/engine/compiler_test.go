@@ -202,7 +202,7 @@ func TestCompilePlanBuildsLockedWorkflowTreeAndBindsChildDefaults(t *testing.T) 
 		t.Fatalf("workflow call = %#v", root.Children[0])
 	}
 	childStepID := runtimeInvocationStepID("15:execution-entry4:call8:child-v1", "click")
-	if got := compiled.Metadata[childStepID]; got.WorkflowStepID != "click" || got.ElementTargetVersionID != compilerNodeV1 {
+	if got := compiled.Metadata[childStepID]; got.FlowFragmentStepID != "click" || got.ElementTargetVersionID != compilerNodeV1 {
 		t.Fatalf("metadata = %#v", got)
 	}
 }
@@ -231,7 +231,7 @@ func TestCompilePlanCreatesDistinctRuntimeIdentitiesForSharedChildInvocations(t 
 	if first.ID() == second.ID() || first.Children[0].ID() == second.Children[0].ID() {
 		t.Fatalf("shared child runtime IDs collided: workflows %q, steps %q", first.ID(), first.Children[0].ID())
 	}
-	if compiled.Metadata[first.Children[0].ID()].WorkflowStepID != "click" || compiled.Metadata[second.Children[0].ID()].WorkflowStepID != "click" {
+	if compiled.Metadata[first.Children[0].ID()].FlowFragmentStepID != "click" || compiled.Metadata[second.Children[0].ID()].FlowFragmentStepID != "click" {
 		t.Fatalf("invocation metadata missing: %#v", compiled.Metadata)
 	}
 }
@@ -348,8 +348,8 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("entries = %d", len(entries))
 	}
-	if entries[0].ExecutionID != mustEntryID("execution-a") || entries[1].ExecutionID != mustEntryID("execution-b") {
-		t.Fatalf("entry declaration order not preserved: %q, %q", entries[0].ExecutionID, entries[1].ExecutionID)
+	if entries[0].EntryID != mustEntryID("execution-a") || entries[1].EntryID != mustEntryID("execution-b") {
+		t.Fatalf("entry declaration order not preserved: %q, %q", entries[0].EntryID, entries[1].EntryID)
 	}
 	a, ok := compiled.Entry(mustEntryID("execution-a"))
 	if !ok {
@@ -363,9 +363,9 @@ func TestCompilePlanKeepsRepeatedEntryOccurrencesIndependent(t *testing.T) {
 		t.Fatal("missing execution unexpectedly found")
 	}
 	lookupCopy := a
-	lookupCopy.ExecutionID = mustEntryID("mutated")
+	lookupCopy.EntryID = mustEntryID("mutated")
 	again, ok := compiled.Entry(mustEntryID("execution-a"))
-	if !ok || again.ExecutionID != mustEntryID("execution-a") {
+	if !ok || again.EntryID != mustEntryID("execution-a") {
 		t.Fatal("lookup exposed mutable index state")
 	}
 	if a.program.Root.ID() == b.program.Root.ID() {

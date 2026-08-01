@@ -57,7 +57,7 @@ func TestCoordinatorFailsClosedOnStaleDecisionResult(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
 	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "winner"}}
 	writer := &recordingDecisionWriter{result: &ApplyDecisionResult{Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "stale"}, Applied: true}}
-	coordinator := NewCoordinator(fakeClaimSource{claim: claim, found: true}, fakeStateReader{states: []EntryState{{ExecutionID: mustEntryID("execution-1"), Status: execution.ExecutionPending}}}, writer)
+	coordinator := NewCoordinator(fakeClaimSource{claim: claim, found: true}, fakeStateReader{states: []EntryState{{EntryID: mustEntryID("execution-1"), Status: execution.EntryPending}}}, writer)
 	_, err := coordinator.ProcessNext(context.Background(), "worker", 10)
 	if !fault.IsCode(err, execution.CodeWorkerFenceStale) || strings.Contains(err.Error(), claim.Fence.InstanceID.String()) || strings.Contains(err.Error(), claim.Fence.ClaimToken) {
 		t.Fatalf("stale result error=%v", err)
@@ -70,7 +70,7 @@ func TestCoordinatorAppliesDecisionUnderClaim(t *testing.T) {
 	released := 0
 	coordinator := NewCoordinator(
 		fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim-token"}}, found: true, released: &released},
-		fakeStateReader{states: []EntryState{{ExecutionID: mustEntryID("execution-1"), Status: execution.ExecutionPending}}},
+		fakeStateReader{states: []EntryState{{EntryID: mustEntryID("execution-1"), Status: execution.EntryPending}}},
 		writer,
 	)
 
@@ -78,7 +78,7 @@ func TestCoordinatorAppliesDecisionUnderClaim(t *testing.T) {
 	if err != nil || !claimed {
 		t.Fatalf("claimed/error = %v/%v", claimed, err)
 	}
-	if len(writer.decisions) != 1 || writer.decisions[0].NextExecutionID != mustEntryID("execution-1") || released != 1 {
+	if len(writer.decisions) != 1 || writer.decisions[0].NextEntryID != mustEntryID("execution-1") || released != 1 {
 		t.Fatalf("decisions/released = %#v/%d", writer.decisions, released)
 	}
 }
@@ -92,7 +92,7 @@ func TestCoordinatorDoesNotWriteWithoutClaimOrAdvance(t *testing.T) {
 		want   bool
 	}{
 		{name: "empty queue", claims: fakeClaimSource{}},
-		{name: "running entry", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: mustEntryID("execution-1"), Status: execution.ExecutionRunning}}}, want: true},
+		{name: "running entry", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{EntryID: mustEntryID("execution-1"), Status: execution.EntryRunning}}}, want: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 		{name: "missing token", claims: fakeClaimSource{claim: Claim{Snapshot: plan}, found: true}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingClaimInvalid},
 		{name: "claim failure", claims: fakeClaimSource{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
 		{name: "state failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
-		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: mustEntryID("execution-1"), Status: execution.ExecutionPending}}}, writer: &recordingDecisionWriter{err: failure}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
+		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{EntryID: mustEntryID("execution-1"), Status: execution.EntryPending}}}, writer: &recordingDecisionWriter{err: failure}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -179,7 +179,7 @@ func TestCoordinatorReleasesInvalidClaimAndJoinsReleaseFailure(t *testing.T) {
 func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
 	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
-	decisionFailureState := []EntryState{{ExecutionID: mustEntryID("foreign"), Status: execution.ExecutionPending}}
+	decisionFailureState := []EntryState{{EntryID: mustEntryID("foreign"), Status: execution.EntryPending}}
 	releaseFailure := errors.New("release failed")
 
 	t.Run("decision failure still releases", func(t *testing.T) {
@@ -204,7 +204,7 @@ func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
 		released := 0
 		coordinator := NewCoordinator(
 			fakeClaimSource{claim: claim, found: true, releaseErr: releaseFailure, released: &released},
-			fakeStateReader{states: []EntryState{{ExecutionID: mustEntryID("execution-1"), Status: execution.ExecutionRunning}}},
+			fakeStateReader{states: []EntryState{{EntryID: mustEntryID("execution-1"), Status: execution.EntryRunning}}},
 			&recordingDecisionWriter{},
 		)
 		claimed, err := coordinator.ProcessNext(context.Background(), "worker", 10)

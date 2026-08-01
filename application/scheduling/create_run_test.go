@@ -23,10 +23,10 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 	source.InstanceID = command.InstanceID
 	roots := make([]execution.InvocationScopeSnapshot, 0, len(source.Entries)*2)
 	for _, entry := range source.Entries {
-		entry.ExecutionID = mustEntryID(concreteRootPath(command.InstanceID.String(), entry.TestTaskItemID))
+		entry.EntryID = mustEntryID(concreteRootPath(command.InstanceID.String(), entry.TestTaskItemID))
 		roots = append(roots,
-			execution.InvocationScopeSnapshot{Path: execution.RootInvocationPath(entry.ExecutionID), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
-			execution.InvocationScopeSnapshot{Path: mustInvocationPath(entry.ExecutionID.String() + "/10:call-child"), ParentPath: execution.RootInvocationPath(entry.ExecutionID), ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
+			execution.InvocationScopeSnapshot{Path: execution.RootInvocationPath(entry.EntryID), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
+			execution.InvocationScopeSnapshot{Path: mustInvocationPath(entry.EntryID.String() + "/10:call-child"), ParentPath: execution.RootInvocationPath(entry.EntryID), ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
 		)
 	}
 	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}, Invocations: roots}

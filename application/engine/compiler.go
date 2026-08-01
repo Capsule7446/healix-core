@@ -15,7 +15,7 @@ import (
 // StepMetadata 将执行树 ID 映射回拥有证据、截图和面向用户进度信息的
 // 不可变工作区步骤。
 type StepMetadata struct {
-	WorkflowStepID         string
+	FlowFragmentStepID     string
 	DisplayName            string
 	Kind                   string
 	HierarchyPath          string
@@ -34,13 +34,13 @@ type RuntimeNodeIdentity struct {
 type compiledExecutionIdentity struct {
 	instanceID     execution.InstanceID
 	snapshotDigest string
-	executionID    execution.EntryID
+	entryID        execution.EntryID
 }
 
 type CompiledEntry struct {
 	InstanceID        execution.InstanceID
 	SnapshotDigest    string
-	ExecutionID       execution.EntryID
+	EntryID           execution.EntryID
 	TestTaskItemID    string
 	SequenceNumber    int
 	FlowFragmentID    string
@@ -66,25 +66,25 @@ func (r CompiledPlan) Entries() []CompiledEntry {
 	return entries
 }
 
-// Entry returns the compiled entry identified by executionID without exposing
+// Entry returns the compiled entry identified by entryID without exposing
 // the run's private lookup index.
-func (r CompiledPlan) Entry(executionID execution.EntryID) (CompiledEntry, bool) {
-	index, ok := r.byID[executionID]
+func (r CompiledPlan) Entry(entryID execution.EntryID) (CompiledEntry, bool) {
+	index, ok := r.byID[entryID]
 	if !ok || index < 0 || index >= len(r.entries) {
 		return CompiledEntry{}, false
 	}
 	entry := r.entries[index]
-	if !entry.hasIdentity(executionID) {
+	if !entry.hasIdentity(entryID) {
 		return CompiledEntry{}, false
 	}
 	return cloneCompiledEntry(entry), true
 }
 
-func (entry CompiledEntry) hasIdentity(executionID execution.EntryID) bool {
-	return executionID.Validate() == nil &&
+func (entry CompiledEntry) hasIdentity(entryID execution.EntryID) bool {
+	return entryID.Validate() == nil &&
 		entry.InstanceID.Validate() == nil && entry.InstanceID == entry.identity.instanceID &&
 		entry.SnapshotDigest != "" && entry.SnapshotDigest == entry.identity.snapshotDigest &&
-		entry.ExecutionID == executionID && entry.ExecutionID == entry.identity.executionID
+		entry.EntryID == entryID && entry.EntryID == entry.identity.entryID
 }
 
 func cloneCompiledEntry(entry CompiledEntry) CompiledEntry {
@@ -198,11 +198,11 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 		}
 		compiledEntry := CompiledEntry{
 			InstanceID: snapshot.InstanceID(), SnapshotDigest: snapshot.Digest(),
-			ExecutionID: entryID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
+			EntryID: entryID, TestTaskItemID: entry.TestTaskItemID, SequenceNumber: entry.SequenceNumber,
 			FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID,
 			program:  node.Program{Root: root, Specs: compiler.programSpecs},
 			Metadata: compiler.metadata, RuntimeNodes: compiler.runtimeNodes,
-			identity: compiledExecutionIdentity{instanceID: snapshot.InstanceID(), snapshotDigest: snapshot.Digest(), executionID: entryID},
+			identity: compiledExecutionIdentity{instanceID: snapshot.InstanceID(), snapshotDigest: snapshot.Digest(), entryID: entryID},
 		}
 		result.byID[entryID] = len(result.entries)
 		result.entries = append(result.entries, compiledEntry)
@@ -230,7 +230,7 @@ func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, sc
 		return nil, fmt.Errorf("workflow version %s is missing from the run snapshot", versionID)
 	}
 	workflowRuntimeID := "workflow|" + invocationPath
-	c.metadata[workflowRuntimeID] = StepMetadata{WorkflowStepID: versionID, DisplayName: dependency.DisplayName,
+	c.metadata[workflowRuntimeID] = StepMetadata{FlowFragmentStepID: versionID, DisplayName: dependency.DisplayName,
 		Kind: "WORKFLOW", HierarchyPath: dependency.DisplayName}
 	children, err := c.compileSteps(versionID, invocationPath, scopePath, dependency.Steps, dependency.DisplayName, depth)
 	if err != nil {
@@ -248,7 +248,7 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string,
 		}
 		path := hierarchy + " / " + step.DisplayName
 		runtimeID := runtimeInvocationStepID(invocationPath, step.ID)
-		c.metadata[runtimeID] = StepMetadata{WorkflowStepID: step.ID, DisplayName: step.DisplayName,
+		c.metadata[runtimeID] = StepMetadata{FlowFragmentStepID: step.ID, DisplayName: step.DisplayName,
 			Kind: string(step.Kind), HierarchyPath: path, ElementTargetID: step.ElementTargetID,
 			ElementTargetVersionID: step.ElementTargetVersionID, CaptureScreenshot: step.CaptureScreenshot}
 
@@ -325,7 +325,7 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 				return nil, fmt.Errorf("compiled node count exceeds maximum %d", execution.MaxExpandedExecutions)
 			}
 			memberRuntimeID := runtimeInvocationStepID(invocationPath, member.ID)
-			c.metadata[memberRuntimeID] = StepMetadata{WorkflowStepID: member.ID,
+			c.metadata[memberRuntimeID] = StepMetadata{FlowFragmentStepID: member.ID,
 				DisplayName: member.DisplayName, Kind: string(member.Kind),
 				HierarchyPath:   path + " / " + branch.Name + " / " + member.DisplayName,
 				ElementTargetID: member.ElementTargetID, ElementTargetVersionID: member.ElementTargetVersionID}

@@ -175,7 +175,7 @@ func TestCreateRunRetryableErrorExposesSafeStableContract(t *testing.T) {
 
 func TestDecideAdvanceRejectsUnsealedSnapshot(t *testing.T) {
 	decision, err := DecideAdvance(execution.InstanceSnapshot{}, nil)
-	if !fault.IsCode(err, CodeEntryStatesInvalid) || strings.Contains(err.Error(), "unsealed run snapshot") || decision.FinalStatus != nil || decision.NextExecutionID != (execution.EntryID{}) || len(decision.Transitions) != 0 {
+	if !fault.IsCode(err, CodeEntryStatesInvalid) || strings.Contains(err.Error(), "unsealed run snapshot") || decision.FinalStatus != nil || decision.NextEntryID != (execution.EntryID{}) || len(decision.Transitions) != 0 {
 		t.Fatalf("DecideAdvance() = (%#v, %v)", decision, err)
 	}
 }

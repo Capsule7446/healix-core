@@ -15,20 +15,20 @@ const (
 )
 
 type StepProgressEvent struct {
-	ID             execution.StepExecutionID
-	ExecutionID    execution.EntryID
-	WorkflowStepID string
-	DisplayName    string
-	Kind           string
-	Phase          ProgressPhase
-	Occurrence     int
-	HierarchyPath  string
-	Timestamp      int64
+	ID                 execution.StepExecutionID
+	EntryID            execution.EntryID
+	FlowFragmentStepID string
+	DisplayName        string
+	Kind               string
+	Phase              ProgressPhase
+	Occurrence         int
+	HierarchyPath      string
+	Timestamp          int64
 }
 
 func (e StepProgressEvent) Validate() error {
 	var violations []fault.Violation
-	if e.ID.Validate() != nil || e.ExecutionID.Validate() != nil || e.WorkflowStepID == "" || e.DisplayName == "" || e.Kind == "" {
+	if e.ID.Validate() != nil || e.EntryID.Validate() != nil || e.FlowFragmentStepID == "" || e.DisplayName == "" || e.Kind == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "event identity is required"))
 	}
 	switch e.Phase {
@@ -50,14 +50,14 @@ func (e StepProgressEvent) Validate() error {
 
 // StepPhaseEvent is the framework-neutral terminal execution timeline event.
 type StepPhaseEvent struct {
-	ID             execution.StepExecutionID
-	ExecutionID    execution.EntryID
-	WorkflowStepID string
-	DisplayName    string
-	Kind           string
-	Phase          string
-	Occurrence     int
-	HierarchyPath  string
-	Timestamp      int64
-	ErrorMessage   string
+	ID                 execution.StepExecutionID
+	EntryID            execution.EntryID
+	FlowFragmentStepID string
+	DisplayName        string
+	Kind               string
+	Phase              string
+	Occurrence         int
+	HierarchyPath      string
+	Timestamp          int64
+	ErrorMessage       string
 }

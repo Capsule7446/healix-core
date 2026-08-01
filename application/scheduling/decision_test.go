@@ -18,21 +18,21 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 		cause       SkipCause
 		final       execution.InstanceStatus
 	}{
-		{"initial selects A", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionPending, execution.ExecutionPending), "a", nil, "", ""},
-		{"running frontier waits", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionRunning, execution.ExecutionPending, execution.ExecutionPending), "", nil, "", ""},
-		{"A success selects B", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionPending, execution.ExecutionPending), "b", nil, "", ""},
-		{"ABC success finalizes", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionSucceeded, execution.ExecutionSucceeded), "", nil, "", execution.Succeeded},
-		{"A failure skips BC", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionPending, execution.ExecutionPending), "", []string{"b", "c"}, SkipCausePriorFailure, execution.Failed},
-		{"B failure skips C", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionFailed, execution.ExecutionPending), "", []string{"c"}, SkipCausePriorFailure, execution.Failed},
-		{"A cancellation skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionCanceled, execution.ExecutionPending, execution.ExecutionPending), "", []string{"b", "c"}, SkipCausePriorCancellation, execution.Canceled},
-		{"B cancellation skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionCanceled, execution.ExecutionPending), "", []string{"c"}, SkipCausePriorCancellation, execution.Canceled},
-		{"A abort skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionAborted, execution.ExecutionPending, execution.ExecutionPending), "", []string{"b", "c"}, SkipCausePriorAbort, execution.Aborted},
-		{"B abort skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionAborted, execution.ExecutionPending), "", []string{"c"}, SkipCausePriorAbort, execution.Aborted},
-		{"failure continues", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionFailed, execution.ExecutionPending), "c", nil, "", ""},
-		{"continued failure aggregates", execution.FailurePolicyContinueOnFailure, entryStates(execution.ExecutionSucceeded, execution.ExecutionFailed, execution.ExecutionSucceeded), "", nil, "", execution.Failed},
-		{"persisted failure skips", execution.FailurePolicyStopOnFailure, causedStates(execution.ExecutionFailed, SkipCausePriorFailure), "", nil, SkipCausePriorFailure, execution.Failed},
-		{"persisted cancellation skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.ExecutionCanceled, SkipCausePriorCancellation), "", nil, SkipCausePriorCancellation, execution.Canceled},
-		{"persisted abort skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.ExecutionAborted, SkipCausePriorAbort), "", nil, SkipCausePriorAbort, execution.Aborted},
+		{"initial selects A", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryPending, execution.EntryPending, execution.EntryPending), "a", nil, "", ""},
+		{"running frontier waits", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryRunning, execution.EntryPending, execution.EntryPending), "", nil, "", ""},
+		{"A success selects B", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntryPending, execution.EntryPending), "b", nil, "", ""},
+		{"ABC success finalizes", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntrySucceeded, execution.EntrySucceeded), "", nil, "", execution.Succeeded},
+		{"A failure skips BC", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntryPending, execution.EntryPending), "", []string{"b", "c"}, SkipCausePriorFailure, execution.Failed},
+		{"B failure skips C", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntryPending), "", []string{"c"}, SkipCausePriorFailure, execution.Failed},
+		{"A cancellation skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntryCanceled, execution.EntryPending, execution.EntryPending), "", []string{"b", "c"}, SkipCausePriorCancellation, execution.Canceled},
+		{"B cancellation skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryCanceled, execution.EntryPending), "", []string{"c"}, SkipCausePriorCancellation, execution.Canceled},
+		{"A abort skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntryAborted, execution.EntryPending, execution.EntryPending), "", []string{"b", "c"}, SkipCausePriorAbort, execution.Aborted},
+		{"B abort skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryAborted, execution.EntryPending), "", []string{"c"}, SkipCausePriorAbort, execution.Aborted},
+		{"failure continues", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntryPending), "c", nil, "", ""},
+		{"continued failure aggregates", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntrySucceeded), "", nil, "", execution.Failed},
+		{"persisted failure skips", execution.FailurePolicyStopOnFailure, causedStates(execution.EntryFailed, SkipCausePriorFailure), "", nil, SkipCausePriorFailure, execution.Failed},
+		{"persisted cancellation skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.EntryCanceled, SkipCausePriorCancellation), "", nil, SkipCausePriorCancellation, execution.Canceled},
+		{"persisted abort skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.EntryAborted, SkipCausePriorAbort), "", nil, SkipCausePriorAbort, execution.Aborted},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -40,12 +40,12 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.NextExecutionID.String() != test.next || len(decision.Transitions) != len(test.transitions) {
+			if decision.NextEntryID.String() != test.next || len(decision.Transitions) != len(test.transitions) {
 				t.Fatalf("decision = %#v", decision)
 			}
 			for i, id := range test.transitions {
 				got := decision.Transitions[i]
-				if got.ExecutionID.String() != id || got.From != execution.ExecutionPending || got.To != execution.ExecutionSkipped || got.Cause != test.cause {
+				if got.EntryID.String() != id || got.From != execution.EntryPending || got.To != execution.EntrySkipped || got.Cause != test.cause {
 					t.Fatalf("transition = %#v", got)
 				}
 			}
@@ -62,22 +62,22 @@ func TestDecideAdvanceRejectsMalformedStateVectors(t *testing.T) {
 		policy execution.FailurePolicy
 		states []EntryState
 	}{
-		{"missing", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionPending)},
-		{"duplicate identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("a"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionPending}}},
-		{"unknown identity", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("x"), Status: execution.ExecutionPending}}},
-		{"unknown status", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionSucceeded, "UNKNOWN", execution.ExecutionPending)},
-		{"pending before running", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionRunning, execution.ExecutionPending)},
-		{"terminal after pending", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionPending, execution.ExecutionSucceeded, execution.ExecutionPending)},
-		{"terminal after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionSucceeded, execution.ExecutionPending)},
-		{"failed after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionFailed, execution.ExecutionPending)},
-		{"canceled after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionCanceled, execution.ExecutionPending)},
-		{"aborted after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionAborted, execution.ExecutionPending)},
-		{"skipped before cause", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionSkipped, SkipCause: SkipCausePriorFailure}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionPending}}},
-		{"all skipped", execution.FailurePolicyStopOnFailure, []EntryState{{mustEntryID("a"), execution.ExecutionSkipped, SkipCausePriorFailure}, {mustEntryID("b"), execution.ExecutionSkipped, SkipCausePriorFailure}, {mustEntryID("c"), execution.ExecutionSkipped, SkipCausePriorFailure}}},
-		{"cause mismatch", execution.FailurePolicyStopOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionFailed}, {mustEntryID("b"), execution.ExecutionSkipped, SkipCausePriorAbort}, {mustEntryID("c"), execution.ExecutionSkipped, SkipCausePriorFailure}}},
-		{"missing skip cause", execution.FailurePolicyStopOnFailure, entryStates(execution.ExecutionFailed, execution.ExecutionSkipped, execution.ExecutionSkipped)},
-		{"cause on non-skipped", execution.FailurePolicyStopOnFailure, []EntryState{{mustEntryID("a"), execution.ExecutionFailed, SkipCausePriorFailure}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionPending}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionPending}}},
-		{"continue arbitrary skipped", execution.FailurePolicyContinueOnFailure, []EntryState{{ExecutionID: mustEntryID("a"), Status: execution.ExecutionSucceeded}, {mustEntryID("b"), execution.ExecutionSkipped, SkipCausePriorFailure}, {mustEntryID("c"), execution.ExecutionSkipped, SkipCausePriorFailure}}},
+		{"missing", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryPending, execution.EntryPending)},
+		{"duplicate identity", execution.FailurePolicyStopOnFailure, []EntryState{{EntryID: mustEntryID("a"), Status: execution.EntryPending}, {EntryID: mustEntryID("a"), Status: execution.EntryPending}, {EntryID: mustEntryID("c"), Status: execution.EntryPending}}},
+		{"unknown identity", execution.FailurePolicyStopOnFailure, []EntryState{{EntryID: mustEntryID("a"), Status: execution.EntryPending}, {EntryID: mustEntryID("b"), Status: execution.EntryPending}, {EntryID: mustEntryID("x"), Status: execution.EntryPending}}},
+		{"unknown status", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, "UNKNOWN", execution.EntryPending)},
+		{"pending before running", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryPending, execution.EntryRunning, execution.EntryPending)},
+		{"terminal after pending", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryPending, execution.EntrySucceeded, execution.EntryPending)},
+		{"terminal after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntrySucceeded, execution.EntryPending)},
+		{"failed after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntryFailed, execution.EntryPending)},
+		{"canceled after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntryCanceled, execution.EntryPending)},
+		{"aborted after stop", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntryAborted, execution.EntryPending)},
+		{"skipped before cause", execution.FailurePolicyStopOnFailure, []EntryState{{EntryID: mustEntryID("a"), Status: execution.EntrySkipped, SkipCause: SkipCausePriorFailure}, {EntryID: mustEntryID("b"), Status: execution.EntryPending}, {EntryID: mustEntryID("c"), Status: execution.EntryPending}}},
+		{"all skipped", execution.FailurePolicyStopOnFailure, []EntryState{{mustEntryID("a"), execution.EntrySkipped, SkipCausePriorFailure}, {mustEntryID("b"), execution.EntrySkipped, SkipCausePriorFailure}, {mustEntryID("c"), execution.EntrySkipped, SkipCausePriorFailure}}},
+		{"cause mismatch", execution.FailurePolicyStopOnFailure, []EntryState{{EntryID: mustEntryID("a"), Status: execution.EntryFailed}, {mustEntryID("b"), execution.EntrySkipped, SkipCausePriorAbort}, {mustEntryID("c"), execution.EntrySkipped, SkipCausePriorFailure}}},
+		{"missing skip cause", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntrySkipped, execution.EntrySkipped)},
+		{"cause on non-skipped", execution.FailurePolicyStopOnFailure, []EntryState{{mustEntryID("a"), execution.EntryFailed, SkipCausePriorFailure}, {EntryID: mustEntryID("b"), Status: execution.EntryPending}, {EntryID: mustEntryID("c"), Status: execution.EntryPending}}},
+		{"continue arbitrary skipped", execution.FailurePolicyContinueOnFailure, []EntryState{{EntryID: mustEntryID("a"), Status: execution.EntrySucceeded}, {mustEntryID("b"), execution.EntrySkipped, SkipCausePriorFailure}, {mustEntryID("c"), execution.EntrySkipped, SkipCausePriorFailure}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -89,16 +89,16 @@ func TestDecideAdvanceRejectsMalformedStateVectors(t *testing.T) {
 	}
 }
 
-func entryStates(values ...execution.ExecutionStatus) []EntryState {
+func entryStates(values ...execution.EntryStatus) []EntryState {
 	ids := []string{"a", "b", "c"}
 	result := make([]EntryState, len(values))
 	for i, status := range values {
-		result[i] = EntryState{ExecutionID: mustEntryID(ids[i]), Status: status}
+		result[i] = EntryState{EntryID: mustEntryID(ids[i]), Status: status}
 	}
 	return result
 }
-func causedStates(first execution.ExecutionStatus, cause SkipCause) []EntryState {
-	return []EntryState{{ExecutionID: mustEntryID("a"), Status: first}, {ExecutionID: mustEntryID("b"), Status: execution.ExecutionSkipped, SkipCause: cause}, {ExecutionID: mustEntryID("c"), Status: execution.ExecutionSkipped, SkipCause: cause}}
+func causedStates(first execution.EntryStatus, cause SkipCause) []EntryState {
+	return []EntryState{{EntryID: mustEntryID("a"), Status: first}, {EntryID: mustEntryID("b"), Status: execution.EntrySkipped, SkipCause: cause}, {EntryID: mustEntryID("c"), Status: execution.EntrySkipped, SkipCause: cause}}
 }
 func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.InstanceSnapshot {
 	t.Helper()

@@ -16,7 +16,7 @@ type buildExecutionPlanInput struct {
 	Entries     []executionEntryInput
 }
 type executionEntryInput struct {
-	ExecutionID                       execution.EntryID
+	EntryID                           execution.EntryID
 	TestTaskItemID                    string
 	SequenceNumber                    int
 	FlowFragmentID, WorkflowVersionID string
@@ -59,7 +59,7 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 	}
 	entries := make([]execution.Entry, len(input.Entries))
 	for i, item := range input.Entries {
-		entry := execution.Entry{ID: item.ExecutionID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
+		entry := execution.Entry{ID: item.EntryID, TestTaskItemID: item.TestTaskItemID, SequenceNumber: item.SequenceNumber, FlowFragmentID: item.FlowFragmentID, WorkflowVersionID: item.WorkflowVersionID}
 		if item.ParameterSnapshot.IsPresent {
 			entry.Parameters = execution.ParameterSnapshot{ID: item.ParameterSnapshot.ID, SchemaVersion: item.ParameterSnapshot.SchemaVersion, WorkflowVersionID: item.WorkflowVersionID, Values: cloneParameterValues(item.ParameterSnapshot.Values)}
 		}
@@ -88,21 +88,21 @@ func validateEntries(input buildExecutionPlanInput) error {
 	for i, e := range input.Entries {
 		item := items[i]
 		if e.TestTaskItemID != item.ID || e.SequenceNumber != item.SequenceNumber || e.FlowFragmentID != item.FlowFragmentID {
-			return fmt.Errorf("entry %q does not match task item %q", e.ExecutionID, item.ID)
+			return fmt.Errorf("entry %q does not match task item %q", e.EntryID, item.ID)
 		}
-		if seen[e.ExecutionID] {
-			return fmt.Errorf("duplicate execution id %q", e.ExecutionID)
+		if seen[e.EntryID] {
+			return fmt.Errorf("duplicate execution id %q", e.EntryID)
 		}
-		seen[e.ExecutionID] = true
+		seen[e.EntryID] = true
 		dependency, ok := deps[dependencyKey{workflowID: e.FlowFragmentID, versionID: e.WorkflowVersionID}]
 		if !ok {
-			return fmt.Errorf("entry %q workflow version is unresolved", e.ExecutionID)
+			return fmt.Errorf("entry %q workflow version is unresolved", e.EntryID)
 		}
 		if item.VersionPolicy == automation.FlowFragmentVersionFixed && item.WorkflowVersionID != e.WorkflowVersionID {
-			return fmt.Errorf("entry %q fixed version mismatch", e.ExecutionID)
+			return fmt.Errorf("entry %q fixed version mismatch", e.EntryID)
 		}
 		if item.VersionPolicy == automation.FlowFragmentVersionLatest && !dependency.ResolvedFromLatest {
-			return fmt.Errorf("entry %q latest version resolution is missing provenance", e.ExecutionID)
+			return fmt.Errorf("entry %q latest version resolution is missing provenance", e.EntryID)
 		}
 	}
 	return nil
@@ -119,7 +119,7 @@ func rejectUnmappedParameters(input buildExecutionPlanInput) error {
 			continue
 		}
 		if !entry.ParameterSnapshot.IsPresent || entry.ParameterSnapshot.ID == "" || entry.ParameterSnapshot.SchemaVersion < 1 {
-			return fmt.Errorf("workflow execution %q requires a parameter snapshot", entry.ExecutionID)
+			return fmt.Errorf("workflow execution %q requires a parameter snapshot", entry.EntryID)
 		}
 		if err := validateResolvedParameterValues(definitionsForEntry, entry.ParameterSnapshot.Values); err != nil {
 			return fmt.Errorf("test task item %q parameter snapshot: %w", item.ID, err)

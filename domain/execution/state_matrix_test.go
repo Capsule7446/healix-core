@@ -41,49 +41,49 @@ func TestRunStatusTransitionMatrix(t *testing.T) {
 
 func TestExecutionStatusTransitionAndTerminalMatrices(t *testing.T) {
 	type transition struct {
-		from ExecutionStatus
-		to   ExecutionStatus
+		from EntryStatus
+		to   EntryStatus
 	}
 	allowed := map[transition]struct{}{
-		{ExecutionPending, ExecutionRunning}:   {},
-		{ExecutionPending, ExecutionFailed}:    {},
-		{ExecutionPending, ExecutionCanceled}:  {},
-		{ExecutionPending, ExecutionSkipped}:   {},
-		{ExecutionRunning, ExecutionSucceeded}: {},
-		{ExecutionRunning, ExecutionFailed}:    {},
-		{ExecutionRunning, ExecutionCanceled}:  {},
-		{ExecutionRunning, ExecutionAborted}:   {},
+		{EntryPending, EntryRunning}:   {},
+		{EntryPending, EntryFailed}:    {},
+		{EntryPending, EntryCanceled}:  {},
+		{EntryPending, EntrySkipped}:   {},
+		{EntryRunning, EntrySucceeded}: {},
+		{EntryRunning, EntryFailed}:    {},
+		{EntryRunning, EntryCanceled}:  {},
+		{EntryRunning, EntryAborted}:   {},
 	}
-	terminal := map[ExecutionStatus]bool{
-		ExecutionPending:   false,
-		ExecutionRunning:   false,
-		ExecutionSucceeded: true,
-		ExecutionFailed:    true,
-		ExecutionCanceled:  true,
-		ExecutionAborted:   true,
-		ExecutionSkipped:   true,
-		"UNKNOWN":          false,
+	terminal := map[EntryStatus]bool{
+		EntryPending:   false,
+		EntryRunning:   false,
+		EntrySucceeded: true,
+		EntryFailed:    true,
+		EntryCanceled:  true,
+		EntryAborted:   true,
+		EntrySkipped:   true,
+		"UNKNOWN":      false,
 	}
-	statuses := []ExecutionStatus{
-		ExecutionPending,
-		ExecutionRunning,
-		ExecutionSucceeded,
-		ExecutionFailed,
-		ExecutionCanceled,
-		ExecutionAborted,
-		ExecutionSkipped,
+	statuses := []EntryStatus{
+		EntryPending,
+		EntryRunning,
+		EntrySucceeded,
+		EntryFailed,
+		EntryCanceled,
+		EntryAborted,
+		EntrySkipped,
 		"UNKNOWN",
 	}
 
 	for _, status := range statuses {
-		if got := IsTerminalExecutionStatus(status); got != terminal[status] {
-			t.Errorf("IsTerminalExecutionStatus(%q) = %v, want %v", status, got, terminal[status])
+		if got := IsTerminalEntryStatus(status); got != terminal[status] {
+			t.Errorf("IsTerminalEntryStatus(%q) = %v, want %v", status, got, terminal[status])
 		}
 		for _, to := range statuses {
 			name := string(status) + "_to_" + string(to)
 			t.Run(name, func(t *testing.T) {
 				_, wantAllowed := allowed[transition{from: status, to: to}]
-				err := ValidateExecutionStatusTransition(status, to)
+				err := ValidateEntryStatusTransition(status, to)
 				if wantAllowed && err != nil {
 					t.Fatalf("legal transition rejected: %v", err)
 				}

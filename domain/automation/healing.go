@@ -226,7 +226,7 @@ type ContributingHealFact struct {
 	FactID          string
 	CommitID        string
 	InstanceID      string
-	ExecutionID     string
+	EntryID         string
 	StepExecutionID string
 	Sequence        uint64
 }
@@ -235,7 +235,7 @@ type HealObservation struct {
 	FactID            string
 	CommitID          string
 	InstanceID        string
-	ExecutionID       string
+	EntryID           string
 	StepExecutionID   string
 	Sequence          uint64
 	ElementTargetID   string
@@ -440,14 +440,14 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 }
 
 func (contribution ContributingHealFact) validate() error {
-	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.InstanceID) == "" || strings.TrimSpace(contribution.ExecutionID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
+	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.InstanceID) == "" || strings.TrimSpace(contribution.EntryID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
 		return fmt.Errorf("heal contribution requires fact, commit, run, execution, step, and sequence identity")
 	}
 	return nil
 }
 
 func (observation HealObservation) validate() error {
-	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.InstanceID) == "" || strings.TrimSpace(observation.ExecutionID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
+	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.InstanceID) == "" || strings.TrimSpace(observation.EntryID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
 		return fmt.Errorf("heal observation requires fact, commit, run, execution, step, sequence, node, and base version identity")
 	}
 	if observation.Outcome != HealSucceeded && observation.Outcome != HealOriginalRecovered && observation.Outcome != HealFailed {
@@ -465,7 +465,7 @@ func (observation HealObservation) validate() error {
 func (observation HealObservation) contribution() ContributingHealFact {
 	return ContributingHealFact{
 		FactID: observation.FactID, CommitID: observation.CommitID, InstanceID: observation.InstanceID,
-		ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: observation.Sequence,
+		EntryID: observation.EntryID, StepExecutionID: observation.StepExecutionID, Sequence: observation.Sequence,
 	}
 }
 
