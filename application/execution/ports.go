@@ -2,7 +2,6 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -91,18 +90,58 @@ func ownStepTransitionCommit(commit evidence.StepTransitionCommit) (evidence.Ste
 	if err := validateStepTransitionStringBounds(reflect.ValueOf(commit)); err != nil {
 		return evidence.StepTransitionCommit{}, err
 	}
-	payload, err := json.Marshal(commit)
-	if err != nil {
-		return evidence.StepTransitionCommit{}, fmt.Errorf("encode step transition commit: %w", err)
-	}
-	if len(payload) > MaxStepTransitionPayloadBytes {
+	// The size is measured by walking the value, and the copy is made by the type
+	// that owns it. Both used to be one json.Marshal round trip, which measured
+	// the wrong thing and produced the wrong copy: an execution coordinate is a
+	// struct whose only field is unexported, so it encoded as {} — two bytes
+	// toward the budget instead of its real length, and a zero value on the way
+	// back out.
+	if size := stepTransitionPayloadBytes(reflect.ValueOf(commit)); size > MaxStepTransitionPayloadBytes {
 		return evidence.StepTransitionCommit{}, stepTransitionCommitPayloadTooLargeError(fmt.Errorf("step transition commit exceeds byte limit %d", MaxStepTransitionPayloadBytes))
 	}
-	var owned evidence.StepTransitionCommit
-	if err := json.Unmarshal(payload, &owned); err != nil {
-		return evidence.StepTransitionCommit{}, fmt.Errorf("clone step transition commit: %w", err)
+	return commit.Clone(), nil
+}
+
+// stepTransitionPayloadBytes approximates what the commit costs to carry. It
+// counts string bytes and a fixed width per fixed-size field, which is what the
+// budget is protecting against — an unbounded payload — rather than the exact
+// wire size of any particular encoding. Unexported string fields are counted:
+// reflect can read their length even though it cannot hand them out.
+func stepTransitionPayloadBytes(value reflect.Value) int {
+	if !value.IsValid() {
+		return 0
 	}
-	return owned, nil
+	switch value.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if value.IsNil() {
+			return 1
+		}
+		return stepTransitionPayloadBytes(value.Elem())
+	case reflect.String:
+		return value.Len()
+	case reflect.Struct:
+		total := 0
+		for index := 0; index < value.NumField(); index++ {
+			total += stepTransitionPayloadBytes(value.Field(index))
+		}
+		return total
+	case reflect.Slice, reflect.Array:
+		total := 0
+		for index := 0; index < value.Len(); index++ {
+			total += stepTransitionPayloadBytes(value.Index(index))
+		}
+		return total
+	case reflect.Map:
+		total := 0
+		iterator := value.MapRange()
+		for iterator.Next() {
+			total += stepTransitionPayloadBytes(iterator.Key())
+			total += stepTransitionPayloadBytes(iterator.Value())
+		}
+		return total
+	default:
+		return 8
+	}
 }
 
 func validateStepTransitionStringBounds(value reflect.Value) error {

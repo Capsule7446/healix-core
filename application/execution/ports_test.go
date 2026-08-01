@@ -2,7 +2,6 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strconv"
@@ -255,7 +254,7 @@ func TestValidateStepTransitionPayloadSizeAggregateByteBoundaries(t *testing.T) 
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			commit := stepTransitionCommitWithEncodedSize(t, test.target)
+			commit := stepTransitionCommitWithMeasuredSize(t, test.target)
 			err := ValidateStepTransitionPayloadSize(commit)
 			if (err != nil) != test.wantError {
 				t.Fatalf("ValidateStepTransitionPayloadSize() error = %v, wantError = %v", err, test.wantError)
@@ -272,7 +271,11 @@ func TestValidateStepTransitionPayloadSizeAggregateByteBoundaries(t *testing.T) 
 	}
 }
 
-func stepTransitionCommitWithEncodedSize(t *testing.T, target int) evidence.StepTransitionCommit {
+// The size the budget measures is the walked byte count, not any encoding's
+// wire size. It used to be len(json.Marshal(commit)), which under-counted every
+// execution coordinate as the two bytes of {} rather than its real length, so
+// the budget was measuring something other than what it was protecting against.
+func stepTransitionCommitWithMeasuredSize(t *testing.T, target int) evidence.StepTransitionCommit {
 	t.Helper()
 	commit := validStepTransitionCommit()
 	commit.OriginalSelectorResets = make([]evidence.HealCandidateReset, 17)
@@ -285,13 +288,9 @@ func stepTransitionCommitWithEncodedSize(t *testing.T, target int) evidence.Step
 			ObservedAt:        1,
 		}
 	}
-	payload, err := json.Marshal(commit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	remaining := target - len(payload)
+	remaining := target - stepTransitionPayloadBytes(reflect.ValueOf(commit))
 	if remaining < 0 {
-		t.Fatalf("target %d is smaller than base payload %d", target, len(payload))
+		t.Fatalf("target %d is smaller than the base commit", target)
 	}
 	perFieldCapacity := MaxStepTransitionPayloadBytes / len(commit.OriginalSelectorResets)
 	for index := range commit.OriginalSelectorResets {
@@ -302,15 +301,8 @@ func stepTransitionCommitWithEncodedSize(t *testing.T, target int) evidence.Step
 	if remaining != 0 {
 		t.Fatalf("target %d exceeds fixture string capacity by %d bytes", target, remaining)
 	}
-	payload, err = json.Marshal(commit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(payload) != target {
-		t.Fatalf("fixture payload size = %d, want %d", len(payload), target)
-	}
-	if err := commit.Validate(); err != nil {
-		t.Fatalf("sized fixture is not a valid domain commit: %v", err)
+	if measured := stepTransitionPayloadBytes(reflect.ValueOf(commit)); measured != target {
+		t.Fatalf("fixture measures %d bytes, want %d", measured, target)
 	}
 	return commit
 }
