@@ -377,9 +377,17 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 	if command.InstanceID.Validate() != nil {
 		return errors.New("instance id is required and must be normalized")
 	}
-	for name, value := range map[string]string{"command id": command.CommandID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {
-		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
-			return fmt.Errorf("%s is required and must be normalized", name)
+	// Ordered, not a map: two blank identities used to report whichever one map
+	// iteration reached first, so a host's diagnostic log named a different
+	// field each run for the same rejected command.
+	for _, required := range []struct{ name, value string }{
+		{"command id", command.CommandID},
+		{"test-task id", command.ExecutionFlowID},
+		{"test-task version id", command.TestTaskVersionID},
+		{"environment id", command.EnvironmentID},
+	} {
+		if strings.TrimSpace(required.value) == "" || required.value != strings.TrimSpace(required.value) {
+			return fmt.Errorf("%s is required and must be normalized", required.name)
 		}
 	}
 	if command.CreatedAt <= 0 || !command.FailurePolicy.IsValid() {

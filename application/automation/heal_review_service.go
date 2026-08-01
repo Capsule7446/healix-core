@@ -42,17 +42,23 @@ type HealReviewService struct {
 }
 
 func NewHealReviewService(source HealReviewSource, nodes NodeRepository, transaction HealReviewTransaction, reviewers ReviewerAuthorizer, clock ReviewClock, verifier CandidateVerifier, identities HealReviewIdentityProvider) (HealReviewService, error) {
-	for name, dependency := range map[string]any{
-		"heal review source":            source,
-		"node repository":               nodes,
-		"heal review transaction":       transaction,
-		"reviewer authorizer":           reviewers,
-		"review clock":                  clock,
-		"candidate verifier":            verifier,
-		"heal review identity provider": identities,
+	// Ordered, not a map: with two dependencies missing, ranging a map reported
+	// whichever one Go happened to visit first, so the same call reported a
+	// different missing dependency on a different run.
+	for _, required := range []struct {
+		name       string
+		dependency any
+	}{
+		{"heal review source", source},
+		{"node repository", nodes},
+		{"heal review transaction", transaction},
+		{"reviewer authorizer", reviewers},
+		{"review clock", clock},
+		{"candidate verifier", verifier},
+		{"heal review identity provider", identities},
 	} {
-		if isNilHealReviewDependency(dependency) {
-			return HealReviewService{}, fmt.Errorf("%s is required", name)
+		if isNilHealReviewDependency(required.dependency) {
+			return HealReviewService{}, fmt.Errorf("%s is required", required.name)
 		}
 	}
 	return HealReviewService{source: source, nodes: nodes, transaction: transaction, reviewers: reviewers, clock: clock, verifier: verifier, identities: identities}, nil

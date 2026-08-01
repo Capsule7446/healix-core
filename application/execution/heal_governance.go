@@ -422,6 +422,5 @@ func terminalEffectForTransition(previous, next domainautomation.HealStreak) *He
 }
 
 func cloneHealStreak(streak domainautomation.HealStreak) domainautomation.HealStreak {
-	streak.Contributions = append([]domainautomation.ContributingHealFact(nil), streak.Contributions...)
-	return streak
+	return streak.Clone()
 }

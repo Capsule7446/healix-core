@@ -272,7 +272,7 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 	contribution := observation.contribution()
 	for _, existing := range streak.consumedProvenance() {
 		if existing == contribution {
-			return HealStreakDecision{Next: streak.clone()}, nil
+			return HealStreakDecision{Next: streak.Clone()}, nil
 		}
 		if existing.FactID == contribution.FactID || existing.CommitID == contribution.CommitID || existing.InstanceID == contribution.InstanceID || existing.Sequence == contribution.Sequence {
 			return HealStreakDecision{}, healProvenanceConflictError(errors.New("heal contribution replay conflicts with persisted provenance"))
@@ -415,7 +415,7 @@ func (streak HealStreak) Reject(sequence uint64) (HealStreakDecision, error) {
 	if sequence == 0 || sequence <= streak.LastSequence {
 		return HealStreakDecision{}, healSequenceConflictError(fmt.Errorf("heal rejection sequence %d is not newer than %d", sequence, streak.LastSequence))
 	}
-	next := streak.clone()
+	next := streak.Clone()
 	next.LastSequence = sequence
 	next.Observing = false
 	next.Disposition = HealStreakRejected
@@ -498,7 +498,11 @@ func (streak HealStreak) isTerminal() bool {
 		streak.Disposition == HealStreakReset || streak.Disposition == HealStreakStale || streak.Disposition == HealStreakRejected
 }
 
-func (streak HealStreak) clone() HealStreak {
+// Clone is the one deep copy of a heal streak. It was unexported, so the two
+// application layers that also needed one hand-rolled theirs, and both stopped
+// after Contributions — leaving ConsumedObservations shared with the source.
+// Exporting it is what makes the second field impossible to forget.
+func (streak HealStreak) Clone() HealStreak {
 	streak.Contributions = append([]ContributingHealFact(nil), streak.Contributions...)
 	streak.ConsumedObservations = append([]ContributingHealFact(nil), streak.ConsumedObservations...)
 	return streak
@@ -512,14 +516,14 @@ func (streak HealStreak) consumedProvenance() []ContributingHealFact {
 }
 
 func (streak HealStreak) withObservation(contribution ContributingHealFact) HealStreak {
-	next := streak.clone()
+	next := streak.Clone()
 	next.ConsumedObservations = append(next.consumedProvenance(), contribution)
 	next.LastSequence = contribution.Sequence
 	return next
 }
 
 func (streak HealStreak) withDisposition(disposition HealStreakDisposition) HealStreak {
-	next := streak.clone()
+	next := streak.Clone()
 	next.Observing = false
 	next.Disposition = disposition
 	return next

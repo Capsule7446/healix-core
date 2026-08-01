@@ -319,7 +319,6 @@ func cloneHealStreakPointer(streak *domain.HealStreak) *domain.HealStreak {
 	if streak == nil {
 		return nil
 	}
-	result := *streak
-	result.Contributions = append([]domain.ContributingHealFact(nil), streak.Contributions...)
+	result := streak.Clone()
 	return &result
 }

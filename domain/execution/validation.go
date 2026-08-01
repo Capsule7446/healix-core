@@ -128,7 +128,16 @@ func validateBindings(parent, child []Parameter, bindings map[string]parameter.B
 	for _, definition := range child {
 		children[definition.Name] = definition
 	}
-	for name, binding := range bindings {
+	// Sorted, not map order: four of the branches below return on the first
+	// offending binding, so two bad bindings used to produce a different error —
+	// sometimes a different KIND of error — depending on iteration order.
+	names := make([]string, 0, len(bindings))
+	for name := range bindings {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		binding := bindings[name]
 		childDefinition, exists := children[name]
 		if !exists {
 			return fmt.Errorf("parameter %q is unknown", name)
@@ -193,10 +202,18 @@ func validateSnapshotValues(definitions []Parameter, values map[string]parameter
 		}
 		byName[definition.Name] = definition
 	}
+	// Sorted, not map order: a snapshot carrying two unknown keys used to report
+	// whichever one Go visited first, so the same plan was rejected naming a
+	// different parameter on a different run.
+	unknown := make([]string, 0, len(values))
 	for name := range values {
 		if _, exists := byName[name]; !exists {
-			return fmt.Errorf("parameter %q is unknown", name)
+			unknown = append(unknown, name)
 		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return fmt.Errorf("parameter %q is unknown", unknown[0])
 	}
 	for _, definition := range definitions {
 		value, exists := values[definition.Name]

@@ -90,7 +90,7 @@ func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.ElementTarg
 	for _, c := range narrowed {
 		scored = append(scored, Candidate{
 			Selector:    c.Selector,
-			Fingerprint: c.Fingerprint,
+			Fingerprint: c.Fingerprint.Clone(),
 			Score:       scorer.score(c.Fingerprint),
 		})
 	}
@@ -102,7 +102,11 @@ func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.ElementTarg
 		return validateDecision(decision)
 	}
 
+	// A struct copy, so Best would otherwise share the winning candidate's
+	// fingerprint map and slices with Candidates[0]; a caller editing one would
+	// see the other change.
 	best := scored[0]
+	best.Fingerprint = best.Fingerprint.Clone()
 	switch {
 	case best.Score >= h.Thresholds.AppliedCap:
 		decision.Outcome = OutcomeApplied
