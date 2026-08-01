@@ -77,6 +77,22 @@
 - `Seal` 的 `sort.Slice` 只比 `SequenceNumber`。`Validate` 先拒重复序号所以今天触达不到，但补 `ID` 作次级键让排序不再依赖远处的一条不变量。
 - 提交：`94dd993`
 
+### F8 发布请求摘要对参数值完全失明
+
+- `SamplingPublicationRequestDigest` 用 `json.Marshal` 整个载荷；三个参数类型编码为 `{}`
+- 后果：改掉参数默认值后用同一 `PublicationID` 重发 → 摘要命中 → 返回上一次结果且 `err=nil`。**用户以为改动已发布，实际从未写入。** 同时击穿停止条件「同命令 ID 不同内容必须冲突」
+- 首次尝试把 `MarshalJSON` 加到域类型上，**被架构守卫正确拒绝**（domain 不得知晓 JSON 编码）。编码是应用层关注点，规范遍历因此落在应用层，经公共访问器读取那三个类型
+- 遍历保留了 `json.Marshal` 免费给的两条性质：每个变长值带长度前缀（边界不能在字段间移动），map key 排序（无序容器不能让摘要依赖迭代顺序）。结构体先写字段数，所以新增字段会改变摘要而不是滑进邻居的字节
+- **摘要值会变。** 原值是错的（会碰撞），但已存的发布幂等记录将不匹配，属 Host 侧事项
+- 提交：`097be65`
+
+### F9 发布路径的三处校验缺口
+
+- **孤儿 `ElementTargetVersionID`**：规则单向，所有下游闸门以 `ElementTargetID != ""` 为条件，navigate/press 步骤上残留的版本 ID 一路进入正式版本。Wait/Repeat/FragmentRef 早已直接拒绝
+- **REUSE 跳过内容校验**：`Publish` 接受调用方自建载荷，是绕过 mapper 兜底的第二条路径。改为校验后暴露出跳过的**真实原因**——REUSE 投影故意让 `Current` 是选中的历史版本、`CurrentVersionID` 是活指针，整聚合规则由构造决定不可能成立。`FlowFragmentVersion.ValidateFor` 已为同一形状确立解法，补上对称的 `ElementTargetVersion.ValidateFor`
+- **fingerprint 校验漂移**：`assets.go` 重写检查而非委托，漏掉 `SiblingIndex >= 0` 与 Framework。采样期会拒的负索引能落进不可变版本再被 heal 打分读回。消除重复需要导出违例追加器，范围大于缺口本身，因此补齐两条规则并加**一致性守卫**：两个校验器必须接受和拒绝同一批 fingerprint
+- 提交：`7bd9061`
+
 ---
 
 ## 二、裁定为不成立（附依据）
@@ -97,29 +113,6 @@
 ---
 
 ## 三、未修复（已证实，按阻塞度排序）
-
-### R1 发布请求摘要对参数值完全失明 —— 阻塞
-
-- 位置：`application/automation/sampling_publication_transaction.go`（`json.Marshal` 整个 `SamplingPublication`）
-- 实测根因：`parameter.Value` / `OptionalValue` / `Binding` 全部编码为 `{}`
-- 后果：改掉参数默认值后用同一 `PublicationID` 重发 → 摘要命中 → `err=nil` 且返回上一次的结果。**用户以为改动已发布，实际从未发布。** 同时击穿停止条件「同命令 ID 不同内容必须冲突」
-- 修法：照 `create_instance_service.go` 改为长度前缀、逐字段、map key 排序的手写编码器，经 `Type()/Text()/Boolean()/MultiSelect()`、`Kind()/Literal()/ParentName()` 读取；再加反射守卫遍历类型图，发现任何「零导出字段」结构体即失败
-
-### R2 REUSE 节点跳过聚合校验 —— 高
-
-- 位置：`domain/automation/sampling_publication.go:94`
-- `if node.ResolutionMode != "REUSE"` 才 `Validate()`。`Publish` 接受调用方自建的 `SamplingPublication`，是绕过 mapper 兜底的第二条路径
-- 附带：mapper 在 `ValidateLoadedHistory` 之后才把 `Aggregate.Current` 换成历史版本，因此**被选中的那个历史版本在任何路径上都没被校验过**
-
-### R3 孤儿 `ElementTargetVersionID` 进入正式版本 —— 高
-
-- 校验只有单向；所有闸门以 `ElementTargetID != ""` 为条件因而全部跳过
-- 不对称性证明是缺陷：`StepWait` / `StepRepeat` / `StepFlowFragmentRef` 都直接拒绝非空的 `ElementTargetVersionID`
-
-### R4 automation 校验弱于 fingerprint 自身 —— 高
-
-- `assets.go:148-166` 内联重写检查，不含 `SiblingIndex >= 0` 与 Framework 校验
-- 采样路径会拒绝的负 SiblingIndex 能落进持久化的正式版本
 
 ### R5 EntryExecutor 在授权前创建 BrowserSession —— 高
 
