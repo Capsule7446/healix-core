@@ -18,9 +18,9 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 		cause       SkipCause
 		final       execution.InstanceStatus
 	}{
-		{"initial selects A", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryPending, execution.EntryPending, execution.EntryPending), "a", nil, "", ""},
+		{"initial selects A", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryPending, execution.EntryPending, execution.EntryPending), "a", []string{"a"}, "", ""},
 		{"running frontier waits", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryRunning, execution.EntryPending, execution.EntryPending), "", nil, "", ""},
-		{"A success selects B", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntryPending, execution.EntryPending), "b", nil, "", ""},
+		{"A success selects B", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntryPending, execution.EntryPending), "b", []string{"b"}, "", ""},
 		{"ABC success finalizes", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntrySucceeded, execution.EntrySucceeded), "", nil, "", execution.Succeeded},
 		{"A failure skips BC", execution.FailurePolicyStopOnFailure, entryStates(execution.EntryFailed, execution.EntryPending, execution.EntryPending), "", []string{"b", "c"}, SkipCausePriorFailure, execution.Failed},
 		{"B failure skips C", execution.FailurePolicyStopOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntryPending), "", []string{"c"}, SkipCausePriorFailure, execution.Failed},
@@ -28,7 +28,7 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 		{"B cancellation skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryCanceled, execution.EntryPending), "", []string{"c"}, SkipCausePriorCancellation, execution.Canceled},
 		{"A abort skips BC", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntryAborted, execution.EntryPending, execution.EntryPending), "", []string{"b", "c"}, SkipCausePriorAbort, execution.Aborted},
 		{"B abort skips C", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryAborted, execution.EntryPending), "", []string{"c"}, SkipCausePriorAbort, execution.Aborted},
-		{"failure continues", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntryPending), "c", nil, "", ""},
+		{"failure continues", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntryPending), "c", []string{"c"}, "", ""},
 		{"continued failure aggregates", execution.FailurePolicyContinueOnFailure, entryStates(execution.EntrySucceeded, execution.EntryFailed, execution.EntrySucceeded), "", nil, "", execution.Failed},
 		{"persisted failure skips", execution.FailurePolicyStopOnFailure, causedStates(execution.EntryFailed, SkipCausePriorFailure), "", nil, SkipCausePriorFailure, execution.Failed},
 		{"persisted cancellation skips", execution.FailurePolicyContinueOnFailure, causedStates(execution.EntryCanceled, SkipCausePriorCancellation), "", nil, SkipCausePriorCancellation, execution.Canceled},
@@ -45,8 +45,17 @@ func TestDecideAdvanceSerialABC(t *testing.T) {
 			}
 			for i, id := range test.transitions {
 				got := decision.Transitions[i]
-				if got.EntryID.String() != id || got.From != execution.EntryPending || got.To != execution.EntrySkipped || got.Cause != test.cause {
-					t.Fatalf("transition = %#v", got)
+				if got.EntryID.String() != id || got.From != execution.EntryPending {
+					t.Fatalf("transition %d = %#v", i, got)
+				}
+				switch got.To {
+				case execution.EntrySkipped:
+					if got.Cause != test.cause {
+						t.Fatalf("transition %d cause = %s", i, got.Cause)
+					}
+				case execution.EntryRunning:
+				default:
+					t.Fatalf("transition %d unexpected To = %s", i, got.To)
 				}
 			}
 			if (decision.FinalStatus == nil) != (test.final == "") || decision.FinalStatus != nil && *decision.FinalStatus != test.final {

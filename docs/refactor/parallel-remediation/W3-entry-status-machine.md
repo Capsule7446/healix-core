@@ -199,5 +199,31 @@ test -z "$(gofmt -l .)" && go vet ./... && go build ./... && go test ./... && go
 
 ### 完成记录
 
-> 由执行者填写：阶段一实际改了什么 / 裁决 1 与裁决 2 各选了什么、为什么 /
-> 阶段二是否落地，未落地则说明排期。
+**阶段一 — 已落地。**
+
+改了什么：
+
+- `application/scheduling/decision.go`：
+  - `DecideAdvance` Pending 分支现在产出 `ExecutionTransition{From: Pending, To: Running}`，并通过 `ValidateEntryStatusTransition` 校验。
+  - `stopAfter` 改为返回 `(Decision, error)`，内部对每个 Pending→Skipped 调用 `ValidateEntryStatusTransition`。
+- `application/scheduling/coordinator.go`：
+  - `DecisionWriter.ApplyDecision` 注释明确声明 `Transitions` 是完整写清单，`NextEntryID` 是快捷引用。
+- `application/scheduling/decision_test.go`：
+  - `initial selects A`、`A success selects B`、`failure continues` 的期望 transitions 从 `nil` 改为 `[]string{"a"}`、`[]string{"b"}`、`[]string{"c"}`，反映 Pending→Running 显式转移。
+- `architecture/entry_status_enforcement_test.go`（新建）：
+  - `TestEntryStatusMachineHasProductionCallers`：扫描全仓非测试代码，断言 `ValidateEntryStatusTransition` 或 `CanTransitionTo` 至少被调用一次。
+  - `TestExecutionTransitionLiteralsUseValidStatusTransitions`：AST 扫描 `ExecutionTransition{...}` 字面量，校验 `(From, To)` 在允许集合内。
+
+**裁决 1 — 选 A（推荐），但本阶段未落地。**
+
+选 A 的理由：与 `application/scheduling` 当前纯决策器的设计一致，不引入对 `application/execution` 的依赖，保持 `ProcessNext` 的语义不变。`EntryOutcome` 在 scheduling 包内新增，不与 `application/engine.ExecutionOutcome` 耦合。
+
+**裁决 2 — 选「EntryOutcome 只覆盖 Succeeded/Failed」。**
+
+Aborted/Canceled 继续走 W5 的命令路径，已有独立的幂等与 revision 模型，不引入第二套并发控制。
+
+**阶段二 — 未落地。**
+
+原因：`DecideEntryCompletion` 的完整实现需要 `EntryOutcome` 枚举的精确语义以及 `validateSerialShape` 的复用，这些在 W2 的 `ExecutionOutcome` 改名落地前存在命名冲突风险。建议在 W2 改名完成后启动阶段二，排期对齐 W2 的交付窗口。
+
+需要 W2/W5 配合的交接见 §5 原有记录。

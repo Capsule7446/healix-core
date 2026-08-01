@@ -93,8 +93,10 @@ type ApplyDecisionResult struct {
 }
 
 type DecisionWriter interface {
-	// ApplyDecision atomically fences and applies entry transitions, successor
-	// start, and final Run status from one pure Decision.
+	// ApplyDecision atomically fences and applies the complete set of entry
+	// state writes from one pure Decision. Transitions is the full list;
+	// NextEntryID is a shortcut reference to the entry that is being started
+	// (its Pending→Running transition is included in Transitions).
 	ApplyDecision(context.Context, Claim, Decision, int64) (ApplyDecisionResult, error)
 }
 

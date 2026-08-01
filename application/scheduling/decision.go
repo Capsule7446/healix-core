@@ -82,7 +82,11 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 		return Decision{}, err
 	}
 	if stopIndex >= 0 {
-		return stopAfter(entries, ordered, stopIndex, stopCause, finalStatus), nil
+		decision, err := stopAfter(entries, ordered, stopIndex, stopCause, finalStatus)
+		if err != nil {
+			return Decision{}, err
+		}
+		return decision, nil
 	}
 
 	failed := false
@@ -91,7 +95,15 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 		case execution.EntryRunning:
 			return Decision{}, nil
 		case execution.EntryPending:
-			return Decision{NextEntryID: entries[i].ID}, nil
+			transition := ExecutionTransition{
+				EntryID: entries[i].ID,
+				From:    execution.EntryPending,
+				To:      execution.EntryRunning,
+			}
+			if err := execution.ValidateEntryStatusTransition(transition.From, transition.To); err != nil {
+				return Decision{}, err
+			}
+			return Decision{NextEntryID: entries[i].ID, Transitions: []ExecutionTransition{transition}}, nil
 		case execution.EntryFailed:
 			failed = true
 		}
@@ -176,12 +188,16 @@ func isKnownStatus(status execution.EntryStatus) bool {
 	return status == execution.EntryPending || status == execution.EntryRunning || execution.IsTerminalEntryStatus(status)
 }
 
-func stopAfter(entries []execution.Entry, states []EntryState, index int, cause SkipCause, status execution.InstanceStatus) Decision {
+func stopAfter(entries []execution.Entry, states []EntryState, index int, cause SkipCause, status execution.InstanceStatus) (Decision, error) {
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {
 		if states[i].Status == execution.EntryPending {
-			transitions = append(transitions, ExecutionTransition{EntryID: entries[i].ID, From: execution.EntryPending, To: execution.EntrySkipped, Cause: cause})
+			transition := ExecutionTransition{EntryID: entries[i].ID, From: execution.EntryPending, To: execution.EntrySkipped, Cause: cause}
+			if err := execution.ValidateEntryStatusTransition(transition.From, transition.To); err != nil {
+				return Decision{}, invalidEntryStatesError()
+			}
+			transitions = append(transitions, transition)
 		}
 	}
-	return Decision{Transitions: transitions, FinalStatus: &status}
+	return Decision{Transitions: transitions, FinalStatus: &status}, nil
 }
