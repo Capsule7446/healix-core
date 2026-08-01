@@ -6,7 +6,6 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/fault"
-	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // RewriteUnpublishedElementTargetReferences validates the mapping set as an
@@ -77,7 +76,7 @@ func appendUnmappedReferenceViolations(violations []fault.Violation, steps []aut
 
 // rewriteSamplingSteps runs only after validation, so every reference resolves.
 func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping, used map[string]struct{}) []automation.FlowFragmentStep {
-	rewritten := cloneSamplingSteps(steps)
+	rewritten := automation.CloneFlowFragmentSteps(steps)
 	for index := range rewritten {
 		step := &rewritten[index]
 		if step.ElementTargetID != "" {
@@ -94,39 +93,4 @@ func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[stri
 		}
 	}
 	return rewritten
-}
-
-func cloneSamplingSteps(steps []automation.FlowFragmentStep) []automation.FlowFragmentStep {
-	if steps == nil {
-		return nil
-	}
-	cloned := make([]automation.FlowFragmentStep, len(steps))
-	for index, step := range steps {
-		cloned[index] = step
-		cloned[index].Values = append([]string(nil), step.Values...)
-		cloned[index].Children = cloneSamplingSteps(step.Children)
-		if step.Reference != nil {
-			reference := *step.Reference
-			reference.ParameterBindings = make(map[string]parameter.Binding, len(step.Reference.ParameterBindings))
-			for name, binding := range step.Reference.ParameterBindings {
-				reference.ParameterBindings[name] = binding.Clone()
-			}
-			cloned[index].Reference = &reference
-		}
-		if step.Validation != nil {
-			validation := *step.Validation
-			validation.SupportedKinds = append([]automation.ValidationAssertionKind(nil), step.Validation.SupportedKinds...)
-			cloned[index].Validation = &validation
-		}
-		if step.ValidationGroup != nil {
-			group := *step.ValidationGroup
-			group.Branches = make([]automation.ValidationBranch, len(step.ValidationGroup.Branches))
-			for branchIndex, branch := range step.ValidationGroup.Branches {
-				group.Branches[branchIndex] = branch
-				group.Branches[branchIndex].Steps = cloneSamplingSteps(branch.Steps)
-			}
-			cloned[index].ValidationGroup = &group
-		}
-	}
-	return cloned
 }

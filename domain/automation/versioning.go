@@ -357,7 +357,7 @@ func cloneWorkflowVersion(input FlowFragmentVersion) FlowFragmentVersion {
 }
 
 func cloneWorkflowDefinition(input FlowFragmentContent) FlowFragmentContent {
-	result := FlowFragmentContent{Steps: clonePublishedWorkflowSteps(input.Steps),
+	result := FlowFragmentContent{Steps: CloneFlowFragmentSteps(input.Steps),
 		Parameters: append([]ParameterDefinition(nil), input.Parameters...)}
 	for index := range result.Parameters {
 		result.Parameters[index].Options = append([]string(nil), input.Parameters[index].Options...)
@@ -368,12 +368,21 @@ func cloneWorkflowDefinition(input FlowFragmentContent) FlowFragmentContent {
 	return result
 }
 
-func clonePublishedWorkflowSteps(input []FlowFragmentStep) []FlowFragmentStep {
+// CloneFlowFragmentSteps is the one deep copy of flow fragment step content.
+//
+// Sampling held a second implementation of this for unpublished drafts. The two
+// drifted: that one never copied Validation.Assertion.ExpectedValues, so a cloned
+// draft shared the slice with its source and editing the copy silently edited the
+// original. Content shape belongs to whoever owns the type, so the copy does too.
+func CloneFlowFragmentSteps(input []FlowFragmentStep) []FlowFragmentStep {
+	if input == nil {
+		return nil
+	}
 	result := make([]FlowFragmentStep, len(input))
 	for index, step := range input {
 		copy := step
 		copy.Values = append([]string(nil), step.Values...)
-		copy.Children = clonePublishedWorkflowSteps(step.Children)
+		copy.Children = CloneFlowFragmentSteps(step.Children)
 		if step.Reference != nil {
 			reference := *step.Reference
 			reference.ParameterBindings = cloneParameterBindings(step.Reference.ParameterBindings)
@@ -390,7 +399,7 @@ func clonePublishedWorkflowSteps(input []FlowFragmentStep) []FlowFragmentStep {
 			group.Branches = make([]ValidationBranch, len(step.ValidationGroup.Branches))
 			for branchIndex, branch := range step.ValidationGroup.Branches {
 				group.Branches[branchIndex] = branch
-				group.Branches[branchIndex].Steps = clonePublishedWorkflowSteps(branch.Steps)
+				group.Branches[branchIndex].Steps = CloneFlowFragmentSteps(branch.Steps)
 			}
 			copy.ValidationGroup = &group
 		}

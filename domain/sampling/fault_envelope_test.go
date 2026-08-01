@@ -207,3 +207,38 @@ func countViolations(violations []fault.Violation, field string) int {
 	}
 	return total
 }
+
+// Sampling used to deep-copy step content with its own implementation, which had
+// drifted from the one in domain/automation: it never copied
+// Validation.Assertion.ExpectedValues, so an edited draft shared that slice with
+// its source and editing the copy silently edited the original. Both sides now
+// call the single implementation owned by the package that owns the type.
+func TestDraftEditingNeverAliasesStepContentWithItsSource(t *testing.T) {
+	source := UnpublishedFlowFragment{
+		ID: "draft",
+		Steps: []automation.FlowFragmentStep{{
+			ID: "check", DisplayName: "check", Kind: automation.StepValidation,
+			Validation: &automation.ValidationConfig{
+				Assertion:      automation.ValidationAssertion{ExpectedValues: []string{"original"}},
+				SupportedKinds: []automation.ValidationAssertionKind{"visible"},
+			},
+			Values: []string{"original-value"},
+		}},
+	}
+
+	edited := cloneUnpublishedFlowFragment(source)
+	edited.Steps[0].Validation.Assertion.ExpectedValues[0] = "mutated"
+	edited.Steps[0].Validation.SupportedKinds[0] = "mutated"
+	edited.Steps[0].Values[0] = "mutated"
+
+	original := source.Steps[0]
+	if got := original.Validation.Assertion.ExpectedValues[0]; got != "original" {
+		t.Fatalf("expected values alias the source: %q", got)
+	}
+	if got := string(original.Validation.SupportedKinds[0]); got != "visible" {
+		t.Fatalf("supported kinds alias the source: %q", got)
+	}
+	if got := original.Values[0]; got != "original-value" {
+		t.Fatalf("values alias the source: %q", got)
+	}
+}

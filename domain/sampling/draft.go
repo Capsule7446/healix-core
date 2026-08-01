@@ -24,7 +24,7 @@ func InsertUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, contain
 	if index < 0 || index > len(*steps) {
 		return UnpublishedFlowFragment{}, draftIndexOutOfRangeError()
 	}
-	*steps = slices.Insert(*steps, index, cloneSamplingSteps([]automation.FlowFragmentStep{step})[0])
+	*steps = slices.Insert(*steps, index, automation.CloneFlowFragmentSteps([]automation.FlowFragmentStep{step})[0])
 	return finalizeUnpublishedFlowFragment(next)
 }
 
@@ -38,7 +38,7 @@ func UpdateUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, step au
 	found := false
 	walkSamplingSteps(next.Steps, func(candidate *automation.FlowFragmentStep) {
 		if candidate.ID == step.ID {
-			*candidate = cloneSamplingSteps([]automation.FlowFragmentStep{step})[0]
+			*candidate = automation.CloneFlowFragmentSteps([]automation.FlowFragmentStep{step})[0]
 			found = true
 		}
 	})
@@ -87,7 +87,7 @@ func MoveUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID st
 	found := false
 	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
 		if step.ID == stepID {
-			moved = cloneSamplingSteps([]automation.FlowFragmentStep{*step})[0]
+			moved = automation.CloneFlowFragmentSteps([]automation.FlowFragmentStep{*step})[0]
 			found = true
 		}
 	})
@@ -270,7 +270,7 @@ func validateUnpublishedFlowFragmentIdentity(workflow UnpublishedFlowFragment) e
 func cloneUnpublishedFlowFragment(workflow UnpublishedFlowFragment) UnpublishedFlowFragment {
 	cloned := workflow
 	cloned.Properties = workflow.Properties.Clone()
-	cloned.Steps = cloneSamplingSteps(workflow.Steps)
+	cloned.Steps = automation.CloneFlowFragmentSteps(workflow.Steps)
 	cloned.Parameters = append([]automation.ParameterDefinition(nil), workflow.Parameters...)
 	cloned.Nodes = make([]UnpublishedElementTarget, len(workflow.Nodes))
 	for index, node := range workflow.Nodes {

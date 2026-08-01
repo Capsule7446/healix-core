@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -216,5 +217,74 @@ func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("walk %s: %v", owner, err)
 		}
+	}
+}
+
+// One content type, one deep copy. Sampling and Automation each had their own
+// implementation for FlowFragmentStep, and they drifted: the sampling one never
+// copied Validation.Assertion.ExpectedValues, so an edited draft shared that
+// slice with its source. Nothing failed loudly — editing a copy just quietly
+// changed the original.
+//
+// The guard is structural rather than behavioural because the behavioural
+// version already existed in spirit (both were "correct" in their own tests) and
+// still missed the drift. What has to be prevented is the second implementation.
+func TestFlowFragmentStepHasExactlyOneDeepCopy(t *testing.T) {
+	root := repositoryRoot(t)
+	// A function is a step deep copy if it both takes and returns a step slice.
+	isStepSlice := func(expr ast.Expr) bool {
+		array, ok := expr.(*ast.ArrayType)
+		if !ok {
+			return false
+		}
+		switch element := array.Elt.(type) {
+		case *ast.Ident:
+			return element.Name == "FlowFragmentStep"
+		case *ast.SelectorExpr:
+			return element.Sel.Name == "FlowFragmentStep"
+		}
+		return false
+	}
+
+	var found []string
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, decl := range parsed.Decls {
+				function, ok := decl.(*ast.FuncDecl)
+				if !ok || function.Type.Params == nil || function.Type.Results == nil {
+					continue
+				}
+				takesSteps, returnsSteps := false, false
+				for _, param := range function.Type.Params.List {
+					if isStepSlice(param.Type) {
+						takesSteps = true
+					}
+				}
+				for _, result := range function.Type.Results.List {
+					if isStepSlice(result.Type) {
+						returnsSteps = true
+					}
+				}
+				if !takesSteps || !returnsSteps {
+					continue
+				}
+				// A rewrite transforms content; a copy reproduces it. Only the latter
+				// is what must stay unique, and only the latter is named for copying.
+				name := strings.ToLower(function.Name.Name)
+				if !strings.Contains(name, "clone") && !strings.Contains(name, "copy") {
+					continue
+				}
+				found = append(found, filepath.ToSlash(relative)+":"+
+					strconv.Itoa(fset.Position(function.Pos()).Line)+" "+function.Name.Name)
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+	if len(found) != 1 {
+		t.Errorf("found %d deep copies of flow fragment step content, want exactly one owned by the package that owns the type:\n  %s",
+			len(found), strings.Join(found, "\n  "))
 	}
 }

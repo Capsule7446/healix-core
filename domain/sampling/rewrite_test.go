@@ -13,7 +13,7 @@ func TestRewriteUnpublishedElementTargetReferencesRecursesWithoutMutatingInput(t
 		{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "child", DisplayName: "child", Kind: automation.StepAction, ElementTargetID: "temp-a"}}},
 		{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.FlowFragmentStep{{ID: "validation", DisplayName: "validation", Kind: automation.StepValidation, ElementTargetID: "temp-b"}}}}}},
 	}
-	original := cloneSamplingSteps(steps)
+	original := automation.CloneFlowFragmentSteps(steps)
 	mappings := []automation.SamplingNodeMapping{
 		{TemporaryElementTargetID: "temp-a", ElementTargetID: "node-a", ElementTargetVersionID: "node-a-v2"},
 		{TemporaryElementTargetID: "temp-b", ElementTargetID: "node-b", ElementTargetVersionID: "node-b-v1"},
