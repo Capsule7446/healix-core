@@ -8,6 +8,7 @@
 - **C1** codex `gpt-5.6-luna` max（别名 / 非确定性 / 并发）
 - **C2** codex `gpt-5.6-sol` max（同上三份）
 - **C3** codex 第三轮（automation 侧非确定性与排序）
+- **X1** 修复落地后的交叉审核（4 问 × 3 个模型层级，27 agent；每条发现再过一轮对抗性反驳）
 
 ## 裁定标准
 
@@ -93,6 +94,19 @@
 - **fingerprint 校验漂移**：`assets.go` 重写检查而非委托，漏掉 `SiblingIndex >= 0` 与 Framework。采样期会拒的负索引能落进不可变版本再被 heal 打分读回。消除重复需要导出违例追加器，范围大于缺口本身，因此补齐两条规则并加**一致性守卫**：两个校验器必须接受和拒绝同一批 fingerprint
 - 提交：`7bd9061`
 
+### F10 交叉审核发现的四条（修复自身的缺陷）
+
+X1 提出 28 条候选，22 条被反驳，6 条存活。**存活的没有一条是那八个提交造成的行为回归**——两条是同类漏网、两条是新测试的覆盖缺口、一条是我的提交卫生事故、一条是守卫的匹配洞。
+
+- **`ownStepTransitionCommit` 的 JSON 往返抹平全部身份**——同一类的第三个实例，且此前从未被看过。交给 Host 的 owned 副本里 step execution id、entry id、每条观察的身份全为空，`ValidationGroupTerminalObservation` 的未导出 `expectedMembers` 也丢失。校验跑在**原件**上、发生在往返之前，出口无人复查——owned 自己都过不了 `Validate`。字节预算同样错：它量的是 `len(json.Marshal)`，把每个坐标算成 `{}` 的两字节。改为 `StepTransitionCommit.Clone()` + 走值计算字节。提交：`85c72f6`
+- **`validateSuppliedRootValues`**——在 `2c7251a` 改的那个 map 下方 45 行、同一文件，仍是 map 顺序，且两个提前返回**错误种类不同**（无 code vs 带 code），同一输入的 fault code 会翻转。提交：`f681945`
+- **两个我写的空转测试**。`TestEnvironmentVariablesReportTheSameBadNameEveryRun` 用三个坏名字，而 `ValidateName` 的错误不带参数名，三者产出逐字节相同的字符串——200 次循环在拿常量比自己，删掉它守护的 `sort.Strings` 照样绿。`TestPublicationDigestIsStableAcrossRuns` 的载荷里没有任何多条目 map，删掉 canonical walk 的键排序全仓绿。均已重写并变异验证。提交：`f681945`
+- **提交卫生事故**：`09b6816` 的标题描述的守卫不在提交里——审核 agent 正在往工作树写探针，我的 `git add -A` 扫进了它们的文件，我的守卫反而未跟踪。其中一个探针是 `func cloneFingerprint(*fingerprint.Fingerprint) *fingerprint.Fingerprint`，**恰好暴露了 `TestFingerprintHasExactlyOneDeepCopy` 只认值签名、漏掉指针形式**。已清除探针、落地真守卫、并让守卫解包 `StarExpr`。提交：`a4a1973`
+
+### F11 把 JSON 摘要这一类整体钉住
+
+本模块三处 `json.Marshal` 摘要里两处出过同一个缺陷。剩下两处（`HealReviewRequestIdentityDigest`、`HealReviewStreakDigest`）目前正确，因为载荷全是导出字段——而这正是出事前那两处的状态。守卫现在遍历全部三个载荷的类型图，出现零导出字段类型即失败。提交：`3eb6d21`
+
 ---
 
 ## 二、裁定为不成立（附依据）
@@ -109,6 +123,7 @@
 | 自查 | 公共文本泄漏 | `fault.New`/`fault.Wrap` 消息无格式化动词；`mustViolation` 的 `%d` 是契约允许的 0-based 索引，`%q` 均在私有 cause |
 | A2 | `mapSamplingNode` 不拷 Selectors/Fingerprint | `NewElementTarget` 内部 `cloneNodeAggregate` 兜住 |
 | A2 | `execution/validation.go:306` spec 别名 | 局部值仅供 `spec.Validate()`，不逃逸 |
+| X1 | 22 条候选被对抗性反驳驳倒 | 多为"下游已有兜底""调用方不可达""严重度虚高"。反驳环节把 28 条压到 6 条，比例本身说明单轮审核的误报率 |
 
 ---
 
