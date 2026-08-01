@@ -166,10 +166,31 @@ X2 提出 17 条，13 条被驳倒，**3 条存活**（1 medium / 2 low），无
 - 未发布资产上的正式身份，全仓无读无写，与 `SamplingPublicationResult` 重复
 - 现有守卫因精确字符串比较（`"VersionNumber"` vs `SavedVersionNumber`）抓不到
 
-### R9 Phase 6「Snapshot/Evidence 新编码」—— 决策项
+### R9 Phase 6「Snapshot/Evidence 新编码」—— 刻意未做，需要 Host 迁移
 
-- 术语改名已完成，编码刻意未动：`"healix.run-snapshot"` 与 `"create-run-request-v1"` 保留原字节
-- 计划第 6 行验收写着「无旧 digest」，严格说未达标。改它会作废所有已存快照与幂等记录，需要 Host 侧迁移，应是独立步骤
+计划第 6 行的验收是「全仓术语清理、Snapshot/Evidence **新编码**、文档」，门槛「无旧业务
+API/schema/**digest**」。术语清理完成，**编码未动**——这是决策，不是遗漏，记在这里免得被
+当成后者。
+
+两个字符串直接进 sha256，是持久化格式而不是 Go 名字：
+
+| 字节 | 位置 | 谁依赖它 |
+|---|---|---|
+| `"healix.run-snapshot"` | `domain/execution/instance_snapshot.go` 规范编码器的首个 tag | 每一份已封存快照的 digest |
+| `"create-run-request-v1"` | `application/scheduling/create_instance_service.go` | 每一条已存的创建幂等记录 |
+
+改掉它们的后果是具体的，不是抽象的风险：
+
+- `HydrateInstanceSnapshot` 会把**所有已存快照**判为
+  `EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT`——重算的 digest 对不上存的那个
+- 重放一条 create 命令时摘要不再命中，会被当作**新请求**，于是重复创建实例。幂等在这个
+  方向上失效比在另一个方向上更糟
+
+改名过程中这件事真的发生过：一个词边界正则把 `"healix.run-snapshot"` 一起改了，V1 digest
+测试立刻报错。字节已恢复，两处都在代码里注明「这是 wire tag，不是 Go 名字」。
+
+要完成这一行，需要的是一次**独立的存储迁移**：Host 侧重算全部已存 digest，或实现双读
+（旧 tag 与新 tag 都接受）过渡一个版本。它不该作为一次改名的副产品滑进去。
 
 ---
 
