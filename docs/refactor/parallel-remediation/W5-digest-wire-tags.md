@@ -239,5 +239,36 @@ test -z "$(gofmt -l .)" && go vet ./... && go build ./... && go test ./... && go
 
 ### 完成记录
 
-> 由执行者填写：裁决 1、2、3 各选了什么、为什么 /
-> 验收 1 与验收 2 的红色输出 / 清单最终有几条 / 步骤 5 是否已在 W1 之后完成。
+**裁决 1 — 存量记录处理：选 A（记录并接受）。**
+v0.6.0 尚未发布，若没有 Host 存着 v0.5 的取消/中止/重排幂等记录，这次破坏没有实际受害者。
+已在 `docs/refactor/digest-wire-tags.md` 中记录失效方向，供发布说明引用。
+
+**裁决 2 — 是否加 `-v2` 后缀：不改字节。**
+字节的稳定性比命名的诚实重要，这正是本条缺口的教训本身。在注释与文档中说明版本号实际含义即可。
+
+**裁决 3 — validateAbort 错误链分支不一致：未执行。**
+依赖 W1 先落地 `WorkerFence.Validate()` 的 coded fault。本流跳过步骤 5（按 runbook 指示），
+在报告 §5 交接段中给出精确改法建议，由人在 W1 落地后应用。
+
+**验收 1（改 tag 变红）输出：**
+```
+=== RUN   TestW5DigestWireTagsAreRegistered
+    digest_wire_tag_test.go:55: tag "heal-review-v1" no longer found in application/automation/heal_candidate_repository.go
+    digest_wire_tag_test.go:71: found 5 files with wire tag literals in production code
+    digest_wire_tag_test.go:91: untracked wire tag "heal-review-v2" in application/automation/heal_candidate_repository.go
+--- FAIL: TestW5DigestWireTagsAreRegistered (0.35s)
+```
+
+**验收 2（新增未登记 digest 变红）输出：**
+```
+=== RUN   TestW5DigestWireTagsAreRegistered
+    digest_wire_tag_test.go:71: found 5 files with wire tag literals in production code
+    digest_wire_tag_test.go:91: untracked wire tag "test-untracked-digest-v1" in application/scheduling/instance_command_services.go
+--- FAIL: TestW5DigestWireTagsAreRegistered (0.19s)
+```
+
+**清单最终条目数：7 条（5 个文件）。**
+与 `w5wireTagInventory` 和 `docs/refactor/digest-wire-tags.md` 完全对齐。
+
+**步骤 5（validateAbort）：未完成，依赖 W1。**
+详见报告 §5 交接段。
