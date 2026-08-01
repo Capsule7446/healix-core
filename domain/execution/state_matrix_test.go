@@ -39,7 +39,7 @@ func TestInstanceStatusTransitionMatrix(t *testing.T) {
 	}
 }
 
-func TestExecutionStatusTransitionAndTerminalMatrices(t *testing.T) {
+func TestEntryStatusTransitionAndTerminalMatrices(t *testing.T) {
 	type transition struct {
 		from EntryStatus
 		to   EntryStatus

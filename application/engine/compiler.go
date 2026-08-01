@@ -485,12 +485,12 @@ func nodeDependencyIdentity(nodeID, versionID string) execution.NodeDependencyKe
 	return execution.NodeDependencyKey{ElementTargetID: nodeID, VersionID: versionID}
 }
 
-func runtimeWorkflowStepID(workflowVersionID, workflowStepID string) string {
-	return runtimeInvocationStepID(encodeRuntimeComponent(workflowVersionID), workflowStepID)
+func runtimeFlowFragmentStepID(workflowVersionID, flowFragmentStepID string) string {
+	return runtimeInvocationStepID(encodeRuntimeComponent(workflowVersionID), flowFragmentStepID)
 }
 
-func runtimeInvocationStepID(invocationPath, workflowStepID string) string {
-	return "step|" + invocationPath + encodeRuntimeComponent(workflowStepID)
+func runtimeInvocationStepID(invocationPath, flowFragmentStepID string) string {
+	return "step|" + invocationPath + encodeRuntimeComponent(flowFragmentStepID)
 }
 
 func encodeRuntimeComponent(value string) string { return fmt.Sprintf("%d:%s", len(value), value) }

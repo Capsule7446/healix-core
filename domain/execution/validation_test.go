@@ -490,7 +490,7 @@ func TestAggregateCollectionLimitsRejectEmptyEntriesBeforeSealClone(t *testing.T
 	}
 }
 
-func TestExecutionStatusTransitionMatrix(t *testing.T) {
+func TestEntryStatusTransitionMatrix(t *testing.T) {
 	statuses := []EntryStatus{EntryPending, EntryRunning, EntrySucceeded, EntryFailed, EntryCanceled, EntryAborted}
 	allowed := map[[2]EntryStatus]bool{
 		{EntryPending, EntryRunning}: true, {EntryPending, EntryFailed}: true, {EntryPending, EntryCanceled}: true,
@@ -506,7 +506,7 @@ func TestExecutionStatusTransitionMatrix(t *testing.T) {
 	}
 }
 
-func TestExecutionStatusRejectsUnknownAndTerminalTransitions(t *testing.T) {
+func TestEntryStatusRejectsUnknownAndTerminalTransitions(t *testing.T) {
 	tests := []struct {
 		name string
 		from EntryStatus
@@ -522,7 +522,7 @@ func TestExecutionStatusRejectsUnknownAndTerminalTransitions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if err := ValidateEntryStatusTransition(test.from, test.to); !fault.IsCode(err, CodeStatusTransitionInvalid) {
-				t.Fatalf("transition %s -> %s error = %v, want ErrInvalidExecutionStatusTransition", test.from, test.to, err)
+				t.Fatalf("transition %s -> %s error = %v, want ErrInvalidEntryStatusTransition", test.from, test.to, err)
 			}
 		})
 	}

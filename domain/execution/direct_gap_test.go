@@ -83,7 +83,7 @@ func TestInstanceSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T
 	}
 }
 
-func TestExecutionStatusDirect(t *testing.T) {
+func TestEntryStatusDirect(t *testing.T) {
 	for _, tt := range []struct {
 		status   EntryStatus
 		terminal bool

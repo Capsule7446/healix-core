@@ -164,13 +164,13 @@ func TestCompilePlanRejectsUnsealedPlanWithDomainError(t *testing.T) {
 	}
 }
 
-func TestRuntimeWorkflowStepIDIsCollisionFree(t *testing.T) {
-	first := runtimeWorkflowStepID("a:b", "c")
-	second := runtimeWorkflowStepID("a", "b:c")
+func TestRuntimeFlowFragmentStepIDIsCollisionFree(t *testing.T) {
+	first := runtimeFlowFragmentStepID("a:b", "c")
+	second := runtimeFlowFragmentStepID("a", "b:c")
 	if first == second {
 		t.Fatalf("runtime ids collided: %q", first)
 	}
-	if first != runtimeWorkflowStepID("a:b", "c") {
+	if first != runtimeFlowFragmentStepID("a:b", "c") {
 		t.Fatal("runtime id is not deterministic")
 	}
 }
@@ -280,10 +280,10 @@ func TestCompilePlanBuildsValidationGroup(t *testing.T) {
 	}
 	group := compiled.program.Root.(*node.WorkflowNode).Children[0].(*node.ValidationGroupNode)
 	validation := group.Branches[0].Nodes[0]
-	if validation.GroupID != runtimeWorkflowStepID("execution-entry", "group") || validation.BranchID != "success" || validation.Assertion.Expected != "成功" || validation.MaxWait != 2*time.Second {
+	if validation.GroupID != runtimeFlowFragmentStepID("execution-entry", "group") || validation.BranchID != "success" || validation.Assertion.Expected != "成功" || validation.MaxWait != 2*time.Second {
 		t.Fatalf("validation member = %#v", validation)
 	}
-	if !compiled.Metadata[runtimeWorkflowStepID("execution-entry", "group")].CaptureScreenshot || compiled.Metadata[runtimeWorkflowStepID("execution-entry", "member")].HierarchyPath != "验证 / 结果 / 成功 / 状态成功" {
+	if !compiled.Metadata[runtimeFlowFragmentStepID("execution-entry", "group")].CaptureScreenshot || compiled.Metadata[runtimeFlowFragmentStepID("execution-entry", "member")].HierarchyPath != "验证 / 结果 / 成功 / 状态成功" {
 		t.Fatalf("validation metadata = %#v", compiled.Metadata)
 	}
 }
