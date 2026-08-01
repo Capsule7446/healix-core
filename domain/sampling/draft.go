@@ -271,12 +271,13 @@ func cloneUnpublishedFlowFragment(workflow UnpublishedFlowFragment) UnpublishedF
 	cloned := workflow
 	cloned.Properties = workflow.Properties.Clone()
 	cloned.Steps = automation.CloneFlowFragmentSteps(workflow.Steps)
-	cloned.Parameters = append([]automation.ParameterDefinition(nil), workflow.Parameters...)
+	cloned.Parameters = automation.CloneParameterDefinitions(workflow.Parameters)
 	cloned.Nodes = make([]UnpublishedElementTarget, len(workflow.Nodes))
 	for index, node := range workflow.Nodes {
 		cloned.Nodes[index] = node
 		cloned.Nodes[index].Properties = node.Properties.Clone()
 		cloned.Nodes[index].Selectors = append([]fingerprint.Selector(nil), node.Selectors...)
+		cloned.Nodes[index].Fingerprint = node.Fingerprint.Clone()
 		cloned.Nodes[index].StepIDs = append([]string(nil), node.StepIDs...)
 		cloned.Nodes[index].Candidates = append([]ElementTargetCandidate(nil), node.Candidates...)
 	}

@@ -410,12 +410,8 @@ func originOf(value string) string {
 }
 
 func cloneSpec(spec fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
-	copy := spec
-	copy.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
-	copy.Fingerprint.Attributes = make(map[string]string, len(spec.Fingerprint.Attributes))
-	for key, value := range spec.Fingerprint.Attributes {
-		copy.Fingerprint.Attributes[key] = value
-	}
-	copy.Fingerprint.Path = append([]string(nil), spec.Fingerprint.Path...)
-	return copy
+	copied := spec
+	copied.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
+	copied.Fingerprint = spec.Fingerprint.Clone()
+	return copied
 }

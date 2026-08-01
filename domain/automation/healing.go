@@ -171,7 +171,7 @@ func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate
 	}
 	next := candidate
 	next.Selectors = append([]fingerprint.Selector(nil), candidate.Selectors...)
-	next.Fingerprint = cloneFingerprint(candidate.Fingerprint)
+	next.Fingerprint = candidate.Fingerprint.Clone()
 	next.Status = status
 	next.Revision = nextRevision
 	return next, nil

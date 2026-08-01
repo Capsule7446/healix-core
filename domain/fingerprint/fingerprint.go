@@ -84,6 +84,30 @@ type Fingerprint struct {
 	Framework FrameworkStack
 }
 
+// Clone is the one deep copy of a fingerprint.
+//
+// There were four hand-written copies of this before, one per package that
+// needed one, and two of them were wrong: sampling's cloneSpec never copied
+// Framework, and cloneUnpublishedFlowFragment never copied the fingerprint at
+// all. Both produced a "copy" that shared a map and two slices with its source,
+// so editing the copy silently edited the original. Whoever owns the type owns
+// the copy, which is the only arrangement where a new reference-typed field
+// cannot be forgotten by three callers out of four.
+//
+// ARIA and Neighbors are all-string structs and copy by value.
+func (f Fingerprint) Clone() Fingerprint {
+	cloned := f
+	cloned.Path = append([]string(nil), f.Path...)
+	cloned.Framework = f.Framework.Clone()
+	if f.Attributes != nil {
+		cloned.Attributes = make(map[string]string, len(f.Attributes))
+		for key, value := range f.Attributes {
+			cloned.Attributes[key] = value
+		}
+	}
+	return cloned
+}
+
 // Validate enforces the shared identity invariants used by matching and healing.
 // It carries its own code rather than folding into the element target spec,
 // because domain/heal validates descriptors directly without going through a spec.

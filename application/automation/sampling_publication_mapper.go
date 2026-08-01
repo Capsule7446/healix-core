@@ -127,7 +127,7 @@ func mapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	}
 	workflow, err := domainautomation.NewFlowFragment(
 		domainautomation.FlowFragment{ID: request.FlowFragmentID, DisplayName: request.Workspace.DisplayName, Properties: request.Workspace.Properties.Clone(), CreatedAt: request.PublishedAt, UpdatedAt: request.PublishedAt},
-		domainautomation.FlowFragmentVersion{ID: request.WorkflowVersionID, Definition: domainautomation.FlowFragmentContent{Steps: steps, Parameters: append([]domainautomation.ParameterDefinition(nil), request.Workspace.Parameters...)}, CreatedAt: request.PublishedAt},
+		domainautomation.FlowFragmentVersion{ID: request.WorkflowVersionID, Definition: domainautomation.FlowFragmentContent{Steps: steps, Parameters: domainautomation.CloneParameterDefinitions(request.Workspace.Parameters)}, CreatedAt: request.PublishedAt},
 	)
 	if err != nil {
 		// domainautomation.NewFlowFragment's own errors are classified at its own

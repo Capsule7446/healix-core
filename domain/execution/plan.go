@@ -269,16 +269,9 @@ func cloneNodes(nodes []NodeSnapshot) []NodeSnapshot {
 	for i, snapshot := range nodes {
 		result[i] = snapshot
 		result[i].Selectors = append([]fingerprint.Selector(nil), snapshot.Selectors...)
-		result[i].Fingerprint = cloneFingerprint(snapshot.Fingerprint)
+		result[i].Fingerprint = snapshot.Fingerprint.Clone()
 	}
 	return result
-}
-
-func cloneFingerprint(value fingerprint.Fingerprint) fingerprint.Fingerprint {
-	value.Attributes = cloneMap(value.Attributes)
-	value.Path = append([]string(nil), value.Path...)
-	value.Framework = value.Framework.Clone()
-	return value
 }
 
 func cloneBindings(source map[string]parameter.Binding) map[string]parameter.Binding {

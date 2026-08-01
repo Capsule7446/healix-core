@@ -153,9 +153,7 @@ func cloneSnapshotCandidates(source []heal.SnapshotCandidate) []heal.SnapshotCan
 	copied := make([]heal.SnapshotCandidate, len(source))
 	for i, candidate := range source {
 		copied[i] = candidate
-		copied[i].Fingerprint.Attributes = cloneStringMap(candidate.Fingerprint.Attributes)
-		copied[i].Fingerprint.Path = append([]string(nil), candidate.Fingerprint.Path...)
-		copied[i].Fingerprint.Framework = append(fingerprint.FrameworkStack(nil), candidate.Fingerprint.Framework...)
+		copied[i].Fingerprint = candidate.Fingerprint.Clone()
 	}
 	return copied
 }

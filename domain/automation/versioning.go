@@ -162,7 +162,7 @@ func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string
 	}
 	version := ElementTargetVersion{ID: versionID, ElementTargetID: a.ElementTarget.ID, VersionNumber: versionNumber,
 		PageURL: pageURL, Origin: origin, Selectors: append([]fingerprint.Selector(nil), selectors...),
-		Fingerprint: cloneFingerprint(fp), Source: source, CreatedAt: at}
+		Fingerprint: fp.Clone(), Source: source, CreatedAt: at}
 	next.ElementTarget.CurrentVersionID = version.ID
 	next.ElementTarget.UpdatedAt = at
 	next.ElementTarget.Revision = nextRevision
@@ -324,18 +324,7 @@ func cloneNodeAggregate(input ElementTargetAggregate) ElementTargetAggregate {
 func cloneNodeVersion(input ElementTargetVersion) ElementTargetVersion {
 	result := input
 	result.Selectors = append([]fingerprint.Selector(nil), input.Selectors...)
-	result.Fingerprint = cloneFingerprint(input.Fingerprint)
-	return result
-}
-
-func cloneFingerprint(input fingerprint.Fingerprint) fingerprint.Fingerprint {
-	result := input
-	result.Path = append([]string(nil), input.Path...)
-	result.Framework = input.Framework.Clone()
-	result.Attributes = make(map[string]string, len(input.Attributes))
-	for key, value := range input.Attributes {
-		result.Attributes[key] = value
-	}
+	result.Fingerprint = input.Fingerprint.Clone()
 	return result
 }
 
@@ -357,12 +346,24 @@ func cloneWorkflowVersion(input FlowFragmentVersion) FlowFragmentVersion {
 }
 
 func cloneWorkflowDefinition(input FlowFragmentContent) FlowFragmentContent {
-	result := FlowFragmentContent{Steps: CloneFlowFragmentSteps(input.Steps),
-		Parameters: append([]ParameterDefinition(nil), input.Parameters...)}
-	for index := range result.Parameters {
-		result.Parameters[index].Options = append([]string(nil), input.Parameters[index].Options...)
-		if value, present := input.Parameters[index].Default.Value(); present {
-			result.Parameters[index].Default = parameter.PresentValue(value)
+	return FlowFragmentContent{Steps: CloneFlowFragmentSteps(input.Steps),
+		Parameters: CloneParameterDefinitions(input.Parameters)}
+}
+
+// CloneParameterDefinitions is the one deep copy of parameter definition
+// content. Sampling and the publication mapper both used a bare append, which
+// copies the slice but leaves every Options slice shared with the source. In
+// the mapper that meant a published, immutable FlowFragmentVersion shared an
+// array with the still-editable draft it came from.
+func CloneParameterDefinitions(input []ParameterDefinition) []ParameterDefinition {
+	if input == nil {
+		return nil
+	}
+	result := append([]ParameterDefinition(nil), input...)
+	for index := range result {
+		result[index].Options = append([]string(nil), input[index].Options...)
+		if value, present := input[index].Default.Value(); present {
+			result[index].Default = parameter.PresentValue(value)
 		}
 	}
 	return result
