@@ -30,3 +30,13 @@ func mustStepExecutionID(value string) StepExecutionID {
 	}
 	return id
 }
+
+// mustInvocationPath spells a call-site path in a fixture where the value is a
+// literal the test author already knows is canonical.
+func mustInvocationPath(value string) InvocationPath {
+	path, err := ParseInvocationPath(value)
+	if err != nil {
+		panic(err)
+	}
+	return path
+}

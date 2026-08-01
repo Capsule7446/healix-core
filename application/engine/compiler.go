@@ -148,7 +148,7 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 	compiledNodes := 0
 	invocations := snapshot.Invocations()
 	invocationsByEdge := invocationIndex(invocations)
-	invocationsByPath := make(map[string]execution.InvocationScopeSnapshot, len(invocations))
+	invocationsByPath := make(map[execution.InvocationPath]execution.InvocationScopeSnapshot, len(invocations))
 	for _, invocation := range invocations {
 		if _, exists := invocationsByPath[invocation.Path]; exists {
 			return CompiledPlan{}, fmt.Errorf("duplicate invocation path %s", invocation.Path)
@@ -159,7 +159,6 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 	result := CompiledPlan{entries: make([]CompiledEntry, 0, len(draft.Entries)), byID: make(map[execution.EntryID]int, len(draft.Entries))}
 	for _, entry := range draft.Entries {
 		entryID := entry.ID
-		spelled := entryID.String()
 		if _, exists := result.byID[entryID]; exists {
 			return CompiledPlan{}, fmt.Errorf("duplicate execution %s", entryID)
 		}
@@ -169,15 +168,15 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 			metadata:     make(map[string]StepMetadata), runtimeNodes: make(map[string]RuntimeNodeIdentity),
 			compiledNodes: &compiledNodes,
 		}
-		rootPath := encodeRuntimeComponent(spelled)
-		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, spelled, 1)
+		rootPath := encodeRuntimeComponent(entryID.String())
+		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, execution.RootInvocationPath(entryID), 1)
 		if err != nil {
 			// The inner failure is already a classified fault. This wrapper both hid
 			// that classification and welded the execution id into public text.
 			return CompiledPlan{}, err
 		}
 		root.OwnsParameterScope = true
-		invocation, exists := invocationsByPath[spelled]
+		invocation, exists := invocationsByPath[execution.RootInvocationPath(entryID)]
 		if !exists {
 			return CompiledPlan{}, fmt.Errorf("compile execution %s: root invocation is missing", entryID)
 		}
@@ -222,7 +221,7 @@ type executionCompiler struct {
 	compiledNodes *int
 }
 
-func (c *executionCompiler) compileWorkflow(versionID, invocationPath, scopePath string, depth int) (*node.WorkflowNode, error) {
+func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, scopePath execution.InvocationPath, depth int) (*node.WorkflowNode, error) {
 	if depth > execution.MaxWorkflowReferenceDepth {
 		return nil, fmt.Errorf("compile depth exceeds maximum %d", execution.MaxWorkflowReferenceDepth)
 	}
@@ -240,7 +239,7 @@ func (c *executionCompiler) compileWorkflow(versionID, invocationPath, scopePath
 	return &node.WorkflowNode{NodeID: workflowRuntimeID, Children: children}, nil
 }
 
-func (c *executionCompiler) compileSteps(parentVersionID, invocationPath, scopePath string, steps []execution.Step, hierarchy string, depth int) ([]node.Node, error) {
+func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string, scopePath execution.InvocationPath, steps []execution.Step, hierarchy string, depth int) ([]node.Node, error) {
 	result := make([]node.Node, 0, len(steps))
 	for _, step := range steps {
 		*c.compiledNodes++
@@ -378,7 +377,7 @@ func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (
 	}
 }
 
-func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath, scopePath, runtimeID string, step execution.Step, depth int) (node.Node, error) {
+func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath string, scopePath execution.InvocationPath, runtimeID string, step execution.Step, depth int) (node.Node, error) {
 	if step.Reference == nil {
 		return nil, fmt.Errorf("workflow reference step %s has no reference", step.ID)
 	}
@@ -421,7 +420,7 @@ func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath,
 func invocationIndex(values []execution.InvocationScopeSnapshot) map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot {
 	result := make(map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot, len(values))
 	for _, value := range values {
-		if value.ParentPath != "" {
+		if value.ParentPath != (execution.InvocationPath{}) {
 			result[execution.InvocationEdgeKey{ParentPath: value.ParentPath, StepID: value.StepID}] = value
 		}
 	}

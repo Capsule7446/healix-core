@@ -65,20 +65,20 @@ func TestRunSnapshotNamedAccessorsAndInvocationIsolationDirect(t *testing.T) {
 	if snapshot.SchemaVersion() != RunSnapshotSchemaV1 || snapshot.ExecutionFlowID() != "task-1" || snapshot.TestTaskVersionID() != "task-v3" {
 		t.Fatalf("accessors returned wrong identity")
 	}
-	invocation, ok := snapshot.Invocation("entry-1")
+	invocation, ok := snapshot.Invocation(mustInvocationPath("entry-1"))
 	if !ok {
 		t.Fatal("Invocation did not find entry-1")
 	}
 	invocation.Values["count"] = parameter.TextValue("mutated")
 	invocation.Bindings = map[string]parameter.Binding{}
-	again, ok := snapshot.Invocation("entry-1")
+	again, ok := snapshot.Invocation(mustInvocationPath("entry-1"))
 	if !ok {
 		t.Fatal("second Invocation did not find entry-1")
 	}
 	if again.Values["count"].Type() != parameter.Number {
 		t.Fatal("returned Values map aliases snapshot")
 	}
-	if _, ok := snapshot.Invocation("missing"); ok {
+	if _, ok := snapshot.Invocation(mustInvocationPath("missing")); ok {
 		t.Fatal("unknown invocation found")
 	}
 }

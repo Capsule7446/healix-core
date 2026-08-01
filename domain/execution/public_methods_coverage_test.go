@@ -35,16 +35,16 @@ func TestRunSnapshotInvocationFindsAndOwnsValues(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	invocation, found := snapshot.Invocation("entry-1")
-	if !found || invocation.Path != "entry-1" {
+	invocation, found := snapshot.Invocation(mustInvocationPath("entry-1"))
+	if !found || invocation.Path != mustInvocationPath("entry-1") {
 		t.Fatalf("Invocation() = %#v, %v", invocation, found)
 	}
 	invocation.Values["count"] = invocation.Values["regions"]
-	again, found := snapshot.Invocation("entry-1")
+	again, found := snapshot.Invocation(mustInvocationPath("entry-1"))
 	if !found || again.Values["count"].Number() != "1.2" {
 		t.Fatalf("Invocation() aliases snapshot storage: %#v", again)
 	}
-	if missing, found := snapshot.Invocation("missing"); found || missing.Path != "" {
+	if missing, found := snapshot.Invocation(mustInvocationPath("missing")); found || missing.Path != (InvocationPath{}) {
 		t.Fatalf("missing Invocation() = %#v, %v", missing, found)
 	}
 }

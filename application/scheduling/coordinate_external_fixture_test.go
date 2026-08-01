@@ -31,3 +31,13 @@ func mustStepExecutionID(value string) domain.StepExecutionID {
 	}
 	return id
 }
+
+// mustInvocationPath spells a call-site path in a fixture where the value is a
+// literal the test author already knows is canonical.
+func mustInvocationPath(value string) domain.InvocationPath {
+	path, err := domain.ParseInvocationPath(value)
+	if err != nil {
+		panic(err)
+	}
+	return path
+}

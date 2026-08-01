@@ -107,7 +107,7 @@ func sealedPlan(t *testing.T, policy execution.FailurePolicy) execution.Instance
 	invocations := make([]execution.InvocationScopeSnapshot, len(draft.Entries))
 	for index, entry := range draft.Entries {
 		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
-		invocations[index] = execution.InvocationScopeSnapshot{Path: entry.ID.String(), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
+		invocations[index] = execution.InvocationScopeSnapshot{Path: execution.RootInvocationPath(entry.ID), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}}
 	}
 	snapshot, err := execution.SealInstanceSnapshot(execution.InstanceSnapshotInput{
 		SchemaVersion: execution.RunSnapshotSchemaV1, RunID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,

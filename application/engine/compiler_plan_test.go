@@ -51,7 +51,7 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaV
 		if !exists {
 			return fmt.Errorf("workflow version %s is missing", versionID)
 		}
-		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, ParentVersionID: parentVersionID, StepID: stepID, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: versionID, Values: values}
+		invocation := execution.InvocationScopeSnapshot{Path: mustInvocationPath(path), ParentPath: optionalInvocationPath(parentPath), ParentVersionID: parentVersionID, StepID: stepID, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: versionID, Values: values}
 		invocations = append(invocations, invocation)
 		for _, step := range workflow.Steps {
 			if step.Kind != execution.FlowFragmentReference || step.Reference == nil {

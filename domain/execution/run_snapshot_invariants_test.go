@@ -104,9 +104,12 @@ func TestRunSnapshotAggregateStringBytesIncludesEnvironmentAndInvocation(t *test
 		t.Fatal("oversized environment property accepted")
 	}
 	input = validRunSnapshotInput(t)
-	input.Invocations[0].Path = strings.Repeat("x", MaxStringBytes+1)
+	// An oversized path can no longer be constructed at all, so what the seal
+	// can still be handed is an unset one. The byte bound moved to
+	// ParseInvocationPath, where the coordinate tests cover it.
+	input.Invocations[0].Path = InvocationPath{}
 	if _, err := SealInstanceSnapshot(input); err == nil {
-		t.Fatal("oversized invocation path accepted")
+		t.Fatal("unset invocation path accepted")
 	}
 }
 

@@ -7,8 +7,8 @@ import (
 )
 
 func TestInvocationEdgeKeyDoesNotCollideLikeDelimitedStrings(t *testing.T) {
-	left := InvocationEdgeKey{ParentPath: "parent", StepID: "step\x00tail"}
-	right := InvocationEdgeKey{ParentPath: "parent\x00step", StepID: "tail"}
+	left := InvocationEdgeKey{ParentPath: mustInvocationPath("parent"), StepID: "step\x00tail"}
+	right := InvocationEdgeKey{ParentPath: mustInvocationPath("parent\x00step"), StepID: "tail"}
 	if left == right {
 		t.Fatal("distinct concrete invocation edges compare equal")
 	}
@@ -43,18 +43,17 @@ func snapshotWithTwoConcreteReferenceEdges(t *testing.T) InstanceSnapshotInput {
 	entry.Parameters.Values["count"] = number
 	input.Plan.Entries = append(input.Plan.Entries, entry)
 	input.Invocations[0].Bindings = map[string]parameter.Binding{}
-	root2 := InvocationScopeSnapshot{Path: "entry-2", FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: cloneParameterValues(entry.Parameters.Values), Bindings: map[string]parameter.Binding{}}
-	child1 := InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": input.Invocations[0].Values["count"]}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
-	child2 := InvocationScopeSnapshot{Path: "entry-2/4:call", ParentPath: "entry-2", ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": number}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
-	grandchild1 := InvocationScopeSnapshot{Path: "entry-1/4:call/15:call-grandchild", ParentPath: child1.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
-	grandchild2 := InvocationScopeSnapshot{Path: "entry-2/4:call/15:call-grandchild", ParentPath: child2.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
+	root2 := InvocationScopeSnapshot{Path: mustInvocationPath("entry-2"), FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: cloneParameterValues(entry.Parameters.Values), Bindings: map[string]parameter.Binding{}}
+	child1 := InvocationScopeSnapshot{Path: mustInvocationPath("entry-1/4:call"), ParentPath: mustInvocationPath("entry-1"), ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": input.Invocations[0].Values["count"]}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
+	child2 := InvocationScopeSnapshot{Path: mustInvocationPath("entry-2/4:call"), ParentPath: mustInvocationPath("entry-2"), ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", Values: map[string]parameter.Value{"value": number}, Bindings: cloneBindings(root.Steps[0].Reference.ParameterBindings)}
+	grandchild1 := InvocationScopeSnapshot{Path: mustInvocationPath("entry-1/4:call/15:call-grandchild"), ParentPath: child1.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
+	grandchild2 := InvocationScopeSnapshot{Path: mustInvocationPath("entry-2/4:call/15:call-grandchild"), ParentPath: child2.Path, ParentVersionID: "child-v1", StepID: "call-grandchild", FlowFragmentID: "grandchild", WorkflowVersionID: "grandchild-v1", Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}}
 	input.Invocations = append(input.Invocations, root2, child1, child2, grandchild1, grandchild2)
 	return input
 }
 
 func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 	const stepID = "call/阶段:一"
-	const canonicalSuffix = "/15:call/阶段:一"
 
 	canonicalInput := snapshotWithTwoConcreteReferenceEdges(t)
 	canonicalInput.Plan.Workflows[0].Steps[0].ID = stepID
@@ -66,12 +65,19 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 		}
 		oldPath := invocation.Path
 		invocation.StepID = stepID
-		invocation.Path = invocation.ParentPath + canonicalSuffix
+		// Building the canonical form through Child rather than by hand keeps this
+		// case asserting what the validator accepts, not what the test remembers
+		// the encoding to be.
+		childPath, childErr := invocation.ParentPath.Child(stepID)
+		if childErr != nil {
+			t.Fatalf("canonical child path: %v", childErr)
+		}
+		invocation.Path = childPath
 		for descendantIndex := range canonicalInput.Invocations {
 			descendant := &canonicalInput.Invocations[descendantIndex]
 			if descendant.ParentPath == oldPath {
 				descendant.ParentPath = invocation.Path
-				descendant.Path = invocation.Path + "/15:call-grandchild"
+				descendant.Path = mustInvocationPath(invocation.Path.String() + "/15:call-grandchild")
 			}
 		}
 	}
@@ -82,12 +88,12 @@ func TestRunSnapshotRequiresCanonicalChildInvocationPath(t *testing.T) {
 	forgedInput := snapshotWithTwoConcreteReferenceEdges(t)
 	child := &forgedInput.Invocations[2]
 	oldChildPath := child.Path
-	child.Path = "forged-unique-child-path"
+	child.Path = mustInvocationPath("forged-unique-child-path")
 	for index := range forgedInput.Invocations {
 		grandchild := &forgedInput.Invocations[index]
 		if grandchild.ParentPath == oldChildPath {
 			grandchild.ParentPath = child.Path
-			grandchild.Path = child.Path + "/15:call-grandchild"
+			grandchild.Path = mustInvocationPath(child.Path.String() + "/15:call-grandchild")
 		}
 	}
 	sealed, err := SealInstanceSnapshot(forgedInput)
@@ -109,7 +115,9 @@ func TestRunSnapshotUsesConcreteParentPathForRepeatedReferenceEdges(t *testing.T
 	}
 	input = snapshotWithTwoConcreteReferenceEdges(t)
 	input.Invocations = append(input.Invocations, input.Invocations[2])
-	input.Invocations[len(input.Invocations)-1].Path = "entry-1/4:call-duplicate"
+	// The segment length has to match the step id it declares, or the path is
+	// rejected for being malformed before the duplicate edge is ever reached.
+	input.Invocations[len(input.Invocations)-1].Path = mustInvocationPath("entry-1/14:call-duplicate")
 	if _, err := SealInstanceSnapshot(input); err == nil {
 		t.Fatal("duplicate concrete edge accepted")
 	}

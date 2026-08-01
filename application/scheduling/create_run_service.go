@@ -227,7 +227,7 @@ func validateStoredCreateRunResult(stored StoredCreateRunResult, command CreateR
 		if !exists {
 			return invalid("command entry is missing from stored plan")
 		}
-		invocation, exists := stored.Snapshot.Invocation(entry.ID.String())
+		invocation, exists := stored.Snapshot.Invocation(execution.RootInvocationPath(entry.ID))
 		if !exists {
 			return invalid("stored root invocation is missing")
 		}

@@ -55,7 +55,7 @@ func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T)
 	}
 	ordered := reordered.Invocations()
 	for index := 1; index < len(ordered); index++ {
-		if ordered[index-1].Path > ordered[index].Path {
+		if ordered[index-1].Path.String() > ordered[index].Path.String() {
 			t.Fatal("sealed invocation order is not canonical")
 		}
 	}
@@ -63,7 +63,7 @@ func TestRunSnapshotInvocationOrderIsCanonicalAndDigestIndependent(t *testing.T)
 
 func TestRunSnapshotRejectsInvocationWithMissingParentIndependentOfOrder(t *testing.T) {
 	input := snapshotWithTwoConcreteReferenceEdges(t)
-	input.Invocations[1].ParentPath = "missing"
+	input.Invocations[1].ParentPath = mustInvocationPath("missing")
 	input.Invocations[0], input.Invocations[1] = input.Invocations[1], input.Invocations[0]
 	if snapshot, err := SealInstanceSnapshot(input); err == nil || snapshot.Digest() != "" {
 		t.Fatalf("missing parent accepted: %#v/%v", snapshot, err)
@@ -99,7 +99,7 @@ func validRunSnapshotInput(t *testing.T) InstanceSnapshotInput {
 			Entries:   []Entry{{ID: mustEntryID("entry-1"), TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
 			Workflows: []WorkflowSnapshot{{ID: "workflow-1", FlowFragmentID: "workflow-1", VersionID: "workflow-v2", DisplayName: "Flow", VersionNumber: 2, Parameters: []Parameter{{Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 		},
-		Invocations:      []InvocationScopeSnapshot{{Path: "entry-1", ParentPath: "", FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}},
+		Invocations:      []InvocationScopeSnapshot{{Path: mustInvocationPath("entry-1"), FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}},
 		Environment:      EnvironmentSnapshot{ID: "env-1", Revision: 7, DisplayName: "CI", BaseURL: "https://example.test", Properties: map[string]string{"password": "ordinary-property", "region": "east"}},
 		FailurePolicy:    FailurePolicyStopOnFailure,
 		ScreenshotPolicy: ScreenshotPolicySnapshot{Version: ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"},

@@ -153,11 +153,11 @@ func (tx *oneViewResolverTx) ResolveCreateRun(_ context.Context, command CreateR
 			seenDependencies[version.ID] = true
 			plan.Workflows = append(plan.Workflows, automation.FlowFragmentDependencySnapshot{FlowFragment: workflow, Version: version, ResolvedFromLatest: latest})
 		}
-		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, StepID: stepID, FlowFragmentID: workflow.ID, WorkflowVersionID: version.ID, ResolvedFromLatest: latest, Values: cloneParameterValues(values), Bindings: cloneParameterBindings(bindings)}
+		invocation := execution.InvocationScopeSnapshot{Path: mustInvocationPath(path), ParentPath: optionalInvocationPath(parentPath), StepID: stepID, FlowFragmentID: workflow.ID, WorkflowVersionID: version.ID, ResolvedFromLatest: latest, Values: cloneParameterValues(values), Bindings: cloneParameterBindings(bindings)}
 		if parentPath != "" {
 			parentVersion := ""
 			for _, candidate := range invocations {
-				if candidate.Path == parentPath {
+				if candidate.Path == optionalInvocationPath(parentPath) {
 					parentVersion = candidate.WorkflowVersionID
 				}
 			}

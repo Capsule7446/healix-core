@@ -152,7 +152,7 @@ func TestCompilerRequiresConcreteRootAndNestedInvocations(t *testing.T) {
 	}
 	count := 0
 	compiler.compiledNodes = &count
-	if _, err := compiler.compileWorkflow("root-v1", "root", "root", 1); err == nil {
+	if _, err := compiler.compileWorkflow("root-v1", "root", mustInvocationPath("root"), 1); err == nil {
 		t.Fatal("missing concrete child invocation was accepted")
 	}
 }

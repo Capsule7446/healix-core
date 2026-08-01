@@ -39,8 +39,8 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 		if err != nil {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(err)
 		}
-		resolvedRoot, exists := invocationByPath(resolved.Invocations, spelledEntry)
-		if !exists || resolvedRoot.ParentPath != "" {
+		resolvedRoot, exists := invocationByPath(resolved.Invocations, execution.RootInvocationPath(executionID))
+		if !exists || resolvedRoot.ParentPath != (execution.InvocationPath{}) {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
 		if err := validateSuppliedRootValues(values, resolvedRoot.WorkflowVersionID, resolved.Plan); err != nil {
@@ -317,7 +317,7 @@ func preflightResolvedCreateRun(resolved ResolvedCreateRun) error {
 		}
 	}
 	for _, invocation := range resolved.Invocations {
-		if err := addStrings(invocation.Path, invocation.ParentPath, invocation.ParentVersionID, invocation.StepID, invocation.FlowFragmentID, invocation.WorkflowVersionID); err != nil {
+		if err := addStrings(invocation.Path.String(), invocation.ParentPath.String(), invocation.ParentVersionID, invocation.StepID, invocation.FlowFragmentID, invocation.WorkflowVersionID); err != nil {
 			return err
 		}
 		if err := addResolvedValuesBudget(&budget, invocation.Values); err != nil {
@@ -445,7 +445,7 @@ func validateResolvedRootValues(values map[string]parameter.Value, invocation ex
 	return fmt.Errorf("workflow version %q is missing", invocation.WorkflowVersionID)
 }
 
-func invocationByPath(invocations []execution.InvocationScopeSnapshot, path string) (execution.InvocationScopeSnapshot, bool) {
+func invocationByPath(invocations []execution.InvocationScopeSnapshot, path execution.InvocationPath) (execution.InvocationScopeSnapshot, bool) {
 	for _, invocation := range invocations {
 		if invocation.Path == path {
 			return invocation, true

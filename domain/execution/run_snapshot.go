@@ -10,7 +10,6 @@ import (
 	"math"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -69,13 +68,13 @@ type ExecutionFlowVersionSnapshot struct {
 }
 
 type InvocationEdgeKey struct {
-	ParentPath string
+	ParentPath InvocationPath
 	StepID     string
 }
 
 type InvocationScopeSnapshot struct {
-	Path               string
-	ParentPath         string
+	Path               InvocationPath
+	ParentPath         InvocationPath
 	ParentVersionID    string
 	StepID             string
 	FlowFragmentID     string
@@ -115,7 +114,7 @@ func (s InstanceSnapshot) Plan() PlanSnapshot               { return cloneDraft(
 func (s InstanceSnapshot) Invocations() []InvocationScopeSnapshot {
 	return cloneInvocations(s.input.Invocations)
 }
-func (s InstanceSnapshot) Invocation(path string) (InvocationScopeSnapshot, bool) {
+func (s InstanceSnapshot) Invocation(path InvocationPath) (InvocationScopeSnapshot, bool) {
 	for _, invocation := range s.input.Invocations {
 		if invocation.Path == path {
 			return cloneInvocations([]InvocationScopeSnapshot{invocation})[0], true
@@ -152,7 +151,9 @@ func sealRunSnapshotShape(input InstanceSnapshotInput) (InstanceSnapshot, error)
 		return InstanceSnapshot{}, err
 	}
 	input = cloneSnapshotInput(input)
-	sort.Slice(input.Invocations, func(i, j int) bool { return input.Invocations[i].Path < input.Invocations[j].Path })
+	sort.Slice(input.Invocations, func(i, j int) bool {
+		return input.Invocations[i].Path.String() < input.Invocations[j].Path.String()
+	})
 	normalizeHealerZeros(&input.HealerPolicy)
 	if err := validateSnapshot(input); err != nil {
 		return InstanceSnapshot{}, err
@@ -373,6 +374,7 @@ type referenceEdgeKey struct {
 type snapshotValidationIndexes struct {
 	workflows         map[string]WorkflowSnapshot
 	entriesByID       map[EntryID]Entry
+	entriesByRootPath map[InvocationPath]Entry
 	referenceSteps    map[referenceEdgeKey]Step
 	referenceByEdge   map[referenceEdgeKey]ReferenceResolution
 	stepsByWorkflowID map[string][]Step
@@ -382,6 +384,7 @@ func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexe
 	indexes := snapshotValidationIndexes{
 		workflows:         make(map[string]WorkflowSnapshot, len(plan.Workflows)),
 		entriesByID:       make(map[EntryID]Entry, len(plan.Entries)),
+		entriesByRootPath: make(map[InvocationPath]Entry, len(plan.Entries)),
 		referenceSteps:    make(map[referenceEdgeKey]Step),
 		referenceByEdge:   make(map[referenceEdgeKey]ReferenceResolution, len(plan.References)),
 		stepsByWorkflowID: make(map[string][]Step, len(plan.Workflows)),
@@ -391,6 +394,7 @@ func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexe
 			return snapshotValidationIndexes{}, fmt.Errorf("duplicate execution entry %q", entry.ID)
 		}
 		indexes.entriesByID[entry.ID] = entry
+		indexes.entriesByRootPath[RootInvocationPath(entry.ID)] = entry
 	}
 	for _, workflow := range plan.Workflows {
 		if _, exists := indexes.workflows[workflow.VersionID]; exists {
@@ -442,9 +446,9 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 	if err != nil {
 		return err
 	}
-	paths := make(map[string]InvocationScopeSnapshot, len(v.Invocations))
+	paths := make(map[InvocationPath]InvocationScopeSnapshot, len(v.Invocations))
 	for _, invocation := range v.Invocations {
-		if !validString(invocation.Path, true) || !validString(invocation.FlowFragmentID, true) || !validString(invocation.WorkflowVersionID, true) {
+		if invocation.Path.Validate() != nil || !validString(invocation.FlowFragmentID, true) || !validString(invocation.WorkflowVersionID, true) {
 			return errors.New("invocation identity is invalid")
 		}
 		if _, exists := paths[invocation.Path]; exists {
@@ -452,9 +456,9 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 		}
 		paths[invocation.Path] = invocation
 	}
-	states := make(map[string]uint8, len(paths))
-	var visit func(string) error
-	visit = func(path string) error {
+	states := make(map[InvocationPath]uint8, len(paths))
+	var visit func(InvocationPath) error
+	visit = func(path InvocationPath) error {
 		switch states[path] {
 		case 1:
 			return errors.New("invocation parent cycle")
@@ -463,7 +467,7 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 		}
 		states[path] = 1
 		parentPath := paths[path].ParentPath
-		if parentPath != "" {
+		if parentPath != (InvocationPath{}) {
 			if _, exists := paths[parentPath]; !exists {
 				return errors.New("invocation parent path is missing")
 			}
@@ -480,25 +484,18 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 		}
 	}
 	for _, invocation := range v.Invocations {
-		if invocation.ParentPath == "" {
+		if invocation.ParentPath == (InvocationPath{}) {
 			if len(invocation.Bindings) != 0 {
 				return errors.New("root invocation cannot have bindings")
 			}
 			if invocation.ParentVersionID != "" || invocation.StepID != "" {
 				return errors.New("root invocation cannot identify a reference edge")
 			}
-			// A root invocation's path is currently the entry id spelled as a
-			// string, which is the conflation the identity model exists to end: an
-			// entry and a call site inside it are different things, and the root
-			// path should be derived from the entry id rather than equal to it.
-			// Converting here keeps the lookup honest about which one it means
-			// while InvocationPath is still a string; adopting the path type is
-			// what removes the conversion.
-			rootEntry, conversionErr := NewEntryID(invocation.Path)
-			if conversionErr != nil {
-				return errors.New("root invocation path is not a valid entry identity")
-			}
-			entry, exists := indexes.entriesByID[rootEntry]
+			// An entry and the root call site inside it are different things that
+			// happen to be spelled alike. The lookup goes through the derivation
+			// rather than through a conversion, so nothing here has to claim that a
+			// path and an entry id are the same value.
+			entry, exists := indexes.entriesByRootPath[invocation.Path]
 			if !exists || entry.FlowFragmentID != invocation.FlowFragmentID || entry.WorkflowVersionID != invocation.WorkflowVersionID || !equalValues(entry.Parameters.Values, invocation.Values) {
 				return errors.New("root invocation and execution entry scope diverge")
 			}
@@ -507,8 +504,8 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 			if !exists {
 				return errors.New("invocation parent path is missing")
 			}
-			expectedPath := invocation.ParentPath + "/" + strconv.Itoa(len(invocation.StepID)) + ":" + invocation.StepID
-			if invocation.Path != expectedPath {
+			expectedPath, pathErr := invocation.ParentPath.Child(invocation.StepID)
+			if pathErr != nil || invocation.Path != expectedPath {
 				return fmt.Errorf("invocation %s path is not canonical for parent %s and step %s", invocation.Path, invocation.ParentPath, invocation.StepID)
 			}
 			key := referenceEdgeKey{ParentVersionID: invocation.ParentVersionID, StepID: invocation.StepID}
@@ -557,7 +554,7 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 	roots := 0
 	childrenByEdge := make(map[InvocationEdgeKey][]InvocationScopeSnapshot)
 	for _, invocation := range v.Invocations {
-		if invocation.ParentPath == "" {
+		if invocation.ParentPath == (InvocationPath{}) {
 			roots++
 			continue
 		}

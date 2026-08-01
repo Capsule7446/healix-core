@@ -25,8 +25,8 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 	for _, entry := range source.Entries {
 		entry.ExecutionID = mustEntryID(concreteRootPath(command.RunID.String(), entry.TestTaskItemID))
 		roots = append(roots,
-			execution.InvocationScopeSnapshot{Path: entry.ExecutionID.String(), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
-			execution.InvocationScopeSnapshot{Path: entry.ExecutionID.String() + "/10:call-child", ParentPath: entry.ExecutionID.String(), ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
+			execution.InvocationScopeSnapshot{Path: execution.RootInvocationPath(entry.ExecutionID), FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
+			execution.InvocationScopeSnapshot{Path: mustInvocationPath(entry.ExecutionID.String() + "/10:call-child"), ParentPath: execution.RootInvocationPath(entry.ExecutionID), ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
 		)
 	}
 	return ResolvedCreateRun{Plan: source.Publication, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Variables: automation.EnvironmentVariables{"Region": parameter.TextValue("east")}, Revision: 1}, Invocations: roots}
@@ -265,7 +265,7 @@ func TestBuildRunSnapshotEnforcesConcreteNestedDefaultsAndBindings(t *testing.T)
 			resolved := validResolvedCreateRun(t, command)
 			resolved.Plan.Workflows[1].Version.Definition.Parameters = []automation.ParameterDefinition{test.definition}
 			for index := range resolved.Invocations {
-				if resolved.Invocations[index].ParentPath == "" {
+				if resolved.Invocations[index].ParentPath == (execution.InvocationPath{}) {
 					continue
 				}
 				resolved.Invocations[index].Bindings = map[string]parameter.Binding{}
@@ -327,7 +327,7 @@ func TestBuildRunSnapshotPreservesExactTypedParentReferenceValues(t *testing.T) 
 	}
 	for index := range resolved.Invocations {
 		resolved.Invocations[index].Values = cloneParameterValues(values)
-		if resolved.Invocations[index].ParentPath != "" {
+		if resolved.Invocations[index].ParentPath != (execution.InvocationPath{}) {
 			resolved.Invocations[index].Bindings = bindings
 		}
 	}

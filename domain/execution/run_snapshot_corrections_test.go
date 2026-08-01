@@ -63,7 +63,7 @@ func TestRunSnapshotDigestsEnvironmentRevisionAndReferenceProvenance(t *testing.
 			v.Plan.References = []ReferenceResolution{{ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true}}
 			v.Plan.Workflows[0].Steps = []Step{{ID: "call", DisplayName: "Call", Kind: FlowFragmentReference, Reference: &Reference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}}
 			v.Plan.Workflows = append(v.Plan.Workflows, WorkflowSnapshot{ID: "child", FlowFragmentID: "child", VersionID: "child-v1", DisplayName: "Child", VersionNumber: 1, Steps: []Step{{ID: "wait-child", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}})
-			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: "entry-1/4:call", ParentPath: "entry-1", ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
+			v.Invocations = append(v.Invocations, InvocationScopeSnapshot{Path: mustInvocationPath("entry-1/4:call"), ParentPath: mustInvocationPath("entry-1"), ParentVersionID: "workflow-v2", StepID: "call", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}})
 		},
 	} {
 		input := validRunSnapshotInput(t)
@@ -100,7 +100,7 @@ func TestHydrateRunSnapshotRejectsZeroEnvironmentRevisionBeforeStoredDigest(t *t
 	input.Environment.Revision = 0
 	canonicalInput := cloneSnapshotInput(input)
 	sort.Slice(canonicalInput.Invocations, func(i, j int) bool {
-		return canonicalInput.Invocations[i].Path < canonicalInput.Invocations[j].Path
+		return canonicalInput.Invocations[i].Path.String() < canonicalInput.Invocations[j].Path.String()
 	})
 	normalizeHealerZeros(&canonicalInput.HealerPolicy)
 	digester := sha256.New()

@@ -22,8 +22,8 @@ func TestBuildRunSnapshotRejectsMissingAndExtraCommandGraphEdges(t *testing.T) {
 		}, want: "values are missing"},
 		{name: "missing root invocation", mutate: func(_ *CreateRunCommand, resolved *ResolvedCreateRun) {
 			for index := range resolved.Invocations {
-				if resolved.Invocations[index].ParentPath == "" {
-					resolved.Invocations[index].ParentPath = "unexpected-parent"
+				if resolved.Invocations[index].ParentPath == (execution.InvocationPath{}) {
+					resolved.Invocations[index].ParentPath = mustInvocationPath("unexpected-parent")
 					break
 				}
 			}

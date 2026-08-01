@@ -412,6 +412,8 @@ func TestExecutionCoordinateFieldsAreNeverSpelledAsStrings(t *testing.T) {
 		"NextExecutionID": "EntryID",
 		"StepExecutionID": "StepExecutionID",
 		"StepExecution":   "StepExecutionID",
+		"Path":            "InvocationPath",
+		"ParentPath":      "InvocationPath",
 	}
 
 	checked := 0

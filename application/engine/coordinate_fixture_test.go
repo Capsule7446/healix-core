@@ -31,3 +31,22 @@ func mustStepExecutionID(value string) execution.StepExecutionID {
 	}
 	return id
 }
+
+// mustInvocationPath spells a call-site path in a fixture where the value is a
+// literal the test author already knows is canonical.
+func mustInvocationPath(value string) execution.InvocationPath {
+	path, err := execution.ParseInvocationPath(value)
+	if err != nil {
+		panic(err)
+	}
+	return path
+}
+
+// optionalInvocationPath maps the fixture spelling of "this is a root call
+// site" — an empty string — onto the unset path rather than failing to parse.
+func optionalInvocationPath(value string) execution.InvocationPath {
+	if value == "" {
+		return execution.InvocationPath{}
+	}
+	return mustInvocationPath(value)
+}
