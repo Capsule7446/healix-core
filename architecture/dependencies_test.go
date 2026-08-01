@@ -355,7 +355,11 @@ func walkGo(root string, includeTests bool, visit func(string, *ast.File, *token
 			return nil
 		}
 		fset := token.NewFileSet()
-		parsed, err := parser.ParseFile(fset, path, nil, 0)
+		// ParseComments, not mode 0. With mode 0 the parser discards comments
+		// entirely and ast.File.Comments is always nil, which silently turned
+		// every comment-scanning guard built on this walker into a test that
+		// could not fail.
+		parsed, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 		if err != nil {
 			return err
 		}

@@ -4,9 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"fmt"
+	"hash"
 	"strings"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
@@ -287,27 +286,61 @@ func validateInstanceResult(instanceID domainexecution.InstanceID, status domain
 	return nil
 }
 
-func canonicalDigest(value any) (string, error) {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return "", fmt.Errorf("encode command digest: %w", err)
-	}
-	digest := sha256.Sum256(encoded)
-	return "sha256:" + hex.EncodeToString(digest[:]), nil
+// These digests are written field by field rather than through json.Marshal.
+// The reflective route silently dropped every field it could not see: an
+// execution coordinate is a struct whose only field is unexported, so
+// json.Marshal encoded InstanceID as {} and two cancellations of *different*
+// instances sharing a command id produced the same digest. Nothing failed —
+// the replay check simply stopped being able to tell them apart.
+//
+// Writing the fields out also makes the digest independent of Go names, so a
+// later rename cannot move a value that idempotency records are keyed on.
+const (
+	cancelInstanceRequestDigestV1 = "cancel-instance-request-v1"
+	abortInstanceRequestDigestV1  = "abort-instance-request-v1"
+	reorderQueueRequestDigestV1   = "reorder-queue-request-v1"
+)
+
+func finishDigest(h hash.Hash) (string, error) {
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func CancelInstanceRequestDigest(command CancelInstanceCommand) (string, error) {
-	return canonicalDigest(command)
+	h := sha256.New()
+	writeDigestString(h, cancelInstanceRequestDigestV1)
+	writeDigestString(h, command.CommandID)
+	writeDigestString(h, command.InstanceID.String())
+	writeDigestString(h, string(command.ExpectedStatus))
+	writeDigestUint64(h, uint64(command.ExpectedRevision))
+	writeDigestUint64(h, uint64(command.At))
+	return finishDigest(h)
 }
 
 func AbortInstanceRequestDigest(command AbortInstanceCommand) (string, error) {
-	return canonicalDigest(command)
+	h := sha256.New()
+	writeDigestString(h, abortInstanceRequestDigestV1)
+	writeDigestString(h, command.CommandID)
+	writeDigestString(h, command.InstanceID.String())
+	writeDigestUint64(h, uint64(command.ExpectedRevision))
+	writeDigestUint64(h, uint64(command.At))
+	// The fence identifies which worker is allowed to abort, so two aborts that
+	// differ only by fence are different requests.
+	writeDigestString(h, command.Fence.InstanceID.String())
+	writeDigestString(h, command.Fence.ClaimToken)
+	return finishDigest(h)
 }
 
 func ReorderQueueRequestDigest(command ReorderQueueCommand) (string, error) {
-	owned := command
-	owned.InstanceIDs = append([]string(nil), command.InstanceIDs...)
-	return canonicalDigest(owned)
+	h := sha256.New()
+	writeDigestString(h, reorderQueueRequestDigestV1)
+	writeDigestString(h, command.CommandID)
+	writeDigestString(h, command.ScopeID)
+	writeDigestUint64(h, uint64(command.ExpectedRevision))
+	writeDigestUint64(h, uint64(len(command.InstanceIDs)))
+	for _, id := range command.InstanceIDs {
+		writeDigestString(h, id)
+	}
+	return finishDigest(h)
 }
 
 func validateReorder(command ReorderQueueCommand) error {
