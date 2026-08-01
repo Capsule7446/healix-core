@@ -32,7 +32,7 @@ func ValidateRunStatusTransition(from, to InstanceStatus) error {
 }
 
 type Run struct {
-	ID                    string
+	ID                    InstanceID
 	ExecutionFlowID       string
 	TestTaskVersionID     string
 	SnapshotSchemaVersion RunSnapshotSchema
@@ -120,7 +120,7 @@ func isSupportedRunSnapshotSchema(version RunSnapshotSchema) bool {
 }
 
 func ValidateRun(run Run) error {
-	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.ExecutionFlowID) == "" || strings.TrimSpace(run.TestTaskVersionID) == "" || strings.TrimSpace(run.EnvironmentID) == "" {
+	if run.ID.Validate() != nil || strings.TrimSpace(run.ExecutionFlowID) == "" || strings.TrimSpace(run.TestTaskVersionID) == "" || strings.TrimSpace(run.EnvironmentID) == "" {
 		return errors.New("run identity is incomplete")
 	}
 	if !isSupportedRunSnapshotSchema(run.SnapshotSchemaVersion) || len(run.SnapshotDigest) != sha256DigestLength || !strings.HasPrefix(run.SnapshotDigest, "sha256:") || run.SnapshotDigest != run.sealedSnapshotDigest {

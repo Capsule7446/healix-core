@@ -27,7 +27,7 @@ func CreateRunRequestDigest(owned CreateRunCommand) (string, error) {
 	}
 	h := sha256.New()
 	writeDigestString(h, createRunRequestDigestV1)
-	for _, value := range []string{owned.RunID, owned.ExecutionFlowID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
+	for _, value := range []string{owned.RunID.String(), owned.ExecutionFlowID, owned.TestTaskVersionID, owned.EnvironmentID, string(owned.FailurePolicy), owned.ScreenshotPolicy.Destination} {
 		writeDigestString(h, value)
 	}
 	writeDigestUint64(h, uint64(owned.CreatedAt))
@@ -305,7 +305,7 @@ func (b *createRunRequestBudget) addElements(count int) error {
 
 func preflightCreateRunCommand(command CreateRunCommand) error {
 	budget := newCreateRunRequestBudget()
-	for _, value := range []string{command.CommandID, command.RunID, command.ExecutionFlowID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
+	for _, value := range []string{command.CommandID, command.RunID.String(), command.ExecutionFlowID, command.TestTaskVersionID, command.EnvironmentID, command.ScreenshotPolicy.Destination} {
 		if err := budget.addString(value); err != nil {
 			return err
 		}

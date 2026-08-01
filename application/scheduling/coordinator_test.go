@@ -55,11 +55,11 @@ func (f *recordingDecisionWriter) ApplyDecision(_ context.Context, claim Claim, 
 
 func TestCoordinatorFailsClosedOnStaleDecisionResult(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
-	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "winner"}}
-	writer := &recordingDecisionWriter{result: &ApplyDecisionResult{Fence: execution.WorkerFence{RunID: "run", ClaimToken: "stale"}, Applied: true}}
+	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "winner"}}
+	writer := &recordingDecisionWriter{result: &ApplyDecisionResult{Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "stale"}, Applied: true}}
 	coordinator := NewCoordinator(fakeClaimSource{claim: claim, found: true}, fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer)
 	_, err := coordinator.ProcessNext(context.Background(), "worker", 10)
-	if !fault.IsCode(err, execution.CodeWorkerFenceStale) || strings.Contains(err.Error(), claim.Fence.RunID) || strings.Contains(err.Error(), claim.Fence.ClaimToken) {
+	if !fault.IsCode(err, execution.CodeWorkerFenceStale) || strings.Contains(err.Error(), claim.Fence.RunID.String()) || strings.Contains(err.Error(), claim.Fence.ClaimToken) {
 		t.Fatalf("stale result error=%v", err)
 	}
 }
@@ -69,7 +69,7 @@ func TestCoordinatorAppliesDecisionUnderClaim(t *testing.T) {
 	writer := &recordingDecisionWriter{}
 	released := 0
 	coordinator := NewCoordinator(
-		fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "claim-token"}}, found: true, released: &released},
+		fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim-token"}}, found: true, released: &released},
 		fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}},
 		writer,
 	)
@@ -92,7 +92,7 @@ func TestCoordinatorDoesNotWriteWithoutClaimOrAdvance(t *testing.T) {
 		want   bool
 	}{
 		{name: "empty queue", claims: fakeClaimSource{}},
-		{name: "running entry", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionRunning}}}, want: true},
+		{name: "running entry", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionRunning}}}, want: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -132,8 +132,8 @@ func TestCoordinatorRejectsInvalidClaimAndPropagatesPortErrors(t *testing.T) {
 	}{
 		{name: "missing token", claims: fakeClaimSource{claim: Claim{Snapshot: plan}, found: true}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingClaimInvalid},
 		{name: "claim failure", claims: fakeClaimSource{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
-		{name: "state failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
-		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer: &recordingDecisionWriter{err: failure}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
+		{name: "state failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{err: failure}, writer: &recordingDecisionWriter{}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
+		{name: "write failure", claims: fakeClaimSource{claim: Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "token"}}, found: true}, states: fakeStateReader{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}, writer: &recordingDecisionWriter{err: failure}, wantCode: CodeSchedulingAdapterUnavailable, want: failure},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -178,7 +178,7 @@ func TestCoordinatorReleasesInvalidClaimAndJoinsReleaseFailure(t *testing.T) {
 
 func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
-	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}
+	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "token"}}
 	decisionFailureState := []EntryState{{ExecutionID: "foreign", Status: execution.ExecutionPending}}
 	releaseFailure := errors.New("release failed")
 
@@ -231,8 +231,8 @@ func TestCoordinatorReportsDecisionAndReleaseFailures(t *testing.T) {
 func sealedCoordinatorPlan(t *testing.T) execution.InstanceSnapshot {
 	t.Helper()
 	workflow := execution.WorkflowSnapshot{ID: "workflow", FlowFragmentID: "workflow", VersionID: "workflow-v1", DisplayName: "FlowFragment", VersionNumber: 1, Steps: []execution.Step{{ID: "noop", DisplayName: "Noop", Kind: execution.ActionStep, Action: "press", Value: "Enter"}}}
-	draft := execution.PlanSnapshot{RunID: "run", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ID: mustEntryID("execution-1"), TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
-	snapshot, err := execution.SealInstanceSnapshot(execution.InstanceSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaV1, RunID: "run", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1, ExecutionFlow: execution.TestTaskSnapshot{ID: "task"}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: []execution.ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v1", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}}, Plan: draft, Invocations: []execution.InvocationScopeSnapshot{{Path: "execution-1", FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}, Environment: execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: map[string]string{}}, FailurePolicy: execution.FailurePolicyStopOnFailure, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()})
+	draft := execution.PlanSnapshot{RunID: mustInstanceID("run"), FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ID: mustEntryID("execution-1"), TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}, Workflows: []execution.WorkflowSnapshot{workflow}}
+	snapshot, err := execution.SealInstanceSnapshot(execution.InstanceSnapshotInput{SchemaVersion: execution.RunSnapshotSchemaV1, RunID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1, ExecutionFlow: execution.TestTaskSnapshot{ID: "task"}, ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: []execution.ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v1", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1"}}}, Plan: draft, Invocations: []execution.InvocationScopeSnapshot{{Path: "execution-1", FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}, Environment: execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: map[string]string{}}, FailurePolicy: execution.FailurePolicyStopOnFailure, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()})
 	if err != nil {
 		t.Fatal(err)
 	}

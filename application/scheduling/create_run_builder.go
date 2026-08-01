@@ -31,7 +31,7 @@ func BuildRunSnapshot(command CreateRunCommand, resolved ResolvedCreateRun) (exe
 			// The item id stays in the private cause, never in public text.
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
 		}
-		executionID := concreteRootPath(command.RunID, item.ID)
+		executionID := concreteRootPath(command.RunID.String(), item.ID)
 		resolvedRoot, exists := invocationByPath(resolved.Invocations, executionID)
 		if !exists || resolvedRoot.ParentPath != "" {
 			return execution.InstanceSnapshot{}, createRunCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
@@ -367,7 +367,10 @@ func validateCreateRunCommand(command CreateRunCommand) (resultErr error) {
 			resultErr = createRunCommandInvalidError(resultErr)
 		}
 	}()
-	for name, value := range map[string]string{"command id": command.CommandID, "run id": command.RunID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {
+	if command.RunID.Validate() != nil {
+		return errors.New("run id is required and must be normalized")
+	}
+	for name, value := range map[string]string{"command id": command.CommandID, "test-task id": command.ExecutionFlowID, "test-task version id": command.TestTaskVersionID, "environment id": command.EnvironmentID} {
 		if strings.TrimSpace(value) == "" || value != strings.TrimSpace(value) {
 			return fmt.Errorf("%s is required and must be normalized", name)
 		}

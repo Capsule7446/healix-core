@@ -211,7 +211,7 @@ func TestStepActionBusinessMatrix(t *testing.T) {
 			element := &matrixElement{exists: true, visible: true, text: "ORDER-42"}
 			driver := &matrixDriver{element: element}
 			facts := &testFacts{}
-			runtime := &Runtime{RunID: "run", Driver: driver, Facts: facts,
+			runtime := &Runtime{RunID: mustInstanceID("run"), Driver: driver, Facts: facts,
 				Scratchpad: map[string]any{"name": "Alice", "host": "example.test", "key": "Enter", "params.User": "contamination"}, parameterScope: map[string]parameter.Value{"User": parameter.TextValue("Parameter Alice"), "env.Region": parameter.TextValue("east")}}
 			step := &StepNode{NodeID: "step", Target: target, Action: test.action}
 			if err := step.Run(context.Background(), runtime); err != nil {
@@ -257,7 +257,7 @@ func TestTypedEnvironmentStringInterpolation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			element := &matrixElement{exists: true, visible: true}
-			runtime := &Runtime{RunID: "run", Driver: &matrixDriver{element: element}, Facts: &testFacts{}, parameterScope: values}
+			runtime := &Runtime{RunID: mustInstanceID("run"), Driver: &matrixDriver{element: element}, Facts: &testFacts{}, parameterScope: values}
 			err := (&StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: test.expression}}).Run(context.Background(), runtime)
 			if test.wantError != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantError) {
@@ -280,7 +280,7 @@ func TestNestedWorkflowExecutesWithNamespacedChildParameterAndEnvironment(t *tes
 	driver := &matrixDriver{element: element}
 	step := &StepNode{NodeID: "child-step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: Action{Kind: ActionInput, Value: "${params.User}@${env.Region}"}}
 	call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "child", Children: []Node{step}}, Bindings: map[string]parameter.Binding{"User": parameter.LiteralBinding(parameter.TextValue("Child Alice"))}, Values: map[string]parameter.Value{"User": parameter.TextValue("Child Alice")}, Constraints: map[string]parameter.Constraint{"User": {Type: parameter.Text}}}
-	runtime := &Runtime{RunID: "run", Driver: driver, Facts: &testFacts{}, Scratchpad: map[string]any{"params.User": "contamination", "env.Region": "contamination"}, parameterScope: map[string]parameter.Value{"User": parameter.TextValue("Parent Alice"), "env.Region": parameter.TextValue("east")}}
+	runtime := &Runtime{RunID: mustInstanceID("run"), Driver: driver, Facts: &testFacts{}, Scratchpad: map[string]any{"params.User": "contamination", "env.Region": "contamination"}, parameterScope: map[string]parameter.Value{"User": parameter.TextValue("Parent Alice"), "env.Region": parameter.TextValue("east")}}
 	if err := call.Run(context.Background(), runtime); err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestStepActionFailureMatrix(t *testing.T) {
 			element := &matrixElement{exists: true, visible: true, text: "value"}
 			driver := &matrixDriver{element: element}
 			facts := &testFacts{}
-			runtime := &Runtime{RunID: "run", Driver: driver, Facts: facts, Scratchpad: map[string]any{}}
+			runtime := &Runtime{RunID: mustInstanceID("run"), Driver: driver, Facts: facts, Scratchpad: map[string]any{}}
 			if test.setup != nil {
 				test.setup(element, driver, runtime)
 			}
@@ -360,7 +360,7 @@ func TestStepHealingFailureMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			facts := &testFacts{}
-			err := (&StepNode{NodeID: "step", Target: target}).Run(context.Background(), &Runtime{RunID: "run", Driver: test.driver, Healer: test.healer, Facts: facts})
+			err := (&StepNode{NodeID: "step", Target: target}).Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: test.driver, Healer: test.healer, Facts: facts})
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want %q", err, test.want)
 			}
@@ -488,7 +488,7 @@ func TestValidationExecutionErrorAndEvidenceMatrix(t *testing.T) {
 		facts := &testFacts{}
 		validation := &ValidationNode{NodeID: "secret", Target: fingerprint.ElementTargetSpec{ID: "secret", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#secret"}}, Fingerprint: fingerprint.Fingerprint{Attributes: map[string]string{"name": "api_token"}}}, Assertion: ValidationAssertion{Kind: "value_equals", Expected: "top-secret", ExpectedValues: []string{"must-not-leak"}}}
 		recorder := newValidationObservationRecorder()
-		if err := recorder.record(context.Background(), &Runtime{RunID: "run", Facts: facts}, validation, false, "top-secret", nil, "normal_unsatisfied", true); err != nil {
+		if err := recorder.record(context.Background(), &Runtime{RunID: mustInstanceID("run"), Facts: facts}, validation, false, "top-secret", nil, "normal_unsatisfied", true); err != nil {
 			t.Fatal(err)
 		}
 		got := facts.validationObservations[0]
@@ -550,7 +550,7 @@ func TestValidationHealingMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			validation := &ValidationNode{NodeID: "validation", Target: target}
-			runtime := &Runtime{RunID: "run", Driver: test.driver, Healer: test.healer}
+			runtime := &Runtime{RunID: mustInstanceID("run"), Driver: test.driver, Healer: test.healer}
 			if test.facts != nil {
 				runtime.Facts = test.facts
 			}
@@ -564,7 +564,7 @@ func TestValidationHealingMatrix(t *testing.T) {
 	t.Run("no candidate is absence and is recorded", func(t *testing.T) {
 		facts := &testFacts{}
 		validation := &ValidationNode{NodeID: "validation", Target: target}
-		_, absent, err := validation.locate(context.Background(), &Runtime{RunID: "run", Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+		_, absent, err := validation.locate(context.Background(), &Runtime{RunID: mustInstanceID("run"), Driver: &matrixDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 			return nil, NewElementNotFoundError()
 		}}, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeNoCandidate}}, Facts: facts})
 		if err != nil || !absent || !reflect.DeepEqual(facts.healSpecIDs, []string{"target"}) {
@@ -603,7 +603,7 @@ func TestCompositeNodeExecutionMatrix(t *testing.T) {
 		stop := &matrixNode{id: "stop", err: errors.New("stop")}
 		last := &matrixNode{id: "last"}
 		facts := &testFacts{}
-		err := (&RepeatNode{NodeID: "repeat", Times: 3, Children: []Node{first, stop, last}}).Run(context.Background(), &Runtime{RunID: "run", Facts: facts})
+		err := (&RepeatNode{NodeID: "repeat", Times: 3, Children: []Node{first, stop, last}}).Run(context.Background(), &Runtime{RunID: mustInstanceID("run"), Facts: facts})
 		if err == nil || first.calls != 1 || stop.calls != 1 || last.calls != 0 || facts.events[len(facts.events)-1].Phase != PhaseFailed {
 			t.Fatalf("calls=%d/%d/%d events=%v err=%v", first.calls, stop.calls, last.calls, facts.events, err)
 		}

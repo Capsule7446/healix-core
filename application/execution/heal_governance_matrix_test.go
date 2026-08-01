@@ -9,6 +9,7 @@ import (
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -26,7 +27,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryPlanIdentityBoundary(t *testing
 		{name: "zero revision", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Revision = 0 }, want: "snapshot revision"},
 		{name: "missing fact id", mutate: func(plan *HealGovernancePlan) { plan.Fact.FactID = "" }, want: "requires fact, commit, run, and sequence identity"},
 		{name: "missing commit id", mutate: func(plan *HealGovernancePlan) { plan.Fact.CommitID = "" }, want: "requires fact, commit, run, and sequence identity"},
-		{name: "missing run id", mutate: func(plan *HealGovernancePlan) { plan.Fact.RunID = "" }, want: "requires fact, commit, run, and sequence identity"},
+		{name: "missing run id", mutate: func(plan *HealGovernancePlan) { plan.Fact.RunID = domainexecution.InstanceID{} }, want: "requires fact, commit, run, and sequence identity"},
 		{name: "zero sequence", mutate: func(plan *HealGovernancePlan) { plan.Fact.Sequence = 0 }, want: "requires fact, commit, run, and sequence identity"},
 	}
 
@@ -57,7 +58,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 		{name: "observation missing payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation = nil }, want: "exactly one observation payload"},
 		{name: "observation has reset payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Reset = validResetPayload() }, want: "exactly one observation payload"},
 		{name: "observation fact mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ID = "other" }, want: "does not match governance identity"},
-		{name: "observation run mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.RunID = "other" }, want: "does not match governance identity"},
+		{name: "observation run mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.RunID = mustInstanceID("other") }, want: "does not match governance identity"},
 		{name: "observation node mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ElementTargetID = "other" }, want: "does not match governance identity"},
 		{name: "observation base mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.BaseNodeVersionID = "other" }, want: "does not match governance identity"},
 		{name: "unsupported decision band", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.DecisionBand = "INVALID" }, want: "unsupported evidence decision band"},
@@ -384,7 +385,7 @@ func TestDefaultHealGovernancePlannerValidatesEveryTerminalEffectKind(t *testing
 	reset.ObservedAt = 2
 	resetPlan := HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{Key: HealGovernanceKey{ElementTargetID: "node", BaseNodeVersionID: "base"}, CurrentNodeVersionID: "base", Revision: 2, Streak: first.NextStreak},
-		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: "reset-run", Sequence: 2, Reset: reset},
+		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: mustInstanceID("reset-run"), Sequence: 2, Reset: reset},
 	}
 	resetDecision, err := planner.PlanHealGovernance(resetPlan)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -54,7 +55,7 @@ type HealAcceptedFact struct {
 	Kind        HealAcceptedFactKind
 	FactID      string
 	CommitID    string
-	RunID       string
+	RunID       domainexecution.InstanceID
 	Sequence    uint64
 	Observation *evidence.HealObservation
 	Reset       *evidence.HealCandidateReset
@@ -220,7 +221,7 @@ func validateHealGovernancePlan(plan HealGovernancePlan) error {
 	if err := validateExistingHealEffect(plan.Snapshot.ExistingTerminalEffect, streak); err != nil {
 		return healTerminalEffectConflictError(err)
 	}
-	for _, identity := range []string{plan.Fact.FactID, plan.Fact.CommitID, plan.Fact.RunID} {
+	for _, identity := range []string{plan.Fact.FactID, plan.Fact.CommitID, plan.Fact.RunID.String()} {
 		if err := validateCanonicalHealIdentity(identity); err != nil {
 			return healAcceptedFactInvalidError(err)
 		}
@@ -322,7 +323,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 		}
 		for _, identity := range []string{
 			observation.ID,
-			observation.RunID,
+			observation.RunID.String(),
 			observation.ExecutionID,
 			observation.StepExecutionID,
 			observation.ElementTargetID,
@@ -349,7 +350,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			outcome = domainautomation.HealSucceeded
 		}
 		return domainautomation.HealObservation{
-			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID,
+			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID.String(),
 			ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: fact.Sequence,
 			ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 			CandidateHash: observation.CandidateHash, Band: band, Outcome: outcome, BaseIsCurrent: baseIsCurrent,
@@ -373,7 +374,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted reset does not match governance identity")
 		}
 		return domainautomation.HealObservation{
-			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID,
+			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID.String(),
 			ExecutionID: reset.ExecutionID, StepExecutionID: reset.StepExecutionID, Sequence: fact.Sequence,
 			ElementTargetID: reset.ElementTargetID, BaseNodeVersionID: reset.BaseNodeVersionID,
 			Outcome: domainautomation.HealOriginalRecovered, BaseIsCurrent: baseIsCurrent,

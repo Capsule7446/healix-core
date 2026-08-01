@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
@@ -26,7 +27,7 @@ type RecordingTimeline interface {
 }
 
 type StepExecutionRef struct {
-	RunID      string
+	RunID      domainexecution.InstanceID
 	NodeID     string
 	Occurrence int
 }
@@ -54,7 +55,7 @@ type StepTimelineEvent struct {
 }
 
 func (e StepTimelineEvent) Validate() error {
-	if e.Step.RunID == "" || e.Step.NodeID == "" || e.Step.Occurrence < 1 {
+	if e.Step.RunID.Validate() != nil || e.Step.NodeID == "" || e.Step.Occurrence < 1 {
 		return errors.New("step execution identity is invalid")
 	}
 	if e.Mark.Offset < 0 || e.Mark.Sequence < 1 {

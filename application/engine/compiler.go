@@ -32,13 +32,13 @@ type RuntimeNodeIdentity struct {
 }
 
 type compiledExecutionIdentity struct {
-	runID          string
+	runID          execution.InstanceID
 	snapshotDigest string
 	executionID    string
 }
 
 type CompiledEntry struct {
-	RunID             string
+	RunID             execution.InstanceID
 	SnapshotDigest    string
 	ExecutionID       string
 	TestTaskItemID    string
@@ -82,7 +82,7 @@ func (r CompiledPlan) Entry(executionID string) (CompiledEntry, bool) {
 
 func (entry CompiledEntry) hasIdentity(executionID string) bool {
 	return executionID != "" &&
-		entry.RunID != "" && entry.RunID == entry.identity.runID &&
+		entry.RunID.Validate() == nil && entry.RunID == entry.identity.runID &&
 		entry.SnapshotDigest != "" && entry.SnapshotDigest == entry.identity.snapshotDigest &&
 		entry.ExecutionID == executionID && entry.ExecutionID == entry.identity.executionID
 }

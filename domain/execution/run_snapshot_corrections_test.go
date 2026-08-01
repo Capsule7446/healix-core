@@ -173,7 +173,7 @@ func TestNewRunRejectsInvalidInitialLifecycleShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tests := []Run{{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Running, CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Succeeded, CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: "UNKNOWN", CreatedAt: 1, QueuedAt: 1}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 0, QueuedAt: 0}, {ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 2, QueuedAt: 1}}
+	tests := []Run{{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Running, CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Succeeded, CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: "UNKNOWN", CreatedAt: 1, QueuedAt: 1}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 0, QueuedAt: 0}, {ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 2, QueuedAt: 1}}
 	for _, run := range tests {
 		if _, err := NewRun(run, snapshot); err == nil {
 			t.Fatalf("accepted %#v", run)

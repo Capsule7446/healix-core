@@ -122,7 +122,7 @@ transactionAttempt:
 				s.mu.Unlock()
 				continue transactionAttempt
 			}
-			if winner, exists := s.state.runs[command.Result.Run.ID]; exists && winner.SnapshotDigest != command.Result.Run.SnapshotDigest {
+			if winner, exists := s.state.runs[command.Result.Run.ID.String()]; exists && winner.SnapshotDigest != command.Result.Run.SnapshotDigest {
 				s.mu.Unlock()
 				return createRunSnapshotConflictError()
 			}
@@ -151,7 +151,7 @@ func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunInte
 		}
 		return InsertCreateRunOutcome{Status: InsertCreateRunReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: existing.Result}, nil
 	}
-	if existing, ok := tx.state.runs[intent.Run.ID]; ok && existing.SnapshotDigest != intent.Run.SnapshotDigest {
+	if existing, ok := tx.state.runs[intent.Run.ID.String()]; ok && existing.SnapshotDigest != intent.Run.SnapshotDigest {
 		return InsertCreateRunOutcome{}, createRunSnapshotConflictError()
 	}
 	fail := func(stage conformanceStage) error {
@@ -163,21 +163,21 @@ func (tx *conformanceTx) InsertCreateRun(_ context.Context, intent CreateRunInte
 	if err := fail(stageRun); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}
-	tx.state.runs[intent.Run.ID] = intent.Run
+	tx.state.runs[intent.Run.ID.String()] = intent.Run
 	if err := fail(stageEntries); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}
-	tx.state.entries[intent.Run.ID] = append([]execution.Entry(nil), intent.Entries...)
+	tx.state.entries[intent.Run.ID.String()] = append([]execution.Entry(nil), intent.Entries...)
 	if err := fail(stageSnapshot); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}
-	tx.state.inputs[intent.Run.ID], tx.state.digests[intent.Run.ID] = intent.Snapshot.Input(), intent.Snapshot.Digest()
+	tx.state.inputs[intent.Run.ID.String()], tx.state.digests[intent.Run.ID.String()] = intent.Snapshot.Input(), intent.Snapshot.Digest()
 	if err := fail(stageQueue); err != nil {
 		return InsertCreateRunOutcome{}, err
 	}
-	if _, exists := tx.state.positions[intent.Run.ID]; !exists {
-		tx.state.positions[intent.Run.ID] = len(tx.state.queue) + 1
-		tx.state.queue = append(tx.state.queue, intent.Run.ID)
+	if _, exists := tx.state.positions[intent.Run.ID.String()]; !exists {
+		tx.state.positions[intent.Run.ID.String()] = len(tx.state.queue) + 1
+		tx.state.queue = append(tx.state.queue, intent.Run.ID.String())
 	}
 	if err := fail(stageCommand); err != nil {
 		return InsertCreateRunOutcome{}, err
@@ -320,7 +320,7 @@ func TestCopyOnWriteStoreConcurrentConflictsAreTyped(t *testing.T) {
 	sameRun.ScreenshotPolicy.Destination = "other"
 	result, err := service.CreateRun(context.Background(), sameRun)
 	if !fault.IsCode(err, CodeCreateInstanceSnapshotConflict) ||
-		strings.Contains(err.Error(), sameRun.RunID) ||
+		strings.Contains(err.Error(), sameRun.RunID.String()) ||
 		!isZeroCreateRunResult(result) {
 		t.Fatalf("snapshot conflict result/error=%#v/%v", result, err)
 	}

@@ -62,13 +62,13 @@ func TestRunSignalRetryableErrorPreservesCauseAndRedactsPublicDetails(t *testing
 }
 
 func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
-	valid := CancelRunCommand{CommandID: "command", RunID: "run", ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1}
+	valid := CancelRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1}
 	tests := []struct {
 		name   string
 		mutate func(*CancelRunCommand)
 	}{
 		{name: "blank command id", mutate: func(command *CancelRunCommand) { command.CommandID = " \t\n" }},
-		{name: "blank run id", mutate: func(command *CancelRunCommand) { command.RunID = " \t\n" }},
+		{name: "unset run id", mutate: func(command *CancelRunCommand) { command.RunID = domainexecution.InstanceID{} }},
 		{name: "negative revision", mutate: func(command *CancelRunCommand) { command.ExpectedRevision = -1 }},
 		{name: "zero timestamp", mutate: func(command *CancelRunCommand) { command.At = 0 }},
 		{name: "negative timestamp", mutate: func(command *CancelRunCommand) { command.At = -1 }},
@@ -94,19 +94,19 @@ func TestCancelRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 
 func TestAbortRunRejectsEachInvalidCommandBeforeStore(t *testing.T) {
 	valid := AbortRunCommand{
-		CommandID: "command", RunID: "run", ExpectedRevision: 0, At: 1,
-		Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
+		CommandID: "command", RunID: mustInstanceID("run"), ExpectedRevision: 0, At: 1,
+		Fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"},
 	}
 	tests := []struct {
 		name   string
 		mutate func(*AbortRunCommand)
 	}{
 		{name: "blank command id", mutate: func(command *AbortRunCommand) { command.CommandID = " \t\n" }},
-		{name: "blank run id", mutate: func(command *AbortRunCommand) { command.RunID = " \t\n" }},
+		{name: "unset run id", mutate: func(command *AbortRunCommand) { command.RunID = domainexecution.InstanceID{} }},
 		{name: "negative revision", mutate: func(command *AbortRunCommand) { command.ExpectedRevision = -1 }},
 		{name: "zero timestamp", mutate: func(command *AbortRunCommand) { command.At = 0 }},
 		{name: "negative timestamp", mutate: func(command *AbortRunCommand) { command.At = -1 }},
-		{name: "foreign fence", mutate: func(command *AbortRunCommand) { command.Fence.RunID = "other" }},
+		{name: "foreign fence", mutate: func(command *AbortRunCommand) { command.Fence.RunID = mustInstanceID("other") }},
 		{name: "empty claim token", mutate: func(command *AbortRunCommand) { command.Fence.ClaimToken = "" }},
 	}
 
@@ -134,9 +134,9 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			var result RunCommandResult
 			var err error
 			if operation == "cancel" {
-				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", RunID: "run", ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1})
+				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 0, At: 1})
 			} else {
-				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: "run", ExpectedRevision: 0, At: 1, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}})
+				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedRevision: 0, At: 1, Fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"}})
 			}
 			if !errors.Is(err, transactionFailure) || result != (RunCommandResult{}) {
 				t.Fatalf("result/error = %#v/%v", result, err)
@@ -162,9 +162,9 @@ func TestRunCommandServicesPropagateTransactionAndSignalFailures(t *testing.T) {
 			var result RunCommandResult
 			var err error
 			if operation == "cancel" {
-				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", RunID: "run", ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
+				result, err = NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Running, ExpectedRevision: 1, At: 2})
 			} else {
-				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: "run", ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}})
+				result, err = NewAbortRunService(store, nil).AbortRun(context.Background(), AbortRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"}})
 			}
 			if !fault.IsCode(err, CodeInstanceSignalRetryable) || !result.WasApplied || result.Revision != 2 {
 				t.Fatalf("result/error = %#v/%v", result, err)
@@ -184,7 +184,7 @@ func TestQueuedCancelReturnsWithoutSignaling(t *testing.T) {
 		Run: validCommandRun(t, domainexecution.Canceled), Revision: 2, WasApplied: true,
 	}}
 	result, err := NewCancelRunService(store, nil).CancelRun(context.Background(), CancelRunCommand{
-		CommandID: "command", RunID: "run", ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2,
+		CommandID: "command", RunID: mustInstanceID("run"), ExpectedStatus: domainexecution.Queued, ExpectedRevision: 1, At: 2,
 	})
 	if err != nil || !result.WasApplied || result.SignalRequired {
 		t.Fatalf("CancelRun() = (%#v, %v)", result, err)

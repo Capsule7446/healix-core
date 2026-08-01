@@ -69,7 +69,7 @@ func TestValidationValuesNilEmptyDuplicatesAndImmutability(t *testing.T) {
 
 func TestValidationGroupExpectedMembersImmutable(t *testing.T) {
 	members := []ValidationMemberIdentity{{BranchID: "分支", ElementTargetID: "节点"}}
-	value := NewValidationGroupTerminalObservation("id", "run", "execution", "step", "group", ValidationTerminalPassed, "分支", members, 1)
+	value := NewValidationGroupTerminalObservation("id", mustInstanceID("run"), "execution", "step", "group", ValidationTerminalPassed, "分支", members, 1)
 	members[0].ElementTargetID = "mutated"
 	got := value.ExpectedMembers()
 	if got[0].ElementTargetID != "节点" {
@@ -82,7 +82,7 @@ func TestValidationGroupExpectedMembersImmutable(t *testing.T) {
 }
 
 func TestStepFactRejectsWhitespaceIdentity(t *testing.T) {
-	fact := StepFact{ID: " ", RunID: "run", ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
+	fact := StepFact{ID: " ", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
 	if err := fact.Validate(); err == nil {
 		t.Fatal("whitespace-only identity accepted")
 	}

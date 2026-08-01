@@ -103,9 +103,9 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 	}{
 		{name: "missing both", wantError: true},
 		{name: "missing run", fence: WorkerFence{ClaimToken: "claim"}, wantError: true},
-		{name: "missing claim", fence: WorkerFence{RunID: "run"}, wantError: true},
-		{name: "minimal opaque identities", fence: WorkerFence{RunID: "r", ClaimToken: "c"}},
-		{name: "unicode opaque identities", fence: WorkerFence{RunID: "执行-一", ClaimToken: "领取-一"}},
+		{name: "missing claim", fence: WorkerFence{RunID: mustInstanceID("run")}, wantError: true},
+		{name: "minimal opaque identities", fence: WorkerFence{RunID: mustInstanceID("r"), ClaimToken: "c"}},
+		{name: "unicode opaque identities", fence: WorkerFence{RunID: mustInstanceID("执行-一"), ClaimToken: "领取-一"}},
 	}
 
 	for _, test := range tests {
@@ -117,13 +117,13 @@ func TestWorkerFenceBoundaryAndStaleErrorContract(t *testing.T) {
 		})
 	}
 
-	fence := WorkerFence{RunID: "run-sensitive", ClaimToken: "secret-claim-token"}
+	fence := WorkerFence{RunID: mustInstanceID("run-sensitive"), ClaimToken: "secret-claim-token"}
 	err := NewStaleWorkerFenceError()
 	descriptor, ok := fault.Describe(err)
 	if !ok || descriptor.Code() != CodeWorkerFenceStale || descriptor.Kind() != fault.Conflict || descriptor.Message() != "worker execution authority is stale" {
 		t.Fatalf("stale fence descriptor = %#v, %v", descriptor, ok)
 	}
-	if strings.Contains(err.Error(), fence.RunID) || strings.Contains(err.Error(), fence.ClaimToken) {
+	if strings.Contains(err.Error(), fence.RunID.String()) || strings.Contains(err.Error(), fence.ClaimToken) {
 		t.Fatalf("stale fence error exposes identity: %q", err)
 	}
 }
@@ -134,7 +134,7 @@ func TestValidateRunAcceptsEveryLegalLifecycleShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	queued, err := NewRun(Run{
-		ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
+		ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
 		Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10,
 	}, snapshot)
 	if err != nil {
@@ -176,7 +176,7 @@ func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
 		t.Fatal(err)
 	}
 	base, err := NewRun(Run{
-		ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
+		ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1",
 		Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10,
 	}, snapshot)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestValidateRunRejectsSingleFactorBoundaryViolations(t *testing.T) {
 		name   string
 		mutate func(*Run)
 	}{
-		{name: "blank run id", mutate: func(run *Run) { run.ID = " \t" }},
+		{name: "unset run id", mutate: func(run *Run) { run.ID = InstanceID{} }},
 		{name: "blank task id", mutate: func(run *Run) { run.ExecutionFlowID = "\n" }},
 		{name: "blank task version id", mutate: func(run *Run) { run.TestTaskVersionID = " " }},
 		{name: "blank environment id", mutate: func(run *Run) { run.EnvironmentID = " " }},

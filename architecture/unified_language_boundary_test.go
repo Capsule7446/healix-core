@@ -336,10 +336,6 @@ func TestEntryExecutorTakesOneEntryNotACollection(t *testing.T) {
 // are pinned, because either one alone regresses silently: the field must carry
 // the type, and the pre-adoption spelling must not reappear on a neighbouring
 // struct as a second, untyped way to say the same thing.
-//
-// The instance identity is deliberately not covered here. Run.ID and
-// PlanSnapshot.RunID are still plain strings, and a guard that failed for work
-// nobody has done yet would be a failing test rather than a contract.
 func TestExecutionEntryIdentityIsNeverSpelledAsAString(t *testing.T) {
 	root := repositoryRoot(t)
 	directory := filepath.Join(root, "domain", "execution")
@@ -383,6 +379,74 @@ func TestExecutionEntryIdentityIsNeverSpelledAsAString(t *testing.T) {
 	}
 	if !checked {
 		t.Fatal("execution.Entry.ID was not found; this boundary needs to move with it")
+	}
+}
+
+// The instance identity crosses more packages than any other coordinate: an
+// execution run, the node runtime driving it, every evidence observation
+// attributed to it, and the scheduling commands that start and stop it all name
+// the same thing. While it was a string, any of those could be handed an entry
+// id, a step execution id, or a raw request field and would carry it as far as
+// storage before anyone noticed.
+//
+// This walks the field spellings rather than a fixed list of types, because the
+// regression to guard against is a new struct joining the chain with a plain
+// string, not one of today's structs changing back.
+func TestInstanceIdentityIsNeverSpelledAsAStringOnAnExecutionStruct(t *testing.T) {
+	root := repositoryRoot(t)
+
+	// domain/automation is absent on purpose. It is a different bounded context
+	// and may not import domain/execution, so its ContributingHealFact carries
+	// the run id as opaque correlation data it never interprets. Application
+	// types that mirror such a record verbatim are exempted by name below.
+	directories := []string{
+		filepath.Join(root, "domain", "execution"),
+		filepath.Join(root, "domain", "evidence"),
+		filepath.Join(root, "domain", "node"),
+		filepath.Join(root, "application"),
+	}
+	mirrorsAutomationRecord := map[string]bool{"HealContributionSnapshot": true}
+
+	checked := 0
+	for _, directory := range directories {
+		err := walkProductionGo(directory, func(path string, parsed *ast.File, fset *token.FileSet) {
+			for _, decl := range parsed.Decls {
+				generic, ok := decl.(*ast.GenDecl)
+				if !ok {
+					continue
+				}
+				for _, spec := range generic.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok || mirrorsAutomationRecord[typeSpec.Name.Name] {
+						continue
+					}
+					structType, isStruct := typeSpec.Type.(*ast.StructType)
+					if !isStruct || structType.Fields == nil {
+						continue
+					}
+					for _, field := range structType.Fields.List {
+						declared := types.ExprString(field.Type)
+						for _, name := range field.Names {
+							if name.Name != "RunID" {
+								continue
+							}
+							checked++
+							if !strings.HasSuffix(declared, "InstanceID") {
+								t.Errorf("%s.RunID at %s:%d is %s, want InstanceID",
+									typeSpec.Name.Name, filepath.ToSlash(mustRelative(root, path)),
+									fset.Position(field.Pos()).Line, declared)
+							}
+						}
+					}
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", mustRelative(root, directory), err)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no RunID field was found across execution, evidence, node, and application; this boundary needs to move with them")
 	}
 }
 

@@ -121,7 +121,7 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result E
 }
 
 func validateConfig(program node.Program, cfg Config) error {
-	if cfg.RunID == "" {
+	if cfg.RunID.Validate() != nil {
 		return runtimeConfigurationInvalidError(errors.New("run ID is required"))
 	}
 	if cfg.Facts != nil && cfg.ClaimToken == "" {

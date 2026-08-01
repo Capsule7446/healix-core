@@ -91,11 +91,11 @@ func validRunSnapshotInput(t *testing.T) InstanceSnapshotInput {
 	}
 	return InstanceSnapshotInput{
 		SchemaVersion: RunSnapshotSchemaV1,
-		RunID:         "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3",
+		RunID:         mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3",
 		TestTaskVersionNumber: 3,
 		ExecutionFlow:         TestTaskSnapshot{ID: "task-1"},
 		ExecutionFlowVersion:  ExecutionFlowVersionSnapshot{ID: "task-v3", ExecutionFlowID: "task-1", VersionNumber: 3, Items: []ExecutionFlowVersionItemSnapshot{{ID: "item-1", TestTaskVersionID: "task-v3", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2"}}},
-		Plan: PlanSnapshot{RunID: "run-1", FailurePolicy: FailurePolicyStopOnFailure,
+		Plan: PlanSnapshot{RunID: mustInstanceID("run-1"), FailurePolicy: FailurePolicyStopOnFailure,
 			Entries:   []Entry{{ID: mustEntryID("entry-1"), TestTaskItemID: "item-1", SequenceNumber: 1, FlowFragmentID: "workflow-1", WorkflowVersionID: "workflow-v2", Parameters: ParameterSnapshot{ID: "scope-root", SchemaVersion: 1, WorkflowVersionID: "workflow-v2", Values: map[string]parameter.Value{"count": number, "regions": parameter.MultiSelectValue([]string{"north,east", "south"})}}}},
 			Workflows: []WorkflowSnapshot{{ID: "workflow-1", FlowFragmentID: "workflow-1", VersionID: "workflow-v2", DisplayName: "Flow", VersionNumber: 2, Parameters: []Parameter{{Name: "count", DisplayName: "Count", Type: parameter.Number, Required: true}, {Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{"north,east", "south"}}}, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 		},
@@ -222,7 +222,10 @@ func TestRunSnapshotDigestChangesForExecutionRelevantCategories(t *testing.T) {
 		mutate func(*InstanceSnapshotInput)
 	}{
 		{"schema", func(v *InstanceSnapshotInput) { v.SchemaVersion++ }},
-		{"run", func(v *InstanceSnapshotInput) { v.RunID = "run-2"; v.Plan.RunID = "run-2" }},
+		{"run", func(v *InstanceSnapshotInput) {
+			v.RunID = mustInstanceID("run-2")
+			v.Plan.RunID = mustInstanceID("run-2")
+		}},
 		{"task version", func(v *InstanceSnapshotInput) {
 			v.TestTaskVersionID = "task-v4"
 			v.TestTaskVersionNumber = 4
@@ -269,7 +272,7 @@ func TestSealRunSnapshotRejectsInvalidIdentityEnvironmentAndPolicies(t *testing.
 		name   string
 		mutate func(*InstanceSnapshotInput)
 	}{
-		{"schema", func(v *InstanceSnapshotInput) { v.SchemaVersion = 0 }}, {"run", func(v *InstanceSnapshotInput) { v.RunID = "" }},
+		{"schema", func(v *InstanceSnapshotInput) { v.SchemaVersion = 0 }}, {"run", func(v *InstanceSnapshotInput) { v.RunID = InstanceID{} }},
 		{"task", func(v *InstanceSnapshotInput) { v.ExecutionFlowID = "" }}, {"task version", func(v *InstanceSnapshotInput) { v.TestTaskVersionID = "" }},
 		{"task version number", func(v *InstanceSnapshotInput) { v.TestTaskVersionNumber = 0 }}, {"environment URL", func(v *InstanceSnapshotInput) { v.Environment.BaseURL = "ftp://example.test" }},
 		{"property key", func(v *InstanceSnapshotInput) { v.Environment.Properties[" "] = "x" }}, {"property value", func(v *InstanceSnapshotInput) {
@@ -314,7 +317,7 @@ func TestHydrateRunRestoresPrivateSnapshotSeal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	created, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +351,7 @@ func TestRunTransitionPreservesSnapshotIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	run, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

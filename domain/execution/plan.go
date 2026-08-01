@@ -149,7 +149,7 @@ type Entry struct {
 }
 
 type PlanSnapshot struct {
-	RunID         string
+	RunID         InstanceID
 	FailurePolicy FailurePolicy
 	Entries       []Entry
 	Workflows     []WorkflowSnapshot
@@ -186,7 +186,7 @@ func (p Plan) Validate() error {
 
 func (p Plan) Snapshot() PlanSnapshot { return cloneDraft(p.draft) }
 
-func (p Plan) RunID() string { return p.draft.RunID }
+func (p Plan) RunID() InstanceID { return p.draft.RunID }
 
 func (p Plan) FailurePolicy() FailurePolicy { return p.draft.FailurePolicy }
 

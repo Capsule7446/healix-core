@@ -112,7 +112,7 @@ func (e *StepExecution) Transition(next Phase) error {
 
 // Event describes one runtime phase transition.
 type Event struct {
-	RunID      string
+	RunID      domainexecution.InstanceID
 	NodeID     string
 	Occurrence int
 	Phase      Phase
@@ -121,7 +121,7 @@ type Event struct {
 
 // OperationObservation is an optional, framework-neutral execution fact.
 type OperationObservation struct {
-	RunID      string
+	RunID      domainexecution.InstanceID
 	NodeID     string
 	Operation  string
 	Selector   fingerprint.Selector
@@ -172,7 +172,7 @@ type Driver interface {
 // Recorder 是框架无关的会话录制端口，由宿主提供适配器。
 // Runtime 上的 Recorder 为 nil 表示"录屏关闭"，Start/Stop 也就不会被调用。
 type Recorder interface {
-	Start(ctx context.Context, runID string) (RecordingTimeline, error)
+	Start(ctx context.Context, runID domainexecution.InstanceID) (RecordingTimeline, error)
 	Stop(ctx context.Context, retain bool) error
 }
 
@@ -182,7 +182,7 @@ type HealSampleObserver interface {
 }
 
 type HealSampleRecord struct {
-	RunID       string
+	RunID       domainexecution.InstanceID
 	NodeID      string
 	SpecID      string
 	OldSelector fingerprint.Selector
@@ -208,7 +208,7 @@ type ExecutionSink interface {
 // Runtime、Driver、Page 和 Element 端口在当前版本均要求由单个顺序执行器访问；
 // 并发调度、资源池和跨页面生命周期属于延期能力。
 type Runtime struct {
-	RunID      string
+	RunID      domainexecution.InstanceID
 	ClaimToken string
 	PageURL    string
 	Origin     string

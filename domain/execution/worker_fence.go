@@ -11,12 +11,12 @@ import (
 // successful acquisition, including reacquisition by the same worker, so an old
 // released owner can never pass the fence through an ABA token reuse.
 type WorkerFence struct {
-	RunID      string
+	RunID      InstanceID
 	ClaimToken string
 }
 
 func (f WorkerFence) Validate() error {
-	if f.RunID == "" || f.ClaimToken == "" {
+	if f.RunID.Validate() != nil || f.ClaimToken == "" {
 		return errors.New("worker fence run id and claim token are required")
 	}
 	return nil

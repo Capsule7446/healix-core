@@ -209,7 +209,7 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	return result, nil
 }
 
-func validateCommitRunBinding(runID string, commit evidence.StepTransitionCommit) error {
+func validateCommitRunBinding(runID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
 	for _, observation := range commit.FinalValidations {
 		if observation.RunID != runID {
 			return stepTransitionCommitRunMismatchError(fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.RunID, runID))

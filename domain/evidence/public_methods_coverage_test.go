@@ -9,7 +9,7 @@ import (
 
 func validValidationProgressObservation() ValidationProgressObservation {
 	return ValidationProgressObservation{
-		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
+		ID: "observation", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecutionID: "step",
 		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
@@ -69,7 +69,7 @@ func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 
 func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 	valid := HealObservation{
-		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
+		ID: "observation", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecutionID: "step",
 		ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
 		DecisionBand: DecisionUnknown,
 	}
@@ -159,7 +159,7 @@ func TestValidationValueEqualityKindsAndCollectionOwnership(t *testing.T) {
 
 func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 	valid := ValidationObservation{
-		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
+		ID: "observation", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecutionID: "step",
 		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
@@ -201,7 +201,7 @@ func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 }
 
 func TestStepFactTerminalPhaseAndBoundaryMatrix(t *testing.T) {
-	valid := StepFact{ID: "fact", RunID: "run", ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
+	valid := StepFact{ID: "fact", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
 	tests := []struct {
 		name      string
 		mutate    func(*StepFact)
@@ -244,7 +244,7 @@ func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing
 		ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "Step",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 	}, HealObservations: []HealObservation{{
-		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "other-step",
+		ID: "heal", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecutionID: "other-step",
 		ElementTargetID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 1,
 	}}}
 	requireViolation(t, crossStep.Validate(), CodeStepTransitionCommitInvalid, fault.CodeFieldMismatch, "healObservations.0")
@@ -252,7 +252,7 @@ func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing
 
 func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t *testing.T) {
 	valid := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), "execution", "step", "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	missingIdentity := valid
@@ -260,13 +260,13 @@ func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t 
 	requireViolation(t, missingIdentity.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldRequired, "identity")
 
 	missingMemberIdentity := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), "execution", "step", "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch"}}, 1,
 	)
 	requireViolation(t, missingMemberIdentity.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldRequired, "expectedMembers.0")
 
 	duplicateMember := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), "execution", "step", "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}, {BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	requireViolation(t, duplicateMember.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldDuplicate, "expectedMembers.1")

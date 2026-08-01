@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/execution"
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
@@ -42,7 +43,7 @@ func ExecutionAuthorityVerifierRequiredError() error {
 }
 
 type ExecutionAuthority struct {
-	RunID          string
+	RunID          execution.InstanceID
 	SnapshotDigest string
 	ExecutionID    string
 	ClaimToken     string
@@ -56,7 +57,7 @@ type ExecutionAuthorityVerifier interface {
 type Config struct {
 	// RunID、SnapshotDigest、ExecutionID 与 ClaimToken 必须来自本次已领取
 	// 执行权的权威身份，不能从待执行的 CompiledEntry 反向填充。
-	RunID             string
+	RunID             execution.InstanceID
 	SnapshotDigest    string
 	ExecutionID       string
 	ClaimToken        string
@@ -108,7 +109,7 @@ type EntryResult struct {
 // validated before any runtime port can be observed.
 func RunProgram(ctx context.Context, entry CompiledEntry, cfg Config) (EntryResult, error) {
 	result := EntryResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
-	if entry.identity.runID == "" ||
+	if entry.identity.runID.Validate() != nil ||
 		entry.RunID != entry.identity.runID ||
 		entry.SnapshotDigest != entry.identity.snapshotDigest ||
 		entry.ExecutionID != entry.identity.executionID ||

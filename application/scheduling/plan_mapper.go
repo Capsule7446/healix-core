@@ -11,7 +11,7 @@ import (
 )
 
 type buildExecutionPlanInput struct {
-	RunID       string
+	RunID       execution.InstanceID
 	Publication automation.ResolvedExecutionFlow
 	Entries     []executionEntryInput
 }
@@ -35,7 +35,7 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 		// classification behind an unpublished code at this boundary.
 		return execution.PlanSnapshot{}, err
 	}
-	if input.RunID == "" {
+	if input.RunID.Validate() != nil {
 		return execution.PlanSnapshot{}, errors.New("run id is required")
 	}
 	if err := validateEntries(input); err != nil {

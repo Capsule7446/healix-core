@@ -226,7 +226,7 @@ func (p PlanSnapshot) validateShape() error {
 	if err := validateAggregateInputBounds(p); err != nil {
 		return err
 	}
-	if strings.TrimSpace(p.RunID) == "" {
+	if p.RunID.Validate() != nil {
 		return errors.New("execution plan requires a run identity")
 	}
 	if !p.FailurePolicy.IsValid() {
@@ -423,7 +423,7 @@ func validateAggregateInputBounds(p PlanSnapshot) error {
 			return value.Validate()
 		}
 	}
-	if err := addString(p.RunID); err != nil {
+	if err := addString(p.RunID.String()); err != nil {
 		return err
 	}
 	for _, entry := range p.Entries {

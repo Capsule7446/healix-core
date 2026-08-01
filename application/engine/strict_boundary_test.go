@@ -56,7 +56,7 @@ func TestRunProgramRejectsNilContextAndNegativeInterval(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := runProgram(tt.ctx, program, Config{RunID: "run", Driver: &engineTestDriver{}, StepInterval: tt.interval})
+			_, err := runProgram(tt.ctx, program, Config{RunID: mustInstanceID("run"), Driver: &engineTestDriver{}, StepInterval: tt.interval})
 			if err == nil || !fault.IsCode(err, CodeRuntimeConfigurationInvalid) {
 				t.Fatalf("error = %v, want code %s", err, CodeRuntimeConfigurationInvalid)
 			}

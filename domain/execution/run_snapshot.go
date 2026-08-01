@@ -86,17 +86,18 @@ type InvocationScopeSnapshot struct {
 }
 
 type InstanceSnapshotInput struct {
-	SchemaVersion                             RunSnapshotSchema
-	RunID, ExecutionFlowID, TestTaskVersionID string
-	TestTaskVersionNumber                     int
-	ExecutionFlow                             TestTaskSnapshot
-	ExecutionFlowVersion                      ExecutionFlowVersionSnapshot
-	Plan                                      PlanSnapshot
-	Invocations                               []InvocationScopeSnapshot
-	Environment                               EnvironmentSnapshot
-	FailurePolicy                             FailurePolicy
-	ScreenshotPolicy                          ScreenshotPolicySnapshot
-	HealerPolicy                              HealerPolicySnapshot
+	SchemaVersion                      RunSnapshotSchema
+	RunID                              InstanceID
+	ExecutionFlowID, TestTaskVersionID string
+	TestTaskVersionNumber              int
+	ExecutionFlow                      TestTaskSnapshot
+	ExecutionFlowVersion               ExecutionFlowVersionSnapshot
+	Plan                               PlanSnapshot
+	Invocations                        []InvocationScopeSnapshot
+	Environment                        EnvironmentSnapshot
+	FailurePolicy                      FailurePolicy
+	ScreenshotPolicy                   ScreenshotPolicySnapshot
+	HealerPolicy                       HealerPolicySnapshot
 }
 
 type InstanceSnapshot struct {
@@ -106,7 +107,7 @@ type InstanceSnapshot struct {
 
 func (s InstanceSnapshot) Digest() string                   { return s.digest }
 func (s InstanceSnapshot) SchemaVersion() RunSnapshotSchema { return s.input.SchemaVersion }
-func (s InstanceSnapshot) RunID() string                    { return s.input.RunID }
+func (s InstanceSnapshot) RunID() InstanceID                { return s.input.RunID }
 func (s InstanceSnapshot) ExecutionFlowID() string          { return s.input.ExecutionFlowID }
 func (s InstanceSnapshot) TestTaskVersionID() string        { return s.input.TestTaskVersionID }
 func (s InstanceSnapshot) Input() InstanceSnapshotInput     { return cloneSnapshotInput(s.input) }
@@ -420,7 +421,7 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 	if v.SchemaVersion != RunSnapshotSchemaV1 && v.SchemaVersion != RunSnapshotSchemaV2 {
 		return fmt.Errorf("unsupported run snapshot schema %d", v.SchemaVersion)
 	}
-	if !validString(v.RunID, true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
+	if !validString(v.RunID.String(), true) || !validString(v.ExecutionFlowID, true) || !validString(v.TestTaskVersionID, true) || v.TestTaskVersionNumber < 1 {
 		return errors.New("run and test-task version identity is required")
 	}
 	if v.ExecutionFlow.ID != v.ExecutionFlowID ||
@@ -660,7 +661,7 @@ func (e *canonicalEncoder) boolean(v bool) {
 func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
 	e.str("healix.run-snapshot")
 	e.u64(uint64(v.SchemaVersion))
-	e.str(v.RunID)
+	e.str(v.RunID.String())
 	e.str(v.ExecutionFlowID)
 	e.str(v.TestTaskVersionID)
 	e.u64(uint64(v.TestTaskVersionNumber))

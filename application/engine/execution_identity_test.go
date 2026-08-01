@@ -65,7 +65,7 @@ type executionIdentityProbeRecorder struct {
 	probe *executionIdentityProbe
 }
 
-func (r executionIdentityProbeRecorder) Start(context.Context, string) (node.RecordingTimeline, error) {
+func (r executionIdentityProbeRecorder) Start(context.Context, domainexecution.InstanceID) (node.RecordingTimeline, error) {
 	r.probe.recorderCalls++
 	return &engineTestTimeline{}, nil
 }
@@ -112,14 +112,14 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 		name   string
 		mutate func(*CompiledEntry, *Config)
 	}{
-		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.RunID = "wrong-run" }},
+		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.RunID = mustInstanceID("wrong-run") }},
 		{name: "config snapshot", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.SnapshotDigest = "wrong-digest" }},
 		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.ExecutionID = "wrong-execution" }},
 		{name: "missing claim token without facts", mutate: func(_ *CompiledEntry, cfg *Config) {
 			cfg.ClaimToken = ""
 			cfg.Facts = nil
 		}},
-		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.RunID = "wrong-run" }},
+		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.RunID = mustInstanceID("wrong-run") }},
 		{name: "entry snapshot", mutate: func(entry *CompiledEntry, _ *Config) { entry.SnapshotDigest = "wrong-digest" }},
 		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.ExecutionID = "wrong-execution" }},
 	}

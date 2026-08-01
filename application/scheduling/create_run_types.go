@@ -11,7 +11,7 @@ import (
 // CreateRunCommand is the sole authority for caller-supplied create data.
 type CreateRunCommand struct {
 	CommandID         string
-	RunID             string
+	RunID             execution.InstanceID
 	ExecutionFlowID   string
 	TestTaskVersionID string
 	EnvironmentID     string

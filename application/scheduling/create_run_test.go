@@ -14,7 +14,7 @@ import (
 )
 
 func validCreateRunCommand() CreateRunCommand {
-	return CreateRunCommand{CommandID: "command-1", RunID: "run-1", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item-1": {}, "item-2": {}}, FailurePolicy: execution.FailurePolicyContinueOnFailure, CreatedAt: 10, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
+	return CreateRunCommand{CommandID: "command-1", RunID: mustInstanceID("run-1"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item-1": {}, "item-2": {}}, FailurePolicy: execution.FailurePolicyContinueOnFailure, CreatedAt: 10, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
 }
 
 func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCreateRun {
@@ -23,7 +23,7 @@ func validResolvedCreateRun(t *testing.T, command CreateRunCommand) ResolvedCrea
 	source.RunID = command.RunID
 	roots := make([]execution.InvocationScopeSnapshot, 0, len(source.Entries)*2)
 	for _, entry := range source.Entries {
-		entry.ExecutionID = concreteRootPath(command.RunID, entry.TestTaskItemID)
+		entry.ExecutionID = concreteRootPath(command.RunID.String(), entry.TestTaskItemID)
 		roots = append(roots,
 			execution.InvocationScopeSnapshot{Path: entry.ExecutionID, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID, Values: map[string]parameter.Value{}},
 			execution.InvocationScopeSnapshot{Path: entry.ExecutionID + "/10:call-child", ParentPath: entry.ExecutionID, ParentVersionID: "root-v1", StepID: "call-child", FlowFragmentID: "child", WorkflowVersionID: "child-v1", ResolvedFromLatest: true, Values: map[string]parameter.Value{}, Bindings: map[string]parameter.Binding{}},
@@ -58,7 +58,7 @@ func TestCreateRunRequestDigestMatrix(t *testing.T) {
 		edit(&changed)
 		variants = append(variants, changed)
 	}
-	add(func(v *CreateRunCommand) { v.RunID = "other" })
+	add(func(v *CreateRunCommand) { v.RunID = mustInstanceID("other") })
 	add(func(v *CreateRunCommand) { v.ExecutionFlowID = "other" })
 	add(func(v *CreateRunCommand) { v.TestTaskVersionID = "other" })
 	add(func(v *CreateRunCommand) { v.EnvironmentID = "other" })
@@ -127,7 +127,7 @@ func assertDifferentDigest(t *testing.T, left, right CreateRunCommand, index int
 
 func TestCreateRunRequestDigestRejectsInvalidBeforeHashing(t *testing.T) {
 	tests := []func(*CreateRunCommand){
-		func(v *CreateRunCommand) { v.RunID = " run" },
+		func(v *CreateRunCommand) { v.RunID = execution.InstanceID{} },
 		func(v *CreateRunCommand) { v.FailurePolicy = "UNKNOWN" },
 		func(v *CreateRunCommand) { v.ScreenshotPolicy.Version++ },
 		func(v *CreateRunCommand) { v.HealerPolicy.Version++ },
@@ -476,7 +476,7 @@ func TestCreateRunServiceRejectsMalformedAuthoritativeOutcomes(t *testing.T) {
 		{"zero", func(v *InsertCreateRunOutcome) { *v = InsertCreateRunOutcome{} }},
 		{"wrong command", func(v *InsertCreateRunOutcome) { v.CommandID = "other" }},
 		{"wrong digest", func(v *InsertCreateRunOutcome) { v.RequestDigest = "sha256:" + strings.Repeat("0", 64) }},
-		{"wrong run", func(v *InsertCreateRunOutcome) { v.Result.Run.ID = "other" }},
+		{"wrong run", func(v *InsertCreateRunOutcome) { v.Result.Run.ID = mustInstanceID("other") }},
 		{"empty snapshot", func(v *InsertCreateRunOutcome) { v.Result.Snapshot = execution.InstanceSnapshot{} }},
 		{"wrong entries", func(v *InsertCreateRunOutcome) { v.Result.EntryIDs = []string{"other"} }},
 	}
@@ -493,7 +493,7 @@ func TestCreateRunServiceRejectsMalformedAuthoritativeOutcomes(t *testing.T) {
 
 func TestCreateRunServicePreflightRejectsOversizeBeforeStore(t *testing.T) {
 	command := validCreateRunCommand()
-	command.RunID = strings.Repeat("x", execution.MaxStringBytes+1)
+	command.ExecutionFlowID = strings.Repeat("x", execution.MaxStringBytes+1)
 	fake := &createRunFake{resolved: validResolvedCreateRun(t, validCreateRunCommand())}
 	result, err := mustCreateRunService(t, fake).CreateRun(context.Background(), command)
 	if !fault.IsCode(err, CodeCreateInstanceCommandInvalid) || fake.transactionCalls != 0 || !isZeroCreateRunResult(result) {
@@ -562,7 +562,7 @@ func TestCreateRunPreflightStringBoundariesAndZeroStoreAccess(t *testing.T) {
 		name string
 		edit func(*CreateRunCommand, int)
 	}{
-		{"identifier bytes", func(c *CreateRunCommand, n int) { c.RunID = strings.Repeat("r", n) }},
+		{"identifier bytes", func(c *CreateRunCommand, n int) { c.ExecutionFlowID = strings.Repeat("r", n) }},
 		{"destination bytes", func(c *CreateRunCommand, n int) { c.ScreenshotPolicy.Destination = strings.Repeat("d", n) }},
 		{"entry identifier bytes", func(c *CreateRunCommand, n int) {
 			c.Entries = map[string]map[string]parameter.Value{strings.Repeat("i", n): {}}
@@ -826,7 +826,7 @@ func TestCreateRunServiceRejectsMalformedFindCommandReplay(t *testing.T) {
 		mutate func(*StoredCreateRunCommand)
 	}{
 		{"command identity", func(v *StoredCreateRunCommand) { v.CommandID = "other" }},
-		{"run identity", func(v *StoredCreateRunCommand) { v.Result.Run.ID = "other" }},
+		{"run identity", func(v *StoredCreateRunCommand) { v.Result.Run.ID = mustInstanceID("other") }},
 		{"task identity", func(v *StoredCreateRunCommand) { v.Result.Run.ExecutionFlowID = "other" }},
 		{"snapshot seal", func(v *StoredCreateRunCommand) { v.Result.Run.SnapshotDigest = "sha256:" + strings.Repeat("0", 64) }},
 		{"entry order", func(v *StoredCreateRunCommand) {
@@ -1062,7 +1062,7 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 		target    error
 		wantCode  fault.Code
 	}{
-		{"invalid command", func() CreateRunCommand { value := base; value.RunID = " bad"; return value }(), func(*createRunFake) {}, nil, CodeCreateInstanceCommandInvalid},
+		{"invalid command", func() CreateRunCommand { value := base; value.RunID = execution.InstanceID{}; return value }(), func(*createRunFake) {}, nil, CodeCreateInstanceCommandInvalid},
 		{"find command", base, func(f *createRunFake) { f.findErr = errors.New("read failed") }, nil, CodeSchedulingAdapterUnavailable},
 		{"build snapshot", base, func(f *createRunFake) { f.resolved.Environment.ID = "other" }, nil, ""},
 		{"invalid insert outcome", base, func(f *createRunFake) { f.insertOutcome.Status = "UNKNOWN" }, nil, ""},
@@ -1101,7 +1101,7 @@ func TestCreateRunServicePreservesTypedErrorCategoriesAndReturnsNoResult(t *test
 }
 
 func isZeroCreateRunResult(result CreateRunResult) bool {
-	return result.Run.ID == "" && result.Snapshot.Digest() == "" && result.EntryIDs == nil && !result.WasApplied
+	return result.Run.ID == (execution.InstanceID{}) && result.Snapshot.Digest() == "" && result.EntryIDs == nil && !result.WasApplied
 }
 
 func TestCreateRunServiceExposesNoResultWhenTransactionFails(t *testing.T) {

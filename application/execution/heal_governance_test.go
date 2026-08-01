@@ -8,11 +8,12 @@ import (
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
 )
 
 func healGovernancePlan(runID string, sequence uint64, band evidence.DecisionBand, streak domainautomation.HealStreak) HealGovernancePlan {
 	observation := evidence.HealObservation{
-		ID: "fact-" + runID, RunID: runID, ExecutionID: "execution-" + runID, StepExecutionID: "step-" + runID,
+		ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: "execution-" + runID, StepExecutionID: "step-" + runID,
 		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 		DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 	}
@@ -23,7 +24,7 @@ func healGovernancePlan(runID string, sequence uint64, band evidence.DecisionBan
 		},
 		Fact: HealAcceptedFact{
 			Kind: HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + runID,
-			RunID: runID, Sequence: sequence, Observation: &observation,
+			RunID: mustInstanceID(runID), Sequence: sequence, Observation: &observation,
 		},
 	}
 }
@@ -44,7 +45,7 @@ func TestDefaultHealGovernancePlannerValidatesExportedBoundaryInputs(t *testing.
 		{"whitespace current", func(plan *HealGovernancePlan) { plan.Snapshot.CurrentNodeVersionID = "  " }},
 		{"whitespace fact", func(plan *HealGovernancePlan) { plan.Fact.FactID = "  " }},
 		{"whitespace commit", func(plan *HealGovernancePlan) { plan.Fact.CommitID = "  " }},
-		{"whitespace run", func(plan *HealGovernancePlan) { plan.Fact.RunID = "  " }},
+		{"unset run", func(plan *HealGovernancePlan) { plan.Fact.RunID = domainexecution.InstanceID{} }},
 		{"zero revision", func(plan *HealGovernancePlan) { plan.Snapshot.Revision = 0 }},
 		{"zero sequence", func(plan *HealGovernancePlan) { plan.Fact.Sequence = 0 }},
 	} {
@@ -84,7 +85,7 @@ func TestDefaultHealGovernancePlannerBindsAcceptedFactWithoutMutation(t *testing
 	if decision.Effect != nil || len(decision.NextStreak.Contributions) != 1 {
 		t.Fatalf("first observation decision = %#v", decision)
 	}
-	plan.Fact.Observation.RunID = "mutated"
+	plan.Fact.Observation.RunID = mustInstanceID("mutated")
 	if decision.NextStreak.Contributions[0].RunID != "run-1" {
 		t.Fatal("decision aliases evidence input")
 	}
@@ -138,7 +139,7 @@ func TestDefaultHealGovernancePlannerResetIsScopedAndImmutable(t *testing.T) {
 	reset := evidence.HealCandidateReset{ExecutionID: "execution-reset", StepExecutionID: "step-reset", ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 2}
 	plan := HealGovernancePlan{
 		Snapshot: HealGovernanceSnapshot{Key: first.Snapshot.Key, CurrentNodeVersionID: "base", Revision: 2, Streak: decision.NextStreak},
-		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: "run-2", Sequence: 2, Reset: &reset},
+		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: mustInstanceID("run-2"), Sequence: 2, Reset: &reset},
 	}
 	result, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
 	if err != nil {

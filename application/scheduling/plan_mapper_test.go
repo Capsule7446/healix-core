@@ -99,7 +99,7 @@ func TestBuildExecutionDraftRejectsMismatchAndInvalidSource(t *testing.T) {
 			source := validMapperSource()
 			test.edit(&source)
 			plan, err := buildExecutionDraft(source)
-			if err == nil || !strings.Contains(err.Error(), test.want) || plan.RunID != "" {
+			if err == nil || !strings.Contains(err.Error(), test.want) || plan.RunID != (execution.InstanceID{}) {
 				t.Fatalf("plan/error = %#v/%v", plan, err)
 			}
 		})
@@ -153,7 +153,7 @@ func validMapperSource() buildExecutionPlanInput {
 		{ID: "item-2", TestTaskVersionID: "task-v1", SequenceNumber: 2, FlowFragmentID: "root", VersionPolicy: automation.FlowFragmentVersionLatest},
 	}}
 	return buildExecutionPlanInput{
-		RunID: "run",
+		RunID: mustInstanceID("run"),
 		Publication: automation.ResolvedExecutionFlow{
 			Task: task, Version: version,
 			Workflows:  []automation.FlowFragmentDependencySnapshot{root, child},

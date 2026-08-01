@@ -175,6 +175,17 @@ func Run(t *testing.T, factory Factory) {
 	})
 }
 
+// mustInstanceID is safe here because every value handed to commit is a
+// literal written a few lines above it. A malformed one is a defect in this
+// file, not something a Host running the suite can provoke.
+func mustInstanceID(value string) domainexecution.InstanceID {
+	id, err := domainexecution.NewInstanceID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 func commit(id string, revision evidence.StepRevision, runID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
 	return evidence.StepTransitionCommit{
 		CommitID:         id,
@@ -184,7 +195,7 @@ func commit(id string, revision evidence.StepRevision, runID string, band eviden
 			Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 		},
 		HealObservations: []evidence.HealObservation{{
-			ID: "fact-" + runID, RunID: runID, ExecutionID: "execution", StepExecutionID: "step",
+			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: "execution", StepExecutionID: "step",
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},

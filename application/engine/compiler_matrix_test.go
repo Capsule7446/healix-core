@@ -54,7 +54,7 @@ func requireEngineStepShapeViolation(t *testing.T, err error, wantField string, 
 }
 
 func minimalCompilerPlan() execution.PlanSnapshot {
-	return execution.PlanSnapshot{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ID: mustEntryID("execution-entry"), TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{ID: "root", FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}}}
+	return execution.PlanSnapshot{RunID: mustInstanceID("execution"), FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ID: mustEntryID("execution-entry"), TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}}, Workflows: []execution.WorkflowSnapshot{{ID: "root", FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{{ID: "wait", DisplayName: "等待", Kind: execution.WaitStep, WaitKind: "sleep", WaitMS: 1}}}}}
 }
 
 func TestCompilePlanRejectsSnapshotIdentityMatrix(t *testing.T) {
@@ -145,7 +145,7 @@ func TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := execution.PlanSnapshot{RunID: "execution", FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ID: mustEntryID("execution-entry"), TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
+	plan := execution.PlanSnapshot{RunID: mustInstanceID("execution"), FailurePolicy: execution.FailurePolicyStopOnFailure, Entries: []execution.Entry{{ID: mustEntryID("execution-entry"), TestTaskItemID: "task-item", SequenceNumber: 1, FlowFragmentID: "root", WorkflowVersionID: "root-v1"}},
 		Workflows: []execution.WorkflowSnapshot{
 			{FlowFragmentID: "root", VersionID: "root-v1", DisplayName: "根流程", VersionNumber: 1, Steps: []execution.Step{
 				{ID: "select", DisplayName: "选择", Kind: execution.ActionStep, Action: "select", ElementTargetID: compilerNodeID, ElementTargetVersionID: compilerNodeV1, Values: []string{"east", "west"}, Optional: true, CaptureScreenshot: true},

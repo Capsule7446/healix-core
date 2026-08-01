@@ -102,12 +102,14 @@ func runSignalRetryableError(cause error) error {
 }
 
 type CancelRunCommand struct {
-	CommandID, RunID     string
+	CommandID            string
+	RunID                domainexecution.InstanceID
 	ExpectedStatus       domainexecution.InstanceStatus
 	ExpectedRevision, At int64
 }
 type AbortRunCommand struct {
-	CommandID, RunID     string
+	CommandID            string
+	RunID                domainexecution.InstanceID
 	ExpectedRevision, At int64
 	Fence                domainexecution.WorkerFence
 }
@@ -148,7 +150,7 @@ type QueueCommandStore interface {
 }
 
 type RunCancellationSignaler interface {
-	SignalRunCancellation(context.Context, string) error
+	SignalRunCancellation(context.Context, domainexecution.InstanceID) error
 }
 
 type CancelRunService struct {
@@ -224,14 +226,14 @@ func signalIfRequired(ctx context.Context, signaler RunCancellationSignaler, res
 }
 
 func validateCancel(command CancelRunCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.RunID) == "" || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
+	if strings.TrimSpace(command.CommandID) == "" || command.RunID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
 		return cancelRunCommandInvalidError(nil)
 	}
 	return nil
 }
 
 func validateAbort(command AbortRunCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.RunID) == "" || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.RunID != command.RunID {
+	if strings.TrimSpace(command.CommandID) == "" || command.RunID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.RunID != command.RunID {
 		return abortRunCommandInvalidError(nil)
 	}
 	if err := command.Fence.Validate(); err != nil {
@@ -269,7 +271,7 @@ func (s ReorderQueueService) ReorderQueue(ctx context.Context, command ReorderQu
 	result.RunIDs = append([]string(nil), result.RunIDs...)
 	return result, nil
 }
-func validateRunResult(runID string, status domainexecution.InstanceStatus, expectedRevision int64, result RunCommandResult) error {
+func validateRunResult(runID domainexecution.InstanceID, status domainexecution.InstanceStatus, expectedRevision int64, result RunCommandResult) error {
 	if result.Run.ID != runID {
 		return runAdapterContractViolationError(runIdentityConflictError())
 	}

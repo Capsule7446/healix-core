@@ -49,8 +49,8 @@ func (s *fencedExecutionStore) CommitStepTransition(_ context.Context, fence dom
 }
 
 func TestExecutionWritesRejectStaleWorkerFence(t *testing.T) {
-	winner := domainexecution.WorkerFence{RunID: "run", ClaimToken: "winner"}
-	stale := domainexecution.WorkerFence{RunID: "run", ClaimToken: "stale"}
+	winner := domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "winner"}
+	stale := domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "stale"}
 	store := &fencedExecutionStore{active: winner}
 	if err := store.RecordStepProgress(context.Background(), stale, evidence.StepProgressEvent{}); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("stale progress error=%v", err)
@@ -67,7 +67,7 @@ func TestExecutionWritesRejectStaleWorkerFence(t *testing.T) {
 	if store.progress != 1 || store.terminal != 1 {
 		t.Fatalf("writes=%d/%d", store.progress, store.terminal)
 	}
-	reacquired := domainexecution.WorkerFence{RunID: "run", ClaimToken: "winner-next-acquisition"}
+	reacquired := domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "winner-next-acquisition"}
 	store.active = reacquired
 	if err := store.RecordStepProgress(context.Background(), winner, evidence.StepProgressEvent{}); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("released ABA progress error=%v", err)

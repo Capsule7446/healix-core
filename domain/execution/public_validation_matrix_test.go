@@ -118,9 +118,9 @@ func TestRunConstructionAndTransitionPublicErrorBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
+	base := Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, QueuePosition: 0, CreatedAt: 10, QueuedAt: 10}
 	mismatch := base
-	mismatch.ID = "other"
+	mismatch.ID = mustInstanceID("other")
 	_, err = NewRun(mismatch, snapshot)
 	requireCreateInstanceSnapshotRejection(t, err, "identity must match")
 	queued, err := NewRun(base, snapshot)

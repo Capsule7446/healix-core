@@ -86,13 +86,13 @@ func TestExternalConsumerCanImplementCreateRunPorts(t *testing.T) {
 	plan := automation.ResolvedExecutionFlow{Task: automation.ExecutionFlow{ID: "task", DisplayName: "Task", CurrentVersionID: "task-v1", CreatedAt: 1, UpdatedAt: 1}, Version: automation.ExecutionFlowVersion{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, FailurePolicy: automation.FailurePolicyStopOnFailure, CreatedAt: 1, Items: []automation.ExecutionFlowItem{{ID: "item", TestTaskVersionID: "task-v1", SequenceNumber: 1, FlowFragmentID: "workflow", VersionPolicy: automation.FlowFragmentVersionLatest}}}, Workflows: []automation.FlowFragmentDependencySnapshot{workflow}}
 	path := "3:run4:item"
 	store := &consumerCreateRunStore{resolved: scheduling.ResolvedCreateRun{Plan: plan, Environment: automation.Environment{ID: "env", DisplayName: "Environment", BaseURL: "https://example.test", Revision: 1, Variables: automation.EnvironmentVariables{}}, Invocations: []execution.InvocationScopeSnapshot{{Path: path, FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", Values: map[string]parameter.Value{}}}}}
-	command := scheduling.CreateRunCommand{CommandID: "command", RunID: "run", ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item": {}}, FailurePolicy: execution.FailurePolicyStopOnFailure, CreatedAt: 1, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
+	command := scheduling.CreateRunCommand{CommandID: "command", RunID: mustInstanceID("run"), ExecutionFlowID: "task", TestTaskVersionID: "task-v1", EnvironmentID: "env", Entries: map[string]map[string]parameter.Value{"item": {}}, FailurePolicy: execution.FailurePolicyStopOnFailure, CreatedAt: 1, ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1, Enabled: true, Destination: "artifacts"}, HealerPolicy: execution.DefaultHealerPolicySnapshot()}
 	service, err := scheduling.NewCreateRunService(store)
 	if err != nil {
 		t.Fatal(err)
 	}
 	result, err := service.CreateRun(context.Background(), command)
-	if err != nil || !result.WasApplied || store.digest == "" || store.input.RunID != "run" {
+	if err != nil || !result.WasApplied || store.digest == "" || store.input.RunID != mustInstanceID("run") {
 		t.Fatalf("external CreateRun contract: result=%#v digest=%q err=%v", result, store.digest, err)
 	}
 	snapshot, err := execution.HydrateInstanceSnapshot(store.input, store.digest)

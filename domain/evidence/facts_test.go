@@ -3,7 +3,7 @@ package evidence
 import "testing"
 
 func TestStepFactRequiresTerminalIdentity(t *testing.T) {
-	fact := StepFact{ID: "fact", RunID: "run", ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
+	fact := StepFact{ID: "fact", RunID: mustInstanceID("run"), ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
 	if err := fact.Validate(); err != nil {
 		t.Fatal(err)
 	}

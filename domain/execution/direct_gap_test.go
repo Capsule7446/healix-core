@@ -34,7 +34,7 @@ func TestValidateRunDirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	valid, err := NewRun(Run{ID: "run-1", ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
+	valid, err := NewRun(Run{ID: mustInstanceID("run-1"), ExecutionFlowID: "task-1", TestTaskVersionID: "task-v3", EnvironmentID: "env-1", Status: Queued, CreatedAt: 1, QueuedAt: 1}, snapshot)
 	if err != nil {
 		t.Fatal(err)
 	}

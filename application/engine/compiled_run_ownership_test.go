@@ -81,8 +81,8 @@ func TestCompiledRunEntryRejectsCorruptedIndexedIdentity(t *testing.T) {
 		name   string
 		mutate func(*CompiledEntry)
 	}{
-		{name: "public run", mutate: func(entry *CompiledEntry) { entry.RunID = "other" }},
-		{name: "sealed run", mutate: func(entry *CompiledEntry) { entry.identity.runID = "other" }},
+		{name: "public run", mutate: func(entry *CompiledEntry) { entry.RunID = mustInstanceID("other") }},
+		{name: "sealed run", mutate: func(entry *CompiledEntry) { entry.identity.runID = mustInstanceID("other") }},
 		{name: "public digest", mutate: func(entry *CompiledEntry) { entry.SnapshotDigest = "other" }},
 		{name: "sealed digest", mutate: func(entry *CompiledEntry) { entry.identity.snapshotDigest = "other" }},
 		{name: "public execution", mutate: func(entry *CompiledEntry) { entry.ExecutionID = "other" }},

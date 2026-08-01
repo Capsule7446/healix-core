@@ -44,7 +44,7 @@ type referenceFixture struct {
 
 func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyingRuns int) conformancetest.Fixture {
 	fixture := &referenceFixture{
-		fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
+		fence: domainexecution.WorkerFence{RunID: mustInstanceID("run"), ClaimToken: "claim"},
 		band:  band,
 		state: referenceState{
 			stepRevision:       1,
@@ -59,7 +59,7 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 		sequence := uint64(index + 1)
 		runID := fmt.Sprintf("run-prior-%d", index+1)
 		observation := evidence.HealObservation{
-			ID: "fact-" + runID, RunID: runID, ExecutionID: "execution", StepExecutionID: "step",
+			ID: "fact-" + runID, RunID: mustInstanceID(runID), ExecutionID: "execution", StepExecutionID: "step",
 			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 		}
@@ -70,7 +70,7 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 			},
 			Fact: execution.HealAcceptedFact{
 				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + runID,
-				RunID: runID, Sequence: sequence, Observation: &observation,
+				RunID: mustInstanceID(runID), Sequence: sequence, Observation: &observation,
 			},
 		})
 		if err != nil {

@@ -376,7 +376,7 @@ func TestNewNodeCompletionChainValidationMatrix(t *testing.T) {
 
 func TestStepTimelineEventBoundaryOutcomeMatrix(t *testing.T) {
 	valid := StepTimelineEvent{
-		Step:     StepExecutionRef{RunID: "run", NodeID: "step", Occurrence: 1},
+		Step:     StepExecutionRef{RunID: mustInstanceID("run"), NodeID: "step", Occurrence: 1},
 		Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1},
 	}
 	tests := []struct {
