@@ -303,7 +303,7 @@ func cloneHealReviewOutcome(outcome HealReviewOutcome) HealReviewOutcome {
 func cloneHealCandidate(candidate domain.HealCandidate) domain.HealCandidate {
 	result := candidate
 	result.Selectors = append([]fingerprint.Selector(nil), candidate.Selectors...)
-	result.Fingerprint = cloneApplicationFingerprint(candidate.Fingerprint)
+	result.Fingerprint = candidate.Fingerprint.Clone()
 	return result
 }
 
@@ -322,17 +322,4 @@ func cloneHealStreakPointer(streak *domain.HealStreak) *domain.HealStreak {
 	result := *streak
 	result.Contributions = append([]domain.ContributingHealFact(nil), streak.Contributions...)
 	return &result
-}
-
-func cloneApplicationFingerprint(value fingerprint.Fingerprint) fingerprint.Fingerprint {
-	result := value
-	result.Path = append([]string(nil), value.Path...)
-	result.Framework = value.Framework.Clone()
-	if value.Attributes != nil {
-		result.Attributes = make(map[string]string, len(value.Attributes))
-		for key, item := range value.Attributes {
-			result.Attributes[key] = item
-		}
-	}
-	return result
 }

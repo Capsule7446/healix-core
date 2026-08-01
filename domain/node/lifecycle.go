@@ -158,17 +158,6 @@ func cloneSnapshotCandidates(source []heal.SnapshotCandidate) []heal.SnapshotCan
 	return copied
 }
 
-func cloneStringMap(source map[string]string) map[string]string {
-	if source == nil {
-		return nil
-	}
-	cloned := make(map[string]string, len(source))
-	for key, value := range source {
-		cloned[key] = value
-	}
-	return cloned
-}
-
 func (b runtimeReadOnlyBrowser) SnapshotDOM(ctx context.Context) (heal.DOMSnapshot, error) {
 	snapshot, err := b.runtime.Driver.Snapshot(ctx)
 	if err != nil {

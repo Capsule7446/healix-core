@@ -299,14 +299,3 @@ func cloneParameterSnapshot(snapshot ParameterSnapshot) ParameterSnapshot {
 	snapshot.Values = cloneParameterValues(snapshot.Values)
 	return snapshot
 }
-
-func cloneMap(source map[string]string) map[string]string {
-	if source == nil {
-		return nil
-	}
-	result := make(map[string]string, len(source))
-	for key, value := range source {
-		result[key] = value
-	}
-	return result
-}

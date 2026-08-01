@@ -455,10 +455,8 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 	fp := version.Fingerprint
 	spec := fingerprint.ElementTargetSpec{UUID: dependency.ElementTargetID, ID: version.VersionID,
 		PageURL: version.PageURL, Origin: version.Origin, Role: fp.ARIA.Role,
-		Selectors: append([]fingerprint.Selector(nil), version.Selectors...),
-		Fingerprint: fingerprint.Fingerprint{Tag: fp.Tag, Attributes: cloneStrings(fp.Attributes), Text: fp.Text,
-			ARIA: fp.ARIA, Path: append([]string(nil), fp.Path...), SiblingIndex: fp.SiblingIndex,
-			Neighbors: fp.Neighbors, LabelText: fp.LabelText, FormID: fp.FormID, Framework: fp.Framework.Clone()}}
+		Selectors:   append([]fingerprint.Selector(nil), version.Selectors...),
+		Fingerprint: fp.Clone()}
 	if err := spec.Validate(); err != nil {
 		// spec.Validate returns FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID with its own
 		// ordered violations; this wrapper hid it behind two echoed identities.
@@ -497,12 +495,4 @@ func encodeRuntimeComponent(value string) string { return fmt.Sprintf("%d:%s", l
 
 func referenceKey(parentVersionID, stepID string) execution.WorkflowReferenceKey {
 	return execution.WorkflowReferenceKey{ParentVersionID: parentVersionID, StepID: stepID}
-}
-
-func cloneStrings(input map[string]string) map[string]string {
-	result := make(map[string]string, len(input))
-	for key, value := range input {
-		result[key] = value
-	}
-	return result
 }

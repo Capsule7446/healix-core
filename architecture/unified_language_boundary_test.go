@@ -459,6 +459,95 @@ func TestExecutionCoordinateFieldsAreNeverSpelledAsStrings(t *testing.T) {
 	}
 }
 
+// A fingerprint is the payload every heal decision scores against, and it holds
+// a map and two slices. It had four hand-written copies, one per package that
+// needed one; two of them were missing a field, and one of those two shipped a
+// draft edit that silently rewrote its own source.
+//
+// The class, not the instances, is what has to stay dead. Any function that
+// takes a fingerprint and returns one, and is named for copying, is a second
+// implementation of Fingerprint.Clone waiting to drift away from it. A copy
+// assembled inline as a composite literal is the same thing under no name at
+// all, so this also rejects constructing a fingerprint field by field outside
+// the package that owns the type.
+func TestFingerprintHasExactlyOneDeepCopy(t *testing.T) {
+	root := repositoryRoot(t)
+
+	isFingerprint := func(expr ast.Expr) bool {
+		switch typed := expr.(type) {
+		case *ast.Ident:
+			return typed.Name == "Fingerprint"
+		case *ast.SelectorExpr:
+			return typed.Sel.Name == "Fingerprint"
+		}
+		return false
+	}
+
+	var copies, literals []string
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative := filepath.ToSlash(mustRelative(root, path))
+			// domain/fingerprint owns the type, so its own Clone is the one copy.
+			owns := strings.HasPrefix(relative, "domain/fingerprint/")
+			ast.Inspect(parsed, func(node ast.Node) bool {
+				switch typed := node.(type) {
+				case *ast.FuncDecl:
+					if owns || typed.Type.Params == nil || typed.Type.Results == nil {
+						return true
+					}
+					name := strings.ToLower(typed.Name.Name)
+					if !strings.Contains(name, "clone") && !strings.Contains(name, "copy") {
+						return true
+					}
+					takes, returns := false, false
+					for _, param := range typed.Type.Params.List {
+						if isFingerprint(param.Type) {
+							takes = true
+						}
+					}
+					for _, result := range typed.Type.Results.List {
+						if isFingerprint(result.Type) {
+							returns = true
+						}
+					}
+					if takes && returns {
+						copies = append(copies, relative+":"+strconv.Itoa(fset.Position(typed.Pos()).Line)+" "+typed.Name.Name)
+					}
+				case *ast.CompositeLit:
+					// A composite literal with named fields is someone rebuilding a
+					// fingerprint by hand; Clone is the only thing allowed to do that.
+					if owns || !isFingerprint(typed.Type) || len(typed.Elts) == 0 {
+						return true
+					}
+					named := 0
+					for _, element := range typed.Elts {
+						if _, ok := element.(*ast.KeyValueExpr); ok {
+							named++
+						}
+					}
+					// Two or more named fields means the whole value is being assembled,
+					// as opposed to a small fixture stating the one field under test.
+					if named >= 2 {
+						literals = append(literals, relative+":"+strconv.Itoa(fset.Position(typed.Pos()).Line))
+					}
+				}
+				return true
+			})
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+	if len(copies) != 0 {
+		t.Errorf("found %d hand-written fingerprint copies outside domain/fingerprint; Fingerprint.Clone is the only one:\n  %s",
+			len(copies), strings.Join(copies, "\n  "))
+	}
+	if len(literals) != 0 {
+		t.Errorf("found %d places assembling a fingerprint field by field outside domain/fingerprint; a field added to the type would be dropped by each of them:\n  %s",
+			len(literals), strings.Join(literals, "\n  "))
+	}
+}
+
 func mustRelative(root, path string) string {
 	relative, err := filepath.Rel(root, path)
 	if err != nil {

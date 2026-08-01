@@ -193,7 +193,7 @@ func mapSteps(items []automation.FlowFragmentStep) []execution.Step {
 func mapNodes(items []automation.ElementTargetDependencySnapshot) []execution.NodeSnapshot {
 	r := make([]execution.NodeSnapshot, len(items))
 	for i, item := range items {
-		r[i] = execution.NodeSnapshot{ElementTargetID: item.ElementTarget.ID, VersionID: item.Version.ID, DisplayName: item.ElementTarget.DisplayName, PageURL: item.Version.PageURL, Origin: item.Version.Origin, Selectors: append([]fingerprint.Selector(nil), item.Version.Selectors...), Fingerprint: item.Version.Fingerprint}
+		r[i] = execution.NodeSnapshot{ElementTargetID: item.ElementTarget.ID, VersionID: item.Version.ID, DisplayName: item.ElementTarget.DisplayName, PageURL: item.Version.PageURL, Origin: item.Version.Origin, Selectors: append([]fingerprint.Selector(nil), item.Version.Selectors...), Fingerprint: item.Version.Fingerprint.Clone()}
 	}
 	return r
 }
