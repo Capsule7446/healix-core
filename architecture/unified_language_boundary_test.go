@@ -473,8 +473,15 @@ func TestExecutionCoordinateFieldsAreNeverSpelledAsStrings(t *testing.T) {
 func TestFingerprintHasExactlyOneDeepCopy(t *testing.T) {
 	root := repositoryRoot(t)
 
-	isFingerprint := func(expr ast.Expr) bool {
+	// Pointer forms count. A review probe landed in the tree as
+	// func cloneFingerprint(*fingerprint.Fingerprint) *fingerprint.Fingerprint and
+	// walked straight past this guard, because a *T is an ast.StarExpr wrapping
+	// the name rather than the name itself.
+	var isFingerprint func(ast.Expr) bool
+	isFingerprint = func(expr ast.Expr) bool {
 		switch typed := expr.(type) {
+		case *ast.StarExpr:
+			return isFingerprint(typed.X)
 		case *ast.Ident:
 			return typed.Name == "Fingerprint"
 		case *ast.SelectorExpr:
