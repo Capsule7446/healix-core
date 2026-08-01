@@ -70,9 +70,20 @@ func unwrapFaultCause(t *testing.T, err error) error {
 	return cause
 }
 
+type alwaysAuthorized struct{}
+
+func (alwaysAuthorized) AuthorizeEntry(context.Context, domainexecution.WorkerFence, domainexecution.Entry) error {
+	return nil
+}
+
 func mustEntryExecutor(t *testing.T, factory BrowserSessionFactory, runner EntryRunner) EntryExecutor {
 	t.Helper()
-	executor, err := NewEntryExecutor(factory, runner, time.Second)
+	return mustEntryExecutorWithAuthorizer(t, alwaysAuthorized{}, factory, runner)
+}
+
+func mustEntryExecutorWithAuthorizer(t *testing.T, authorizer EntryAuthorizer, factory BrowserSessionFactory, runner EntryRunner) EntryExecutor {
+	t.Helper()
+	executor, err := NewEntryExecutor(authorizer, factory, runner, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,11 +211,10 @@ func TestEntryExecutorRejectsInvalidFenceBeforeAllocatingSession(t *testing.T) {
 
 	err := executor.Execute(context.Background(), domainexecution.WorkerFence{InstanceID: mustInstanceID("run")}, domainexecution.Entry{ID: mustEntryID("first")})
 
-	// The fence's own error now propagates unwrapped instead of behind an uncoded
-	// "execute entries" layer. Its identity check is still a bare error — that is
-	// the remaining domain/execution migration, not this boundary's concern.
-	if err == nil || !strings.Contains(err.Error(), "worker fence instance id and claim token are required") {
-		t.Fatalf("Execute() error = %v", err)
+	// The fence now returns a classified fault carrying CodeWorkerFenceInvalid.
+	// The safe message is the registered contract text.
+	if err == nil || !fault.IsCode(err, domainexecution.CodeWorkerFenceInvalid) {
+		t.Fatalf("Execute() error = %v, want code %s", err, domainexecution.CodeWorkerFenceInvalid)
 	}
 	if !reflect.DeepEqual(events, []string{}) {
 		t.Fatalf("session events = %#v, want none", events)
@@ -414,29 +424,34 @@ func TestEntryExecutorClosesPartialSessionWhenCreateFails(t *testing.T) {
 }
 
 func TestNewEntryExecutorRejectsMissingDependencies(t *testing.T) {
+	alwaysOK := alwaysAuthorized{}
 	factory := &sessionFactoryFixture{events: &[]string{}}
 	runner := &entryRunnerFixture{events: &[]string{}}
 	var typedNilFactory *sessionFactoryFixture
 	var typedNilRunner *entryRunnerFixture
+	var typedNilAuthorizer *alwaysAuthorized
 	for _, test := range []struct {
-		name    string
-		factory BrowserSessionFactory
-		runner  EntryRunner
+		name       string
+		authorizer EntryAuthorizer
+		factory    BrowserSessionFactory
+		runner     EntryRunner
 	}{
-		{name: "factory", runner: runner},
-		{name: "runner", factory: factory},
-		{name: "typed nil factory", factory: typedNilFactory, runner: runner},
-		{name: "typed nil runner", factory: factory, runner: typedNilRunner},
+		{name: "authorizer", factory: factory, runner: runner},
+		{name: "factory", authorizer: alwaysOK, runner: runner},
+		{name: "runner", authorizer: alwaysOK, factory: factory},
+		{name: "typed nil authorizer", authorizer: typedNilAuthorizer, factory: factory, runner: runner},
+		{name: "typed nil factory", authorizer: alwaysOK, factory: typedNilFactory, runner: runner},
+		{name: "typed nil runner", authorizer: alwaysOK, factory: factory, runner: typedNilRunner},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewEntryExecutor(test.factory, test.runner, time.Second); err == nil {
+			if _, err := NewEntryExecutor(test.authorizer, test.factory, test.runner, time.Second); err == nil {
 				t.Fatalf("missing %s accepted", test.name)
 			}
 		})
 	}
 	for _, timeout := range []time.Duration{0, -time.Nanosecond} {
 		t.Run("nonpositive timeout "+timeout.String(), func(t *testing.T) {
-			_, err := NewEntryExecutor(factory, runner, timeout)
+			_, err := NewEntryExecutor(alwaysOK, factory, runner, timeout)
 			if err == nil || !fault.IsCode(err, CodeEntryExecutorConfigurationInvalid) {
 				t.Fatalf("NewEntryExecutor() error = %v, want code %s", err, CodeEntryExecutorConfigurationInvalid)
 			}
@@ -452,14 +467,14 @@ func TestNewEntryExecutorRejectsMissingDependencies(t *testing.T) {
 }
 
 func TestEntryExecutorBoundsCancellationIndependentClose(t *testing.T) {
-	if _, err := NewEntryExecutor(nil, nil, 0); err == nil {
+	if _, err := NewEntryExecutor(alwaysAuthorized{}, nil, nil, 0); err == nil {
 		t.Fatal("zero close timeout accepted")
 	}
 	events := []string{}
 	closed := make(chan struct{})
 	factory := blockingFactory{events: &events, closed: closed}
 	runner := &entryRunnerFixture{events: &events, err: context.Canceled}
-	executor, err := NewEntryExecutor(factory, runner, 10*time.Millisecond)
+	executor, err := NewEntryExecutor(alwaysAuthorized{}, factory, runner, 10*time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}

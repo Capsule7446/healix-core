@@ -1,8 +1,6 @@
 package execution
 
 import (
-	"errors"
-
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
@@ -17,7 +15,7 @@ type WorkerFence struct {
 
 func (f WorkerFence) Validate() error {
 	if f.InstanceID.Validate() != nil || f.ClaimToken == "" {
-		return errors.New("worker fence instance id and claim token are required")
+		return mustExecutionFault(fault.InvalidArgument, CodeWorkerFenceInvalid, "worker execution authority is invalid")
 	}
 	return nil
 }

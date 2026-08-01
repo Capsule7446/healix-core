@@ -79,6 +79,15 @@ type EntryRunner interface {
 	RunEntry(context.Context, domainexecution.WorkerFence, domainexecution.Entry, BrowserSession) error
 }
 
+// EntryAuthorizer answers whether this worker still holds the authority named
+// by the fence, before any Host resource is created for the entry. The
+// executor cannot rely on engine.RunProgram's own verification: that runs
+// inside the Host's EntryRunner, which is reached only after a browser
+// already exists.
+type EntryAuthorizer interface {
+	AuthorizeEntry(context.Context, domainexecution.WorkerFence, domainexecution.Entry) error
+}
+
 // EntryLifecyclePanic retains both panics when runner execution and cleanup
 // panic during the same Entry lifecycle.
 type EntryLifecyclePanic struct {
@@ -91,12 +100,16 @@ func (p EntryLifecyclePanic) Error() string {
 }
 
 type EntryExecutor struct {
+	authorizer   EntryAuthorizer
 	factory      BrowserSessionFactory
 	runner       EntryRunner
 	closeTimeout time.Duration
 }
 
-func NewEntryExecutor(factory BrowserSessionFactory, runner EntryRunner, closeTimeout time.Duration) (EntryExecutor, error) {
+func NewEntryExecutor(authorizer EntryAuthorizer, factory BrowserSessionFactory, runner EntryRunner, closeTimeout time.Duration) (EntryExecutor, error) {
+	if isNilInterfaceValue(authorizer) {
+		return EntryExecutor{}, entryExecutorConfigurationInvalidError(errors.New("entry authorizer is required"))
+	}
 	if isNilInterfaceValue(factory) {
 		return EntryExecutor{}, entryExecutorConfigurationInvalidError(errors.New("browser session factory is required"))
 	}
@@ -106,7 +119,7 @@ func NewEntryExecutor(factory BrowserSessionFactory, runner EntryRunner, closeTi
 	if closeTimeout <= 0 {
 		return EntryExecutor{}, entryExecutorConfigurationInvalidError(errors.New("browser session close timeout must be positive"))
 	}
-	return EntryExecutor{factory: factory, runner: runner, closeTimeout: closeTimeout}, nil
+	return EntryExecutor{authorizer: authorizer, factory: factory, runner: runner, closeTimeout: closeTimeout}, nil
 }
 
 // Execute runs exactly one authorized entry.
@@ -121,6 +134,9 @@ func (e EntryExecutor) Execute(ctx context.Context, fence domainexecution.Worker
 	// The fence returns its own classified fault; an uncoded wrapper here would
 	// hide that classification behind an unclassified outer error.
 	if err := fence.Validate(); err != nil {
+		return err
+	}
+	if err := e.authorizer.AuthorizeEntry(ctx, fence, entry); err != nil {
 		return err
 	}
 	return e.executeEntry(ctx, fence, entry)

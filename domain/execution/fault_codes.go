@@ -7,6 +7,7 @@ const (
 	CodeStatusTransitionInvalid         fault.Code = "EXECUTION_STATUS_TRANSITION_INVALID"
 	CodeInstanceStatusTransitionInvalid fault.Code = "EXECUTION_INSTANCE_STATUS_TRANSITION_INVALID"
 	CodeWorkerFenceStale                fault.Code = "EXECUTION_WORKER_FENCE_STALE"
+	CodeWorkerFenceInvalid              fault.Code = "EXECUTION_WORKER_FENCE_INVALID"
 
 	CodeCreateInstancePlanInvalid      fault.Code = "EXECUTION_CREATE_INSTANCE_PLAN_INVALID"
 	CodeCreateInstanceStepShapeInvalid fault.Code = "EXECUTION_CREATE_INSTANCE_STEP_SHAPE_INVALID"
