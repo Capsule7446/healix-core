@@ -77,7 +77,10 @@ func FactCommitterRequiredError() error {
 }
 
 const (
-	MaxStepTransitionPayloadBytes = 1 << 20
+	// Expressed in walked content bytes. It was 1<<20 when the measure was
+	// len(json.Marshal), whose framing ran about 4.5x the content on a
+	// representative commit; 1<<18 keeps the effective ceiling where it was.
+	MaxStepTransitionPayloadBytes = 1 << 18
 	maxStepTransitionStringBytes  = 64 << 10
 )
 
@@ -102,13 +105,33 @@ func ownStepTransitionCommit(commit evidence.StepTransitionCommit) (evidence.Ste
 	return commit.Clone(), nil
 }
 
-// stepTransitionPayloadBytes approximates what the commit costs to carry. It
-// counts string bytes and a fixed width per fixed-size field, which is what the
-// budget is protecting against — an unbounded payload — rather than the exact
-// wire size of any particular encoding. Unexported string fields are counted:
-// reflect can read their length even though it cannot hand them out.
+// stepTransitionPayloadBytes measures the content a commit carries: string
+// bytes plus a fixed width per fixed-size field. It replaced len(json.Marshal),
+// which measured the wrong thing twice over — it counted the framing of one
+// particular encoding, and it counted each execution coordinate as the two
+// bytes of {} rather than its real length.
+//
+// The unit changed, so the budget had to move with it or quietly mean something
+// else. A representative commit measures 340 bytes encoded against 75 walked, a
+// factor of about 4.5, so the old 1<<20 would have admitted roughly four and a
+// half times as much content as it used to. MaxStepTransitionPayloadBytes is
+// scaled to hold the effective limit where it was rather than leaving a silent
+// relaxation behind a passing test.
+//
+// Unexported string fields are counted: reflect can read their length even
+// though it cannot hand them out.
 func stepTransitionPayloadBytes(value reflect.Value) int {
-	if !value.IsValid() {
+	return walkStepTransitionBytes(value, 0)
+}
+
+// maxStepTransitionWalkDepth bounds the walk. The commit tree is finite today,
+// but json.Marshal used to return an error on a cycle and the walk that replaced
+// it would recurse until the stack gave out. A pointer field added to an
+// observation is all it would take.
+const maxStepTransitionWalkDepth = 64
+
+func walkStepTransitionBytes(value reflect.Value, depth int) int {
+	if !value.IsValid() || depth > maxStepTransitionWalkDepth {
 		return 0
 	}
 	switch value.Kind() {
@@ -116,27 +139,27 @@ func stepTransitionPayloadBytes(value reflect.Value) int {
 		if value.IsNil() {
 			return 1
 		}
-		return stepTransitionPayloadBytes(value.Elem())
+		return walkStepTransitionBytes(value.Elem(), depth+1)
 	case reflect.String:
 		return value.Len()
 	case reflect.Struct:
 		total := 0
 		for index := 0; index < value.NumField(); index++ {
-			total += stepTransitionPayloadBytes(value.Field(index))
+			total += walkStepTransitionBytes(value.Field(index), depth+1)
 		}
 		return total
 	case reflect.Slice, reflect.Array:
 		total := 0
 		for index := 0; index < value.Len(); index++ {
-			total += stepTransitionPayloadBytes(value.Index(index))
+			total += walkStepTransitionBytes(value.Index(index), depth+1)
 		}
 		return total
 	case reflect.Map:
 		total := 0
 		iterator := value.MapRange()
 		for iterator.Next() {
-			total += stepTransitionPayloadBytes(iterator.Key())
-			total += stepTransitionPayloadBytes(iterator.Value())
+			total += walkStepTransitionBytes(iterator.Key(), depth+1)
+			total += walkStepTransitionBytes(iterator.Value(), depth+1)
 		}
 		return total
 	default:
