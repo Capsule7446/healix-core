@@ -10,6 +10,7 @@
 - **C3** codex 第三轮（automation 侧非确定性与排序）
 - **X1** 第一轮交叉审核（4 问 × 3 个模型层级，27 agent）
 - **X2** 第二轮交叉审核（针对 X1 的修复本身，3 视角 × 3 层级，23 agent）
+- **X3** codex 三模型交叉审核（`gpt-5.5` / `gpt-5.6-sol` / `gpt-5.6-luna`，均 max、只读沙箱）
 
 ## 裁定标准
 
@@ -122,6 +123,17 @@ X2 提出 17 条，13 条被驳倒，**3 条存活**（1 medium / 2 low），无
 
 把 `len(json.Marshal)` 换成走值遍历后，**量纲变了而上限没变**。实测同一 commit：JSON 340 字节 vs 走值 75 字节，倍率 4.53——`1<<20` 静默放宽了约 4.5 倍，而全部测试照过，因为它们断言的是"边界被强制"而非"边界在哪"。改为 `1<<18` 并在常量与遍历上都标注单位。同时给遍历加深度上限：旧的 `json.Marshal` 遇环报错，新的会爆栈。提交：`34b5f3b`
 
+### F14 codex 三模型交叉审核的四条
+
+三个模型各自独立复核全部修复。`gpt-5.5` 与 `gpt-5.6-luna` 判定零缺陷零回归；**`gpt-5.6-sol` 找到四条，其中一条推翻了我自己的判断。**
+
+- **字节预算的缩放方向反了**（medium，最重要的一条）。我把上限从 `1<<20` 缩到 `1<<18`，理由是实测某个 commit 的 JSON/走值倍率是 4.5，缩四分之一就能保持等效边界。**这个推理是错的**：framing 按字段收费而非按字节，倍率是 commit 形状的属性而不是常数。sol 给的反例：五个 60 KiB 字符串各自通过单串上限、合计 300 KiB 内容——旧的 1 MiB JSON 接受，新的 256 KiB 内容拒绝。**我的缩放静默开始拒绝 Host 昨天还能成功发送的载荷。** 换单位时没有任何标量能搬运形状相关的边界，所以不存在"保持"，只有"往哪边错"。已恢复 `1<<20`：拒绝昨天可用的输入，比放宽糟得多，而真正的膨胀早已被 64 KiB 单串上限和 10000 条 fact 上限从另外两个方向卡住。
+- **`fingerprint.Attributes` 漏网**（medium）。`2cb10f3` 的清扫抓到了 Properties、Variables、Values、Bindings，走过了这一处。
+- **`TestFingerprintHasExactlyOneDeepCopy` 名不副实**（low）。它把 `domain/fingerprint` 整包标为 owner 直接跳过，所以**删掉 `Fingerprint.Clone`、或在 owner 包内再加一份，守卫都不会失败**——它只断言了"外部为零"，没断言"内部恰好一个"。现已统计 owner 侧实现并要求恰好一个，把 `Clone` 改名即失败。
+- **字节边界 fixture 丢了 `commit.Validate()`**（low）。重写时删掉了，测试可能锁在一个领域层根本会拒绝、因而无人可达的边界上。
+
+提交：`f8d5214`
+
 ---
 
 ## 二、裁定为不成立（附依据）
@@ -139,6 +151,7 @@ X2 提出 17 条，13 条被驳倒，**3 条存活**（1 medium / 2 low），无
 | A2 | `mapSamplingNode` 不拷 Selectors/Fingerprint | `NewElementTarget` 内部 `cloneNodeAggregate` 兜住 |
 | A2 | `execution/validation.go:306` spec 别名 | 局部值仅供 `spec.Validate()`，不逃逸 |
 | X1 | 22 条候选被对抗性反驳驳倒 | 多为"下游已有兜底""调用方不可达""严重度虚高" |
+| X3 | `gpt-5.5` 的证据不可靠 | 它把 `097be65` 的证据指到 `domain/automation/sampling_publication.go:107`，但那个提交只动了 `application/automation/` 下三个文件，107 行属于另一个提交 `7bd9061`。结论方向无需行动，但 file:line 不可采信 |
 | X2 | 13 条候选被驳倒 | 含三个 lens 各报一次的 `HealObservation.Fingerprint` 别名——该字段全树无人写、无人读、Validate 不看，所报的失败场景实际会 nil-map panic。另有数条是对着过期工作区状态写的 |
 
 两轮反驳环节合计把 45 条候选压到 9 条真发现。**单轮审核的误报率是 80%**——这是必须配对抗性验证环节的直接依据，也是我不逐条复核就不采信任何审计结论的原因。
