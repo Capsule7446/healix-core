@@ -2,6 +2,7 @@ package automation
 
 import (
 	"hash"
+	"math"
 	"reflect"
 	"sort"
 
@@ -100,7 +101,12 @@ func encodeCanonicalPayload(h hash.Hash, value reflect.Value) {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		writeDigestUint64(h, value.Uint())
 	case reflect.Float32, reflect.Float64:
-		writeDigestUint64(h, uint64(int64(value.Float()*1e9)))
+		// Float64bits, not a scaled integer conversion. Converting a float to an
+		// integer is implementation-dependent for NaN and for anything outside the
+		// integer range, which would make the digest differ by architecture rather
+		// than by payload. The bit pattern is exact and portable, and it is what
+		// the other two digest encoders in this module already use.
+		writeDigestUint64(h, math.Float64bits(value.Float()))
 	}
 }
 
