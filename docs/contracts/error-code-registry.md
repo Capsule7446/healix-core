@@ -176,6 +176,7 @@ Owned by `domain/fault` and shared by every context's aggregate validation envel
 | `INTERPOLATION_RESOLVER_REQUIRED` | `FAILED_PRECONDITION` | `variable resolver is required` | none | A resolver is needed only when interpolation syntax is present. |
 | `INTERPOLATION_EXPRESSION_INVALID` | `INVALID_ARGUMENT` | `variable expression is invalid` | none | Source expression and variable name never enter the public message. |
 | `INTERPOLATION_VARIABLE_UNDEFINED` | `NOT_FOUND` | `referenced variable is not defined` | none | Variable name and source expression remain private. |
+| `INTERPOLATION_EXPANSION_TOO_LARGE` | `RESOURCE_EXHAUSTED` | `expanded value exceeds the size limit` | none | One expansion exceeded `interpolation.MaxExpansionBytes`. `RESOURCE_EXHAUSTED` rather than `INVALID_ARGUMENT` because neither the template nor the variable is invalid on its own — only their product is, and the caller's remediation is a smaller value rather than a corrected expression. The template, the variable name, and the resolved value all stay private; the resolved value is the one most likely to carry a token or a URL. |
 
 These families are added only in the atomic bounded-context migration that introduces the corresponding producer. Every addition must include its `Kind`, fixed safe fallback message, allowed parameter/violation schema, retry behavior, public consumer, and any persistence mapping.
 
