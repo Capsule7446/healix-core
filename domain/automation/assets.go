@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Capsule7446/healix-core/domain/parameter"
-	"net/url"
 	"sort"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+
+	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
 type Properties map[string]string
@@ -242,14 +243,19 @@ func (e Environment) Validate() error {
 	if strings.TrimSpace(e.DisplayName) == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "displayName", "display name is required"))
 	}
+	// The three messages below are kept distinct because an author fixing a
+	// base URL benefits from knowing which rule they broke. What is no longer
+	// duplicated is the rule itself — including the control-character check
+	// this call site previously lacked.
 	if baseURL := strings.TrimSpace(e.BaseURL); baseURL != "" {
-		parsed, err := url.ParseRequestURI(baseURL)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "baseUrl", "base URL must be an absolute HTTP(S) URL"))
-		} else if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		switch weburl.Check(baseURL) {
+		case weburl.Accepted:
+		case weburl.RejectScheme:
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "baseUrl", "base URL must use HTTP or HTTPS"))
-		} else if parsed.User != nil {
+		case weburl.RejectUserinfo:
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "baseUrl", "base URL cannot contain credentials"))
+		default:
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "baseUrl", "base URL must be an absolute HTTP(S) URL"))
 		}
 	}
 	if err := e.Variables.Validate(); err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
 	"github.com/Capsule7446/healix-core/domain/parameter"
+	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
 // Node 是 workflow 的 step 树的执行单元——一个封闭的判别联合：
@@ -61,19 +61,13 @@ type StepNode struct {
 
 func (s *StepNode) ID() string { return s.NodeID }
 
+// validateNavigationURL keeps the shared rule in weburl and adds only the
+// message. The rejection reason is a closed vocabulary, so it is safe in the
+// private cause; the URL itself is not, which is why it is never echoed — the
+// previous version named the rejected scheme, and a scheme is caller input.
 func validateNavigationURL(value string) error {
-	if strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
-		return errors.New("control characters are not allowed")
-	}
-	parsed, err := url.ParseRequestURI(value)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return errors.New("absolute URL is required")
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("unsupported scheme %q", parsed.Scheme)
-	}
-	if parsed.User != nil {
-		return errors.New("userinfo is not allowed")
+	if rejection := weburl.Check(value); rejection != weburl.Accepted {
+		return fmt.Errorf("navigation URL rejected: %s", rejection)
 	}
 	return nil
 }

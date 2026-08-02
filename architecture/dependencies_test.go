@@ -374,7 +374,13 @@ func domainContext(packageName string) (string, bool) {
 		return "execution", true
 	case "sampling", "automation":
 		return "automation", true
-	case "fault", "fingerprint", "interpolation", "parameter":
+	// weburl joins the shared kernel because the absolute-HTTP(S) rule is one
+	// rule that both contexts already enforced separately — automation on an
+	// environment base URL, execution on a navigation target — and had already
+	// drifted apart while doing so. It holds no aggregate state and returns a
+	// closed reason vocabulary rather than a fault, so each context keeps its
+	// own code, field, and message.
+	case "fault", "fingerprint", "interpolation", "parameter", "weburl":
 		return "shared", true
 	default:
 		return "", false

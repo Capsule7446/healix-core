@@ -2,11 +2,12 @@ package execution
 
 import (
 	"math"
-	"net/url"
 	"strings"
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
+
+	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
 // validateEnvironmentSnapshot builds one aggregate violation envelope for the
@@ -38,11 +39,12 @@ func appendEnvironmentIdentityViolations(violations []fault.Violation, v Environ
 	if !validString(v.ID, true) || !validString(v.DisplayName, true) || !validString(v.BaseURL, false) {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.identity", "environment identity is invalid"))
 	}
-	if v.BaseURL != "" {
-		u, e := url.ParseRequestURI(v.BaseURL)
-		if e != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
-			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.baseUrl", "environment base URL must be an absolute HTTP(S) URL without credentials"))
-		}
+	// The shared rule also rejects control characters, which this call site
+	// previously did not check even though the two navigation call sites did.
+	// A base URL is concatenated into request targets, so a raw CR here is
+	// the same splitting vector it is there.
+	if v.BaseURL != "" && !weburl.Accept(v.BaseURL) {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.baseUrl", "environment base URL must be an absolute HTTP(S) URL without credentials"))
 	}
 	return violations
 }

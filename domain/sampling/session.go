@@ -10,6 +10,8 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+
+	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
 type Status string
@@ -128,18 +130,16 @@ func NewSession(workflowID, startURL string) (*Session, error) {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "startUrl", "start url is required"))
 		return nil, sessionInputInvalidError(violations)
 	}
-	parsedStartURL, err := url.Parse(startURL)
-	if err != nil {
-		// url.Error formats the whole URL into its own text, so the parse failure
-		// can only be kept as a private cause.
-		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "startUrl", "start url is not a valid url"))
-		return nil, wrapSessionInputInvalidError(err, violations)
-	}
-	if parsedStartURL.Scheme != "http" && parsedStartURL.Scheme != "https" {
-		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "startUrl", "start url scheme must be http or https"))
-	}
-	if parsedStartURL.Host == "" {
-		violations = append(violations, mustViolation(fault.CodeFieldRequired, "startUrl", "start url host is required"))
+	// The shared rule adds the two checks this call site was missing: a start
+	// URL with userinfo (`https://trusted.test@evil.test/`) reads as the
+	// trusted host to whoever approves the sampling session, and one with a
+	// raw CR splits any request it is later concatenated into. The rejection
+	// reason is a closed vocabulary, so unlike url.Error — which formats the
+	// whole URL into its own text — it is safe to keep as a private cause.
+	if rejection := weburl.Check(startURL); rejection != weburl.Accepted {
+		code, message := startURLViolation(rejection)
+		violations = append(violations, mustViolation(code, "startUrl", message))
+		return nil, wrapSessionInputInvalidError(fmt.Errorf("start url rejected: %s", rejection), violations)
 	}
 	if len(violations) != 0 {
 		return nil, sessionInputInvalidError(violations)
@@ -414,4 +414,27 @@ func cloneSpec(spec fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec
 	copied.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
 	copied.Fingerprint = spec.Fingerprint.Clone()
 	return copied
+}
+
+// startURLViolation keeps one safe violation per shared rejection reason. The
+// messages stay distinct because a person fixing a start URL benefits from
+// knowing which rule they broke; none of them echoes the URL.
+//
+// A missing host keeps VALIDATION_FIELD_REQUIRED rather than the INVALID the
+// other reasons use. That is the published contract for this field, and it is
+// the honest code besides: the other reasons mean the caller supplied
+// something wrong, while a missing host means they supplied nothing.
+func startURLViolation(rejection weburl.Rejection) (fault.Code, string) {
+	switch rejection {
+	case weburl.RejectScheme:
+		return fault.CodeFieldInvalid, "start url scheme must be http or https"
+	case weburl.RejectHostMissing:
+		return fault.CodeFieldRequired, "start url host is required"
+	case weburl.RejectUserinfo:
+		return fault.CodeFieldInvalid, "start url cannot contain credentials"
+	case weburl.RejectControlChars:
+		return fault.CodeFieldInvalid, "start url cannot contain control characters"
+	default:
+		return fault.CodeFieldInvalid, "start url is not a valid url"
+	}
 }

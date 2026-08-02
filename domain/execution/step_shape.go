@@ -2,7 +2,7 @@ package execution
 
 import (
 	"errors"
-	"net/url"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -10,6 +10,8 @@ import (
 
 	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
+
+	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
 // stepShapeBuilder accumulates the ordered violations for one workflow
@@ -211,18 +213,13 @@ func validateSealedNavigationURL(value string) error {
 	for _, name := range names {
 		parseable = strings.ReplaceAll(parseable, "${"+name+"}", "placeholder")
 	}
-	parsed, err := url.ParseRequestURI(parseable)
-	if err != nil || parsed.Scheme == "" {
-		return errors.New("absolute URL with explicit scheme is required")
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return errors.New("explicit scheme must be HTTP(S)")
-	}
-	if parsed.User != nil {
-		return errors.New("userinfo is not allowed")
-	}
-	if len(names) == 0 && parsed.Host == "" {
-		return errors.New("must be an absolute HTTP(S) URL")
+	// The host requirement used to be skipped whenever the URL contained any
+	// interpolation, which let `https:///${path}` through with no host at all
+	// while the same URL without the variable was refused. Interpolation is
+	// already banned in the authority above, so by this point the authority is
+	// literal in every candidate and its host can always be checked.
+	if rejection := weburl.Check(parseable); rejection != weburl.Accepted {
+		return fmt.Errorf("navigation URL rejected: %s", rejection)
 	}
 	return nil
 }
