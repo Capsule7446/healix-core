@@ -134,7 +134,12 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 
-	target := s.Target
+	// The overlay is resolved once, up front, so that every consumer below —
+	// the locate observation, the healer, and the staged decision — names the
+	// selector that is actually live for this spec. Locating resolves it
+	// internally either way; taking s.Target raw here would leave the recovery
+	// path reasoning about a selector an earlier heal already replaced.
+	target := rt.effectiveSpec(s.Target)
 	healed := false
 	var el Element
 	locateStarted := time.Now()
@@ -187,9 +192,10 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	return s.finish(ctx, parentCtx, rt, execution)
 }
 
-// heal 在 s.Target 中所有选择器都解析失败后被调用。它向纯算法 Healer
-// 请求一个 Decision，无论结果如何都会把这次尝试记录为执行事实，并在出现可用候选时，
-// 把它提到 Target 选择器列表最前面，再通过 Driver 重新定位——
+// heal 在该 spec 当前生效的所有选择器都解析失败后被调用；调用方传入的 target
+// 已经套用过 overlay，因此这里看到的正是刚刚失效的那份选择器列表。它向纯算法
+// Healer 请求一个 Decision，无论结果如何都会把这次尝试记录为执行事实，并在出现
+// 可用候选时，把它提到选择器列表最前面，再通过 Driver 重新定位——
 // 这样调用方拿到的始终是一个普通的 Element。
 func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.ElementTargetSpec) (Element, error) {
 	snap, err := rt.Driver.Snapshot(ctx)
@@ -241,8 +247,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 		return nil, healingRefusedError(errors.New("no heal candidate reached review_cap"))
 	}
 
-	healedSpec := target
-	healedSpec.Selectors = append([]fingerprint.Selector{decision.Best.Selector}, healedSpec.Selectors...)
+	healedSpec := promoteSelector(target, decision.Best.Selector)
 
 	el, err := rt.Driver.Locate(ctx, healedSpec)
 	if err != nil {

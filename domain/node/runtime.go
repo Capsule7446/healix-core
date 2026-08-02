@@ -465,6 +465,26 @@ func (rt *Runtime) specByID(id string) (fingerprint.ElementTargetSpec, bool) {
 	return rt.effectiveSpec(spec), true
 }
 
+// promoteSelector puts the healed candidate at the head of base's selector
+// list, keeping the rest as ordered fallbacks.
+//
+// An equal selector already in the list is removed rather than duplicated:
+// across repeated recoveries of one spec the healer can land on a selector it
+// produced before, and a list that grows a duplicate on every heal would make
+// the driver retry a known-dead selector once per past attempt.
+func promoteSelector(base fingerprint.ElementTargetSpec, healed fingerprint.Selector) fingerprint.ElementTargetSpec {
+	selectors := make([]fingerprint.Selector, 0, len(base.Selectors)+1)
+	selectors = append(selectors, healed)
+	for _, selector := range base.Selectors {
+		if selector != healed {
+			selectors = append(selectors, selector)
+		}
+	}
+	spec := base
+	spec.Selectors = selectors
+	return spec
+}
+
 func (rt *Runtime) setSelectorOverlay(spec fingerprint.ElementTargetSpec) {
 	if rt.SelectorOverlay == nil {
 		rt.SelectorOverlay = make(map[string][]fingerprint.Selector)

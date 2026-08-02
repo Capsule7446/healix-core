@@ -317,7 +317,10 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 
 // locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
-	target := v.Target
+	// Resolved against the overlay for the same reason as the step path: after
+	// an earlier heal it is the installed selector, not the compiled one, whose
+	// failure is being recovered from and staged as evidence.
+	target := rt.effectiveSpec(v.Target)
 	el, err := rt.locator().Locate(ctx, target)
 	if err == nil {
 		return el, false, nil
@@ -375,8 +378,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		return nil, true, nil
 	}
-	healed := target
-	healed.Selectors = append([]fingerprint.Selector{decision.Best.Selector}, healed.Selectors...)
+	healed := promoteSelector(target, decision.Best.Selector)
 	el, err = rt.Driver.Locate(ctx, healed)
 	if err != nil {
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
