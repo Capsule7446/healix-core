@@ -15,6 +15,9 @@ coverage.out
 .claude/
 .idea/
 
+# Local CodeGraph index
+/.codegraph/
+
 # Scan artefacts. Adversarial review runs are driven from the worktree root and
 # leave their prompts and logs behind; one of those logs is 2MB.
 /scan-*.log
