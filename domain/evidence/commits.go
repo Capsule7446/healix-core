@@ -56,9 +56,7 @@ func (c StepTransitionCommit) Validate() error {
 	if !isTerminalPhase(c.Event.Phase) {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "event.phase", "event phase must be terminal"))
 	}
-	if c.Event.Occurrence <= 0 {
-		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "event.occurrence", "event occurrence must be positive"))
-	}
+	violations = appendOccurrenceViolations(violations, c.Event.Occurrence, "event")
 	if c.Event.Timestamp <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "event.timestamp", "event timestamp must be positive"))
 	}

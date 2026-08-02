@@ -60,6 +60,7 @@
 | `TestStepFactTerminalPhaseAndBoundaryMatrix` | `Step Fact Terminal Phase And Boundary Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/public_methods_coverage_test.go`](../../domain/evidence/public_methods_coverage_test.go) · `TestStepFactTerminalPhaseAndBoundaryMatrix` |
 | `TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal` | `Step Transition Commit Rejects Combined Fact Limit And Cross Step Heal`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/public_methods_coverage_test.go`](../../domain/evidence/public_methods_coverage_test.go) · `TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal` |
 | `TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates` | `Validation Group Terminal Observation Rejects Identity And Member Duplicates`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/evidence/public_methods_coverage_test.go`](../../domain/evidence/public_methods_coverage_test.go) · `TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates` |
+| `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` | 六个带 `Validate` 的坐标载体逐一把 `Occurrence` 置为 `0` 与 `-1`。 | 合法值 `1` 通过，`0` 与 `-1` 均被拒。`StepPhaseEvent` 与 `HealCandidateReset` 不在表内：二者无 `Validate`，由 `StepTransitionCommit.Validate` 覆盖。 | [`domain/evidence/occurrence_test.go`](../../domain/evidence/occurrence_test.go) · `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` |
 
 ## Cross-cutting / Conformance Cases
 

@@ -3,12 +3,10 @@ package architecture_test
 import (
 	"go/ast"
 	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
-
-	coreengine "github.com/Capsule7446/healix-core/application/engine"
-	"github.com/Capsule7446/healix-core/domain/evidence"
-	"github.com/Capsule7446/healix-core/domain/execution"
-	"github.com/Capsule7446/healix-core/domain/node"
 )
 
 func w2TestOccurrenceFields(t *testing.T) {
@@ -58,114 +56,195 @@ func w2TestOccurrenceFields(t *testing.T) {
 	}
 }
 
-func w2TestObservationCoordinateFields(t *testing.T) {
+// coordinateComponentIsDelivered learns which struct types carry the named
+// component of the evidence coordinate, then requires every literal of those
+// types in production code to fill it.
+//
+// This replaces three subtests of the form `_ = T{Component: fixture}`. That
+// form is not inert -- deleting the field stops it compiling -- but a field can
+// be present, exported, typed and written by nothing that ever runs, which is
+// the state InvocationPath was actually in while its guard was green. A shape
+// assertion cannot distinguish "declared" from "delivered". Reading every
+// construction site can, and it keeps working for carriers added later.
+//
+// Types are keyed by package, not by bare name. Three unrelated types are
+// spelled ValidationObservation or HealObservation in this repository, and
+// matching on the name alone reports the ones without the field as violations.
+func coordinateComponentIsDelivered(t *testing.T, component string) {
 	t.Helper()
-	_ = node.OperationObservation{
-		InstanceID: mustParseInstanceID(t, "test-instance"),
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
-		NodeID:     "test-node",
-		Operation:  "test",
+	root := repositoryRoot(t)
+	module := modulePath(t, root)
+	carriers := map[string]bool{}
+	if err := walkAllGo(root, func(path string, file *ast.File, _ *token.FileSet) {
+		ast.Inspect(file, func(n ast.Node) bool {
+			spec, ok := n.(*ast.TypeSpec)
+			if !ok {
+				return true
+			}
+			structType, ok := spec.Type.(*ast.StructType)
+			if !ok {
+				return true
+			}
+			for _, field := range structType.Fields.List {
+				for _, name := range field.Names {
+					if name.Name == component {
+						carriers[packageDir(t, root, path)+"."+spec.Name.Name] = true
+					}
+				}
+			}
+			return true
+		})
+	}); err != nil {
+		t.Fatalf("walkAllGo: %v", err)
+	}
+	if len(carriers) == 0 {
+		t.Fatalf("no struct declares %s: the coordinate component vanished", component)
+	}
+	if err := walkGo(root, false, func(path string, file *ast.File, fset *token.FileSet) {
+		imports := importedPackageDirs(file, module)
+		here := packageDir(t, root, path)
+		forEachCompositeLit(file, func(lit *ast.CompositeLit, typeExpr ast.Expr) {
+			// An empty literal is a zero value handed back beside an error, not a
+			// claim that a coordinate was observed. Positional literals already owe
+			// the compiler every field.
+			if len(lit.Elts) == 0 || !carriers[literalTypeKey(typeExpr, here, imports)] {
+				return
+			}
+			for _, element := range lit.Elts {
+				pair, ok := element.(*ast.KeyValueExpr)
+				if !ok {
+					return
+				}
+				if key, ok := pair.Key.(*ast.Ident); ok && key.Name == component {
+					return
+				}
+			}
+			t.Errorf("%s:%d: literal omits %s: the coordinate component is declared but not delivered",
+				path, fset.Position(lit.Pos()).Line, component)
+		})
+	}); err != nil {
+		t.Fatalf("walkGo: %v", err)
 	}
 }
 
-func w2TestStepMetadataHasInvocationPath(t *testing.T) {
-	t.Helper()
-	_ = coreengine.StepMetadata{
-		FlowFragmentStepID: "test",
-		DisplayName:        "test",
-		Kind:               "STEP",
-		HierarchyPath:      "test",
-		InvocationPath:     mustParseInvocationPath(t, "test-entry"),
+// forEachCompositeLit reports every composite literal in the file along with the
+// expression naming the type being constructed. Literals nested inside a slice
+// or map literal elide their own type, so the enclosing literal's element type
+// supplies it; without that, carriers built as `[]T{{...}}` would go unread.
+func forEachCompositeLit(file *ast.File, visit func(*ast.CompositeLit, ast.Expr)) {
+	var enclosing []*ast.CompositeLit
+	ast.Inspect(file, func(n ast.Node) bool {
+		if n == nil {
+			enclosing = enclosing[:len(enclosing)-1]
+			return false
+		}
+		lit, isLiteral := n.(*ast.CompositeLit)
+		if !isLiteral {
+			enclosing = append(enclosing, nil)
+			return true
+		}
+		typeExpr := lit.Type
+		if typeExpr == nil {
+			for index := len(enclosing) - 1; index >= 0; index-- {
+				if enclosing[index] == nil {
+					continue
+				}
+				typeExpr = literalElementType(enclosing[index].Type)
+				break
+			}
+		}
+		visit(lit, typeExpr)
+		enclosing = append(enclosing, lit)
+		return true
+	})
+}
+
+// literalTypeKey resolves a type expression to "<package dir>.<type name>",
+// which is what makes two same-named types in different packages distinct.
+func literalTypeKey(expr ast.Expr, here string, imports map[string]string) string {
+	switch typed := expr.(type) {
+	case *ast.Ident:
+		return here + "." + typed.Name
+	case *ast.StarExpr:
+		return literalTypeKey(typed.X, here, imports)
+	case *ast.SelectorExpr:
+		qualifier, ok := typed.X.(*ast.Ident)
+		if !ok {
+			return ""
+		}
+		dir, imported := imports[qualifier.Name]
+		if !imported {
+			return ""
+		}
+		return dir + "." + typed.Sel.Name
+	default:
+		return ""
 	}
 }
 
-func w2TestExistingStepProgressEventAndStepPhaseEventHaveInvocationPath(t *testing.T) {
-	t.Helper()
-	_ = evidence.StepProgressEvent{
-		ID:             mustParseStepExecutionID(t, "test-id"),
-		EntryID:        mustParseEntryID(t, "test-entry"),
-		InvocationPath: mustParseInvocationPath(t, "test-entry"),
-		Occurrence:     1,
-		Timestamp:      1,
-	}
-	_ = evidence.StepPhaseEvent{
-		ID:             mustParseStepExecutionID(t, "test-id"),
-		EntryID:        mustParseEntryID(t, "test-entry"),
-		InvocationPath: mustParseInvocationPath(t, "test-entry"),
-		Occurrence:     1,
-		Timestamp:      1,
+func literalElementType(expr ast.Expr) ast.Expr {
+	switch typed := expr.(type) {
+	case *ast.ArrayType:
+		return typed.Elt
+	case *ast.MapType:
+		return typed.Value
+	default:
+		return nil
 	}
 }
 
-func w2TestEvidenceTypesHaveOccurrence(t *testing.T) {
-	t.Helper()
-	_ = evidence.HealObservation{
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
+// importedPackageDirs maps each local qualifier in the file to the repository
+// directory it names. Imports from outside the module resolve to a path that no
+// carrier key can match, which is the intended outcome.
+func importedPackageDirs(file *ast.File, module string) map[string]string {
+	dirs := make(map[string]string, len(file.Imports))
+	for _, spec := range file.Imports {
+		path := strings.Trim(spec.Path.Value, `"`)
+		local := path[strings.LastIndex(path, "/")+1:]
+		if spec.Name != nil {
+			local = spec.Name.Name
+		}
+		dirs[local] = strings.TrimPrefix(strings.TrimPrefix(path, module), "/")
 	}
-	_ = evidence.ValidationObservation{
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
-	}
-	_ = evidence.ValidationProgressObservation{
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
-	}
-	_ = evidence.ValidationGroupTerminalObservation{
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
-	}
-	_ = evidence.HealCandidateReset{
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
-	}
-	_ = evidence.StepFact{
-		EntryID:    mustParseEntryID(t, "test-entry"),
-		Occurrence: 1,
-	}
+	return dirs
 }
 
-func mustParseInstanceID(t *testing.T, value string) execution.InstanceID {
+func packageDir(t *testing.T, root, path string) string {
 	t.Helper()
-	id, err := execution.NewInstanceID(value)
+	relative, err := filepath.Rel(root, filepath.Dir(path))
 	if err != nil {
-		t.Fatalf("NewInstanceID: %v", err)
+		t.Fatalf("relative path for %s: %v", path, err)
 	}
-	return id
+	return filepath.ToSlash(relative)
 }
 
-func mustParseEntryID(t *testing.T, value string) execution.EntryID {
+func modulePath(t *testing.T, root string) string {
 	t.Helper()
-	id, err := execution.NewEntryID(value)
+	content, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
-		t.Fatalf("NewEntryID: %v", err)
+		t.Fatalf("read go.mod: %v", err)
 	}
-	return id
+	for _, line := range strings.Split(string(content), "\n") {
+		if declaration, found := strings.CutPrefix(strings.TrimSpace(line), "module "); found {
+			return strings.TrimSpace(declaration)
+		}
+	}
+	t.Fatal("go.mod declares no module path")
+	return ""
 }
 
-func mustParseStepExecutionID(t *testing.T, value string) execution.StepExecutionID {
+func w2TestInvocationPathIsDelivered(t *testing.T) {
 	t.Helper()
-	id, err := execution.NewStepExecutionID(value)
-	if err != nil {
-		t.Fatalf("NewStepExecutionID: %v", err)
-	}
-	return id
+	coordinateComponentIsDelivered(t, "InvocationPath")
 }
 
-func mustParseInvocationPath(t *testing.T, value string) execution.InvocationPath {
+func w2TestOccurrenceIsDelivered(t *testing.T) {
 	t.Helper()
-	p, err := execution.ParseInvocationPath(value)
-	if err != nil {
-		t.Fatalf("ParseInvocationPath: %v", err)
-	}
-	return p
+	coordinateComponentIsDelivered(t, "Occurrence")
 }
 
 func TestEvidenceCoordinateW2(t *testing.T) {
 	t.Run("evidence_occurrence_fields", w2TestOccurrenceFields)
-	t.Run("observation_coordinate_fields", w2TestObservationCoordinateFields)
-	t.Run("step_metadata_has_invocation_path", w2TestStepMetadataHasInvocationPath)
-	t.Run("event_types_have_invocation_path", w2TestExistingStepProgressEventAndStepPhaseEventHaveInvocationPath)
-	t.Run("evidence_types_have_occurrence", w2TestEvidenceTypesHaveOccurrence)
+	t.Run("invocation_path_is_delivered", w2TestInvocationPathIsDelivered)
+	t.Run("occurrence_is_delivered", w2TestOccurrenceIsDelivered)
 }

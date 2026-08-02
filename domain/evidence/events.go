@@ -37,9 +37,7 @@ func (e StepProgressEvent) Validate() error {
 	default:
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "phase", "event phase must be non-terminal"))
 	}
-	if e.Occurrence <= 0 {
-		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "occurrence", "event occurrence must be positive"))
-	}
+	violations = appendOccurrenceViolations(violations, e.Occurrence, "")
 	if e.Timestamp <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "timestamp", "event timestamp must be positive"))
 	}

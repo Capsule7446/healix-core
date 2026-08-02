@@ -60,7 +60,7 @@ Node 通过执行端口写非终态进度和终态提交。[`StepTransitionCommi
 
 `HealObservation` 是该提交的输入证据，**不包含晋升**；提交应用后，`StepTransitionCommitResult.Promotions` 返回权威的已晋升 NodeVersion 身份。自动化领域可通过后续独立交互观察这些结果，但执行证据不直接修改已创作资产。
 
-证据坐标 `(EntryID, InvocationPath, Occurrence)` 里，`InvocationPath` 目前只是字段声明 —— Core 没有任何生产代码写入它，宿主需自行填充。缺口的完整范围见[执行证据领域](../domains/evidence.md#证据坐标与它没有保证的东西)。
+证据坐标 `(EntryID, InvocationPath, Occurrence)` 三个分量都有来源：编译器把调用域写进 `StepMetadata`，宿主据此填事件上的 `InvocationPath`。强制范围与两条剩余边界见[执行证据领域](../domains/evidence.md#证据坐标与它保证的范围)。
 
 ## 5. 采样边界
 

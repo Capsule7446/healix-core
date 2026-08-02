@@ -34,16 +34,16 @@ flowchart LR
 
 权威的已晋升 NodeVersion 身份由 `StepTransitionCommitResult.Promotions` 返回，后续治理由应用层决定 —— `HealObservation` 自己不携带这个结论。
 
-## 证据坐标与它没有保证的东西
+## 证据坐标与它保证的范围
 
 `StepProgressEvent`（[`events.go:17-25`](../../domain/evidence/events.go)）与 `StepPhaseEvent`（[`events.go:53-61`](../../domain/evidence/events.go)）声明坐标三元组 `(EntryID, InvocationPath, Occurrence)`。`Occurrence` 另有六个结构携带 —— `HealCandidateReset`、`StepFact`、`HealObservation`、`ValidationGroupTerminalObservation`、`ValidationProgressObservation` 与 `ValidationObservation` —— 使 `RepeatNode` 在同一 NodeID 上跑出的各轮事后可区分。
 
-这套坐标的强制范围比它看上去要小。消费方若按不存在的保证写代码会出错，所以三条缺口在此明说：
+`EntryID` 与 `InvocationPath` 是不可能持有无意义值的值类型，坐标的第三个分量却是裸 `int`。因此正数规则集中在 [`appendOccurrenceViolations`](../../domain/evidence/observations.go) 一处，由每个带 `Validate` 的载体调用，而不是各写一遍让措辞漂移。[`occurrence_test.go`](../../domain/evidence/occurrence_test.go) · `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` 对六个载体逐一钉住 `0` 与 `-1` 被拒。
 
-- **`Occurrence > 0` 全仓只有两处强制**：[`StepProgressEvent.Validate`](../../domain/evidence/events.go)（`events.go:40`）与 [`StepTransitionCommit.Validate`](../../domain/evidence/commits.go)（`commits.go:59`，检查的是 `Event.Occurrence`）。携带 `Occurrence` 的六个结构自身的校验都不看它 —— `StepFact{Occurrence: 0}.Validate()` 返回 `nil`。走提交这条路时成员必须与事件的 `Occurrence` 相等（例如 `commits.go:155` 对 reset 的检查），才**间接**得到正数。
-- **`StepPhaseEvent` 与 `HealCandidateReset` 根本没有 `Validate()` 方法。** 它们只在被 `StepTransitionCommit.Validate` 当作成员遍历时才被检查；单独持有一份，没有任何自校验入口。
-- **`ValidationProgressObservation.Validate` 会丢掉 `Occurrence`。** 它（[`observations.go:318`](../../domain/evidence/observations.go)）把 19 个字段复制进一个 `ValidationObservation` 再委托校验，复制清单里没有 `Occurrence`；即便日后给 `ValidationObservation` 补上检查，进度观察也绕不进去。
-- **`InvocationPath` 既无校验也无写入方。** 两个事件类型上的该字段是为宿主预留的声明，Core 自己从不填：全仓 `InvocationPath:` 的字面赋值只出现在 [`evidence_coordinate_test.go`](../../architecture/evidence_coordinate_test.go) 里。`application/engine` 的 `StepMetadata` 同样声明了该字段而从不赋值（[`compiler.go:25`](../../application/engine/compiler.go)），`compileValidationGroup` 甚至接了一个自己从不读的 `scopePath` 参数（[`compiler.go:314-315`](../../application/engine/compiler.go)）。调用路径目前仍要由宿主自行填。
+消费方仍需知道的两条边界：
+
+- **`StepPhaseEvent` 与 `HealCandidateReset` 没有 `Validate()` 方法**，因为二者都不单独抵达存储。[`StepTransitionCommit.Validate`](../../domain/evidence/commits.go) 拥有它们：它检查 `Event.Occurrence` 为正，并要求每条成员的 `Occurrence` 与事件相等。单独持有一份，没有自校验入口。
+- **两个事件类型上的 `InvocationPath` 由宿主填，值由 Core 给。** 编译器把每个步骤所属的调用域写进 `StepMetadata`（[`compiler.go`](../../application/engine/compiler.go) 的三处字面量），宿主据此构造事件，不必自行推算。这条投递由 [`evidence_coordinate_test.go`](../../architecture/evidence_coordinate_test.go) · `TestEvidenceCoordinateW2` 守卫：生产代码里任何声明了该字段的类型，其字面量都必须给它赋值。
 
 ## 不变量
 

@@ -3,7 +3,7 @@ package evidence
 import "testing"
 
 func TestHealObservationUsesEvidenceOwnedDecisionBand(t *testing.T) {
-	observation := HealObservation{ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ElementTargetID: "node", BaseNodeVersionID: "version", Confidence: 0.8, DecisionBand: DecisionUnknown, ObservedAt: 1}
+	observation := HealObservation{ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, ElementTargetID: "node", BaseNodeVersionID: "version", Confidence: 0.8, DecisionBand: DecisionUnknown, ObservedAt: 1}
 	if err := observation.Validate(); err != nil {
 		t.Fatal(err)
 	}

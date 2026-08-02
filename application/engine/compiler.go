@@ -232,7 +232,7 @@ func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, sc
 	}
 	workflowRuntimeID := "workflow|" + invocationPath
 	c.metadata[workflowRuntimeID] = StepMetadata{FlowFragmentStepID: versionID, DisplayName: dependency.DisplayName,
-		Kind: "WORKFLOW", HierarchyPath: dependency.DisplayName}
+		Kind: "WORKFLOW", HierarchyPath: dependency.DisplayName, InvocationPath: scopePath}
 	children, err := c.compileSteps(versionID, invocationPath, scopePath, dependency.Steps, dependency.DisplayName, depth)
 	if err != nil {
 		return nil, err
@@ -251,7 +251,8 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string,
 		runtimeID := runtimeInvocationStepID(invocationPath, step.ID)
 		c.metadata[runtimeID] = StepMetadata{FlowFragmentStepID: step.ID, DisplayName: step.DisplayName,
 			Kind: string(step.Kind), HierarchyPath: path, ElementTargetID: step.ElementTargetID,
-			ElementTargetVersionID: step.ElementTargetVersionID, CaptureScreenshot: step.CaptureScreenshot}
+			ElementTargetVersionID: step.ElementTargetVersionID, CaptureScreenshot: step.CaptureScreenshot,
+			InvocationPath: scopePath}
 
 		var compiled node.Node
 		var err error
@@ -329,7 +330,8 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 			c.metadata[memberRuntimeID] = StepMetadata{FlowFragmentStepID: member.ID,
 				DisplayName: member.DisplayName, Kind: string(member.Kind),
 				HierarchyPath:   path + " / " + branch.Name + " / " + member.DisplayName,
-				ElementTargetID: member.ElementTargetID, ElementTargetVersionID: member.ElementTargetVersionID}
+				ElementTargetID: member.ElementTargetID, ElementTargetVersionID: member.ElementTargetVersionID,
+				InvocationPath: scopePath}
 			validation, err := c.compileValidation(memberRuntimeID, member, runtimeID, branch.ID, &execution.Validation{MaxWaitMS: group.MaxWaitMS, StabilityMS: group.StabilityMS})
 			if err != nil {
 				return nil, err

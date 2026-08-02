@@ -11,6 +11,7 @@ import (
 func validValidationProgressObservation() ValidationProgressObservation {
 	return ValidationProgressObservation{
 		ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		Occurrence:       1,
 		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
@@ -71,6 +72,7 @@ func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 	valid := HealObservation{
 		ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		Occurrence:      1,
 		ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
 		DecisionBand: DecisionUnknown,
 	}
@@ -161,6 +163,7 @@ func TestValidationValueEqualityKindsAndCollectionOwnership(t *testing.T) {
 func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 	valid := ValidationObservation{
 		ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		Occurrence:       1,
 		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
@@ -202,7 +205,7 @@ func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 }
 
 func TestStepFactTerminalPhaseAndBoundaryMatrix(t *testing.T) {
-	valid := StepFact{ID: "fact", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Phase: PhaseSucceeded, ObservedAt: 1}
+	valid := StepFact{ID: "fact", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, Phase: PhaseSucceeded, ObservedAt: 1}
 	tests := []struct {
 		name      string
 		mutate    func(*StepFact)

@@ -154,6 +154,7 @@
 | `TestCreateInstanceCatalogGraphUnresolvableErrorExposesSafeStableContract` | `Create Instance Catalog Graph Unresolvable Error Exposes Safe Stable Contract`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/scheduling/public_boundaries_test.go`](../../application/scheduling/public_boundaries_test.go) · `TestCreateInstanceCatalogGraphUnresolvableErrorExposesSafeStableContract` |
 | `TestCreateInstanceRetryableErrorExposesSafeStableContract` | `Create Instance Retryable Error Exposes Safe Stable Contract`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/scheduling/public_boundaries_test.go`](../../application/scheduling/public_boundaries_test.go) · `TestCreateInstanceRetryableErrorExposesSafeStableContract` |
 | `TestDecideAdvanceRejectsUnsealedSnapshot` | `Decide Advance Rejects Unsealed Snapshot`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/scheduling/public_boundaries_test.go`](../../application/scheduling/public_boundaries_test.go) · `TestDecideAdvanceRejectsUnsealedSnapshot` |
+| `TestAbortInstanceKeepsOneCodeAndDistinctCauseChains` | 分别提交「格式正确但属于其他实例的 fence」与「缺少 claim token 的 fence」。 | 两者顶层同为 `CodeAbortInstanceCommandInvalid`；只有后者的 cause 链含 `CodeWorkerFenceInvalid`；两者都未触达 store。 | [`application/scheduling/abort_fault_chain_test.go`](../../application/scheduling/abort_fault_chain_test.go) · `TestAbortInstanceKeepsOneCodeAndDistinctCauseChains` |
 
 ## Cross-cutting / Conformance Cases
 

@@ -42,6 +42,7 @@ func (f StepFact) Validate() error {
 	if !f.Phase.IsTerminal() {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "phase", "step fact phase must be terminal"))
 	}
+	violations = appendOccurrenceViolations(violations, f.Occurrence, "")
 	if f.ObservedAt <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "step fact observation time must be positive"))
 	}

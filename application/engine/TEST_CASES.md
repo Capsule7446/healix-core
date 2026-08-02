@@ -69,6 +69,7 @@
 | `TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects` | `Run Program Rejects Execution Identity Mismatch Without Side Effects`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/execution_identity_test.go`](../../application/engine/execution_identity_test.go) · `TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects` |
 | `TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects` | `Run Program Requires Current Execution Authority Before Side Effects`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/execution_identity_test.go`](../../application/engine/execution_identity_test.go) · `TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects` |
 | `TestRunProgramForwardsCompleteExecutionAuthority` | `Run Program Forwards Complete Execution Authority`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/execution_identity_test.go`](../../application/engine/execution_identity_test.go) · `TestRunProgramForwardsCompleteExecutionAuthority` |
+| `TestCompilePlanStampsEveryStepMetadataWithItsCallSite` | 根流程并列调用同一子流程两次，检查编译出的每条 `StepMetadata` 的 `InvocationPath`。 | 无一为零值；两次调用的子步骤坐标互不相同且都不等于 entry 根路径；调用步骤自身留在父作用域，被调用的 workflow 进入新作用域。 | [`application/engine/compiler_invocation_path_test.go`](../../application/engine/compiler_invocation_path_test.go) · `TestCompilePlanStampsEveryStepMetadataWithItsCallSite` |
 
 ## Cross-cutting / Conformance Cases
 

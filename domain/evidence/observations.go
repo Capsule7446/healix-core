@@ -53,6 +53,18 @@ func appendConfidenceViolations(violations []fault.Violation, confidence float64
 	return violations
 }
 
+// appendOccurrenceViolations rejects a non-positive occurrence. The other two
+// components of the evidence coordinate are validated value types that cannot
+// hold a meaningless value; this one is a bare int, so every carrier routes its
+// check through here instead of restating the rule and letting the spellings
+// drift apart.
+func appendOccurrenceViolations(violations []fault.Violation, occurrence int, prefix string) []fault.Violation {
+	if occurrence <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "occurrence"), "occurrence must be positive"))
+	}
+	return violations
+}
+
 // joinField builds a logical field path relative to the aggregate being validated.
 func joinField(prefix, name string) string {
 	if prefix == "" {
@@ -83,6 +95,7 @@ func (o HealObservation) Validate() error {
 	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ElementTargetID == "" || o.BaseNodeVersionID == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "heal observation identity is required"))
 	}
+	violations = appendOccurrenceViolations(violations, o.Occurrence, "")
 	if o.ObservedAt <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "heal observation time must be positive"))
 	}
@@ -249,6 +262,7 @@ func (o ValidationGroupTerminalObservation) Validate() error {
 	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.GroupID == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "validation group observation identity is required"))
 	}
+	violations = appendOccurrenceViolations(violations, o.Occurrence, "")
 	if o.ObservedAt <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "validation group observation time must be positive"))
 	}
@@ -318,8 +332,9 @@ type ValidationProgressObservation struct {
 func (o ValidationProgressObservation) Validate() error {
 	return ValidationObservation{
 		ID: o.ID, InstanceID: o.InstanceID, EntryID: o.EntryID,
-		StepExecutionID: o.StepExecutionID, ValidationStepID: o.ValidationStepID,
-		ElementTargetID: o.ElementTargetID, ElementTargetVersionID: o.ElementTargetVersionID,
+		StepExecutionID: o.StepExecutionID, Occurrence: o.Occurrence,
+		ValidationStepID: o.ValidationStepID,
+		ElementTargetID:  o.ElementTargetID, ElementTargetVersionID: o.ElementTargetVersionID,
 		GroupID: o.GroupID, BranchID: o.BranchID,
 		AssertionKind: o.AssertionKind, Expected: o.Expected, Actual: o.Actual,
 		Passed: o.Passed, Reason: o.Reason, Selector: o.Selector,
@@ -362,6 +377,7 @@ func (o ValidationObservation) Validate() error {
 	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ValidationStepID == "" || o.ElementTargetID == "" || o.ElementTargetVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "validation observation identity and reason are required"))
 	}
+	violations = appendOccurrenceViolations(violations, o.Occurrence, "")
 	if o.ObservedAt <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "validation observation time must be positive"))
 	}
