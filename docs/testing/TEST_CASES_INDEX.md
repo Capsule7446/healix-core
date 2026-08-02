@@ -9,13 +9,14 @@
 | `domain/automation` | [`TEST_CASES.md`](../../domain/automation/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/evidence` | [`TEST_CASES.md`](../../domain/evidence/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/execution` | [`TEST_CASES.md`](../../domain/execution/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
-| `domain/fault` | 尚未建立 | 业务错误内核已有生产代码——[`fault.go`](../../domain/fault/fault.go)（`Kind`、`Code`、安全文本、`New`/`Wrap`、`CodeOf`/`IsCode`/`Describe`）与 [`violation_codes.go`](../../domain/fault/violation_codes.go)（封闭的违规原因词表）——也有 [`fault_test.go`](../../domain/fault/fault_test.go)，但还没有 TEST_CASES 矩阵。这一格是真实的缺口，不是「不需要」：每个其他包的公开入口清单都由矩阵兜底，唯独错误内核没有。 |
+| `domain/fault` | [`TEST_CASES.md`](../../domain/fault/TEST_CASES.md) | 错误内核：安全公开文本、`Kind`/`Code` 分类穿透包装与 `errors.Join`、params/violations 所有权、`MaxViolations` 截断、封闭的违规原因词表。 |
 | `domain/fingerprint` | [`TEST_CASES.md`](../../domain/fingerprint/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/heal` | [`TEST_CASES.md`](../../domain/heal/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/interpolation` | [`TEST_CASES.md`](../../domain/interpolation/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/node` | [`TEST_CASES.md`](../../domain/node/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/parameter` | [`TEST_CASES.md`](../../domain/parameter/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/sampling` | [`TEST_CASES.md`](../../domain/sampling/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
+| `domain/weburl` | [`TEST_CASES.md`](../../domain/weburl/TEST_CASES.md) | 共享内核：绝对 HTTP(S) URL 规则的唯一判定处——scheme、host、userinfo、控制字符，以及封闭的拒绝原因词表。 |
 
 ## Application
 
