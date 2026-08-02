@@ -79,8 +79,15 @@ func TestHealDecisionBestDoesNotShareAFingerprintWithCandidatesZero(t *testing.T
 	if err != nil {
 		t.Fatalf("heal: %v", err)
 	}
+	// A skip here would be silent: the fixture is chosen precisely so that a
+	// Best candidate is produced, so losing it means the aliasing assertion
+	// below stopped running — and an aliasing bug would then look like a pass
+	// rather than a failure. The precondition is part of the test.
 	if decision.Best == nil {
-		t.Skip("this fixture did not reach a Best outcome; nothing to check")
+		t.Fatalf("fixture produced no Best candidate, so the aliasing check cannot run: outcome=%s candidates=%d", decision.Outcome, len(decision.Candidates))
+	}
+	if len(decision.Candidates) == 0 {
+		t.Fatalf("fixture produced no candidates to compare Best against: outcome=%s", decision.Outcome)
 	}
 
 	decision.Best.Fingerprint.Attributes["id"] = "mutated"
