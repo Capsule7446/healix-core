@@ -65,7 +65,7 @@ func TestUnpublishedSamplingAssetsCarryNoFormalIdentity(t *testing.T) {
 	root := repositoryRoot(t)
 	sampling := filepath.Join(root, "domain", "sampling")
 
-	// ExistingElementTargetID is a reference to something already published, not
+	// ExistingNodeID is a reference to something already published, not
 	// this asset's own identity, so it is not a formal-identity field.
 	//
 	// The Saved / Existing boundary is a semantic one, not syntactic: "Saved" says

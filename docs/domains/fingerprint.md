@@ -1,11 +1,14 @@
 # 元素指纹领域
 
 ## 目的与边界
-Fingerprint 定义可移植的元素身份：selector、结构/语义指纹、NodeSpec，以及前端框架检测结果的规范化。它验证并排序观察数据；不查询 DOM、不执行 selector、不评分修复候选，也不内置具体框架探测器。
+
+Fingerprint 定义可移植的元素身份：selector、结构/语义指纹、`ElementTargetSpec`，以及前端框架检测结果的规范化。它验证并排序观察数据。
+
+它**不**查询 DOM、不执行 selector、不评分修复候选，也不内置具体框架探测器。selector 的实际解析与执行、DOM 特征抽取、内置 React/Vue detector、持久化和候选相似度评分都在本领域之外。
 
 ```mermaid
 classDiagram
-  class NodeSpec {
+  class ElementTargetSpec {
     UUID
     ID
     PageURL
@@ -25,22 +28,30 @@ classDiagram
     SiblingIndex
   }
   class FrameworkInfo
-  NodeSpec *-- Selector
-  NodeSpec *-- Fingerprint
+  ElementTargetSpec *-- Selector
+  ElementTargetSpec *-- Fingerprint
   Fingerprint *-- FrameworkInfo
 ```
 
-## 术语与公开模型
-SelectorType 支持 role、testid、css、xpath、text；Priority 表示优先级。Fingerprint 组合 tag、attributes、text、ARIA、祖先 path、兄弟索引、neighbors、label/form 与 FrameworkStack。NodeSpec 增加 UUID/ID、PageURL、Origin 和 Role。PageObservation 是探测输入，FrameworkDetector 是外部探测算法端口。
+## 聚合与值对象
+
+- **`Selector`**（[`fingerprint.go:16-22`](../../domain/fingerprint/fingerprint.go)）：`Type` 取自封闭集 `role` / `testid` / `css` / `xpath` / `text`，加上 `Value` 与 `Priority`。
+- **`Fingerprint`**（[`fingerprint.go:69-85`](../../domain/fingerprint/fingerprint.go)）：`Tag`、`Attributes`、`Text`、`ARIA`、祖先 `Path`、`SiblingIndex`、`Neighbors`、`LabelText`、`FormID` 与 `Framework`。**刻意不记录视口边界框** —— 页面布局、视口尺寸和缩放在录制与回放之间无法保证一致，位置信号只会引入噪音。
+- **`ElementTargetSpec`**（[`fingerprint.go:136-146`](../../domain/fingerprint/fingerprint.go)）：在 selector 与 fingerprint 之上加 `UUID`、`ID`、`PageURL`、`Origin`、`Role`。
+- **`PageObservation`** 是探测输入，**`FrameworkDetector`** 是外部探测算法端口（[`detection.go:14-28`](../../domain/fingerprint/detection.go)）。
+
+`Fingerprint.Clone`（[`fingerprint.go:98`](../../domain/fingerprint/fingerprint.go)）是这个类型**唯一**的深拷贝。此前四个包各写了一份，其中两份是错的 —— sampling 的 `cloneSpec` 从不复制 `Framework`，`cloneUnpublishedFlowFragment` 干脆不复制 fingerprint —— 产出的「副本」与源共享一个 map 和两个切片。拥有类型的包拥有拷贝，是唯一能让新增引用类型字段不被四分之三的调用方遗漏的安排，并由 [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestFingerprintHasExactlyOneDeepCopy` 守住。
 
 ## 不变量
-- Selector type 必须受支持，Value 非空，Priority 合法。
-- Fingerprint 的关键身份与集合字段必须合法，框架栈需逐项验证。
-- NodeSpec 要求业务 ID、合法 URL/origin、至少一个合法 selector 与合法 fingerprint；UUID 可选，但一旦提供必须格式有效。
-- FrameworkInfo 的 kind、confidence、evidence 合法；栈规范化时合并重复项并稳定排序。
-- Clone/Sort 返回新切片，不把内部集合交给调用者修改。
+
+- Selector 的 `Type` 必须受支持，`Value` 非空，`Priority` 合法。
+- Fingerprint 的关键身份与集合字段必须合法（`Tag` 非空、`Attributes` 非 nil、`SiblingIndex` 非负），框架栈需逐项验证。
+- `ElementTargetSpec` 要求业务 ID、合法 URL/origin、至少一个合法 selector 与合法 fingerprint；`UUID` 可选，但一旦提供必须格式有效（[`fingerprint.go:152-154`](../../domain/fingerprint/fingerprint.go)）。
+- `FrameworkInfo` 的 kind、confidence、evidence 合法；栈规范化时合并重复项并稳定排序。
+- `Clone`/`Sort` 返回新切片，不把内部集合交给调用者修改。
 
 ## 状态与流程
+
 ```mermaid
 sequenceDiagram
   participant C as Caller
@@ -55,23 +66,28 @@ sequenceDiagram
   F-->>C: FrameworkStack
 ```
 
-## 失败
-未知 selector/framework/evidence 类型、空值、非法 priority/confidence、畸形 URL/origin/UUID、无 selector 或 detector 返回无效结果会失败。领域不重试或降级伪造结果。
+## 失败语义
 
-失败一律以注册的 `FINGERPRINT_*` fault 形式返回，共 5 个 code（见 `docs/refactor/business-error-contract/error-code-registry.md`）。多字段校验产出**一个**顶层 fault，携带有序 `fault.Violation`：字段路径是逻辑路径（集合下标 0 基），原因走共享内核的 `VALIDATION_FIELD_*` 词表。子校验失败降级为父 fault 的 violation，**不产出嵌套 fault**，故宿主无需递归解包即可分类。
+遵循[统一 fault 封套](../architecture/system-overview.md#错误契约)。本领域拥有 `FINGERPRINT_*` 前缀下的 5 个 code，清单见[错误码注册表](../contracts/error-code-registry.md)。未知 selector/framework/evidence 类型、空值、非法 priority/confidence、畸形 URL/origin/UUID、无 selector 或 detector 返回无效结果都会失败；领域不重试，也不降级伪造结果。
 
-被拒的 selector 值、UUID、framework/evidence 取值一律不进公共文本 —— 闭集之外的取值按定义就是任意调用方输入。Detector 错误**不再原样外传**：宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED`（`INTERNAL`）上，经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。
+两条本领域特有的边界：
+
+- **Detector 错误不原样外传。** 宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED` 上（[`detection.go:47`](../../domain/fingerprint/detection.go)），经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。已被分类过的 detector 错误则原样透传，不再套一层（[`detection.go:44-46`](../../domain/fingerprint/detection.go)）。
+- **被拒的 selector 值、UUID、framework/evidence 取值一律不进公共文本** —— 闭集之外的取值按定义就是任意调用方输入。
 
 ## 并发、安全与资源
-模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone` 提供浅值复制，Fingerprint map/path 的深拷贝由聚合边界负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正注入安全由 Driver 适配器负责。当前没有显式 selector/attribute/path 数量上限；执行 `Seal` 对计划聚合输入设限。
+
+模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone`（[`framework.go:113`](../../domain/fingerprint/framework.go)）是浅值复制（元素只含 string/float64，因此没有别名残留），`Fingerprint` 的 map/path 深拷贝由 `Fingerprint.Clone` 负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正的注入安全由 Driver 适配器负责。
+
+**本领域没有任何输入数量上限** —— selector、attribute、path 条数均不受限，包内唯一的上界是 violation 封套的 `fault.MaxViolations`，那是输出上界不是输入上界。对计划聚合输入设限的是执行侧的 `Seal`。
 
 ## 交互
-采样 创建 NodeSpec；自动化 版本保存 selector/fingerprint；执行 冻结副本；Node 用 Driver 定位；自愈 用特征评分；框架 detector 由外部提供。这里不推断 Playwright、CDP 或任何 DOM adapter 的 selector 语义。
 
-## 已实现与未支持
-已实现：selector、fingerprint、NodeSpec 校验；框架信息/栈校验、克隆、排序；多 detector 聚合、去重和规范化。未支持：selector 实际解析/执行、DOM 特征抽取、内置 React/Vue 等 detector、持久化、候选相似度评分。
+采样创建 `ElementTargetSpec`；自动化版本保存 selector/fingerprint；执行冻结副本；Node 用 Driver 定位；自愈用特征评分；框架 detector 由外部提供。这里不推断 Playwright、CDP 或任何 DOM adapter 的 selector 语义。
 
-## 源码与测试
+## 源码证据
+
 - [核心模型](../../domain/fingerprint/fingerprint.go)、[框架模型](../../domain/fingerprint/framework.go)、[检测编排](../../domain/fingerprint/detection.go)
 - [核心与模糊测试](../../domain/fingerprint/fingerprint_test.go)、[框架检测测试](../../domain/fingerprint/framework_test.go)
-- [自愈 使用](../../domain/heal/scorer.go)、[采样 使用](../../domain/sampling/session.go)
+- [唯一深拷贝守卫](../../architecture/unified_language_boundary_test.go) · `TestFingerprintHasExactlyOneDeepCopy`
+- 下游用法：[自愈评分](../../domain/heal/scorer.go)、[采样会话](../../domain/sampling/session.go)

@@ -316,8 +316,6 @@ func (rt *Runtime) activeOccurrence(nodeID string) (int, error) {
 	return stack[len(stack)-1], nil
 }
 
-// releaseOccurrence releases only the occurrence owned by one invocation. It is
-// idempotent and never pops a nested same-ID frame by position alone.
 // mustActiveOccurrence returns the active occurrence for nodeID, or 0 if
 // none is active. Observations are best-effort and must not break execution
 // when the occurrence stack is empty (e.g. during terminal cleanup).
@@ -329,6 +327,8 @@ func (rt *Runtime) mustActiveOccurrence(nodeID string) int {
 	return occurrence
 }
 
+// releaseOccurrence releases only the occurrence owned by one invocation. It is
+// idempotent and never pops a nested same-ID frame by position alone.
 func (rt *Runtime) releaseOccurrence(nodeID string, occurrence int) {
 	stack := rt.activeOccurrences[nodeID]
 	for i := len(stack) - 1; i >= 0; i-- {

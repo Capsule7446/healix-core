@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -18,7 +19,7 @@ import (
 // tag must therefore be impossible without also editing this list, which is
 // where the reviewer is told to demand a migration.
 //
-// Every entry must also appear in docs/refactor/digest-wire-tags.md.
+// Every entry must also appear in docs/contracts/digest-wire-tags.md.
 var w5wireTagInventory = map[string][]string{
 	"domain/execution/instance_snapshot.go":                      {"healix.run-snapshot"},
 	"application/scheduling/create_instance_service.go":          {"create-run-request-v1"},
@@ -75,20 +76,13 @@ func TestW5DigestWireTagsAreRegistered(t *testing.T) {
 		registered, ok := w5wireTagInventory[rel]
 		if !ok {
 			for _, tag := range tags {
-				t.Errorf("untracked wire tag %q in %s — add it to w5wireTagInventory and docs/refactor/digest-wire-tags.md", tag, rel)
+				t.Errorf("untracked wire tag %q in %s — add it to w5wireTagInventory and docs/contracts/digest-wire-tags.md", tag, rel)
 			}
 			continue
 		}
 		for _, tag := range tags {
-			found := false
-			for _, reg := range registered {
-				if reg == tag {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("untracked wire tag %q in %s — add it to w5wireTagInventory and docs/refactor/digest-wire-tags.md", tag, rel)
+			if !slices.Contains(registered, tag) {
+				t.Errorf("untracked wire tag %q in %s — add it to w5wireTagInventory and docs/contracts/digest-wire-tags.md", tag, rel)
 			}
 		}
 	}
@@ -110,7 +104,8 @@ func w5CollectAllWireTags(t *testing.T, root string) map[string][]string {
 			strings.HasSuffix(entry.Name(), "_test.go") {
 			return nil
 		}
-		// Skip vendor and architecture (tests only).
+		// Skip vendored sources. The architecture package needs no skip of its
+		// own: it holds only _test.go files, filtered above.
 		rel, _ := filepath.Rel(root, path)
 		if strings.HasPrefix(filepath.ToSlash(rel), "vendor/") {
 			return nil

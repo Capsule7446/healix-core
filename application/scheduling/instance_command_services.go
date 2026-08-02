@@ -297,7 +297,7 @@ func validateInstanceResult(instanceID domainexecution.InstanceID, status domain
 // separation prefix of a stored idempotency digest, so a later rename must not
 // touch them. They were introduced by the field-by-field rewrite below, which
 // changed the digest of every cancel, abort, and reorder record stored before
-// it — see docs/refactor/digest-wire-tags.md for that break and its status.
+// it — see docs/contracts/digest-wire-tags.md for that break and its status.
 //
 // Writing the fields out also makes the digest independent of Go names, so a
 // later rename cannot move a value that idempotency records are keyed on.

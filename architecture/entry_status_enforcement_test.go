@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/execution"
 )
 
 func TestEntryStatusMachineHasProductionCallers(t *testing.T) {
@@ -40,15 +42,19 @@ func TestEntryStatusMachineHasProductionCallers(t *testing.T) {
 
 func TestExecutionTransitionLiteralsUseValidStatusTransitions(t *testing.T) {
 	root := repositoryRoot(t)
-	allowed := map[[2]string]bool{
-		{"EntryPending", "EntryRunning"}:   true,
-		{"EntryPending", "EntrySkipped"}:   true,
-		{"EntryPending", "EntryFailed"}:    true,
-		{"EntryPending", "EntryCanceled"}:  true,
-		{"EntryRunning", "EntrySucceeded"}: true,
-		{"EntryRunning", "EntryFailed"}:    true,
-		{"EntryRunning", "EntryCanceled"}:  true,
-		{"EntryRunning", "EntryAborted"}:   true,
+	// The AST yields the identifier a literal was written with, so the guard
+	// needs a spelling table to reach the value. It deliberately stops there:
+	// which transitions are legal is asked of the state machine itself, so this
+	// guard cannot drift from domain/execution.EntryStatus.CanTransitionTo the
+	// way a restated matrix would.
+	statusByIdent := map[string]execution.EntryStatus{
+		"EntryPending":   execution.EntryPending,
+		"EntryRunning":   execution.EntryRunning,
+		"EntrySucceeded": execution.EntrySucceeded,
+		"EntryFailed":    execution.EntryFailed,
+		"EntryCanceled":  execution.EntryCanceled,
+		"EntryAborted":   execution.EntryAborted,
+		"EntrySkipped":   execution.EntrySkipped,
 	}
 	literals := 0
 	err := walkAllGo(filepath.Join(root, "application", "scheduling"), func(path string, parsed *ast.File, fset *token.FileSet) {
@@ -106,10 +112,14 @@ func TestExecutionTransitionLiteralsUseValidStatusTransitions(t *testing.T) {
 				t.Errorf("%s:%d: ExecutionTransition literal missing From or To", filepath.ToSlash(rel), fset.Position(composite.Pos()).Line)
 				return true
 			}
-			fromIdent := from[strings.IndexByte(from, '.')+1:]
-			toIdent := to[strings.IndexByte(to, '.')+1:]
-			if !allowed[[2]string{fromIdent, toIdent}] {
-				t.Errorf("%s:%d: invalid transition %s -> %s", filepath.ToSlash(rel), fset.Position(composite.Pos()).Line, from, to)
+			fromStatus, fromKnown := statusByIdent[from[strings.IndexByte(from, '.')+1:]]
+			toStatus, toKnown := statusByIdent[to[strings.IndexByte(to, '.')+1:]]
+			if !fromKnown || !toKnown {
+				t.Errorf("%s:%d: transition %s -> %s names a status this guard cannot resolve; add it to statusByIdent", filepath.ToSlash(rel), fset.Position(composite.Pos()).Line, from, to)
+				return true
+			}
+			if err := fromStatus.CanTransitionTo(toStatus); err != nil {
+				t.Errorf("%s:%d: invalid transition %s -> %s: %v", filepath.ToSlash(rel), fset.Position(composite.Pos()).Line, from, to, err)
 			}
 			return true
 		})

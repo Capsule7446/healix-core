@@ -62,6 +62,9 @@
 | `TestValueValidateRejectsUnsupportedTypeWithoutEchoingIt` | 闭集之外的值类型。 | 返回 PARAMETER_VALUE_INVALID；类型取值不回显。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestValueValidateRejectsUnsupportedTypeWithoutEchoingIt` |
 | `TestConstraintValidateRejectsWithoutEchoingTypesOrOptions` | 选项不匹配与类型不匹配两类约束失败。 | 返回 PARAMETER_CONSTRAINT_UNSATISFIED；约束类型、值类型、选项值均不回显。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestConstraintValidateRejectsWithoutEchoingTypesOrOptions` |
 | `TestConstraintValidatePropagatesValueCodeUnchanged` | 值自身非法时经由约束校验返回。 | 保持 PARAMETER_VALUE_INVALID，不被改标为约束失败。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestConstraintValidatePropagatesValueCodeUnchanged` |
+| `TestNewNumberValueNeverReturnsAValueItsOwnValidatorRejects` | `New Number Value Never Returns AValue Its Own Validator Rejects`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestNewNumberValueNeverReturnsAValueItsOwnValidatorRejects` |
+| `TestValidateNameContract` | `Validate Name Contract`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/name_test.go`](../../domain/parameter/name_test.go) · `TestValidateNameContract` |
+| `TestLiteralBindingRejectsInvalidClosedValueBeforeResolution` | `Literal Binding Rejects Invalid Closed Value Before Resolution`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/public_methods_matrix_test.go`](../../domain/parameter/public_methods_matrix_test.go) · `TestLiteralBindingRejectsInvalidClosedValueBeforeResolution` |
 
 ## Cross-cutting / Conformance Cases
 

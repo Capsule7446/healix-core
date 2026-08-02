@@ -2,6 +2,7 @@ package architecture_test
 
 import (
 	"bufio"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -9,8 +10,92 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 )
+
+// markdownFile is one documentation file, read once and shared by every doc
+// link check in this package.
+type markdownFile struct {
+	rel   string
+	dir   string
+	lines []string
+}
+
+var (
+	docCorpusOnce  sync.Once
+	docCorpusFiles []markdownFile
+	docCorpusErr   error
+)
+
+// documentationCorpus walks the repository once and returns every markdown file
+// with its lines already read. Both checks below scan this same corpus, so the
+// tree is walked once and each file is opened once per test binary rather than
+// once per check.
+func documentationCorpus(t *testing.T, root string) []markdownFile {
+	t.Helper()
+	docCorpusOnce.Do(func() {
+		docCorpusErr = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			if d.IsDir() || filepath.Ext(d.Name()) != ".md" {
+				return nil
+			}
+			lines, err := readLines(path)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(root, path)
+			docCorpusFiles = append(docCorpusFiles, markdownFile{
+				rel: filepath.ToSlash(rel), dir: filepath.Dir(path), lines: lines})
+			return nil
+		})
+	})
+	if docCorpusErr != nil {
+		t.Fatalf("reading documentation corpus: %v", docCorpusErr)
+	}
+	return docCorpusFiles
+}
+
+func readLines(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.ToSlash(path), err)
+	}
+	return lines, nil
+}
+
+// eachDocLink applies re to every line of every markdown file and hands each
+// match to visit with the file, the 1-based line number, and the submatches.
+// Submatch 1 is the link target; remote targets are skipped because only
+// in-tree paths can be resolved against the working copy.
+func eachDocLink(files []markdownFile, re *regexp.Regexp,
+	visit func(file markdownFile, lineNum int, groups []string)) {
+	for _, file := range files {
+		for i, line := range file.lines {
+			for _, groups := range re.FindAllStringSubmatch(line, -1) {
+				if strings.HasPrefix(groups[1], "http://") || strings.HasPrefix(groups[1], "https://") {
+					continue
+				}
+				visit(file, i+1, groups)
+			}
+		}
+	}
+}
 
 // TestEveryDocLinkToSourceResolves fails when a markdown link points at a Go
 // file that does not exist. Renames land in the tree and the docs pointing at
@@ -21,52 +106,34 @@ func TestEveryDocLinkToSourceResolves(t *testing.T) {
 	root := repositoryRoot(t)
 	linkRe := regexp.MustCompile(`\]\(([^)\s#]+\.go)(?:#[^)]*)?\)`)
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	eachDocLink(documentationCorpus(t, root), linkRe, func(file markdownFile, lineNum int, groups []string) {
+		target := groups[1]
+		abs := filepath.Clean(filepath.Join(file.dir, target))
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			t.Errorf("%s:%d: broken link -> %s (resolved: %s)",
+				file.rel, lineNum, target, filepath.ToSlash(abs))
 		}
-		if d.IsDir() && d.Name() == ".git" {
-			return filepath.SkipDir
-		}
-		if d.IsDir() || filepath.Ext(d.Name()) != ".md" {
-			return nil
-		}
-
-		dir := filepath.Dir(path)
-		f, err := os.Open(path)
-		if err != nil {
-			t.Errorf("cannot open %s: %v", filepath.ToSlash(path), err)
-			return nil
-		}
-		defer f.Close()
-
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			matches := linkRe.FindAllStringSubmatch(line, -1)
-			for _, m := range matches {
-				target := m[1]
-				if len(target) > 8 && (target[:7] == "http://" || target[:8] == "https://") {
-					continue
-				}
-				abs := filepath.Clean(filepath.Join(dir, target))
-				if _, err := os.Stat(abs); os.IsNotExist(err) {
-					rel, _ := filepath.Rel(root, path)
-					t.Errorf("%s:%d: broken link -> %s (resolved: %s)",
-						filepath.ToSlash(rel), lineNum, target, filepath.ToSlash(abs))
-				}
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			t.Errorf("%s: scanner error: %v", filepath.ToSlash(path), err)
-		}
-		return nil
 	})
-	if err != nil {
-		t.Fatalf("walk error: %v", err)
-	}
+}
+
+// TestEveryDocLinkToMarkdownResolves fails when a markdown link points at a
+// markdown file that does not exist. The .go guard above cannot see this class:
+// moving docs/refactor/business-error-contract/error-code-registry.md to
+// docs/contracts/ broke seven inbound links and every test stayed green, because
+// each one names a .md target. A doc set that reorganises without this guard
+// rots exactly the way the .go links did.
+func TestEveryDocLinkToMarkdownResolves(t *testing.T) {
+	root := repositoryRoot(t)
+	linkRe := regexp.MustCompile(`\]\(([^)\s#]+\.md)(?:#[^)]*)?\)`)
+
+	eachDocLink(documentationCorpus(t, root), linkRe, func(file markdownFile, lineNum int, groups []string) {
+		target := groups[1]
+		abs := filepath.Clean(filepath.Join(file.dir, target))
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			t.Errorf("%s:%d: broken link -> %s (resolved: %s)",
+				file.rel, lineNum, target, filepath.ToSlash(abs))
+		}
+	})
 }
 
 // TestEveryDocLinkTestNameExists checks that when a .go link is followed by
@@ -78,73 +145,50 @@ func TestEveryDocLinkTestNameExists(t *testing.T) {
 	bt := "\x60"
 	pat := `\]\(([^)\s#]+\.go)(?:#[^)]*)?\)\s*` + "\xc2\xb7" + `\s*` + bt + `([^` + bt + `]+)` + bt
 	linkRe := regexp.MustCompile(pat)
+	index := newTestFuncIndex()
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	eachDocLink(documentationCorpus(t, root), linkRe, func(file markdownFile, lineNum int, groups []string) {
+		target, funcName := groups[1], groups[2]
+		if !strings.HasPrefix(funcName, "Test") {
+			return
 		}
-		if d.IsDir() && d.Name() == ".git" {
-			return filepath.SkipDir
+		abs := filepath.Clean(filepath.Join(file.dir, target))
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			return
 		}
-		if d.IsDir() || filepath.Ext(d.Name()) != ".md" {
-			return nil
+		if !index.has(abs, funcName) {
+			t.Errorf("%s:%d: test function %s not found in %s",
+				file.rel, lineNum, funcName, target)
 		}
+	})
+}
 
-		dir := filepath.Dir(path)
-		f, err := os.Open(path)
-		if err != nil {
-			t.Errorf("cannot open %s: %v", filepath.ToSlash(path), err)
-			return nil
-		}
-		defer f.Close()
+// testFuncIndex answers "does this file declare this function" while parsing
+// each file at most once. The docs name far more test functions than they name
+// distinct files, so parsing per link re-parsed the busiest targets dozens of
+// times over.
+type testFuncIndex struct {
+	byPath map[string]map[string]bool
+}
 
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
-			matches := linkRe.FindAllStringSubmatch(line, -1)
-			for _, m := range matches {
-				target := m[1]
-				funcName := m[2]
-				if len(target) > 8 && (target[:7] == "http://" || target[:8] == "https://") {
-					continue
-				}
-				if !strings.HasPrefix(funcName, "Test") {
-					continue
-				}
-				abs := filepath.Clean(filepath.Join(dir, target))
-				if _, err := os.Stat(abs); os.IsNotExist(err) {
-					continue
-				}
-				if !testFuncExists(abs, funcName) {
-					rel, _ := filepath.Rel(root, path)
-					t.Errorf("%s:%d: test function %s not found in %s",
-						filepath.ToSlash(rel), lineNum, funcName, target)
+func newTestFuncIndex() *testFuncIndex {
+	return &testFuncIndex{byPath: make(map[string]map[string]bool)}
+}
+
+// has reports whether path declares funcName. A file that fails to parse
+// indexes as empty, so every name in it reads as absent.
+func (idx *testFuncIndex) has(path, funcName string) bool {
+	funcs, ok := idx.byPath[path]
+	if !ok {
+		funcs = make(map[string]bool)
+		if parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0); err == nil {
+			for _, decl := range parsed.Decls {
+				if fn, isFunc := decl.(*ast.FuncDecl); isFunc {
+					funcs[fn.Name.Name] = true
 				}
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			t.Errorf("%s: scanner error: %v", filepath.ToSlash(path), err)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk error: %v", err)
+		idx.byPath[path] = funcs
 	}
-}
-
-func testFuncExists(path, funcName string) bool {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, 0)
-	if err != nil {
-		return false
-	}
-	for _, decl := range f.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if ok && fn.Name.Name == funcName {
-			return true
-		}
-	}
-	return false
+	return funcs[funcName]
 }

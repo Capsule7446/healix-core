@@ -10,17 +10,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-type recordingFactory struct {
-	createCount int
-	events      *[]string
-}
-
-func (f *recordingFactory) Create(_ context.Context, _ domainexecution.WorkerFence, entry domainexecution.Entry) (BrowserSession, error) {
-	f.createCount++
-	*f.events = append(*f.events, "create:"+entry.ID.String())
-	return &sessionFixture{id: entry.ID.String(), events: f.events}, nil
-}
-
 type recordingAuthorizer struct {
 	authorizeCount int
 	events         *[]string
@@ -37,7 +26,7 @@ func (a *recordingAuthorizer) AuthorizeEntry(_ context.Context, _ domainexecutio
 // authorizer rejects the fence, no browser session is created.
 func TestEntryAuthorizationFailurePreventsSessionCreation(t *testing.T) {
 	events := []string{}
-	factory := &recordingFactory{events: &events}
+	factory := &sessionFactoryFixture{events: &events}
 	authorizer := &recordingAuthorizer{events: &events, authorizeErr: domainexecution.NewStaleWorkerFenceError()}
 	runner := &entryRunnerFixture{events: &events}
 
@@ -53,8 +42,8 @@ func TestEntryAuthorizationFailurePreventsSessionCreation(t *testing.T) {
 	if !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 		t.Fatalf("Execute() error = %v, want code %s", err, domainexecution.CodeWorkerFenceStale)
 	}
-	if factory.createCount != 0 {
-		t.Fatalf("factory.Create called %d times, want 0", factory.createCount)
+	if len(factory.sessions) != 0 {
+		t.Fatalf("factory.Create created %d sessions, want 0", len(factory.sessions))
 	}
 	if authorizer.authorizeCount != 1 {
 		t.Fatalf("authorizer.AuthorizeEntry called %d times, want 1", authorizer.authorizeCount)
@@ -66,7 +55,7 @@ func TestEntryAuthorizationFailurePreventsSessionCreation(t *testing.T) {
 func TestEntryAuthorizationOrder(t *testing.T) {
 	events := []string{}
 	authorizer := &recordingAuthorizer{events: &events}
-	factory := &recordingFactory{events: &events}
+	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
 
 	err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
@@ -104,7 +93,7 @@ func TestEntryExecutorRejectsNilAuthorizer(t *testing.T) {
 func TestEntryExecutorMalformedFenceBeforeAuthorizer(t *testing.T) {
 	events := []string{}
 	authorizer := &recordingAuthorizer{events: &events}
-	factory := &recordingFactory{events: &events}
+	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
 
 	err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
@@ -119,8 +108,8 @@ func TestEntryExecutorMalformedFenceBeforeAuthorizer(t *testing.T) {
 	if !fault.IsCode(err, domainexecution.CodeWorkerFenceInvalid) {
 		t.Fatalf("Execute() error = %v, want code %s", err, domainexecution.CodeWorkerFenceInvalid)
 	}
-	if factory.createCount != 0 {
-		t.Fatalf("factory.Create called %d times, want 0", factory.createCount)
+	if len(factory.sessions) != 0 {
+		t.Fatalf("factory.Create created %d sessions, want 0", len(factory.sessions))
 	}
 	if authorizer.authorizeCount != 0 {
 		t.Fatalf("authorizer.AuthorizeEntry called %d times, want 0", authorizer.authorizeCount)

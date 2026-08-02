@@ -107,7 +107,7 @@ func moduleRoot(t *testing.T) string {
 // needing to track section headings.
 func parseRegistry(t *testing.T, root string) (map[string]registryRow, []string) {
 	t.Helper()
-	path := filepath.Join(root, "docs", "refactor", "business-error-contract", "error-code-registry.md")
+	path := filepath.Join(root, "docs", "contracts", "error-code-registry.md")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read registry: %v", err)
