@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"hash"
+	"math"
 	"strings"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
@@ -24,6 +25,24 @@ const (
 	CodeAbortInstanceCommandInvalid      fault.Code = "EXECUTION_ABORT_INSTANCE_COMMAND_INVALID"
 	CodeReorderQueueCommandInvalid       fault.Code = "EXECUTION_REORDER_QUEUE_COMMAND_INVALID"
 )
+
+// MaxExpectedRevision is the largest revision a command may claim to have
+// observed.
+//
+// Every command's result is verified against ExpectedRevision+1. Admitting
+// MaxInt64 makes that sum wrap to MinInt64 — a value no adapter can return —
+// so the optimistic-concurrency check stops being a check: the command runs,
+// the store mutates, and the write is then reported as an adapter contract
+// violation rather than as the invalid argument it always was. Reserving the
+// top value keeps the successor arithmetic total, which is why the bound is
+// MaxInt64-1 rather than MaxInt64.
+const MaxExpectedRevision int64 = math.MaxInt64 - 1
+
+// representableRevision reports whether revision is a plausible observed
+// revision whose successor is still representable.
+func representableRevision(revision int64) bool {
+	return revision >= 0 && revision <= MaxExpectedRevision
+}
 
 func cancelInstanceCommandInvalidError(cause error) error {
 	return newInstanceCommandWrappedFault(cause, fault.InvalidArgument, CodeCancelInstanceCommandInvalid, "cancel instance command is invalid")
@@ -225,14 +244,14 @@ func signalIfRequired(ctx context.Context, signaler InstanceCancellationSignaler
 }
 
 func validateCancel(command CancelInstanceCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
+	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || !representableRevision(command.ExpectedRevision) || command.At <= 0 || (command.ExpectedStatus != domainexecution.Queued && command.ExpectedStatus != domainexecution.Running) {
 		return cancelInstanceCommandInvalidError(nil)
 	}
 	return nil
 }
 
 func validateAbort(command AbortInstanceCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || command.ExpectedRevision < 0 || command.At <= 0 || command.Fence.InstanceID != command.InstanceID {
+	if strings.TrimSpace(command.CommandID) == "" || command.InstanceID.Validate() != nil || !representableRevision(command.ExpectedRevision) || command.At <= 0 || command.Fence.InstanceID != command.InstanceID {
 		return abortInstanceCommandInvalidError(nil)
 	}
 	if err := command.Fence.Validate(); err != nil {
@@ -350,7 +369,7 @@ func ReorderQueueRequestDigest(command ReorderQueueCommand) (string, error) {
 }
 
 func validateReorder(command ReorderQueueCommand) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ScopeID) == "" || command.ExpectedRevision < 0 || len(command.InstanceIDs) == 0 {
+	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.ScopeID) == "" || !representableRevision(command.ExpectedRevision) || len(command.InstanceIDs) == 0 {
 		return reorderQueueCommandInvalidError(nil)
 	}
 	seen := make(map[string]struct{}, len(command.InstanceIDs))
