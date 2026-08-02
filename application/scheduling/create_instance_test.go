@@ -502,16 +502,38 @@ func TestCreateInstanceServicePreflightRejectsOversizeBeforeStore(t *testing.T) 
 }
 
 func TestCreateInstanceRequestBudgetExactAndOneOverLimits(t *testing.T) {
+	fillByteBudget := func(b *createInstanceRequestBudget, remaining int) error {
+		chunk := strings.Repeat("x", execution.MaxStringBytes)
+		for remaining >= len(chunk) {
+			if err := b.addString(chunk); err != nil {
+				return err
+			}
+			remaining -= len(chunk)
+		}
+		if remaining == 0 {
+			return nil
+		}
+		return b.addString(chunk[:remaining])
+	}
 	tests := []struct {
 		name  string
 		exact func(*createInstanceRequestBudget) error
 		over  func(*createInstanceRequestBudget) error
 	}{
-		{"aggregate bytes", func(b *createInstanceRequestBudget) error {
+		{"single string bytes", func(b *createInstanceRequestBudget) error {
 			return b.addString(strings.Repeat("x", execution.MaxStringBytes))
 		}, func(b *createInstanceRequestBudget) error {
-			b.remainingBytes = execution.MaxStringBytes
-			if err := b.addString(strings.Repeat("x", execution.MaxStringBytes)); err != nil {
+			return b.addString(strings.Repeat("x", execution.MaxStringBytes+1))
+		}},
+		{"multi-select item bytes", func(b *createInstanceRequestBudget) error {
+			return b.addStringMetrics(execution.MaxStringBytes, execution.MaxStringBytes)
+		}, func(b *createInstanceRequestBudget) error {
+			return b.addStringMetrics(execution.MaxStringBytes+1, execution.MaxStringBytes+1)
+		}},
+		{"aggregate string bytes", func(b *createInstanceRequestBudget) error {
+			return fillByteBudget(b, execution.MaxAggregateStringBytes)
+		}, func(b *createInstanceRequestBudget) error {
+			if err := fillByteBudget(b, execution.MaxAggregateStringBytes); err != nil {
 				return err
 			}
 			return b.addString("x")
@@ -574,26 +596,30 @@ func TestCreateInstancePreflightStringBoundariesAndZeroStoreAccess(t *testing.T)
 			c.Entries = map[string]map[string]parameter.Value{strings.Repeat("i", n): {}}
 		}},
 		{"parameter name bytes", func(c *CreateInstanceCommand, n int) {
-			c.Entries["item-1"] = map[string]parameter.Value{strings.Repeat("n", n): parameter.TextValue("x")}
+			c.Entries = map[string]map[string]parameter.Value{"": {strings.Repeat("n", n): parameter.TextValue("")}}
 		}},
 		{"text bytes", func(c *CreateInstanceCommand, n int) {
-			c.Entries["item-1"] = map[string]parameter.Value{"value": parameter.TextValue(strings.Repeat("x", n))}
+			c.Entries = map[string]map[string]parameter.Value{"": {"": parameter.TextValue(strings.Repeat("x", n))}}
 		}},
 		{"single-select bytes", func(c *CreateInstanceCommand, n int) {
-			c.Entries["item-1"] = map[string]parameter.Value{"value": parameter.SingleSelectValue(strings.Repeat("x", n))}
+			c.Entries = map[string]map[string]parameter.Value{"": {"": parameter.SingleSelectValue(strings.Repeat("x", n))}}
 		}},
 		{"multi-select element bytes", func(c *CreateInstanceCommand, n int) {
-			c.Entries["item-1"] = map[string]parameter.Value{"value": parameter.MultiSelectValue([]string{strings.Repeat("x", n)})}
+			c.Entries = map[string]map[string]parameter.Value{"": {"": parameter.MultiSelectValue([]string{strings.Repeat("x", n)})}}
 		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			exact := validCreateInstanceCommand()
+			// A zero-value command isolates the target string. Command semantics are
+			// checked after preflight, while this test pins its byte boundaries without
+			// spending aggregate budget on unrelated fixture fields.
+			exact := CreateInstanceCommand{}
 			test.edit(&exact, execution.MaxStringBytes)
 			if err := preflightCreateInstanceCommand(exact); err != nil {
-				t.Fatalf("exact limit rejected: %v", err)
+				t.Fatalf("exact single-string limit rejected: %v", err)
 			}
-			over := validCreateInstanceCommand()
+
+			over := CreateInstanceCommand{}
 			test.edit(&over, execution.MaxStringBytes+1)
 			if digest, err := CreateInstanceRequestDigest(over); digest != "" || !fault.IsCode(err, CodeCreateInstanceCommandInvalid) {
 				t.Fatalf("digest/error=%q/%v", digest, err)
