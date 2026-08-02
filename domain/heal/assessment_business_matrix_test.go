@@ -22,6 +22,16 @@ func TestAssessDispositionBusinessMatrix(t *testing.T) {
 		{name: "block no candidate", decision: Decision{Outcome: OutcomeNoCandidate}, current: ExecutionContext{Origin: target.Origin, PageURL: target.PageURL}, want: DispositionBlock, wantReason: ReasonNoCandidate},
 		{name: "block role mismatch", decision: Decision{Outcome: OutcomeApplied, Best: &Candidate{Selector: base.Selector, Fingerprint: fingerprint.Fingerprint{Tag: "button", ARIA: fingerprint.ARIA{Role: "link"}}, Score: 0.99}, Candidates: []Candidate{{Selector: base.Selector, Fingerprint: fingerprint.Fingerprint{Tag: "button", ARIA: fingerprint.ARIA{Role: "link"}}, Score: 0.99}}}, current: ExecutionContext{Origin: target.Origin, PageURL: target.PageURL}, want: DispositionBlock, wantReason: ReasonRoleMismatch},
 		{name: "review page mismatch", decision: Decision{Outcome: OutcomeApplied, Best: &base, Candidates: []Candidate{base}}, current: ExecutionContext{Origin: target.Origin, PageURL: "https://shop.test/account"}, want: DispositionReview, wantReason: ReasonPageMismatch},
+		// An unknown current origin is the shape a caller with no live page
+		// port produces. It must block, not fall through: the check exists
+		// for the case where the page moved, and a page that moved somewhere
+		// unreportable is not safer than one that moved somewhere named.
+		{name: "block unknown origin", decision: Decision{Outcome: OutcomeApplied, Best: &base, Candidates: []Candidate{base}}, current: ExecutionContext{PageURL: target.PageURL}, want: DispositionBlock, wantReason: ReasonOriginUnknown},
+		{name: "block unknown origin and page", decision: Decision{Outcome: OutcomeApplied, Best: &base, Candidates: []Candidate{base}}, current: ExecutionContext{}, want: DispositionBlock, wantReason: ReasonOriginUnknown},
+		{name: "block origin mismatch outranks page", decision: Decision{Outcome: OutcomeApplied, Best: &base, Candidates: []Candidate{base}}, current: ExecutionContext{Origin: "https://evil.test", PageURL: "https://evil.test/account"}, want: DispositionBlock, wantReason: ReasonOriginMismatch},
+		// The page URL is the weaker signal — same-origin navigation is
+		// ordinary — so an unconfirmed page downgrades rather than blocks.
+		{name: "review unknown page on a confirmed origin", decision: Decision{Outcome: OutcomeApplied, Best: &base, Candidates: []Candidate{base}}, current: ExecutionContext{Origin: target.Origin}, want: DispositionReview, wantReason: ReasonPageUnknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

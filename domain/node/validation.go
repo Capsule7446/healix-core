@@ -350,7 +350,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		return nil, true, nil
 	}
-	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
+	assessment, err := heal.Assess(target, decision, rt.currentLocation(ctx), rt.HealingPolicy)
 	if err != nil {
 		return nil, false, classifyNodeFault(err)
 	}

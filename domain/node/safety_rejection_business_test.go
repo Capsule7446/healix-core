@@ -12,6 +12,21 @@ import (
 	"github.com/Capsule7446/healix-core/domain/heal"
 )
 
+// staticPageLocator answers with one fixed location. A Runtime can no longer
+// be handed an origin directly, which is deliberate: the field it used to be
+// written into was never populated in production, so a test that set it was
+// asserting on a code path no host could reach.
+type staticPageLocator struct {
+	location PageLocation
+	err      error
+	calls    int
+}
+
+func (l *staticPageLocator) CurrentLocation(context.Context) (PageLocation, error) {
+	l.calls++
+	return l.location, l.err
+}
+
 func TestStepSafetyRejectionIsRecordedBeforeFailure(t *testing.T) {
 	target := fingerprint.ElementTargetSpec{ID: "submit", Origin: "https://shop.test", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
 	candidate := heal.Candidate{Selector: fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"}, Score: 0.99}
@@ -22,8 +37,12 @@ func TestStepSafetyRejectionIsRecordedBeforeFailure(t *testing.T) {
 		}
 		return testElement{}, nil
 	}}
-	rt := &Runtime{Driver: driver, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied, Best: &candidate, Candidates: []heal.Candidate{candidate}}}, Facts: facts, Origin: "https://evil.test"}
+	locator := &staticPageLocator{location: PageLocation{URL: "https://evil.test/checkout", Origin: "https://evil.test"}}
+	rt := &Runtime{Driver: driver, Healer: &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied, Best: &candidate, Candidates: []heal.Candidate{candidate}}}, Facts: facts, PageLocator: locator}
 	err := (&StepNode{NodeID: "step", Target: target, Action: Action{Kind: ActionClick}}).Run(context.Background(), rt)
+	if locator.calls == 0 {
+		t.Fatal("the live location was never consulted")
+	}
 	if err == nil || !fault.IsCode(err, CodeHealingRefused) {
 		t.Fatalf("err=%v", err)
 	}

@@ -213,7 +213,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 	if err := rt.recordHealSamples(ctx, HealSampleRecord{InstanceID: rt.InstanceID, NodeID: s.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
 		return nil, evidenceRecordFailedError(err)
 	}
-	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
+	assessment, err := heal.Assess(target, decision, rt.currentLocation(ctx), rt.HealingPolicy)
 	if err != nil {
 		return nil, classifyNodeFault(err)
 	}

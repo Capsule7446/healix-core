@@ -130,6 +130,13 @@ func validateConfig(program node.Program, cfg Config) error {
 	if cfg.Driver == nil {
 		return runtimeConfigurationInvalidError(errors.New("driver is required"))
 	}
+	// Healing without a location port is not a degraded mode, it is a silent
+	// one: every heal would be refused for a reason the host cannot see, and
+	// "healing stopped working" invites turning the safety check off. Reject
+	// the combination up front instead.
+	if cfg.Healer != nil && cfg.PageLocator == nil {
+		return runtimeConfigurationInvalidError(errors.New("page locator is required when healing is enabled"))
+	}
 	if cfg.StepInterval < 0 {
 		return runtimeConfigurationInvalidError(errors.New("step interval must not be negative"))
 	}
@@ -163,6 +170,7 @@ func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimelin
 		StepInterval:       cfg.StepInterval,
 		Specs:              program.Specs,
 		Driver:             cfg.Driver,
+		PageLocator:        cfg.PageLocator,
 		Healer:             cfg.Healer,
 		Recorder:           cfg.Recorder,
 		Facts:              cfg.Facts,

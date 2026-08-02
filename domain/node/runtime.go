@@ -171,6 +171,24 @@ type Driver interface {
 	WaitNetworkIdle(ctx context.Context) error
 }
 
+// PageLocation is where the browser actually is at the moment it is asked.
+type PageLocation struct {
+	URL    string
+	Origin string
+}
+
+// PageLocator reports the live browser location.
+//
+// Healing rewrites a selector against whatever page is currently loaded, so
+// the only thing separating a legitimate repair from executing an attacker's
+// DOM is whether that page is still the origin the target was recorded on.
+// Answering from anything cached — the plan, the last navigation, a field set
+// at runtime construction — cannot detect the redirect that makes the question
+// worth asking, so the answer has to come from the browser at heal time.
+type PageLocator interface {
+	CurrentLocation(ctx context.Context) (PageLocation, error)
+}
+
 // Recorder 是框架无关的会话录制端口，由宿主提供适配器。
 // Runtime 上的 Recorder 为 nil 表示"录屏关闭"，Start/Stop 也就不会被调用。
 type Recorder interface {
@@ -213,8 +231,6 @@ type Runtime struct {
 	InstanceID domainexecution.InstanceID
 	EntryID    domainexecution.EntryID
 	ClaimToken string
-	PageURL    string
-	Origin     string
 	// StepInterval 控制可执行叶步骤之间的最小暂停时间。第一个叶子步骤立即开始；容器节点和验证组成员不消耗额外的时间间隔。
 	StepInterval time.Duration
 	// Specs 按 ID 索引每个 StepNode 的 ElementTargetSpec，使断言可以引用
@@ -223,8 +239,11 @@ type Runtime struct {
 	// SelectorOverlay 是本次 run 内按 ElementTargetSpec ID 保存的 healed selector 列表。
 	// 编译出的 Specs/StepNode 保持不变，同一 spec 的后续 step、repeat 和断言
 	// 都通过 effectiveSpec 读取该 overlay。
-	SelectorOverlay      map[string][]fingerprint.Selector
-	Driver               Driver
+	SelectorOverlay map[string][]fingerprint.Selector
+	Driver          Driver
+	// PageLocator 供自愈安全评估读取实时页面位置；nil 表示无法确认位置，
+	// 自愈一律拒绝。
+	PageLocator          PageLocator
 	Healer               heal.Healer // nil = 关闭自愈
 	Healing              HealingPort
 	Recorder             Recorder      // nil = 关闭录屏
@@ -273,6 +292,23 @@ func (rt *Runtime) observeOperationBestEffort(ctx context.Context, observation O
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), operationObservationTimeout)
 	defer cancel()
 	_ = rt.observeOperation(cleanupCtx, observation)
+}
+
+// currentLocation asks the live page where it is.
+//
+// Every failure mode collapses to the zero context — no port, a port error, a
+// blank answer — because heal.Assess reads that as "cannot confirm" and
+// refuses. Returning a stale or assumed location instead would answer the
+// question with the very value a redirect has already invalidated.
+func (rt *Runtime) currentLocation(ctx context.Context) heal.ExecutionContext {
+	if rt == nil || rt.PageLocator == nil {
+		return heal.ExecutionContext{}
+	}
+	location, err := rt.PageLocator.CurrentLocation(ctx)
+	if err != nil {
+		return heal.ExecutionContext{}
+	}
+	return heal.ExecutionContext{PageURL: location.URL, Origin: location.Origin}
 }
 
 func (rt *Runtime) healingPort() HealingPort {

@@ -63,6 +63,9 @@ type Config struct {
 	ClaimToken        string
 	AuthorityVerifier ExecutionAuthorityVerifier
 	Driver            node.Driver
+	// PageLocator 报告实时页面位置，自愈安全评估据此判断页面是否仍在录制
+	// 时的 Origin 上。启用自愈时必须提供。
+	PageLocator node.PageLocator
 	// Healer 由组合根注入；nil 表示关闭自愈。
 	Healer             heal.Healer
 	Recorder           node.Recorder
