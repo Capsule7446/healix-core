@@ -20,3 +20,17 @@ coverage.out
 /scan-*.log
 /prompt-*.md
 /run-scan*.bat
+
+# Write-mode agent artefacts. Agents editing the worktree set their own GOCACHE
+# to avoid fighting over the shared one, and a `> /dev/null` redirect on Windows
+# creates a real file. The root .gitconfig is written by tooling and git never
+# reads it — only .git/config, ~/.gitconfig, and /etc/gitconfig.
+#
+# This list only covers names already seen. A new agent will invent a new one,
+# so it does not replace checking `git status` before staging, and never use
+# `git add -A` while an agent is running.
+/.codex/
+/dev/
+/.gitconfig
+/tmp_gocache*/
+/tmp_test.txt
