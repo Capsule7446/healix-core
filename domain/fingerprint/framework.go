@@ -1,11 +1,12 @@
 package fingerprint
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type FrameworkKind string
@@ -36,40 +37,77 @@ type FrameworkInfo struct {
 	Evidence   FrameworkEvidenceKind
 }
 
-func (f FrameworkInfo) Validate() error {
-	switch f.Kind {
+func (k FrameworkKind) isSupported() bool {
+	switch k {
 	case FrameworkReact, FrameworkVue, FrameworkAngular, FrameworkSvelte, FrameworkSolid, FrameworkPreact, FrameworkUnknown:
+		return true
 	default:
-		return fmt.Errorf("fingerprint: unsupported framework %q", f.Kind)
+		return false
 	}
-	if math.IsNaN(f.Confidence) || math.IsInf(f.Confidence, 0) || f.Confidence < 0 || f.Confidence > 1 {
-		return errors.New("fingerprint: framework confidence must be within [0,1]")
-	}
-	if strings.TrimSpace(f.Version) != "" && strings.ContainsAny(f.Version, "\r\n") {
-		return errors.New("fingerprint: framework version contains a line break")
-	}
-	switch f.Evidence {
+}
+
+func (e FrameworkEvidenceKind) isSupported() bool {
+	switch e {
 	case "", EvidenceScriptLink, EvidenceGlobal, EvidenceRootMarker, EvidenceHydration:
+		return true
 	default:
-		return fmt.Errorf("fingerprint: unsupported framework evidence %q", f.Evidence)
+		return false
+	}
+}
+
+func (f FrameworkInfo) Validate() error {
+	violations := f.appendViolations(nil, "")
+	if len(violations) != 0 {
+		return frameworkStackInvalidError(violations)
 	}
 	return nil
+}
+
+// appendViolations degrades every framework failure into a violation of the
+// aggregate that owns this info, so a framework fault is never nested inside
+// another fault. Kinds, evidence kinds, and versions stay out of public text
+// even though they are closed sets: an unsupported value is by definition not
+// from the closed set, so echoing it would echo arbitrary caller input.
+func (f FrameworkInfo) appendViolations(violations []fault.Violation, prefix string) []fault.Violation {
+	if !f.Kind.isSupported() {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "kind"), "framework kind is not supported"))
+	}
+	if math.IsNaN(f.Confidence) || math.IsInf(f.Confidence, 0) || f.Confidence < 0 || f.Confidence > 1 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "confidence"), "framework confidence must be within the inclusive range from zero through one"))
+	}
+	if strings.TrimSpace(f.Version) != "" && strings.ContainsAny(f.Version, "\r\n") {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "version"), "framework version must not contain a line break"))
+	}
+	if !f.Evidence.isSupported() {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "evidence"), "framework evidence kind is not supported"))
+	}
+	return violations
 }
 
 type FrameworkStack []FrameworkInfo
 
 func (s FrameworkStack) Validate() error {
+	violations := s.appendViolations(nil, "frameworks")
+	if len(violations) != 0 {
+		return frameworkStackInvalidError(violations)
+	}
+	return nil
+}
+
+// appendViolations walks the stack in slice order so violation order is
+// deterministic; the duplicate set is only ever point-queried. prefix must be a
+// non-empty logical path, because an indexed element path cannot start with a digit.
+func (s FrameworkStack) appendViolations(violations []fault.Violation, prefix string) []fault.Violation {
 	seen := make(map[FrameworkKind]struct{}, len(s))
-	for _, info := range s {
-		if err := info.Validate(); err != nil {
-			return err
-		}
-		if _, ok := seen[info.Kind]; ok {
-			return fmt.Errorf("fingerprint: duplicate framework %q", info.Kind)
+	for index, info := range s {
+		element := fmt.Sprintf("%s.%d", prefix, index)
+		violations = info.appendViolations(violations, element)
+		if _, duplicate := seen[info.Kind]; duplicate {
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, joinField(element, "kind"), "framework kind is duplicated"))
 		}
 		seen[info.Kind] = struct{}{}
 	}
-	return nil
+	return violations
 }
 
 func (s FrameworkStack) Clone() FrameworkStack { return append(FrameworkStack(nil), s...) }

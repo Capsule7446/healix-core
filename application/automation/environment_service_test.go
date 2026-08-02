@@ -67,7 +67,7 @@ func TestEnvironmentServiceRejectsConflictsAndPropagatesErrors(t *testing.T) {
 		{name: "invalid create", repository: &environmentRepositoryFake{}, create: true},
 		{name: "create persistence", repository: &environmentRepositoryFake{createErr: failure}, create: true, want: failure},
 		{name: "load", repository: &environmentRepositoryFake{loadErr: failure}, want: failure},
-		{name: "revision conflict", repository: &environmentRepositoryFake{current: valid}, want: ErrRevisionConflict},
+		{name: "revision conflict", repository: &environmentRepositoryFake{current: valid}, want: CodeAutomationRevisionConflict},
 		{name: "update persistence", repository: &environmentRepositoryFake{current: valid, updateErr: failure}, want: failure},
 	}
 	for _, test := range tests {

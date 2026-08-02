@@ -1,38 +1,38 @@
 package automation
 
 import (
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
-	"strings"
 	"testing"
 )
 
 func TestWorkflowAggregateValidateStepKindBusinessMatrix(t *testing.T) {
 	tests := []struct {
 		name string
-		step WorkflowStep
+		step FlowFragmentStep
 	}{
 		{name: "click", step: workflowActionStep("click", "")},
 		{name: "input allows empty text", step: workflowActionStep("input", "")},
 		{name: "single select value", step: workflowActionStep("select", "east")},
-		{name: "multi select values", step: func() WorkflowStep {
+		{name: "multi select values", step: func() FlowFragmentStep {
 			step := workflowActionStep("select", "")
 			step.Values = []string{"east", "west"}
 			return step
 		}()},
 		{name: "hover", step: workflowActionStep("hover", "")},
-		{name: "navigate without node", step: WorkflowStep{ID: "navigate", DisplayName: "打开页面", Kind: StepAction, Action: "navigate", Value: "https://example.test"}},
-		{name: "press without node", step: WorkflowStep{ID: "press", DisplayName: "按键", Kind: StepAction, Action: "press", Value: "Enter"}},
+		{name: "navigate without node", step: FlowFragmentStep{ID: "navigate", DisplayName: "打开页面", Kind: StepAction, Action: "navigate", Value: "https://example.test"}},
+		{name: "press without node", step: FlowFragmentStep{ID: "press", DisplayName: "按键", Kind: StepAction, Action: "press", Value: "Enter"}},
 		{name: "noop", step: workflowActionStep("noop", "")},
 		{name: "extract", step: workflowActionStep("extract", "order_id")},
-		{name: "fixed sleep", step: WorkflowStep{ID: "sleep", DisplayName: "等待", Kind: StepWait, WaitKind: "sleep", WaitMS: 1}},
-		{name: "empty wait kind means fixed sleep", step: WorkflowStep{ID: "sleep", DisplayName: "等待", Kind: StepWait, WaitMS: 1}},
-		{name: "element wait allows adapter default timeout", step: WorkflowStep{ID: "element", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", NodeID: "node", NodeVersionID: "node-v1"}},
-		{name: "network idle allows adapter default timeout", step: WorkflowStep{ID: "network", DisplayName: "等待网络", Kind: StepWait, WaitKind: "network_idle"}},
-		{name: "visible element wait", step: WorkflowStep{ID: "visible", DisplayName: "等待可见元素", Kind: StepWait, WaitKind: "element_visible", NodeID: "node", NodeVersionID: "node-v1"}},
-		{name: "invisible element wait", step: WorkflowStep{ID: "invisible", DisplayName: "等待不可见元素", Kind: StepWait, WaitKind: "element_invisible", NodeID: "node", NodeVersionID: "node-v1"}},
-		{name: "repeat", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 2, Children: []WorkflowStep{{ID: "nested-wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}},
-		{name: "fixed workflow reference", step: WorkflowStep{ID: "fixed", DisplayName: "固定子流程", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}},
-		{name: "latest workflow reference", step: WorkflowStep{ID: "latest", DisplayName: "最新子流程", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", LatestPublished: true}}},
+		{name: "fixed sleep", step: FlowFragmentStep{ID: "sleep", DisplayName: "等待", Kind: StepWait, WaitKind: "sleep", WaitMS: 1}},
+		{name: "empty wait kind means fixed sleep", step: FlowFragmentStep{ID: "sleep", DisplayName: "等待", Kind: StepWait, WaitMS: 1}},
+		{name: "element wait allows adapter default timeout", step: FlowFragmentStep{ID: "element", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}},
+		{name: "network idle allows adapter default timeout", step: FlowFragmentStep{ID: "network", DisplayName: "等待网络", Kind: StepWait, WaitKind: "network_idle"}},
+		{name: "visible element wait", step: FlowFragmentStep{ID: "visible", DisplayName: "等待可见元素", Kind: StepWait, WaitKind: "element_visible", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}},
+		{name: "invisible element wait", step: FlowFragmentStep{ID: "invisible", DisplayName: "等待不可见元素", Kind: StepWait, WaitKind: "element_invisible", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}},
+		{name: "repeat", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 2, Children: []FlowFragmentStep{{ID: "nested-wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}},
+		{name: "fixed workflow reference", step: FlowFragmentStep{ID: "fixed", DisplayName: "固定子流程", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}},
+		{name: "latest workflow reference", step: FlowFragmentStep{ID: "latest", DisplayName: "最新子流程", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", LatestPublished: true}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -45,91 +45,89 @@ func TestWorkflowAggregateValidateStepKindBusinessMatrix(t *testing.T) {
 
 func TestWorkflowAggregateValidateRejectsStepKindConstraintMatrix(t *testing.T) {
 	tests := []struct {
-		name string
-		step WorkflowStep
-		want string
+		name      string
+		step      FlowFragmentStep
+		wantCode  fault.Code
+		wantField string
 	}{
-		{name: "unsupported action", step: workflowActionStep("double_click", ""), want: "unsupported action"},
-		{name: "click needs node", step: WorkflowStep{ID: "click", DisplayName: "点击", Kind: StepAction, Action: "click"}, want: "requires a node"},
-		{name: "node needs exact version", step: func() WorkflowStep { step := workflowActionStep("click", ""); step.NodeVersionID = ""; return step }(), want: "exact node version"},
-		{name: "navigate needs URL value", step: WorkflowStep{ID: "navigate", DisplayName: "打开", Kind: StepAction, Action: "navigate"}, want: "requires a value"},
-		{name: "press needs key value", step: WorkflowStep{ID: "press", DisplayName: "按键", Kind: StepAction, Action: "press"}, want: "requires a value"},
-		{name: "extract needs scratchpad name", step: workflowActionStep("extract", ""), want: "requires a value"},
-		{name: "select needs one value", step: workflowActionStep("select", ""), want: "at least one value"},
-		{name: "fixed wait must be positive", step: WorkflowStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 0}, want: "fixed wait must be > 0"},
-		{name: "element wait needs node", step: WorkflowStep{ID: "wait", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element"}, want: "requires a node"},
-		{name: "element wait needs exact version", step: WorkflowStep{ID: "wait", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", NodeID: "node"}, want: "exact node version"},
-		{name: "element wait rejects negative timeout", step: WorkflowStep{ID: "wait", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", NodeID: "node", NodeVersionID: "node-v1", WaitMS: -1}, want: "timeout must be >= 0"},
-		{name: "network wait rejects negative timeout", step: WorkflowStep{ID: "wait", DisplayName: "等待网络", Kind: StepWait, WaitKind: "network_idle", WaitMS: -1}, want: "timeout must be >= 0"},
-		{name: "unknown wait kind", step: WorkflowStep{ID: "wait", DisplayName: "等待事件", Kind: StepWait, WaitKind: "event"}, want: "unsupported wait kind"},
-		{name: "repeat needs positive count", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, Children: []WorkflowStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}, want: "requires count and children"},
-		{name: "repeat needs children", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1}, want: "requires count and children"},
-		{name: "reference needs target", step: WorkflowStep{ID: "ref", DisplayName: "子流程", Kind: StepWorkflowRef}, want: "requires a workflow reference"},
-		{name: "latest reference cannot pin version", step: WorkflowStep{ID: "ref", DisplayName: "子流程", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1", LatestPublished: true}}, want: "cannot persist a version"},
-		{name: "fixed reference needs version", step: WorkflowStep{ID: "ref", DisplayName: "子流程", Kind: StepWorkflowRef, Reference: &WorkflowReference{WorkflowID: "child"}}, want: "requires a version"},
-		{name: "only action can be optional", step: WorkflowStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1, Optional: true}, want: "only ACTION can be optional"},
-		{name: "unknown kind", step: WorkflowStep{ID: "unknown", DisplayName: "未知", Kind: StepKind("UNKNOWN")}, want: "unsupported kind"},
+		{name: "unsupported action", step: workflowActionStep("double_click", ""), wantCode: fault.CodeFieldInvalid, wantField: "steps.action"},
+		{name: "click needs node", step: FlowFragmentStep{ID: "click", DisplayName: "点击", Kind: StepAction, Action: "click"}, wantCode: fault.CodeFieldRequired, wantField: "steps.action.elementTargetId"},
+		{name: "node needs exact version", step: func() FlowFragmentStep {
+			step := workflowActionStep("click", "")
+			step.ElementTargetVersionID = ""
+			return step
+		}(), wantCode: fault.CodeFieldRequired, wantField: "steps.action.elementTargetVersionId"},
+		{name: "navigate needs URL value", step: FlowFragmentStep{ID: "navigate", DisplayName: "打开", Kind: StepAction, Action: "navigate"}, wantCode: fault.CodeFieldRequired, wantField: "steps.action.value"},
+		{name: "press needs key value", step: FlowFragmentStep{ID: "press", DisplayName: "按键", Kind: StepAction, Action: "press"}, wantCode: fault.CodeFieldRequired, wantField: "steps.action.value"},
+		{name: "extract needs scratchpad name", step: workflowActionStep("extract", ""), wantCode: fault.CodeFieldRequired, wantField: "steps.action.value"},
+		{name: "select needs one value", step: workflowActionStep("select", ""), wantCode: fault.CodeFieldRequired, wantField: "steps.action.values"},
+		{name: "fixed wait must be positive", step: FlowFragmentStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 0}, wantCode: fault.CodeFieldInvalid, wantField: "steps.wait.waitMs"},
+		{name: "element wait needs node", step: FlowFragmentStep{ID: "wait", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element"}, wantCode: fault.CodeFieldRequired, wantField: "steps.wait.elementTargetId"},
+		{name: "element wait needs exact version", step: FlowFragmentStep{ID: "wait", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", ElementTargetID: "node"}, wantCode: fault.CodeFieldRequired, wantField: "steps.wait.elementTargetVersionId"},
+		{name: "element wait rejects negative timeout", step: FlowFragmentStep{ID: "wait", DisplayName: "等待元素", Kind: StepWait, WaitKind: "element", ElementTargetID: "node", ElementTargetVersionID: "node-v1", WaitMS: -1}, wantCode: fault.CodeFieldInvalid, wantField: "steps.wait.waitMs"},
+		{name: "network wait rejects negative timeout", step: FlowFragmentStep{ID: "wait", DisplayName: "等待网络", Kind: StepWait, WaitKind: "network_idle", WaitMS: -1}, wantCode: fault.CodeFieldInvalid, wantField: "steps.wait.waitMs"},
+		{name: "unknown wait kind", step: FlowFragmentStep{ID: "wait", DisplayName: "等待事件", Kind: StepWait, WaitKind: "event"}, wantCode: fault.CodeFieldInvalid, wantField: "steps.wait.waitKind"},
+		{name: "repeat needs positive count", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, Children: []FlowFragmentStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}, wantCode: fault.CodeFieldRequired, wantField: "steps.repeat"},
+		{name: "repeat needs children", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1}, wantCode: fault.CodeFieldRequired, wantField: "steps.repeat"},
+		{name: "reference needs target", step: FlowFragmentStep{ID: "ref", DisplayName: "子流程", Kind: StepFlowFragmentRef}, wantCode: fault.CodeFieldRequired, wantField: "steps.reference.flowFragmentId"},
+		{name: "latest reference cannot pin version", step: FlowFragmentStep{ID: "ref", DisplayName: "子流程", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1", LatestPublished: true}}, wantCode: fault.CodeFieldInvalid, wantField: "steps.reference.workflowVersionId"},
+		{name: "fixed reference needs version", step: FlowFragmentStep{ID: "ref", DisplayName: "子流程", Kind: StepFlowFragmentRef, Reference: &FlowFragmentReference{FlowFragmentID: "child"}}, wantCode: fault.CodeFieldRequired, wantField: "steps.reference.workflowVersionId"},
+		{name: "only action can be optional", step: FlowFragmentStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1, Optional: true}, wantCode: fault.CodeFieldInvalid, wantField: "steps.optional"},
+		{name: "unknown kind", step: FlowFragmentStep{ID: "unknown", DisplayName: "未知", Kind: StepKind("UNKNOWN")}, wantCode: fault.CodeFieldInvalid, wantField: "steps.kind"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := workflowWithSteps(test.step).Validate()
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want substring %q", err, test.want)
-			}
+			requireViolationOf(t, workflowWithSteps(test.step).Validate(), CodeFlowFragmentInvalid, test.wantCode, test.wantField)
 		})
 	}
 }
 
 func TestWorkflowAggregateValidateRejectsDiscriminatedUnionResidualFields(t *testing.T) {
 	tests := []struct {
-		name string
-		step WorkflowStep
-		want string
+		name      string
+		step      FlowFragmentStep
+		wantField string
 	}{
-		{name: "action cannot carry workflow reference", step: func() WorkflowStep {
+		{name: "action cannot carry workflow reference", step: func() FlowFragmentStep {
 			step := workflowActionStep("click", "")
-			step.Reference = &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}
+			step.Reference = &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}
 			return step
-		}(), want: "ACTION contains unsupported step configuration"},
-		{name: "action cannot carry children", step: func() WorkflowStep {
+		}(), wantField: "steps.action"},
+		{name: "action cannot carry children", step: func() FlowFragmentStep {
 			step := workflowActionStep("click", "")
-			step.Children = []WorkflowStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}
+			step.Children = []FlowFragmentStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}
 			return step
-		}(), want: "ACTION contains unsupported step configuration"},
-		{name: "wait cannot carry action fields", step: WorkflowStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1, Action: "navigate", Value: "https://example.test"}, want: "WAIT contains unsupported step configuration"},
-		{name: "fixed wait cannot carry node", step: WorkflowStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1, NodeID: "node", NodeVersionID: "node-v1"}, want: "WAIT contains unsupported step configuration"},
-		{name: "repeat cannot carry node", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1,
-			NodeID: "node", NodeVersionID: "node-v1", Children: []WorkflowStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}, want: "REPEAT contains unsupported step configuration"},
-		{name: "repeat cannot carry reference", step: WorkflowStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1,
-			Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}, Children: []WorkflowStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}, want: "REPEAT contains unsupported step configuration"},
-		{name: "workflow reference cannot carry node", step: WorkflowStep{ID: "ref", DisplayName: "子流程", Kind: StepWorkflowRef,
-			NodeID: "node", NodeVersionID: "node-v1", Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}, want: "WORKFLOW_REF contains unsupported step configuration"},
-		{name: "workflow reference cannot carry children", step: WorkflowStep{ID: "ref", DisplayName: "子流程", Kind: StepWorkflowRef,
-			Children: []WorkflowStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}, Reference: &WorkflowReference{WorkflowID: "child", WorkflowVersionID: "child-v1"}}, want: "WORKFLOW_REF contains unsupported step configuration"},
+		}(), wantField: "steps.action"},
+		{name: "wait cannot carry action fields", step: FlowFragmentStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1, Action: "navigate", Value: "https://example.test"}, wantField: "steps.wait"},
+		{name: "fixed wait cannot carry node", step: FlowFragmentStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1, ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, wantField: "steps.wait"},
+		{name: "repeat cannot carry node", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1,
+			ElementTargetID: "node", ElementTargetVersionID: "node-v1", Children: []FlowFragmentStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}, wantField: "steps.repeat"},
+		{name: "repeat cannot carry reference", step: FlowFragmentStep{ID: "repeat", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1,
+			Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}, Children: []FlowFragmentStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}, wantField: "steps.repeat"},
+		{name: "workflow reference cannot carry node", step: FlowFragmentStep{ID: "ref", DisplayName: "子流程", Kind: StepFlowFragmentRef,
+			ElementTargetID: "node", ElementTargetVersionID: "node-v1", Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}, wantField: "steps.reference"},
+		{name: "workflow reference cannot carry children", step: FlowFragmentStep{ID: "ref", DisplayName: "子流程", Kind: StepFlowFragmentRef,
+			Children: []FlowFragmentStep{{ID: "child", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}, Reference: &FlowFragmentReference{FlowFragmentID: "child", WorkflowVersionID: "child-v1"}}, wantField: "steps.reference"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := workflowWithSteps(test.step).Validate()
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate() error = %v, want substring %q", err, test.want)
-			}
+			requireViolationOf(t, workflowWithSteps(test.step).Validate(), CodeFlowFragmentInvalid, fault.CodeFieldInvalid, test.wantField)
 		})
 	}
 }
 
 func TestWorkflowAggregateValidateOwnsStepAndParameterIdentity(t *testing.T) {
 	t.Run("duplicate nested step id", func(t *testing.T) {
-		repeat := WorkflowStep{ID: "same", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1,
-			Children: []WorkflowStep{{ID: "same", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}
-		if err := workflowWithSteps(repeat).Validate(); err == nil || !strings.Contains(err.Error(), "duplicate step id") {
-			t.Fatalf("duplicate nested step error = %v", err)
-		}
+		repeat := FlowFragmentStep{ID: "same", DisplayName: "循环", Kind: StepRepeat, RepeatCount: 1,
+			Children: []FlowFragmentStep{{ID: "same", DisplayName: "等待", Kind: StepWait, WaitMS: 1}}}
+		requireViolationOf(t, workflowWithSteps(repeat).Validate(), CodeFlowFragmentInvalid, fault.CodeFieldDuplicate, "steps.identity")
 	})
 
 	tests := []struct {
 		name       string
 		parameters []ParameterDefinition
-		want       string
+		wantCode   fault.Code
+		wantField  string
 	}{
 		{name: "all supported parameter kinds", parameters: []ParameterDefinition{
 			{Name: "text", DisplayName: "文本", Type: parameter.Text, Default: parameter.PresentValue(parameter.TextValue(""))},
@@ -138,38 +136,38 @@ func TestWorkflowAggregateValidateOwnsStepAndParameterIdentity(t *testing.T) {
 			{Name: "single", DisplayName: "单选", Type: parameter.SingleSelect, Options: []string{"a"}, Default: parameter.PresentValue(parameter.SingleSelectValue("a"))},
 			{Name: "multi", DisplayName: "多选", Type: parameter.MultiSelect, Options: []string{"a", "b"}, Default: parameter.PresentValue(parameter.MultiSelectValue(nil))},
 		}},
-		{name: "missing name", parameters: []ParameterDefinition{{DisplayName: "参数", Type: parameter.Text}}, want: "name and display name"},
-		{name: "missing display name", parameters: []ParameterDefinition{{Name: "param", Type: parameter.Text}}, want: "name and display name"},
-		{name: "unsupported type", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.Type("DATE")}}, want: "unsupported parameter type"},
-		{name: "select needs options", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.SingleSelect}}, want: "requires options"},
-		{name: "select rejects blank option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.MultiSelect, Options: []string{" "}}}, want: "cannot be empty"},
-		{name: "select rejects duplicate option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.SingleSelect, Options: []string{"a", "a"}}}, want: "duplicate option"},
-		{name: "duplicate parameter name", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数 A", Type: parameter.Text}, {Name: "param", DisplayName: "参数 B", Type: parameter.Text}}, want: "duplicate parameter"},
+		{name: "missing name", parameters: []ParameterDefinition{{DisplayName: "参数", Type: parameter.Text}}, wantCode: fault.CodeFieldInvalid, wantField: "definition.parameters.0"},
+		{name: "missing display name", parameters: []ParameterDefinition{{Name: "param", Type: parameter.Text}}, wantCode: fault.CodeFieldInvalid, wantField: "definition.parameters.0"},
+		{name: "unsupported type", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.Type("DATE")}}, wantCode: fault.CodeFieldInvalid, wantField: "definition.parameters.0"},
+		{name: "select needs options", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.SingleSelect}}, wantCode: fault.CodeFieldInvalid, wantField: "definition.parameters.0"},
+		{name: "select rejects blank option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.MultiSelect, Options: []string{" "}}}, wantCode: fault.CodeFieldInvalid, wantField: "definition.parameters.0"},
+		{name: "select rejects duplicate option", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数", Type: parameter.SingleSelect, Options: []string{"a", "a"}}}, wantCode: fault.CodeFieldInvalid, wantField: "definition.parameters.0"},
+		{name: "duplicate parameter name", parameters: []ParameterDefinition{{Name: "param", DisplayName: "参数 A", Type: parameter.Text}, {Name: "param", DisplayName: "参数 B", Type: parameter.Text}}, wantCode: fault.CodeFieldDuplicate, wantField: "definition.parameters"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			aggregate := workflowWithSteps(WorkflowStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1})
+			aggregate := workflowWithSteps(FlowFragmentStep{ID: "wait", DisplayName: "等待", Kind: StepWait, WaitMS: 1})
 			aggregate.Current.Definition.Parameters = test.parameters
 			err := aggregate.Validate()
-			if test.want == "" && err != nil {
+			if test.wantField == "" && err != nil {
 				t.Fatalf("valid parameters rejected: %v", err)
 			}
-			if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
-				t.Fatalf("Validate() error = %v, want substring %q", err, test.want)
+			if test.wantField != "" {
+				requireViolationOf(t, err, CodeFlowFragmentInvalid, test.wantCode, test.wantField)
 			}
 		})
 	}
 }
 
-func workflowActionStep(action, value string) WorkflowStep {
-	return WorkflowStep{ID: action, DisplayName: action, Kind: StepAction, Action: action,
-		NodeID: "node", NodeVersionID: "node-v1", Value: value}
+func workflowActionStep(action, value string) FlowFragmentStep {
+	return FlowFragmentStep{ID: action, DisplayName: action, Kind: StepAction, Action: action,
+		ElementTargetID: "node", ElementTargetVersionID: "node-v1", Value: value}
 }
 
-func workflowWithSteps(steps ...WorkflowStep) WorkflowAggregate {
-	return WorkflowAggregate{
-		Workflow: Workflow{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: "workflow-v1"},
-		Current: WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1,
-			Definition: WorkflowDefinition{Steps: steps}},
+func workflowWithSteps(steps ...FlowFragmentStep) FlowFragmentAggregate {
+	return FlowFragmentAggregate{
+		FlowFragment: FlowFragment{ID: "workflow", DisplayName: "流程", Properties: Properties{}, CurrentVersionID: "workflow-v1"},
+		Current: FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1,
+			Definition: FlowFragmentContent{Steps: steps}},
 	}
 }

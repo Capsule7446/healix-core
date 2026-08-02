@@ -12,13 +12,20 @@
 
 请遵循仓库的现有分层、命名和错误处理约定。新增或修改行为时，应补充覆盖该行为的测试。
 
-提交 Pull Request 前至少运行：
+提交 Pull Request 前至少运行 CI 实际强制的门禁：
 
 ```bash
-make check
+gofmt -l .          # 必须无输出
+go vet ./...
+go build ./...
+go test ./...
+go test -race ./...
+go test -coverprofile=coverage.out ./... && ./scripts/check-coverage.sh coverage.out 80
 ```
 
-该命令会执行格式检查、静态检查、测试、竞态检测、覆盖率门槛、构建和 lint。若环境不具备完整工具链，请在 Pull Request 中说明未执行的检查及原因。
+具备 `make` 的环境可用 `make fmt-check vet build test race coverage` 一次跑完；`make check` 会额外执行 `make lint`（`golangci-lint run ./...`）。lint **不在** CI 门禁内——`.github/workflows/ci.yml` 的 Static analysis 作业只跑 `go vet ./...`，原因见 [`.golangci.yml`](.golangci.yml) 顶部说明。因此 `golangci-lint` 的既有告警不构成合并阻塞，但新代码不应增加告警。
+
+若环境不具备完整工具链，请在 Pull Request 中说明未执行的检查及原因。
 
 提交信息使用 Conventional Commits 风格：
 

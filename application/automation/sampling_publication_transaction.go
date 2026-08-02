@@ -4,57 +4,124 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 const samplingPublicationDigestV1 = "sampling-publication-v1"
 
-var (
-	ErrSamplingPublicationIdentityConflict  = errors.New("sampling publication identity conflict")
-	ErrSamplingPublicationAuthorityConflict = errors.New("sampling publication authority conflict")
-	ErrSamplingPublicationDigestMismatch    = errors.New("sampling publication digest does not match payload")
-	ErrSamplingPublicationAuthorization     = errors.New("sampling publication authorization rejected")
-	ErrSamplingPublicationConfiguration     = errors.New("sampling publication service is not configured")
-	ErrSamplingPublicationContract          = errors.New("sampling publication adapter contract violation")
+const (
+	CodeSamplingPublicationIdentityConflict  fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
+	CodeSamplingPublicationDigestMismatch    fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
+	CodeSamplingPublicationUnavailable       fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE"
+	CodeSamplingPublicationContractViolation fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION"
+	CodeSamplingPublicationAuthorityConflict fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_AUTHORITY_CONFLICT"
+	// CodeSamplingPublicationCommandInvalid is the boundary code for
+	// validateSamplingPublicationCommand and its callers: a blank publication id,
+	// or a publication whose own content is invalid. It passes an
+	// already-classified content failure (AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID)
+	// through unchanged rather than burying it under a second code.
+	CodeSamplingPublicationCommandInvalid fault.Code = "SAMPLING_PUBLICATION_COMMAND_INVALID"
 )
 
-type SamplingPublicationIdentityConflictError struct{ PublicationID string }
-
-func (e *SamplingPublicationIdentityConflictError) Error() string {
-	return "sampling publication identity conflict: " + e.PublicationID
+// classifySamplingPublicationCommand is the boundary classifier shared by
+// validateSamplingPublicationCommand and ValidatePublishSamplingIntentDigest.
+// Command detail (the blank id, or whatever validation text the wrapped cause
+// carries) stays private, reachable only through errors.Unwrap.
+func classifySamplingPublicationCommand(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.InvalidArgument,
+		CodeSamplingPublicationCommandInvalid,
+		"sampling publication command is invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
-func (e *SamplingPublicationIdentityConflictError) Is(target error) bool {
-	return target == ErrSamplingPublicationIdentityConflict
+func SamplingPublicationIdentityConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeSamplingPublicationIdentityConflict,
+		"sampling publication identity conflicts with an existing request",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
-type SamplingPublicationContractError struct{ Cause error }
-
-func (e *SamplingPublicationContractError) Error() string {
-	return "sampling publication adapter contract violation: " + e.Cause.Error()
+func SamplingPublicationDigestMismatchError() error {
+	err, constructionErr := fault.New(
+		fault.InvalidArgument,
+		CodeSamplingPublicationDigestMismatch,
+		"sampling publication digest does not match the request payload",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
-func (e *SamplingPublicationContractError) Unwrap() error { return e.Cause }
-func (e *SamplingPublicationContractError) Is(target error) bool {
-	return target == ErrSamplingPublicationContract
+func SamplingPublicationAuthorityConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeSamplingPublicationAuthorityConflict,
+		"sampling publication authority changed before the publication could be applied",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func SamplingPublicationUnavailableError() error {
+	err, constructionErr := fault.New(
+		fault.Unavailable,
+		CodeSamplingPublicationUnavailable,
+		"sampling publication service is unavailable",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func samplingPublicationContractViolationError(cause error) error {
+	err, constructionErr := fault.Wrap(
+		cause,
+		fault.Internal,
+		CodeSamplingPublicationContractViolation,
+		"sampling publication adapter returned an invalid outcome",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
 }
 
 type SamplingPublicationCommand struct {
-	PublicationID            string
-	ForceCreateAuthorization string
-	Publication              domain.SamplingPublication
+	PublicationID string
+	Publication   domain.SamplingPublication
 }
 
 type PublishSamplingIntent struct {
-	PublicationID            string
-	RequestDigest            string
-	ForceCreateAuthorization string
-	Publication              domain.SamplingPublication
+	PublicationID string
+	RequestDigest string
+	Publication   domain.SamplingPublication
 }
 
 type PublishSamplingStatus string
@@ -76,36 +143,24 @@ type SamplingPublicationTransaction interface {
 	PublishSampling(context.Context, PublishSamplingIntent) (PublishSamplingOutcome, error)
 }
 
-type ForceCreateAuthorizationIntent struct {
-	PublicationID          string
-	RequestDigest          string
-	AuthorizationReference string
-}
-
-type ForceCreateAuthorizer interface {
-	AuthorizeForceCreate(context.Context, ForceCreateAuthorizationIntent) error
-}
-
 type SamplingPublicationService struct {
 	transaction SamplingPublicationTransaction
-	authorizer  ForceCreateAuthorizer
 }
 
-func NewSamplingPublicationService(transaction SamplingPublicationTransaction, authorizer ForceCreateAuthorizer) SamplingPublicationService {
-	return SamplingPublicationService{transaction: transaction, authorizer: authorizer}
+func NewSamplingPublicationService(transaction SamplingPublicationTransaction) SamplingPublicationService {
+	return SamplingPublicationService{transaction: transaction}
 }
 
 func ValidatePublishSamplingIntentDigest(intent PublishSamplingIntent) error {
 	digest, err := SamplingPublicationRequestDigest(SamplingPublicationCommand{
-		PublicationID:            intent.PublicationID,
-		ForceCreateAuthorization: intent.ForceCreateAuthorization,
-		Publication:              intent.Publication,
+		PublicationID: intent.PublicationID,
+		Publication:   intent.Publication,
 	})
 	if err != nil {
-		return fmt.Errorf("validate sampling publication intent: %w", err)
+		return classifySamplingPublicationCommand(err)
 	}
 	if intent.RequestDigest != digest {
-		return ErrSamplingPublicationDigestMismatch
+		return SamplingPublicationDigestMismatchError()
 	}
 	return nil
 }
@@ -116,22 +171,16 @@ func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (strin
 	if err := validateSamplingPublicationCommand(owned); err != nil {
 		return "", err
 	}
-	payload, err := json.Marshal(struct {
-		Schema                   string
-		PublicationID            string
-		ForceCreateAuthorization string
-		Publication              domain.SamplingPublication
-	}{samplingPublicationDigestV1, owned.PublicationID, owned.ForceCreateAuthorization, owned.Publication})
-	if err != nil {
-		return "", fmt.Errorf("encode sampling publication request: %w", err)
-	}
-	digest := sha256.Sum256(payload)
-	return "sha256:" + hex.EncodeToString(digest[:]), nil
+	h := sha256.New()
+	writeDigestString(h, samplingPublicationDigestV1)
+	writeDigestString(h, owned.PublicationID)
+	encodeCanonicalPayload(h, reflect.ValueOf(owned.Publication))
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (s SamplingPublicationService) Publish(ctx context.Context, command SamplingPublicationCommand) (domain.SamplingPublicationResult, error) {
 	if isNilDependency(s.transaction) {
-		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
 	}
 	owned := command
 	owned.Publication = command.Publication.Clone()
@@ -140,7 +189,7 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 		return domain.SamplingPublicationResult{}, err
 	}
 	if s.transaction == nil {
-		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
 	}
 	replay, found, err := s.transaction.LookupSamplingPublication(ctx, owned.PublicationID, digest)
 	if err != nil {
@@ -148,37 +197,24 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 	}
 	if found {
 		if err := validatePublishSamplingOutcome(owned, digest, replay); err != nil {
-			return domain.SamplingPublicationResult{}, &SamplingPublicationContractError{Cause: err}
+			return domain.SamplingPublicationResult{}, samplingPublicationContractViolationError(err)
 		}
 		return cloneSamplingPublicationResult(replay.Result), nil
 	}
-	if requiresForceCreateAuthorization(owned.Publication) {
-		if s.authorizer == nil {
-			return domain.SamplingPublicationResult{}, ErrSamplingPublicationAuthorization
-		}
-		if err := s.authorizer.AuthorizeForceCreate(ctx, ForceCreateAuthorizationIntent{
-			PublicationID:          owned.PublicationID,
-			RequestDigest:          digest,
-			AuthorizationReference: owned.ForceCreateAuthorization,
-		}); err != nil {
-			return domain.SamplingPublicationResult{}, fmt.Errorf("%w: %w", ErrSamplingPublicationAuthorization, err)
-		}
-	}
 	if s.transaction == nil {
-		return domain.SamplingPublicationResult{}, ErrSamplingPublicationConfiguration
+		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
 	}
 	transactionPublication := owned.Publication.Clone()
 	outcome, err := s.transaction.PublishSampling(ctx, PublishSamplingIntent{
-		PublicationID:            owned.PublicationID,
-		RequestDigest:            digest,
-		ForceCreateAuthorization: owned.ForceCreateAuthorization,
-		Publication:              transactionPublication,
+		PublicationID: owned.PublicationID,
+		RequestDigest: digest,
+		Publication:   transactionPublication,
 	})
 	if err != nil {
 		return domain.SamplingPublicationResult{}, fmt.Errorf("publish sampling result: %w", err)
 	}
 	if err := validatePublishSamplingOutcome(owned, digest, outcome); err != nil {
-		return domain.SamplingPublicationResult{}, &SamplingPublicationContractError{Cause: err}
+		return domain.SamplingPublicationResult{}, samplingPublicationContractViolationError(err)
 	}
 	return cloneSamplingPublicationResult(outcome.Result), nil
 }
@@ -188,31 +224,12 @@ func cloneSamplingPublicationResult(result domain.SamplingPublicationResult) dom
 	return result
 }
 
-func requiresForceCreateAuthorization(publication domain.SamplingPublication) bool {
-	for _, node := range publication.Nodes {
-		if node.ResolutionMode == "FORCE_CREATE" {
-			return true
-		}
-	}
-	return false
-}
-
 func validateSamplingPublicationCommand(command SamplingPublicationCommand) error {
 	if strings.TrimSpace(command.PublicationID) == "" {
-		return errors.New("sampling publication id is required")
+		return classifySamplingPublicationCommand(errors.New("sampling publication id is required"))
 	}
 	if err := command.Publication.Validate(); err != nil {
-		return fmt.Errorf("validate sampling publication: %w", err)
-	}
-	hasForceCreate := false
-	for _, node := range command.Publication.Nodes {
-		hasForceCreate = hasForceCreate || node.ResolutionMode == "FORCE_CREATE"
-	}
-	if hasForceCreate && strings.TrimSpace(command.ForceCreateAuthorization) == "" {
-		return errors.New("force-create authorization is required")
-	}
-	if !hasForceCreate && command.ForceCreateAuthorization != "" {
-		return errors.New("force-create authorization is not applicable")
+		return classifySamplingPublicationCommand(err)
 	}
 	return nil
 }
@@ -224,8 +241,8 @@ func validatePublishSamplingOutcome(command SamplingPublicationCommand, digest s
 	if outcome.PublicationID != command.PublicationID || outcome.RequestDigest != digest {
 		return errors.New("outcome identity does not match request")
 	}
-	workflow := command.Publication.Workflow
-	if outcome.Result.WorkflowID != workflow.Workflow.ID || outcome.Result.WorkflowVersionID != workflow.Current.ID || outcome.Result.VersionNumber != workflow.Current.VersionNumber {
+	workflow := command.Publication.FlowFragment
+	if outcome.Result.FlowFragmentID != workflow.FlowFragment.ID || outcome.Result.WorkflowVersionID != workflow.Current.ID || outcome.Result.VersionNumber != workflow.Current.VersionNumber {
 		return errors.New("outcome workflow does not match publication")
 	}
 	if len(outcome.Result.Nodes) != len(command.Publication.Nodes) {
@@ -233,7 +250,7 @@ func validatePublishSamplingOutcome(command SamplingPublicationCommand, digest s
 	}
 	for index, node := range command.Publication.Nodes {
 		mapping := outcome.Result.Nodes[index]
-		if mapping.TemporaryNodeID != node.TemporaryNodeID || mapping.NodeID != node.Aggregate.Node.ID || mapping.NodeVersionID != node.Aggregate.Current.ID || mapping.ResolutionMode != node.ResolutionMode {
+		if mapping.TemporaryElementTargetID != node.TemporaryElementTargetID || mapping.ElementTargetID != node.Aggregate.ElementTarget.ID || mapping.ElementTargetVersionID != node.Aggregate.Current.ID || mapping.ResolutionMode != node.ResolutionMode {
 			return errors.New("outcome mapping does not match publication")
 		}
 	}

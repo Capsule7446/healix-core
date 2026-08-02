@@ -1,7 +1,6 @@
 package parameter
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -17,33 +16,37 @@ type Constraint struct {
 	Options []string
 }
 
+// Validate rejects without echoing the constraint type, the value type, or any
+// option: the caller supplied all three. A value that fails its own validation
+// keeps that value's code rather than being re-wrapped, so the host is not forced
+// to unwrap to learn the value itself was malformed.
 func (c Constraint) Validate(value Value) error {
 	switch c.Type {
 	case Text, Number, Boolean, SingleSelect, MultiSelect:
 	default:
-		return fmt.Errorf("unsupported parameter constraint type %q", c.Type)
+		return constraintUnsatisfiedError()
 	}
 	if err := value.Validate(); err != nil {
 		return err
 	}
 	if value.Type() != c.Type {
-		return fmt.Errorf("expected %s, got %s", c.Type, value.Type())
+		return constraintUnsatisfiedError()
 	}
-	allowed := func(s string) bool {
+	allowed := func(candidate string) bool {
 		for _, option := range c.Options {
-			if option == s {
+			if option == candidate {
 				return true
 			}
 		}
 		return false
 	}
 	if c.Type == SingleSelect && !allowed(value.SingleSelect()) {
-		return fmt.Errorf("single-select value is not an option")
+		return constraintUnsatisfiedError()
 	}
 	if c.Type == MultiSelect {
 		for _, item := range value.MultiSelect() {
 			if !allowed(item) {
-				return fmt.Errorf("multi-select value is not an option")
+				return constraintUnsatisfiedError()
 			}
 		}
 	}
@@ -76,15 +79,22 @@ func (b Binding) Resolve(parent map[string]Value) (Value, error) {
 		}
 		return b.literal.Clone(), nil
 	case ParentReferenceBindingKind:
+		// A blank parent name is a malformed binding, not a missing parent: the
+		// caller fixes it by constructing the binding differently, which is a
+		// different action from supplying the surrounding scope.
 		if strings.TrimSpace(b.parentName) == "" {
-			return Value{}, fmt.Errorf("parent parameter reference name is required")
+			return Value{}, bindingInvalidError()
 		}
+		// Only here is the binding well-formed and the scope genuinely short of a
+		// value. The parent parameter name is never echoed: it is caller-declared,
+		// and the parent scope map is the caller's too.
 		value, exists := parent[b.parentName]
 		if !exists {
-			return Value{}, fmt.Errorf("parent parameter %q is missing", b.parentName)
+			return Value{}, bindingUnresolvableError()
 		}
 		return value.Clone(), nil
 	default:
-		return Value{}, fmt.Errorf("unsupported parameter binding kind %q", b.kind)
+		// A zero or unknown kind means the caller never built a usable binding.
+		return Value{}, bindingInvalidError()
 	}
 }

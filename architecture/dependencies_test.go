@@ -114,6 +114,55 @@ func TestBoundedContextIsolation(t *testing.T) {
 	}
 }
 
+func TestSamplingOwnsNoAutomationAggregateConstructionOrPersistence(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, relative := range []string{"domain/sampling", "application/sampling"} {
+		directory := filepath.Join(root, filepath.FromSlash(relative))
+		if _, err := os.Stat(directory); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		err := walkProductionGo(directory, func(path string, parsed *ast.File, fset *token.FileSet) {
+			automationNames := make(map[string]struct{})
+			for _, spec := range parsed.Imports {
+				if unquote(t, spec) != coreModule+"domain/automation" {
+					continue
+				}
+				name := "automation"
+				if spec.Name != nil {
+					name = spec.Name.Name
+				}
+				automationNames[name] = struct{}{}
+			}
+			ast.Inspect(parsed, func(node ast.Node) bool {
+				selector, ok := node.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				identifier, ok := selector.X.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if _, imported := automationNames[identifier.Name]; !imported {
+					return true
+				}
+				forbidden := strings.HasPrefix(selector.Sel.Name, "NewElementTarget") ||
+					strings.HasPrefix(selector.Sel.Name, "NewFlowFragment") ||
+					strings.HasSuffix(selector.Sel.Name, "Aggregate")
+				if forbidden {
+					rel, _ := filepath.Rel(root, path)
+					t.Errorf("%s:%d: Sampling must not construct or expose Automation aggregate %s", filepath.ToSlash(rel), fset.Position(selector.Pos()).Line, selector.Sel.Name)
+				}
+				return true
+			})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestWorkspacePackageIsRemoved(t *testing.T) {
 	root := repositoryRoot(t)
 	workspacePath := filepath.Join(root, "domain", "workspace")
@@ -306,7 +355,11 @@ func walkGo(root string, includeTests bool, visit func(string, *ast.File, *token
 			return nil
 		}
 		fset := token.NewFileSet()
-		parsed, err := parser.ParseFile(fset, path, nil, 0)
+		// ParseComments, not mode 0. With mode 0 the parser discards comments
+		// entirely and ast.File.Comments is always nil, which silently turned
+		// every comment-scanning guard built on this walker into a test that
+		// could not fail.
+		parsed, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 		if err != nil {
 			return err
 		}
@@ -321,7 +374,13 @@ func domainContext(packageName string) (string, bool) {
 		return "execution", true
 	case "sampling", "automation":
 		return "automation", true
-	case "fingerprint", "interpolation", "parameter":
+	// weburl joins the shared kernel because the absolute-HTTP(S) rule is one
+	// rule that both contexts already enforced separately — automation on an
+	// environment base URL, execution on a navigation target — and had already
+	// drifted apart while doing so. It holds no aggregate state and returns a
+	// closed reason vocabulary rather than a fault, so each context keeps its
+	// own code, field, and message.
+	case "fault", "fingerprint", "interpolation", "parameter", "weburl":
 		return "shared", true
 	default:
 		return "", false

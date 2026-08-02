@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestAggregateServicesRejectMissingRepositoriesWithoutPanicking(t *testing.T) {
@@ -19,11 +20,11 @@ func TestAggregateServicesRejectMissingRepositoriesWithoutPanicking(t *testing.T
 		}},
 		{"node", func() error { _, err := NewNodeService(nil).Delete(context.Background(), "node", 1, 1); return err }},
 		{"workflow", func() error {
-			_, err := NewWorkflowService(nil).Delete(context.Background(), "workflow", 1, 1)
+			_, err := NewFlowFragmentService(nil).Delete(context.Background(), "workflow", 1, 1)
 			return err
 		}},
 		{"test task", func() error {
-			_, err := NewTestTaskService(nil).PublishVersion(context.Background(), "task", 1, domain.TestTaskVersionPublication{ID: "v2"})
+			_, err := NewExecutionFlowService(nil).PublishVersion(context.Background(), "task", 1, domain.ExecutionFlowVersionPublication{ID: "v2"})
 			return err
 		}},
 	}
@@ -34,7 +35,7 @@ func TestAggregateServicesRejectMissingRepositoriesWithoutPanicking(t *testing.T
 					t.Fatalf("panicked: %v", recovered)
 				}
 			}()
-			if err := test.call(); !errors.Is(err, ErrAutomationConfiguration) {
+			if err := test.call(); !fault.IsCode(err, CodeAutomationConfigurationInvalid) {
 				t.Fatalf("error = %v", err)
 			}
 		})
@@ -56,22 +57,23 @@ func TestConstructorsAndMethodsRejectTypedNilDependencies(t *testing.T) {
 	var sampling *typedNilSamplingTransaction
 
 	tests := []struct {
-		name string
-		call func() error
-		want error
+		name     string
+		call     func() error
+		wantCode fault.Code
+		want     error
 	}{
 		{"environment", func() error {
 			_, err := NewEnvironmentService(environment).Delete(context.Background(), "id", 1, 1)
 			return err
-		}, ErrAutomationConfiguration},
+		}, CodeAutomationConfigurationInvalid, nil},
 		{"folder", func() error {
 			_, err := NewFolderService(folder).Delete(context.Background(), domain.FolderNode, "id", 1)
 			return err
-		}, ErrAutomationConfiguration},
+		}, CodeAutomationConfigurationInvalid, nil},
 		{"sampling", func() error {
-			_, err := NewSamplingPublicationService(sampling, nil).Publish(context.Background(), SamplingPublicationCommand{})
+			_, err := NewSamplingPublicationService(sampling).Publish(context.Background(), SamplingPublicationCommand{})
 			return err
-		}, ErrSamplingPublicationConfiguration},
+		}, CodeSamplingPublicationUnavailable, nil},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -80,7 +82,11 @@ func TestConstructorsAndMethodsRejectTypedNilDependencies(t *testing.T) {
 					t.Fatalf("panicked: %v", recovered)
 				}
 			}()
-			if err := test.call(); !errors.Is(err, test.want) {
+			err := test.call()
+			if test.wantCode != "" && !fault.IsCode(err, test.wantCode) {
+				t.Fatalf("error = %v, want code %v", err, test.wantCode)
+			}
+			if test.want != nil && !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)
 			}
 		})
@@ -108,7 +114,7 @@ func TestFolderMethodsRejectBlankIdentityBeforeRepositoryAccess(t *testing.T) {
 }
 
 func TestHealReviewRequestValidateDirectBoundaries(t *testing.T) {
-	valid := HealReviewRequest{CommandID: "command", Decision: HealReviewApprove, NodeID: "node", BaseNodeVersionID: "version", CandidateHash: "hash", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
+	valid := HealReviewRequest{CommandID: "command", Decision: HealReviewApprove, ElementTargetID: "node", BaseNodeVersionID: "version", CandidateHash: "hash", ExpectedCandidateRevision: 1, ExpectedNodeRevision: 1}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid request: %v", err)
 	}
@@ -118,7 +124,7 @@ func TestHealReviewRequestValidateDirectBoundaries(t *testing.T) {
 		mutate func(*HealReviewRequest)
 	}{
 		{"blank command", func(value *HealReviewRequest) { value.CommandID = " \t" }},
-		{"blank node", func(value *HealReviewRequest) { value.NodeID = "" }},
+		{"blank node", func(value *HealReviewRequest) { value.ElementTargetID = "" }},
 		{"blank base", func(value *HealReviewRequest) { value.BaseNodeVersionID = " " }},
 		{"blank hash", func(value *HealReviewRequest) { value.CandidateHash = "" }},
 		{"invalid decision", func(value *HealReviewRequest) { value.Decision = "UNKNOWN" }},
@@ -137,14 +143,14 @@ func TestHealReviewRequestValidateDirectBoundaries(t *testing.T) {
 }
 
 func TestHealReviewIntentNextNodeValueReturnsOwnedValue(t *testing.T) {
-	if got := (HealReviewIntent{}).NextNodeValue(); got.Node.ID != "" {
+	if got := (HealReviewIntent{}).NextNodeValue(); got.ElementTarget.ID != "" {
 		t.Fatalf("nil node value = %#v", got)
 	}
-	node := domain.NodeAggregate{Node: domain.Node{ID: "node"}, Current: domain.NodeVersion{ID: "version", Selectors: nil}}
+	node := domain.ElementTargetAggregate{ElementTarget: domain.ElementTarget{ID: "node"}, Current: domain.ElementTargetVersion{ID: "version", Selectors: nil}}
 	intent := HealReviewIntent{NextNode: &node}
 	got := intent.NextNodeValue()
-	got.Node.ID = "changed"
-	if intent.NextNode.Node.ID != "node" {
+	got.ElementTarget.ID = "changed"
+	if intent.NextNode.ElementTarget.ID != "node" {
 		t.Fatal("returned node aliases intent")
 	}
 }

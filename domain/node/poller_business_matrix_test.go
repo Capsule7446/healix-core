@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func TestPollerBusinessMatrix(t *testing.T) {
@@ -13,7 +15,7 @@ func TestPollerBusinessMatrix(t *testing.T) {
 		condition func(*int) func(context.Context) (bool, error)
 		parent    func() context.Context
 		wantErr   bool
-		wantKind  ErrorKind
+		wantCode  fault.Code
 		wantCalls int
 	}{
 		{name: "immediate success", condition: func(c *int) func(context.Context) (bool, error) {
@@ -23,20 +25,20 @@ func TestPollerBusinessMatrix(t *testing.T) {
 			return func(context.Context) (bool, error) {
 				*c++
 				if *c == 1 {
-					return false, TransientError("poll", errors.New("temporary"))
+					return false, transientDriverFault(errors.New("temporary"))
 				}
 				return true, nil
 			}
 		}, wantCalls: 2},
 		{name: "permanent error", condition: func(c *int) func(context.Context) (bool, error) {
 			return func(context.Context) (bool, error) { *c++; return false, errors.New("invalid") }
-		}, wantErr: true, wantKind: ErrorUnknown, wantCalls: 1},
+		}, wantErr: true, wantCalls: 1},
 		{name: "timeout false condition", condition: func(c *int) func(context.Context) (bool, error) {
 			return func(context.Context) (bool, error) { *c++; return false, nil }
-		}, wantErr: true, wantKind: ErrorTimeout},
+		}, wantErr: true, wantCode: CodeTimeout},
 		{name: "parent cancellation", condition: func(c *int) func(context.Context) (bool, error) {
 			return func(context.Context) (bool, error) { *c++; return false, nil }
-		}, parent: func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }, wantErr: true, wantKind: ErrorContextClosed},
+		}, parent: func() context.Context { ctx, cancel := context.WithCancel(context.Background()); cancel(); return ctx }, wantErr: true, wantCode: CodeCanceled},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -52,9 +54,22 @@ func TestPollerBusinessMatrix(t *testing.T) {
 			if tc.wantCalls > 0 && calls != tc.wantCalls {
 				t.Fatalf("calls=%d want=%d", calls, tc.wantCalls)
 			}
-			if tc.wantErr && errorKind(err) != tc.wantKind {
-				t.Fatalf("kind=%s err=%v", errorKind(err), err)
+			if tc.wantCode != "" && !fault.IsCode(err, tc.wantCode) {
+				t.Fatalf("code=%q err=%v", nodeFaultCode(err), err)
 			}
 		})
+	}
+}
+
+func TestPollerDoesNotRetryMixedTransientFailures(t *testing.T) {
+	transient := transientDriverFault(errors.New("temporary"))
+	permanent := errors.New("invalid")
+	calls := 0
+	err := (Poller{Interval: time.Millisecond}).Run(context.Background(), time.Second, func(context.Context) (bool, error) {
+		calls++
+		return false, errors.Join(transient, permanent)
+	})
+	if calls != 1 || !errors.Is(err, permanent) {
+		t.Fatalf("calls=%d err=%v", calls, err)
 	}
 }

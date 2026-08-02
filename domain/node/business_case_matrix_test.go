@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -21,11 +22,12 @@ func TestStepActionFailureBusinessMatrix(t *testing.T) {
 		name      string
 		action    Action
 		configure func(*matrixElement)
-		wantKind  ErrorKind
+		wantKind  fault.Kind
+		wantCode  fault.Code
 	}{
-		{name: "click action error", action: Action{Kind: ActionClick}, configure: func(e *matrixElement) { e.actionErr = errors.New("click failed") }, wantKind: ErrorUnknown},
-		{name: "stable wait error", action: Action{Kind: ActionHover}, configure: func(e *matrixElement) { e.waitStableErr = errors.New("moving") }, wantKind: ErrorUnknown},
-		{name: "select without value", action: Action{Kind: ActionSelect}, configure: func(*matrixElement) {}, wantKind: ErrorUnknown},
+		{name: "click action error", action: Action{Kind: ActionClick}, configure: func(e *matrixElement) { e.actionErr = errors.New("click failed") }, wantKind: fault.Internal, wantCode: CodeOperationFailed},
+		{name: "stable wait error", action: Action{Kind: ActionHover}, configure: func(e *matrixElement) { e.waitStableErr = errors.New("moving") }, wantKind: fault.Internal, wantCode: CodeOperationFailed},
+		{name: "select without value", action: Action{Kind: ActionSelect}, configure: func(*matrixElement) {}, wantKind: fault.InvalidArgument, wantCode: CodeStepConfigurationInvalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -33,11 +35,11 @@ func TestStepActionFailureBusinessMatrix(t *testing.T) {
 			tc.configure(e)
 			d := &matrixDriver{element: e}
 			facts := &operationFacts{}
-			err := (&StepNode{NodeID: "step", Target: fingerprint.NodeSpec{ID: "target"}, Action: tc.action}).Run(context.Background(), &Runtime{Driver: d, OperationObserver: facts})
+			err := (&StepNode{NodeID: "step", Target: fingerprint.ElementTargetSpec{ID: "target"}, Action: tc.action}).Run(context.Background(), &Runtime{Driver: d, OperationObserver: facts})
 			if err == nil {
 				t.Fatal("expected action failure")
 			}
-			if len(facts.observations) == 0 || facts.observations[len(facts.observations)-1].ErrorKind != tc.wantKind {
+			if len(facts.observations) == 0 || facts.observations[len(facts.observations)-1].FaultKind != tc.wantKind || facts.observations[len(facts.observations)-1].FaultCode != tc.wantCode {
 				t.Fatalf("observations=%+v", facts.observations)
 			}
 		})
@@ -55,13 +57,13 @@ func TestWaitControlBusinessMatrix(t *testing.T) {
 		{name: "present", kind: WaitElement, element: &matrixElement{exists: true}},
 		{name: "visible", kind: WaitElementVisible, element: &matrixElement{exists: true, visible: true}},
 		{name: "invisible", kind: WaitElementInvisible, element: &matrixElement{exists: true, visible: false}},
-		{name: "removed satisfies invisible", kind: WaitElementInvisible, locateErr: ErrElementNotFound},
+		{name: "removed satisfies invisible", kind: WaitElementInvisible, locateErr: NewElementNotFoundError()},
 		{name: "permanent locate error", kind: WaitElement, locateErr: errors.New("selector invalid"), wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &matrixDriver{element: tc.element, locate: func(context.Context, fingerprint.NodeSpec) (Element, error) { return tc.element, tc.locateErr }}
-			err := (&WaitNode{NodeID: "wait", Kind: tc.kind, Target: fingerprint.NodeSpec{ID: "target"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: d})
+			d := &matrixDriver{element: tc.element, locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return tc.element, tc.locateErr }}
+			err := (&WaitNode{NodeID: "wait", Kind: tc.kind, Target: fingerprint.ElementTargetSpec{ID: "target"}, Timeout: time.Second}).Run(context.Background(), &Runtime{Driver: d})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v", err)
 			}

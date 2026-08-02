@@ -2,13 +2,13 @@ package conformancetest
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 	"time"
 
 	application "github.com/Capsule7446/healix-core/application/automation"
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type FaultPoint string
@@ -52,7 +52,22 @@ func Run(t *testing.T, factory Factory) {
 		if err := fixture.AssertApplied(intent); err != nil {
 			t.Fatalf("materialized publication: %v", err)
 		}
+		if len(first.Result.Nodes) == 0 {
+			t.Fatal("fixture publication requires node mappings")
+		}
+		first.Result.Nodes[0].ElementTargetVersionID = "caller-mutated"
 		after := fixture.Snapshot()
+		lookup, found, err := fixture.LookupSamplingPublication(context.Background(), intent.PublicationID, intent.RequestDigest)
+		if err != nil || !found || lookup.Status != application.PublishSamplingReplayed || !reflect.DeepEqual(lookup.Result, expected.Result) {
+			t.Fatalf("lookup = %#v, found=%t, err=%v", lookup, found, err)
+		}
+		lookup.Result.Nodes[0].ElementTargetVersionID = "lookup-mutated"
+		if _, found, err := fixture.LookupSamplingPublication(context.Background(), intent.PublicationID, "sha256:different"); err == nil || found || !fault.IsCode(err, application.CodeSamplingPublicationIdentityConflict) {
+			t.Fatalf("conflicting lookup found=%t err=%v", found, err)
+		}
+		if got := fixture.Snapshot(); !reflect.DeepEqual(got, after) {
+			t.Fatalf("lookup changed state: before=%#v after=%#v", after, got)
+		}
 		replay, err := fixture.PublishSampling(context.Background(), intent)
 		expected.Status = application.PublishSamplingReplayed
 		if err != nil || !reflect.DeepEqual(replay, expected) {
@@ -62,30 +77,34 @@ func Run(t *testing.T, factory Factory) {
 			t.Fatalf("replay changed state: before=%#v after=%#v", after, got)
 		}
 		changed := intent
+		beforeDigestMismatch := fixture.Snapshot()
 		changed.RequestDigest = "sha256:changed"
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationDigestMismatch) {
 			t.Fatalf("malformed digest error = %v", err)
+		}
+		if got := fixture.Snapshot(); !reflect.DeepEqual(got, beforeDigestMismatch) {
+			t.Fatalf("digest mismatch changed state: before=%#v after=%#v", beforeDigestMismatch, got)
 		}
 		changed = intent
 		changed.Publication = intent.Publication.Clone()
-		changed.Publication.Workflow.Workflow.DisplayName = "changed payload"
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
+		changed.Publication.FlowFragment.FlowFragment.DisplayName = "changed payload"
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationDigestMismatch) {
 			t.Fatalf("payload digest mismatch error = %v", err)
 		}
 		changed = intent
 		changed.Publication = intent.Publication.Clone()
-		changed.Publication.Workflow.Workflow.DisplayName = "different valid payload"
-		command := application.SamplingPublicationCommand{PublicationID: changed.PublicationID, ForceCreateAuthorization: changed.ForceCreateAuthorization, Publication: changed.Publication}
+		changed.Publication.FlowFragment.FlowFragment.DisplayName = "different valid payload"
+		command := application.SamplingPublicationCommand{PublicationID: changed.PublicationID, Publication: changed.Publication}
 		changed.RequestDigest, err = application.SamplingPublicationRequestDigest(command)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationIdentityConflict) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationIdentityConflict) {
 			t.Fatalf("identity conflict error = %v", err)
 		}
 		changed = intent
 		changed.RequestDigest, changed.PublicationID = "sha256:changed", "other-publication"
-		if _, err := fixture.PublishSampling(context.Background(), changed); !errors.Is(err, application.ErrSamplingPublicationDigestMismatch) {
+		if _, err := fixture.PublishSampling(context.Background(), changed); !fault.IsCode(err, application.CodeSamplingPublicationDigestMismatch) {
 			t.Fatalf("arbitrary digest error = %v", err)
 		}
 	})
@@ -122,7 +141,7 @@ func Run(t *testing.T, factory Factory) {
 			guarded := ""
 			for _, node := range intent.Publication.Nodes {
 				if node.ResolutionMode == test.mode {
-					guarded = node.Aggregate.Node.ID
+					guarded = node.Aggregate.ElementTarget.ID
 					break
 				}
 			}
@@ -131,7 +150,7 @@ func Run(t *testing.T, factory Factory) {
 			}
 			test.mutate(fixture, guarded)
 			before := fixture.Snapshot()
-			if _, err := fixture.PublishSampling(context.Background(), intent); !errors.Is(err, application.ErrSamplingPublicationAuthorityConflict) {
+			if _, err := fixture.PublishSampling(context.Background(), intent); !fault.IsCode(err, application.CodeSamplingPublicationAuthorityConflict) {
 				t.Fatalf("stale authority error = %v", err)
 			}
 			if got := fixture.Snapshot(); !reflect.DeepEqual(got, before) {
@@ -182,7 +201,7 @@ func Run(t *testing.T, factory Factory) {
 				winner = got.intent
 				continue
 			}
-			if !errors.Is(got.err, application.ErrSamplingPublicationAuthorityConflict) || loser.PublicationID != "" {
+			if !fault.IsCode(got.err, application.CodeSamplingPublicationAuthorityConflict) || loser.PublicationID != "" {
 				t.Fatalf("competing loser error = %v", got.err)
 			}
 			loser = got.intent
@@ -249,7 +268,7 @@ func Run(t *testing.T, factory Factory) {
 func Result(publication domain.SamplingPublication) domain.SamplingPublicationResult {
 	mappings := make([]domain.SamplingNodeMapping, len(publication.Nodes))
 	for index, node := range publication.Nodes {
-		mappings[index] = domain.SamplingNodeMapping{TemporaryNodeID: node.TemporaryNodeID, NodeID: node.Aggregate.Node.ID, NodeVersionID: node.Aggregate.Current.ID, ResolutionMode: node.ResolutionMode}
+		mappings[index] = domain.SamplingNodeMapping{TemporaryElementTargetID: node.TemporaryElementTargetID, ElementTargetID: node.Aggregate.ElementTarget.ID, ElementTargetVersionID: node.Aggregate.Current.ID, ResolutionMode: node.ResolutionMode}
 	}
-	return domain.SamplingPublicationResult{WorkflowID: publication.Workflow.Workflow.ID, WorkflowVersionID: publication.Workflow.Current.ID, VersionNumber: publication.Workflow.Current.VersionNumber, Nodes: mappings}
+	return domain.SamplingPublicationResult{FlowFragmentID: publication.FlowFragment.FlowFragment.ID, WorkflowVersionID: publication.FlowFragment.Current.ID, VersionNumber: publication.FlowFragment.Current.VersionNumber, Nodes: mappings}
 }

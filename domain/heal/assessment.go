@@ -22,7 +22,9 @@ type ReasonCode string
 const (
 	ReasonNoCandidate    ReasonCode = "no_candidate"
 	ReasonOriginMismatch ReasonCode = "origin_mismatch"
+	ReasonOriginUnknown  ReasonCode = "origin_unknown"
 	ReasonPageMismatch   ReasonCode = "page_mismatch"
+	ReasonPageUnknown    ReasonCode = "page_unknown"
 	ReasonRoleMismatch   ReasonCode = "role_mismatch"
 	ReasonTagMismatch    ReasonCode = "tag_mismatch"
 	ReasonFormMismatch   ReasonCode = "form_mismatch"
@@ -38,7 +40,7 @@ type Assessment struct {
 	Explanation string
 }
 
-func Assess(target fingerprint.NodeSpec, decision Decision, current ExecutionContext, policy SafetyPolicy) (Assessment, error) {
+func Assess(target fingerprint.ElementTargetSpec, decision Decision, current ExecutionContext, policy SafetyPolicy) (Assessment, error) {
 	if err := decision.Validate(); err != nil {
 		return Assessment{}, err
 	}
@@ -56,13 +58,33 @@ func Assess(target fingerprint.NodeSpec, decision Decision, current ExecutionCon
 	}
 	if a.Disposition != DispositionBlock {
 		best := decision.Best.Fingerprint
-		if target.Origin != "" && current.Origin != "" && target.Origin != current.Origin {
-			add(ReasonOriginMismatch)
-			a.Disposition = DispositionBlock
+		// A target recorded on a named origin may only be healed once the
+		// current origin is known to match. An unknown current origin is a
+		// refusal, not a pass: the check exists for the case where the page
+		// moved, and a page that moved somewhere unreportable is not safer
+		// than one that moved somewhere named.
+		if target.Origin != "" {
+			switch {
+			case current.Origin == "":
+				add(ReasonOriginUnknown)
+				a.Disposition = DispositionBlock
+			case target.Origin != current.Origin:
+				add(ReasonOriginMismatch)
+				a.Disposition = DispositionBlock
+			}
 		}
-		if target.PageURL != "" && current.PageURL != "" && normalizedURL(target.PageURL) != normalizedURL(current.PageURL) && a.Disposition != DispositionBlock {
-			add(ReasonPageMismatch)
-			a.Disposition = DispositionReview
+		// The page URL is a weaker signal than the origin — same-origin
+		// navigation is ordinary — so an unconfirmed page downgrades to
+		// review rather than blocking outright.
+		if target.PageURL != "" && a.Disposition != DispositionBlock {
+			switch {
+			case current.PageURL == "":
+				add(ReasonPageUnknown)
+				a.Disposition = DispositionReview
+			case normalizedURL(target.PageURL) != normalizedURL(current.PageURL):
+				add(ReasonPageMismatch)
+				a.Disposition = DispositionReview
+			}
 		}
 		if target.Role != "" && best.ARIA.Role != "" && target.Role != best.ARIA.Role {
 			add(ReasonRoleMismatch)

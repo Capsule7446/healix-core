@@ -3,21 +3,74 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
-var (
-	ErrTimelineConfiguration   = errors.New("engine: invalid timeline configuration")
-	ErrCompletionConfiguration = errors.New("engine: invalid completion configuration")
+const (
+	CodeTimelineConfigurationInvalid   fault.Code = "EXECUTION_TIMELINE_CONFIGURATION_INVALID"
+	CodeCompletionConfigurationInvalid fault.Code = "EXECUTION_COMPLETION_CONFIGURATION_INVALID"
+	// CodeRuntimeConfigurationInvalid covers the coordinator's own constructor
+	// checks on Config/Program: none of these are a caller argument the coordinator
+	// can re-validate differently, so the remediation is always to repair the
+	// runtime configuration before starting, hence FAILED_PRECONDITION.
+	CodeRuntimeConfigurationInvalid fault.Code = "EXECUTION_RUNTIME_CONFIGURATION_INVALID"
+	// CodeSchedulingAdapterUnavailable covers a recorder start/stop failure: the
+	// host adapter, not the caller-supplied configuration, is unavailable, so the
+	// remediation is retry rather than correcting an argument.
+	CodeSchedulingAdapterUnavailable fault.Code = "EXECUTION_SCHEDULING_ADAPTER_UNAVAILABLE"
 )
 
-func runProgram(ctx context.Context, program node.Program, cfg Config) (result RunResult, runErr error) {
-	result = RunResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
+func timelineConfigurationError() error {
+	err, constructionErr := fault.New(fault.FailedPrecondition, CodeTimelineConfigurationInvalid, "execution timeline configuration is invalid")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func completionConfigurationError() error {
+	err, constructionErr := fault.New(fault.FailedPrecondition, CodeCompletionConfigurationInvalid, "execution completion configuration is invalid")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+// runtimeConfigurationInvalidError classifies a coordinator constructor check.
+// The detail (which field, or why) stays private on cause; the public message
+// is always the fixed registry text.
+func runtimeConfigurationInvalidError(cause error) error {
+	err, constructionErr := fault.Wrap(cause, fault.FailedPrecondition, CodeRuntimeConfigurationInvalid, "execution runtime configuration is invalid")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+// classifySchedulingAdapterFailure gives a bare recorder start/stop failure its
+// registered code, and lets an already-classified failure through unchanged so
+// this boundary never buries a code the adapter already produced.
+func classifySchedulingAdapterFailure(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	err, constructionErr := fault.Wrap(cause, fault.Unavailable, CodeSchedulingAdapterUnavailable, "scheduling adapter is unavailable")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func runProgram(ctx context.Context, program node.Program, cfg Config) (result EntryResult, runErr error) {
+	result = EntryResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
 	if ctx == nil {
-		return result, fmt.Errorf("context is required")
+		return result, runtimeConfigurationInvalidError(errors.New("context is required"))
 	}
 	if err := validateConfig(program, cfg); err != nil {
 		return result, err
@@ -26,13 +79,13 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result R
 	var timeline node.RecordingTimeline
 	if cfg.Recorder != nil {
 		var err error
-		timeline, err = cfg.Recorder.Start(ctx, cfg.RunID)
+		timeline, err = cfg.Recorder.Start(ctx, cfg.InstanceID)
 		if err != nil {
 			result.RecordingOutcome = RecordingStartFailed
 			if cfg.StepTimeline != nil {
 				result.TimelineOutcome = TimelineStartFailed
 			}
-			return result, fmt.Errorf("start recorder: %w", err)
+			return result, classifySchedulingAdapterFailure(err)
 		}
 		result.RecordingOutcome = RecordingSucceeded
 		defer func() {
@@ -40,14 +93,14 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result R
 			defer cancel()
 			if err := cfg.Recorder.Stop(cleanupCtx, true); err != nil {
 				result.RecordingOutcome = RecordingStopFailed
-				runErr = errors.Join(runErr, fmt.Errorf("stop recorder: %w", err))
+				runErr = errors.Join(runErr, classifySchedulingAdapterFailure(err))
 			}
 		}()
 	}
 	if cfg.StepTimeline != nil {
 		if timeline == nil {
 			result.TimelineOutcome = TimelineStartFailed
-			return result, fmt.Errorf("%w: recorder returned nil timeline", ErrTimelineConfiguration)
+			return result, timelineConfigurationError()
 		}
 		result.TimelineOutcome = TimelineComplete
 	}
@@ -55,60 +108,69 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result R
 	rt := newRuntime(program, cfg, timeline)
 	runErr = program.Root.Run(ctx, rt)
 	result.ExecutionOutcome = executionOutcome(node.LeafExecutionError(runErr))
-	if errors.Is(runErr, node.ErrStepTimelineStart) {
+	if fault.IsCode(runErr, node.CodeStepTimelineStartFailed) {
 		if !rt.LeafExecutionStarted() {
 			result.ExecutionOutcome = ExecutionNotStarted
 		}
 		result.TimelineOutcome = TimelineStartFailed
 	}
-	if errors.Is(runErr, node.ErrStepTimelineFinish) {
+	if fault.IsCode(runErr, node.CodeStepTimelineFinishFailed) {
 		result.TimelineOutcome = TimelineFinishFailed
 	}
 	return result, runErr
 }
 
 func validateConfig(program node.Program, cfg Config) error {
-	if cfg.RunID == "" {
-		return fmt.Errorf("run ID is required")
+	if cfg.InstanceID.Validate() != nil {
+		return runtimeConfigurationInvalidError(errors.New("instance ID is required"))
 	}
 	if cfg.Facts != nil && cfg.ClaimToken == "" {
-		return fmt.Errorf("claim token is required when execution facts are enabled")
+		return runtimeConfigurationInvalidError(errors.New("claim token is required when execution facts are enabled"))
 	}
 	if cfg.Driver == nil {
-		return fmt.Errorf("driver is required")
+		return runtimeConfigurationInvalidError(errors.New("driver is required"))
+	}
+	// Healing without a location port is not a degraded mode, it is a silent
+	// one: every heal would be refused for a reason the host cannot see, and
+	// "healing stopped working" invites turning the safety check off. Reject
+	// the combination up front instead.
+	if cfg.Healer != nil && cfg.PageLocator == nil {
+		return runtimeConfigurationInvalidError(errors.New("page locator is required when healing is enabled"))
 	}
 	if cfg.StepInterval < 0 {
-		return fmt.Errorf("step interval must not be negative")
+		return runtimeConfigurationInvalidError(errors.New("step interval must not be negative"))
 	}
 	if program.Root == nil {
-		return fmt.Errorf("program root is required")
+		return runtimeConfigurationInvalidError(errors.New("program root is required"))
 	}
 	if cfg.StepTimeline != nil && cfg.Recorder == nil {
-		return fmt.Errorf("%w: recorder is required when step timeline is enabled", ErrTimelineConfiguration)
+		return timelineConfigurationError()
 	}
 	if cfg.CompletionChain.HasHandlers() && cfg.ReadOnlyBrowser == nil {
-		return fmt.Errorf("%w: read-only browser is required when completion handlers are enabled", ErrCompletionConfiguration)
+		return completionConfigurationError()
 	}
 	return nil
 }
 
 func executionOutcome(err error) ExecutionOutcome {
 	if err == nil {
-		return ExecutionSucceeded
+		return OutcomeSucceeded
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return ExecutionCanceled
+		return OutcomeCanceled
 	}
-	return ExecutionFailed
+	return OutcomeFailed
 }
 
 func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimeline) *node.Runtime {
 	return &node.Runtime{
-		RunID:              cfg.RunID,
+		InstanceID:         cfg.InstanceID,
+		EntryID:            cfg.EntryID,
 		ClaimToken:         cfg.ClaimToken,
 		StepInterval:       cfg.StepInterval,
 		Specs:              program.Specs,
 		Driver:             cfg.Driver,
+		PageLocator:        cfg.PageLocator,
 		Healer:             cfg.Healer,
 		Recorder:           cfg.Recorder,
 		Facts:              cfg.Facts,

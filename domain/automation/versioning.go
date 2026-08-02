@@ -1,84 +1,94 @@
 package automation
 
 import (
-	"errors"
-	"fmt"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 	"sort"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
 // ValidateLoadedHistory 验证细节/水合作用形状。列表查询故意允许省略版本，因此不调用它。
-func (a NodeAggregate) ValidateLoadedHistory() error {
-	if a.Node.CurrentVersionID == "" {
+// It returns a single-violation AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID
+// envelope: the short-circuit is deterministic (the walk is over the versions
+// slice in order, never a map), and no version identity reaches public text.
+func (a ElementTargetAggregate) ValidateLoadedHistory() error {
+	if a.ElementTarget.CurrentVersionID == "" {
 		if a.Current.ID != "" {
-			return errors.New("node without a current pointer cannot carry a current version")
+			return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "an element target without a current pointer cannot carry a current version"))
 		}
 		for _, version := range a.Versions {
-			if version.NodeID != a.Node.ID {
-				return errors.New("node history version belongs to another node")
+			if version.ElementTargetID != a.ElementTarget.ID {
+				return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another element target"))
 			}
 			if version.DeletedAt == 0 {
-				return errors.New("node with an available version requires a current pointer")
+				return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldRequired, "currentVersionId", "an element target with an available version requires a current pointer"))
 			}
 		}
-		return validateVersionIdentity(a.Node.ID, nodeVersionIdentities(a.Versions))
+		if violation, invalid := validateVersionIdentity(nodeVersionIdentities(a.Versions)); invalid {
+			return elementTargetHistoryInvalidError(violation)
+		}
+		return nil
 	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
-	if err := validateVersionIdentity(a.Node.ID, nodeVersionIdentities(a.Versions)); err != nil {
-		return err
+	if violation, invalid := validateVersionIdentity(nodeVersionIdentities(a.Versions)); invalid {
+		return elementTargetHistoryInvalidError(violation)
 	}
 	found := false
 	for _, version := range a.Versions {
-		if version.NodeID != a.Node.ID {
-			return errors.New("node history version belongs to another node")
+		if version.ElementTargetID != a.ElementTarget.ID {
+			return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another element target"))
 		}
 		if version.ID == a.Current.ID {
 			found = true
 		}
 	}
 	if !found {
-		return errors.New("node current version is missing from loaded history")
+		return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "the current version is missing from the loaded history"))
 	}
 	return nil
 }
 
-func (a WorkflowAggregate) ValidateLoadedHistory() error {
-	if a.Workflow.CurrentVersionID == "" {
+// ValidateLoadedHistory mirrors ElementTargetAggregate.ValidateLoadedHistory
+// for the flow fragment aggregate family.
+func (a FlowFragmentAggregate) ValidateLoadedHistory() error {
+	if a.FlowFragment.CurrentVersionID == "" {
 		if a.Current.ID != "" {
-			return errors.New("workflow without a current pointer cannot carry a current version")
+			return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "a flow fragment without a current pointer cannot carry a current version"))
 		}
 		for _, version := range a.Versions {
-			if version.WorkflowID != a.Workflow.ID {
-				return errors.New("workflow history version belongs to another workflow")
+			if version.FlowFragmentID != a.FlowFragment.ID {
+				return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another flow fragment"))
 			}
 			if version.DeletedAt == 0 {
-				return errors.New("workflow with an available version requires a current pointer")
+				return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldRequired, "currentVersionId", "a flow fragment with an available version requires a current pointer"))
 			}
 		}
-		return validateVersionIdentity(a.Workflow.ID, workflowVersionIdentities(a.Versions))
+		if violation, invalid := validateVersionIdentity(workflowVersionIdentities(a.Versions)); invalid {
+			return flowFragmentHistoryInvalidError(violation)
+		}
+		return nil
 	}
 	if err := a.Validate(); err != nil {
 		return err
 	}
-	if err := validateVersionIdentity(a.Workflow.ID, workflowVersionIdentities(a.Versions)); err != nil {
-		return err
+	if violation, invalid := validateVersionIdentity(workflowVersionIdentities(a.Versions)); invalid {
+		return flowFragmentHistoryInvalidError(violation)
 	}
 	found := false
 	for _, version := range a.Versions {
-		if version.WorkflowID != a.Workflow.ID {
-			return errors.New("workflow history version belongs to another workflow")
+		if version.FlowFragmentID != a.FlowFragment.ID {
+			return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "versions", "a history version belongs to another flow fragment"))
 		}
 		if version.ID == a.Current.ID {
 			found = true
 		}
 	}
 	if !found {
-		return errors.New("workflow current version is missing from loaded history")
+		return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "the current version is missing from the loaded history"))
 	}
 	return nil
 }
@@ -88,7 +98,7 @@ type versionIdentity struct {
 	number int
 }
 
-func nodeVersionIdentities(versions []NodeVersion) []versionIdentity {
+func nodeVersionIdentities(versions []ElementTargetVersion) []versionIdentity {
 	result := make([]versionIdentity, len(versions))
 	for i, version := range versions {
 		result[i] = versionIdentity{id: version.ID, number: version.VersionNumber}
@@ -96,7 +106,7 @@ func nodeVersionIdentities(versions []NodeVersion) []versionIdentity {
 	return result
 }
 
-func workflowVersionIdentities(versions []WorkflowVersion) []versionIdentity {
+func workflowVersionIdentities(versions []FlowFragmentVersion) []versionIdentity {
 	result := make([]versionIdentity, len(versions))
 	for i, version := range versions {
 		result[i] = versionIdentity{id: version.ID, number: version.VersionNumber}
@@ -104,16 +114,19 @@ func workflowVersionIdentities(versions []WorkflowVersion) []versionIdentity {
 	return result
 }
 
-func validateVersionIdentity(owner string, versions []versionIdentity) error {
+// validateVersionIdentity reports the first identity problem found by walking
+// the versions slice in order — never a map — so the result is a function of
+// the input alone. No version id reaches public text.
+func validateVersionIdentity(versions []versionIdentity) (fault.Violation, bool) {
 	seenIDs := map[string]bool{}
 	seenNumbers := map[int]bool{}
 	numbers := make([]int, 0, len(versions))
 	for _, version := range versions {
 		if strings.TrimSpace(version.id) == "" || version.number < 1 {
-			return fmt.Errorf("%s history contains an invalid version identity", owner)
+			return mustViolation(fault.CodeFieldInvalid, "versions", "history contains an invalid version identity"), true
 		}
 		if seenIDs[version.id] || seenNumbers[version.number] {
-			return fmt.Errorf("%s history contains duplicate version identity", owner)
+			return mustViolation(fault.CodeFieldDuplicate, "versions", "history contains a duplicate version identity"), true
 		}
 		seenIDs[version.id] = true
 		seenNumbers[version.number] = true
@@ -122,119 +135,136 @@ func validateVersionIdentity(owner string, versions []versionIdentity) error {
 	sort.Ints(numbers)
 	for index, number := range numbers {
 		if number != index+1 {
-			return fmt.Errorf("%s history version numbers must be contiguous from 1", owner)
+			return mustViolation(fault.CodeFieldInvalid, "versions", "history version numbers must be contiguous from 1"), true
 		}
 	}
-	return nil
+	return fault.Violation{}, false
 }
 
-// PublishVersion 创建一个新的不可变 NodeVersion 并返回一个新的聚合值。现有的历史和接收者永远不会改变。
-func (a NodeAggregate) PublishVersion(versionID, pageURL, origin string, selectors []fingerprint.Selector,
-	fp fingerprint.Fingerprint, source VersionSource, at int64) (NodeAggregate, error) {
+// PublishVersion 创建一个新的不可变 ElementTargetVersion 并返回一个新的聚合值。现有的历史和接收者永远不会改变。
+func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string, selectors []fingerprint.Selector,
+	fp fingerprint.Fingerprint, source VersionSource, at int64) (ElementTargetAggregate, error) {
 	if err := validateNodePublicationBase(a, versionID, at); err != nil {
-		return NodeAggregate{}, err
+		return ElementTargetAggregate{}, err
 	}
 	next := cloneNodeAggregate(a)
-	nextRevision, err := a.Node.Revision.Next()
+	nextRevision, err := a.ElementTarget.Revision.Next()
 	if err != nil {
-		return NodeAggregate{}, revisionError("node", a.Node.ID, err)
+		// Revision.Next already returns AUTOMATION_REVISION_EXHAUSTED. The wrapper
+		// this replaces welded the aggregate id into fresh public text on top of an
+		// already-classified fault.
+		return ElementTargetAggregate{}, err
 	}
 	versionNumber, err := nextNodeVersion(a)
 	if err != nil {
-		return NodeAggregate{}, fmt.Errorf("publish node version: %w", err)
+		// NextVersionNumber already returns AUTOMATION_VERSION_NUMBER_EXHAUSTED.
+		return ElementTargetAggregate{}, err
 	}
-	version := NodeVersion{ID: versionID, NodeID: a.Node.ID, VersionNumber: versionNumber,
+	version := ElementTargetVersion{ID: versionID, ElementTargetID: a.ElementTarget.ID, VersionNumber: versionNumber,
 		PageURL: pageURL, Origin: origin, Selectors: append([]fingerprint.Selector(nil), selectors...),
-		Fingerprint: cloneFingerprint(fp), Source: source, CreatedAt: at}
-	next.Node.CurrentVersionID = version.ID
-	next.Node.UpdatedAt = at
-	next.Node.Revision = nextRevision
+		Fingerprint: fp.Clone(), Source: source, CreatedAt: at}
+	next.ElementTarget.CurrentVersionID = version.ID
+	next.ElementTarget.UpdatedAt = at
+	next.ElementTarget.Revision = nextRevision
 	next.Current = cloneNodeVersion(version)
 	next.Versions = append(next.Versions, cloneNodeVersion(version))
 	if err := next.Validate(); err != nil {
-		return NodeAggregate{}, fmt.Errorf("publish node version: %w", err)
+		// Validate already returns AUTOMATION_ELEMENT_TARGET_INVALID.
+		return ElementTargetAggregate{}, err
 	}
 	return next, nil
 }
 
-// PublishVersion 创建一个新的不可变 WorkflowVersion。该定义是深度复制的，因此调用者拥有的编辑器切片不能改变已发布的历史记录。
-func (a WorkflowAggregate) PublishVersion(versionID string, definition WorkflowDefinition, at int64) (WorkflowAggregate, error) {
+// PublishVersion 创建一个新的不可变 FlowFragmentVersion。该定义是深度复制的，因此调用者拥有的编辑器切片不能改变已发布的历史记录。
+func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowFragmentContent, at int64) (FlowFragmentAggregate, error) {
 	if err := validateWorkflowPublicationBase(a, versionID, at); err != nil {
-		return WorkflowAggregate{}, err
+		return FlowFragmentAggregate{}, err
 	}
 	next := cloneWorkflowAggregate(a)
-	nextRevision, err := a.Workflow.Revision.Next()
+	nextRevision, err := a.FlowFragment.Revision.Next()
 	if err != nil {
-		return WorkflowAggregate{}, revisionError("workflow", a.Workflow.ID, err)
+		return FlowFragmentAggregate{}, err
 	}
 	versionNumber, err := nextWorkflowVersion(a)
 	if err != nil {
-		return WorkflowAggregate{}, fmt.Errorf("publish workflow version: %w", err)
+		// NextVersionNumber already returns AUTOMATION_VERSION_NUMBER_EXHAUSTED.
+		return FlowFragmentAggregate{}, err
 	}
-	version := WorkflowVersion{ID: versionID, WorkflowID: a.Workflow.ID,
+	version := FlowFragmentVersion{ID: versionID, FlowFragmentID: a.FlowFragment.ID,
 		VersionNumber: versionNumber, Definition: cloneWorkflowDefinition(definition), CreatedAt: at}
-	next.Workflow.CurrentVersionID = version.ID
-	next.Workflow.UpdatedAt = at
-	next.Workflow.Revision = nextRevision
+	next.FlowFragment.CurrentVersionID = version.ID
+	next.FlowFragment.UpdatedAt = at
+	next.FlowFragment.Revision = nextRevision
 	next.Current = cloneWorkflowVersion(version)
 	next.Versions = append(next.Versions, cloneWorkflowVersion(version))
 	if err := next.Validate(); err != nil {
-		return WorkflowAggregate{}, fmt.Errorf("publish workflow version: %w", err)
+		// Validate already returns AUTOMATION_FLOW_FRAGMENT_INVALID.
+		return FlowFragmentAggregate{}, err
 	}
 	return next, nil
 }
 
-func validateNodePublicationBase(a NodeAggregate, versionID string, at int64) error {
+// validateNodePublicationBase reports the shared publication preconditions.
+// A content failure from a.Validate() and a timing failure from
+// validateTransitionTime already carry their own registered code and pass
+// through unwrapped; only the pointer-consistency and identity checks that are
+// specific to publication mint their own AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID
+// violation.
+func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at int64) error {
 	if err := a.Validate(); err != nil {
-		return fmt.Errorf("invalid current node aggregate: %w", err)
-	}
-	if a.Node.CurrentVersionID != a.Current.ID {
-		return errors.New("node current version pointer is inconsistent")
-	}
-	if a.Node.DeletedAt != 0 {
-		return ErrDeletedAggregate
-	}
-	if err := validateTransitionTime(at, a.Node.UpdatedAt); err != nil {
 		return err
 	}
-	return validateNewVersionIdentity(versionID, at, a.Current.ID, nodeVersionIDs(a.Versions))
-}
-
-func validateWorkflowPublicationBase(a WorkflowAggregate, versionID string, at int64) error {
-	if err := a.Validate(); err != nil {
-		return fmt.Errorf("invalid current workflow aggregate: %w", err)
+	if a.ElementTarget.CurrentVersionID != a.Current.ID {
+		return elementTargetHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "current version pointer is inconsistent"))
 	}
-	if a.Workflow.CurrentVersionID != a.Current.ID {
-		return errors.New("workflow current version pointer is inconsistent")
+	if a.ElementTarget.DeletedAt != 0 {
+		return DeletedAggregateError()
 	}
-	if a.Workflow.DeletedAt != 0 {
-		return ErrDeletedAggregate
-	}
-	if err := validateTransitionTime(at, a.Workflow.UpdatedAt); err != nil {
+	if err := validateTransitionTime(at, a.ElementTarget.UpdatedAt); err != nil {
 		return err
 	}
-	return validateNewVersionIdentity(versionID, at, a.Current.ID, workflowVersionIDs(a.Versions))
+	return validateNewVersionIdentity(versionID, at, a.Current.ID, nodeVersionIDs(a.Versions), elementTargetHistoryInvalidError)
 }
 
-func validateNewVersionIdentity(versionID string, at int64, currentID string, existing []string) error {
+// validateWorkflowPublicationBase mirrors validateNodePublicationBase for the
+// flow fragment aggregate family.
+func validateWorkflowPublicationBase(a FlowFragmentAggregate, versionID string, at int64) error {
+	if err := a.Validate(); err != nil {
+		return err
+	}
+	if a.FlowFragment.CurrentVersionID != a.Current.ID {
+		return flowFragmentHistoryInvalidError(mustViolation(fault.CodeFieldMismatch, "currentVersionId", "current version pointer is inconsistent"))
+	}
+	if a.FlowFragment.DeletedAt != 0 {
+		return DeletedAggregateError()
+	}
+	if err := validateTransitionTime(at, a.FlowFragment.UpdatedAt); err != nil {
+		return err
+	}
+	return validateNewVersionIdentity(versionID, at, a.Current.ID, workflowVersionIDs(a.Versions), flowFragmentHistoryInvalidError)
+}
+
+// validateNewVersionIdentity is shared by both aggregate families; wrap builds
+// the family-specific history envelope around the single violation found.
+func validateNewVersionIdentity(versionID string, at int64, currentID string, existing []string, wrap func(...fault.Violation) error) error {
 	if strings.TrimSpace(versionID) == "" {
-		return errors.New("new version id is required")
+		return wrap(mustViolation(fault.CodeFieldRequired, "versionId", "new version id is required"))
 	}
 	if at <= 0 {
-		return errors.New("publication time must be positive")
+		return wrap(mustViolation(fault.CodeFieldInvalid, "publishedAt", "publication time must be positive"))
 	}
 	if versionID == currentID {
-		return errors.New("new version id must differ from the current version")
+		return wrap(mustViolation(fault.CodeFieldInvalid, "versionId", "new version id must differ from the current version"))
 	}
 	for _, id := range existing {
 		if versionID == id {
-			return errors.New("new version id already exists in history")
+			return wrap(mustViolation(fault.CodeFieldDuplicate, "versionId", "new version id already exists in history"))
 		}
 	}
 	return nil
 }
 
-func nextNodeVersion(a NodeAggregate) (int, error) {
+func nextNodeVersion(a ElementTargetAggregate) (int, error) {
 	metas := make([]VersionMeta, 0, len(a.Versions)+1)
 	seenCurrent := false
 	for _, version := range a.Versions {
@@ -247,7 +277,7 @@ func nextNodeVersion(a NodeAggregate) (int, error) {
 	return NextVersionNumber(metas)
 }
 
-func nextWorkflowVersion(a WorkflowAggregate) (int, error) {
+func nextWorkflowVersion(a FlowFragmentAggregate) (int, error) {
 	metas := make([]VersionMeta, 0, len(a.Versions)+1)
 	seenCurrent := false
 	for _, version := range a.Versions {
@@ -260,7 +290,7 @@ func nextWorkflowVersion(a WorkflowAggregate) (int, error) {
 	return NextVersionNumber(metas)
 }
 
-func nodeVersionIDs(versions []NodeVersion) []string {
+func nodeVersionIDs(versions []ElementTargetVersion) []string {
 	result := make([]string, len(versions))
 	for index, version := range versions {
 		result[index] = version.ID
@@ -268,7 +298,7 @@ func nodeVersionIDs(versions []NodeVersion) []string {
 	return result
 }
 
-func workflowVersionIDs(versions []WorkflowVersion) []string {
+func workflowVersionIDs(versions []FlowFragmentVersion) []string {
 	result := make([]string, len(versions))
 	for index, version := range versions {
 		result[index] = version.ID
@@ -276,74 +306,84 @@ func workflowVersionIDs(versions []WorkflowVersion) []string {
 	return result
 }
 
-func (a NodeAggregate) Clone() NodeAggregate {
+func (a ElementTargetAggregate) Clone() ElementTargetAggregate {
 	return cloneNodeAggregate(a)
 }
 
-func cloneNodeAggregate(input NodeAggregate) NodeAggregate {
+func cloneNodeAggregate(input ElementTargetAggregate) ElementTargetAggregate {
 	result := input
-	result.Node.Properties = input.Node.Properties.Clone()
+	result.ElementTarget.Properties = input.ElementTarget.Properties.Clone()
 	result.Current = cloneNodeVersion(input.Current)
-	result.Versions = make([]NodeVersion, len(input.Versions))
+	result.Versions = make([]ElementTargetVersion, len(input.Versions))
 	for index, version := range input.Versions {
 		result.Versions[index] = cloneNodeVersion(version)
 	}
 	return result
 }
 
-func cloneNodeVersion(input NodeVersion) NodeVersion {
+func cloneNodeVersion(input ElementTargetVersion) ElementTargetVersion {
 	result := input
 	result.Selectors = append([]fingerprint.Selector(nil), input.Selectors...)
-	result.Fingerprint = cloneFingerprint(input.Fingerprint)
+	result.Fingerprint = input.Fingerprint.Clone()
 	return result
 }
 
-func cloneFingerprint(input fingerprint.Fingerprint) fingerprint.Fingerprint {
+func cloneWorkflowAggregate(input FlowFragmentAggregate) FlowFragmentAggregate {
 	result := input
-	result.Path = append([]string(nil), input.Path...)
-	result.Framework = input.Framework.Clone()
-	result.Attributes = make(map[string]string, len(input.Attributes))
-	for key, value := range input.Attributes {
-		result.Attributes[key] = value
-	}
-	return result
-}
-
-func cloneWorkflowAggregate(input WorkflowAggregate) WorkflowAggregate {
-	result := input
-	result.Workflow.Properties = input.Workflow.Properties.Clone()
+	result.FlowFragment.Properties = input.FlowFragment.Properties.Clone()
 	result.Current = cloneWorkflowVersion(input.Current)
-	result.Versions = make([]WorkflowVersion, len(input.Versions))
+	result.Versions = make([]FlowFragmentVersion, len(input.Versions))
 	for index, version := range input.Versions {
 		result.Versions[index] = cloneWorkflowVersion(version)
 	}
 	return result
 }
 
-func cloneWorkflowVersion(input WorkflowVersion) WorkflowVersion {
+func cloneWorkflowVersion(input FlowFragmentVersion) FlowFragmentVersion {
 	result := input
 	result.Definition = cloneWorkflowDefinition(input.Definition)
 	return result
 }
 
-func cloneWorkflowDefinition(input WorkflowDefinition) WorkflowDefinition {
-	result := WorkflowDefinition{Steps: clonePublishedWorkflowSteps(input.Steps),
-		Parameters: append([]ParameterDefinition(nil), input.Parameters...)}
-	for index := range result.Parameters {
-		result.Parameters[index].Options = append([]string(nil), input.Parameters[index].Options...)
-		if value, present := input.Parameters[index].Default.Value(); present {
-			result.Parameters[index].Default = parameter.PresentValue(value)
+func cloneWorkflowDefinition(input FlowFragmentContent) FlowFragmentContent {
+	return FlowFragmentContent{Steps: CloneFlowFragmentSteps(input.Steps),
+		Parameters: CloneParameterDefinitions(input.Parameters)}
+}
+
+// CloneParameterDefinitions is the one deep copy of parameter definition
+// content. Sampling and the publication mapper both used a bare append, which
+// copies the slice but leaves every Options slice shared with the source. In
+// the mapper that meant a published, immutable FlowFragmentVersion shared an
+// array with the still-editable draft it came from.
+func CloneParameterDefinitions(input []ParameterDefinition) []ParameterDefinition {
+	if input == nil {
+		return nil
+	}
+	result := append([]ParameterDefinition(nil), input...)
+	for index := range result {
+		result[index].Options = append([]string(nil), input[index].Options...)
+		if value, present := input[index].Default.Value(); present {
+			result[index].Default = parameter.PresentValue(value)
 		}
 	}
 	return result
 }
 
-func clonePublishedWorkflowSteps(input []WorkflowStep) []WorkflowStep {
-	result := make([]WorkflowStep, len(input))
+// CloneFlowFragmentSteps is the one deep copy of flow fragment step content.
+//
+// Sampling held a second implementation of this for unpublished drafts. The two
+// drifted: that one never copied Validation.Assertion.ExpectedValues, so a cloned
+// draft shared the slice with its source and editing the copy silently edited the
+// original. Content shape belongs to whoever owns the type, so the copy does too.
+func CloneFlowFragmentSteps(input []FlowFragmentStep) []FlowFragmentStep {
+	if input == nil {
+		return nil
+	}
+	result := make([]FlowFragmentStep, len(input))
 	for index, step := range input {
 		copy := step
 		copy.Values = append([]string(nil), step.Values...)
-		copy.Children = clonePublishedWorkflowSteps(step.Children)
+		copy.Children = CloneFlowFragmentSteps(step.Children)
 		if step.Reference != nil {
 			reference := *step.Reference
 			reference.ParameterBindings = cloneParameterBindings(step.Reference.ParameterBindings)
@@ -360,7 +400,7 @@ func clonePublishedWorkflowSteps(input []WorkflowStep) []WorkflowStep {
 			group.Branches = make([]ValidationBranch, len(step.ValidationGroup.Branches))
 			for branchIndex, branch := range step.ValidationGroup.Branches {
 				group.Branches[branchIndex] = branch
-				group.Branches[branchIndex].Steps = clonePublishedWorkflowSteps(branch.Steps)
+				group.Branches[branchIndex].Steps = CloneFlowFragmentSteps(branch.Steps)
 			}
 			copy.ValidationGroup = &group
 		}

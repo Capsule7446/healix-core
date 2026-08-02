@@ -3,7 +3,7 @@ package evidence
 import "testing"
 
 func TestHealObservationUsesEvidenceOwnedDecisionBand(t *testing.T) {
-	observation := HealObservation{ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", NodeID: "node", BaseNodeVersionID: "version", Confidence: 0.8, DecisionBand: DecisionUnknown, ObservedAt: 1}
+	observation := HealObservation{ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, ElementTargetID: "node", BaseNodeVersionID: "version", Confidence: 0.8, DecisionBand: DecisionUnknown, ObservedAt: 1}
 	if err := observation.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -64,8 +64,8 @@ func TestValidationValueRejectsInvalidKindFieldCombinations(t *testing.T) {
 
 func TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason(t *testing.T) {
 	base := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
-		[]ValidationMemberIdentity{{BranchID: "branch", NodeID: "node"}}, 1,
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
+		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid terminal: %v", err)
@@ -102,14 +102,14 @@ func TestValidationGroupTerminalObservationRequiresConsistentWinnerAndReason(t *
 	if err := missingWinner.Validate(); err == nil {
 		t.Fatal("passed group accepted a winner outside expected members")
 	}
-	empty := NewValidationGroupTerminalObservation("terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch", nil, 1)
+	empty := NewValidationGroupTerminalObservation("terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch", nil, 1)
 	if err := empty.Validate(); err == nil {
 		t.Fatal("group without expected members was accepted")
 	}
 }
 
 func TestValidationObservationRejectsUnknownReviewStatus(t *testing.T) {
-	observation := ValidationObservation{ID: "validation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step", ValidationStepID: "validation-step", NodeID: "node", NodeVersionID: "version", AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(), Reason: "final", HealReviewStatus: "unknown", ObservedAt: 1}
+	observation := ValidationObservation{ID: "validation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), ValidationStepID: "validation-step", ElementTargetID: "node", ElementTargetVersionID: "version", AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(), Reason: "final", HealReviewStatus: "unknown", ObservedAt: 1}
 	if err := observation.Validate(); err == nil {
 		t.Fatal("expected review status rejection")
 	}

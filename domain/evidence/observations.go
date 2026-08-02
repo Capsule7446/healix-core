@@ -1,11 +1,12 @@
 package evidence
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -17,30 +18,68 @@ const (
 	DecisionBelowCap DecisionBand = "BELOW_CAP"
 )
 
+// ValidateDecisionBand rejects without naming the band or the candidate hash: the
+// band is caller-declared and the hash identifies a heal candidate.
 func ValidateDecisionBand(candidateHash string, band DecisionBand) error {
-	hasCandidate := strings.TrimSpace(candidateHash) != ""
-	if !hasCandidate && band != DecisionUnknown {
-		return errors.New("observation without a candidate must use UNKNOWN decision band")
-	}
-	if hasCandidate && band != DecisionApplied && band != DecisionBelowCap {
-		return errors.New("observation with a candidate requires APPLIED or BELOW_CAP decision band")
+	if violations := appendDecisionBandViolations(nil, candidateHash, band, ""); len(violations) != 0 {
+		return healObservationInvalidError(violations)
 	}
 	return nil
 }
 
+func appendDecisionBandViolations(violations []fault.Violation, candidateHash string, band DecisionBand, prefix string) []fault.Violation {
+	hasCandidate := strings.TrimSpace(candidateHash) != ""
+	field := joinField(prefix, "decisionBand")
+	if !hasCandidate && band != DecisionUnknown {
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "an observation without a candidate must use the unknown decision band"))
+	}
+	if hasCandidate && band != DecisionApplied && band != DecisionBelowCap {
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, field, "an observation with a candidate requires an applied or below-cap decision band"))
+	}
+	return violations
+}
+
 func ValidateConfidence(confidence float64) error {
-	if math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
-		return fmt.Errorf("confidence must be finite and between 0 and 1")
+	if violations := appendConfidenceViolations(nil, confidence, ""); len(violations) != 0 {
+		return healObservationInvalidError(violations)
 	}
 	return nil
+}
+
+func appendConfidenceViolations(violations []fault.Violation, confidence float64, prefix string) []fault.Violation {
+	if math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "confidence"), "confidence must be finite and within the inclusive range from zero through one"))
+	}
+	return violations
+}
+
+// appendOccurrenceViolations rejects a non-positive occurrence. The other two
+// components of the evidence coordinate are validated value types that cannot
+// hold a meaningless value; this one is a bare int, so every carrier routes its
+// check through here instead of restating the rule and letting the spellings
+// drift apart.
+func appendOccurrenceViolations(violations []fault.Violation, occurrence int, prefix string) []fault.Violation {
+	if occurrence <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "occurrence"), "occurrence must be positive"))
+	}
+	return violations
+}
+
+// joinField builds a logical field path relative to the aggregate being validated.
+func joinField(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return prefix + "." + name
 }
 
 type HealObservation struct {
 	ID                string
-	RunID             string
-	ExecutionID       string
-	StepExecutionID   string
-	NodeID            string
+	InstanceID        execution.InstanceID
+	EntryID           execution.EntryID
+	StepExecutionID   execution.StepExecutionID
+	Occurrence        int
+	ElementTargetID   string
 	BaseNodeVersionID string
 	CandidateHash     string
 	Selector          fingerprint.Selector
@@ -52,16 +91,20 @@ type HealObservation struct {
 }
 
 func (o HealObservation) Validate() error {
-	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.NodeID == "" || o.BaseNodeVersionID == "" {
-		return errors.New("heal observation requires identity")
+	var violations []fault.Violation
+	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ElementTargetID == "" || o.BaseNodeVersionID == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "heal observation identity is required"))
 	}
+	violations = appendOccurrenceViolations(violations, o.Occurrence, "")
 	if o.ObservedAt <= 0 {
-		return errors.New("heal observation requires positive time")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "heal observation time must be positive"))
 	}
-	if err := ValidateConfidence(o.Confidence); err != nil {
-		return err
+	violations = appendConfidenceViolations(violations, o.Confidence, "")
+	violations = appendDecisionBandViolations(violations, o.CandidateHash, o.DecisionBand, "")
+	if len(violations) != 0 {
+		return healObservationInvalidError(violations)
 	}
-	return ValidateDecisionBand(o.CandidateHash, o.DecisionBand)
+	return nil
 }
 
 type ValidationValueKind string
@@ -90,24 +133,33 @@ func CollectionValidationValue(values []string) ValidationValue {
 }
 func RedactedValidationValue() ValidationValue { return ValidationValue{Kind: ValidationValueRedacted} }
 
+// Validate never echoes the kind or the payload. The payload is observed page
+// content, which is exactly what a validation value may not disclose.
 func (v ValidationValue) Validate() error {
+	if violations := v.appendViolations(nil, ""); len(violations) != 0 {
+		return validationObservationInvalidError(violations)
+	}
+	return nil
+}
+
+func (v ValidationValue) appendViolations(violations []fault.Violation, prefix string) []fault.Violation {
 	switch v.Kind {
 	case ValidationValueAbsent, ValidationValueRedacted:
 		if v.Scalar != "" || v.collection != nil {
-			return errors.New("validation value kind does not carry a payload")
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, joinField(prefix, "payload"), "this validation value kind must not carry a payload"))
 		}
 	case ValidationValueScalar:
 		if v.collection != nil {
-			return errors.New("scalar validation value cannot carry a collection")
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, joinField(prefix, "payload"), "a scalar validation value must not carry a collection"))
 		}
 	case ValidationValueCollection:
 		if v.Scalar != "" || v.collection == nil {
-			return errors.New("collection validation value requires only a collection payload")
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, joinField(prefix, "payload"), "a collection validation value requires only a collection payload"))
 		}
 	default:
-		return fmt.Errorf("unsupported validation value kind %q", v.Kind)
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "kind"), "validation value kind is not supported"))
 	}
-	return nil
+	return violations
 }
 
 func (v ValidationValue) Equal(other ValidationValue) bool {
@@ -149,25 +201,35 @@ const (
 	ValidationBranchNotObserved        ValidationBranchDisposition = "not_observed"
 )
 
-func (d ValidationBranchDisposition) Validate() error {
+func (d ValidationBranchDisposition) isSupported() bool {
 	switch d {
 	case ValidationBranchWon, ValidationBranchSatisfiedNotWinner, ValidationBranchNotSatisfied, ValidationBranchNotObserved:
-		return nil
+		return true
 	default:
-		return fmt.Errorf("unsupported validation branch disposition %q", d)
+		return false
 	}
 }
 
+func (d ValidationBranchDisposition) Validate() error {
+	if !d.isSupported() {
+		return validationObservationInvalidError([]fault.Violation{
+			mustViolation(fault.CodeFieldInvalid, "branchDisposition", "validation branch disposition is not supported"),
+		})
+	}
+	return nil
+}
+
 type ValidationMemberIdentity struct {
-	BranchID string
-	NodeID   string
+	BranchID        string
+	ElementTargetID string
 }
 
 type ValidationGroupTerminalObservation struct {
 	ID              string
-	RunID           string
-	ExecutionID     string
-	StepExecutionID string
+	InstanceID      execution.InstanceID
+	EntryID         execution.EntryID
+	StepExecutionID execution.StepExecutionID
+	Occurrence      int
 	GroupID         string
 	TerminalReason  ValidationTerminalReason
 	WinningBranchID string
@@ -175,12 +237,13 @@ type ValidationGroupTerminalObservation struct {
 	ObservedAt      int64
 }
 
-func NewValidationGroupTerminalObservation(id, runID, executionID, stepExecutionID, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
+func NewValidationGroupTerminalObservation(id string, instanceID execution.InstanceID, entryID execution.EntryID, stepExecutionID execution.StepExecutionID, occurrence int, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
 	owned := make([]ValidationMemberIdentity, len(expectedMembers))
 	copy(owned, expectedMembers)
 	return ValidationGroupTerminalObservation{
-		ID: id, RunID: runID, ExecutionID: executionID, StepExecutionID: stepExecutionID,
-		GroupID: groupID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
+		ID: id, InstanceID: instanceID, EntryID: entryID, StepExecutionID: stepExecutionID,
+		Occurrence: occurrence,
+		GroupID:    groupID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
 		expectedMembers: owned, ObservedAt: observedAt,
 	}
 }
@@ -191,70 +254,87 @@ func (o ValidationGroupTerminalObservation) ExpectedMembers() []ValidationMember
 	return owned
 }
 
+// Validate reports every failure through one envelope with ordered violations.
+// Branch, group, and element target identities and the terminal reason all stay
+// out of public text.
 func (o ValidationGroupTerminalObservation) Validate() error {
-	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.GroupID == "" || o.ObservedAt <= 0 {
-		return errors.New("validation group terminal observation requires identity and positive time")
+	var violations []fault.Violation
+	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.GroupID == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "validation group observation identity is required"))
+	}
+	violations = appendOccurrenceViolations(violations, o.Occurrence, "")
+	if o.ObservedAt <= 0 {
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "validation group observation time must be positive"))
 	}
 	switch o.TerminalReason {
 	case ValidationTerminalPassed:
 		if o.WinningBranchID == "" {
-			return errors.New("passed validation group requires a winning branch")
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "winningBranchId", "a passed validation group requires a winning branch"))
 		}
 	case ValidationTerminalTimeout, ValidationTerminalCanceled, ValidationTerminalSystemError:
 		if o.WinningBranchID != "" {
-			return errors.New("failed validation group cannot have a winning branch")
+			violations = append(violations, mustViolation(fault.CodeFieldMismatch, "winningBranchId", "a validation group that did not pass must not have a winning branch"))
 		}
 	default:
-		return fmt.Errorf("unsupported validation terminal reason %q", o.TerminalReason)
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "terminalReason", "validation group terminal reason is not supported"))
 	}
 	if len(o.expectedMembers) == 0 {
-		return errors.New("validation group requires expected members")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "expectedMembers", "a validation group requires expected members"))
 	}
 	seen := make(map[ValidationMemberIdentity]struct{}, len(o.expectedMembers))
 	hasWinningBranch := false
-	for _, member := range o.expectedMembers {
-		if member.BranchID == "" || member.NodeID == "" {
-			return errors.New("validation group expected member requires identity")
+	for index, member := range o.expectedMembers {
+		if atCap(violations) {
+			break
+		}
+		field := fmt.Sprintf("expectedMembers.%d", index)
+		if member.BranchID == "" || member.ElementTargetID == "" {
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, field, "expected member identity is required"))
 		}
 		if _, exists := seen[member]; exists {
-			return errors.New("validation group expected member is duplicated")
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, field, "expected member is duplicated"))
 		}
 		seen[member] = struct{}{}
 		hasWinningBranch = hasWinningBranch || member.BranchID == o.WinningBranchID
 	}
 	if o.TerminalReason == ValidationTerminalPassed && !hasWinningBranch {
-		return errors.New("validation group winning branch is not expected")
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, "winningBranchId", "the winning branch is not among the expected members"))
+	}
+	if len(violations) != 0 {
+		return validationGroupObservationInvalidError(violations)
 	}
 	return nil
 }
 
 type ValidationProgressObservation struct {
-	ID               string
-	RunID            string
-	ExecutionID      string
-	StepExecutionID  string
-	ValidationStepID string
-	NodeID           string
-	NodeVersionID    string
-	GroupID          string
-	BranchID         string
-	AssertionKind    string
-	Expected         ValidationValue
-	Actual           ValidationValue
-	Passed           bool
-	Reason           string
-	Selector         fingerprint.Selector
-	Healed           bool
-	HealConfidence   float64
-	HealReviewStatus string
-	ObservedAt       int64
+	ID                     string
+	InstanceID             execution.InstanceID
+	EntryID                execution.EntryID
+	StepExecutionID        execution.StepExecutionID
+	Occurrence             int
+	ValidationStepID       string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	GroupID                string
+	BranchID               string
+	AssertionKind          string
+	Expected               ValidationValue
+	Actual                 ValidationValue
+	Passed                 bool
+	Reason                 string
+	Selector               fingerprint.Selector
+	Healed                 bool
+	HealConfidence         float64
+	HealReviewStatus       string
+	ObservedAt             int64
 }
 
 func (o ValidationProgressObservation) Validate() error {
 	return ValidationObservation{
-		ID: o.ID, RunID: o.RunID, ExecutionID: o.ExecutionID,
-		StepExecutionID: o.StepExecutionID, ValidationStepID: o.ValidationStepID,
-		NodeID: o.NodeID, NodeVersionID: o.NodeVersionID,
+		ID: o.ID, InstanceID: o.InstanceID, EntryID: o.EntryID,
+		StepExecutionID: o.StepExecutionID, Occurrence: o.Occurrence,
+		ValidationStepID: o.ValidationStepID,
+		ElementTargetID:  o.ElementTargetID, ElementTargetVersionID: o.ElementTargetVersionID,
 		GroupID: o.GroupID, BranchID: o.BranchID,
 		AssertionKind: o.AssertionKind, Expected: o.Expected, Actual: o.Actual,
 		Passed: o.Passed, Reason: o.Reason, Selector: o.Selector,
@@ -264,59 +344,63 @@ func (o ValidationProgressObservation) Validate() error {
 }
 
 type ValidationObservation struct {
-	ID                string
-	RunID             string
-	ExecutionID       string
-	StepExecutionID   string
-	ValidationStepID  string
-	NodeID            string
-	NodeVersionID     string
-	GroupID           string
-	BranchID          string
-	AssertionKind     string
-	Expected          ValidationValue
-	Actual            ValidationValue
-	Passed            bool
-	Reason            string
-	BranchDisposition ValidationBranchDisposition
-	Selector          fingerprint.Selector
-	Healed            bool
-	HealConfidence    float64
-	HealReviewStatus  string
-	ObservedAt        int64
-	Final             bool
+	ID                     string
+	InstanceID             execution.InstanceID
+	EntryID                execution.EntryID
+	StepExecutionID        execution.StepExecutionID
+	Occurrence             int
+	ValidationStepID       string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	GroupID                string
+	BranchID               string
+	AssertionKind          string
+	Expected               ValidationValue
+	Actual                 ValidationValue
+	Passed                 bool
+	Reason                 string
+	BranchDisposition      ValidationBranchDisposition
+	Selector               fingerprint.Selector
+	Healed                 bool
+	HealConfidence         float64
+	HealReviewStatus       string
+	ObservedAt             int64
+	Final                  bool
 }
 
+// Validate reports every failure through one envelope with ordered violations.
+// The expected and actual values are observed page content, so their sub
+// validation failures degrade into violations here rather than nesting a fault
+// whose text could carry that content.
 func (o ValidationObservation) Validate() error {
-	if o.ID == "" || o.RunID == "" || o.ExecutionID == "" || o.StepExecutionID == "" || o.ValidationStepID == "" || o.NodeID == "" || o.NodeVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
-		return errors.New("validation observation requires identity and reason")
+	var violations []fault.Violation
+	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ValidationStepID == "" || o.ElementTargetID == "" || o.ElementTargetVersionID == "" || o.AssertionKind == "" || o.Reason == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "identity", "validation observation identity and reason are required"))
 	}
+	violations = appendOccurrenceViolations(violations, o.Occurrence, "")
 	if o.ObservedAt <= 0 {
-		return errors.New("validation observation requires positive time")
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "observedAt", "validation observation time must be positive"))
 	}
-	if err := o.Expected.Validate(); err != nil {
-		return fmt.Errorf("validation expected value: %w", err)
-	}
-	if err := o.Actual.Validate(); err != nil {
-		return fmt.Errorf("validation actual value: %w", err)
-	}
+	violations = o.Expected.appendViolations(violations, "expected")
+	violations = o.Actual.appendViolations(violations, "actual")
 	if (o.GroupID == "") != (o.BranchID == "") {
-		return errors.New("validation group and branch identity must be present together")
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, "groupMembership", "group and branch identity must be present together"))
 	}
 	if o.Final && o.GroupID != "" {
-		if err := o.BranchDisposition.Validate(); err != nil {
-			return err
+		if !o.BranchDisposition.isSupported() {
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "branchDisposition", "validation branch disposition is not supported"))
 		}
 	} else if o.BranchDisposition != "" {
-		return errors.New("validation branch disposition requires a final grouped observation")
+		violations = append(violations, mustViolation(fault.CodeFieldMismatch, "branchDisposition", "a branch disposition requires a final grouped observation"))
 	}
-	if err := ValidateConfidence(o.HealConfidence); err != nil {
-		return err
-	}
+	violations = appendConfidenceViolations(violations, o.HealConfidence, "heal")
 	switch o.HealReviewStatus {
 	case "not_attempted", "auto_applied", "review_pending", "no_candidate":
-		return nil
 	default:
-		return fmt.Errorf("unsupported heal review status %q", o.HealReviewStatus)
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "healReviewStatus", "heal review status is not supported"))
 	}
+	if len(violations) != 0 {
+		return validationObservationInvalidError(violations)
+	}
+	return nil
 }

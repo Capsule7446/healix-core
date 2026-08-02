@@ -1,16 +1,46 @@
 package execution
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+const (
+	CodeHealGovernanceSnapshotInvalid fault.Code = "EXECUTION_HEAL_GOVERNANCE_SNAPSHOT_INVALID"
+	CodeHealAcceptedFactInvalid       fault.Code = "EXECUTION_HEAL_ACCEPTED_FACT_INVALID"
+	CodeHealTerminalEffectConflict    fault.Code = "EXECUTION_HEAL_TERMINAL_EFFECT_CONFLICT"
+)
+
+func wrapHealGovernanceFault(cause error, kind fault.Kind, code fault.Code, message string) error {
+	err, constructionErr := fault.Wrap(cause, kind, code, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func healGovernanceSnapshotInvalidError(cause error) error {
+	return wrapHealGovernanceFault(cause, fault.FailedPrecondition, CodeHealGovernanceSnapshotInvalid, "heal governance snapshot is invalid")
+}
+
+func healAcceptedFactInvalidError(cause error) error {
+	return wrapHealGovernanceFault(cause, fault.InvalidArgument, CodeHealAcceptedFactInvalid, "accepted heal fact is invalid")
+}
+
+func healTerminalEffectConflictError(cause error) error {
+	return wrapHealGovernanceFault(cause, fault.Conflict, CodeHealTerminalEffectConflict, "heal terminal effect conflicts with persisted state")
+}
+
 type HealGovernanceKey struct {
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 }
 
@@ -25,7 +55,7 @@ type HealAcceptedFact struct {
 	Kind        HealAcceptedFactKind
 	FactID      string
 	CommitID    string
-	RunID       string
+	InstanceID  domainexecution.InstanceID
 	Sequence    uint64
 	Observation *evidence.HealObservation
 	Reset       *evidence.HealCandidateReset
@@ -34,8 +64,8 @@ type HealAcceptedFact struct {
 type HealContributionSnapshot struct {
 	FactID          string
 	CommitID        string
-	RunID           string
-	ExecutionID     string
+	InstanceID      string
+	EntryID         string
 	StepExecutionID string
 	Sequence        uint64
 }
@@ -104,12 +134,12 @@ func (DefaultHealGovernancePlanner) PlanHealGovernance(plan HealGovernancePlan) 
 	}
 	observation, err := mapAcceptedHealFact(plan.Fact, plan.Snapshot)
 	if err != nil {
-		return HealGovernanceDecision{}, err
+		return HealGovernanceDecision{}, healAcceptedFactInvalidError(err)
 	}
 	previous := cloneHealStreak(plan.Snapshot.Streak)
 	transition, err := previous.Observe(observation)
 	if err != nil {
-		return HealGovernanceDecision{}, fmt.Errorf("observe accepted heal fact: %w", err)
+		return HealGovernanceDecision{}, err
 	}
 	decision := HealGovernanceDecision{
 		Key: plan.Snapshot.Key, FactID: plan.Fact.FactID, Sequence: plan.Fact.Sequence,
@@ -119,27 +149,87 @@ func (DefaultHealGovernancePlanner) PlanHealGovernance(plan HealGovernancePlan) 
 	return decision, nil
 }
 
-func validateHealGovernancePlan(plan HealGovernancePlan) error {
-	if strings.TrimSpace(plan.Snapshot.Key.NodeID) == "" || strings.TrimSpace(plan.Snapshot.Key.BaseNodeVersionID) == "" {
-		return fmt.Errorf("heal governance snapshot requires node and base identity")
+func validateCanonicalHealIdentity(identity string) error {
+	if identity != strings.TrimSpace(identity) || parameter.ValidateName(identity) != nil {
+		return errors.New("heal identity is invalid")
 	}
-	if strings.TrimSpace(plan.Snapshot.CurrentNodeVersionID) == "" {
-		return fmt.Errorf("heal governance snapshot requires current node version identity")
+	return nil
+}
+
+func validateHealContributionIdentities(contribution domainautomation.ContributingHealFact) error {
+	for _, identity := range []string{
+		contribution.FactID,
+		contribution.CommitID,
+		contribution.InstanceID,
+		contribution.EntryID,
+		contribution.StepExecutionID,
+	} {
+		if err := validateCanonicalHealIdentity(identity); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateHealStreakIdentities(streak domainautomation.HealStreak) error {
+	for _, identity := range []string{streak.ElementTargetID, streak.BaseNodeVersionID, streak.CandidateHash} {
+		if identity != "" {
+			if err := validateCanonicalHealIdentity(identity); err != nil {
+				return err
+			}
+		}
+	}
+	for _, contribution := range streak.Contributions {
+		if err := validateHealContributionIdentities(contribution); err != nil {
+			return err
+		}
+	}
+	for _, contribution := range streak.ConsumedObservations {
+		if err := validateHealContributionIdentities(contribution); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateHealGovernancePlan(plan HealGovernancePlan) error {
+	for _, identity := range []string{
+		plan.Snapshot.Key.ElementTargetID,
+		plan.Snapshot.Key.BaseNodeVersionID,
+		plan.Snapshot.CurrentNodeVersionID,
+	} {
+		if err := validateCanonicalHealIdentity(identity); err != nil {
+			return healGovernanceSnapshotInvalidError(err)
+		}
 	}
 	if err := plan.Snapshot.Revision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal governance snapshot revision: %w", err)
+		return healGovernanceSnapshotInvalidError(err)
 	}
-	if strings.TrimSpace(plan.Fact.FactID) == "" || strings.TrimSpace(plan.Fact.CommitID) == "" || strings.TrimSpace(plan.Fact.RunID) == "" || plan.Fact.Sequence == 0 {
-		return fmt.Errorf("accepted heal fact requires fact, commit, run, and sequence identity")
+	if err := plan.Snapshot.Streak.Validate(); err != nil {
+		return healGovernanceSnapshotInvalidError(err)
+	}
+	if err := validateHealStreakIdentities(plan.Snapshot.Streak); err != nil {
+		return healGovernanceSnapshotInvalidError(err)
 	}
 	streak := plan.Snapshot.Streak
-	if streak.Disposition != "" && (streak.NodeID != plan.Snapshot.Key.NodeID || streak.BaseNodeVersionID != plan.Snapshot.Key.BaseNodeVersionID) {
-		return fmt.Errorf("heal governance streak does not match snapshot key")
+	if streak.Disposition != "" && (streak.ElementTargetID != plan.Snapshot.Key.ElementTargetID || streak.BaseNodeVersionID != plan.Snapshot.Key.BaseNodeVersionID) {
+		return healGovernanceSnapshotInvalidError(errors.New("heal governance streak does not match snapshot key"))
 	}
 	if err := validateHealCandidateStatus(plan.Snapshot.CandidateStatus, streak.Disposition); err != nil {
-		return err
+		return healGovernanceSnapshotInvalidError(err)
 	}
-	return validateExistingHealEffect(plan.Snapshot.ExistingTerminalEffect, streak)
+	if err := validateExistingHealEffect(plan.Snapshot.ExistingTerminalEffect, streak); err != nil {
+		return healTerminalEffectConflictError(err)
+	}
+	for _, identity := range []string{plan.Fact.FactID, plan.Fact.CommitID, plan.Fact.InstanceID.String()} {
+		if err := validateCanonicalHealIdentity(identity); err != nil {
+			return healAcceptedFactInvalidError(err)
+		}
+	}
+	if plan.Fact.Sequence == 0 {
+		return healAcceptedFactInvalidError(errors.New("accepted heal fact requires a sequence identity"))
+	}
+	return nil
 }
 
 func validateHealCandidateStatus(status domainautomation.HealCandidateStatus, disposition domainautomation.HealStreakDisposition) error {
@@ -165,9 +255,37 @@ func validateHealCandidateStatus(status domainautomation.HealCandidateStatus, di
 	return nil
 }
 
+func validateHealEffectIdentities(effect *HealTerminalEffectSnapshot) error {
+	for _, identity := range []string{effect.VersionID, effect.ReviewID} {
+		if identity != "" {
+			if err := validateCanonicalHealIdentity(identity); err != nil {
+				return err
+			}
+		}
+	}
+	switch effect.Kind {
+	case HealEffectAutoPublish:
+		if effect.ReviewID != "" {
+			return errors.New("auto-publish effect cannot carry review identity")
+		}
+	case HealEffectAwaitApproval:
+		if effect.VersionID != "" {
+			return errors.New("await-approval effect cannot carry version identity")
+		}
+	case HealEffectReset, HealEffectStale:
+		if effect.VersionID != "" || effect.ReviewID != "" {
+			return errors.New("terminal effect cannot carry publication identity")
+		}
+	}
+	return nil
+}
+
 func validateExistingHealEffect(effect *HealTerminalEffectSnapshot, streak domainautomation.HealStreak) error {
 	if effect == nil {
 		return nil
+	}
+	if err := validateHealEffectIdentities(effect); err != nil {
+		return err
 	}
 	var expectedKind HealTerminalEffectKind
 	switch streak.Disposition {
@@ -200,7 +318,27 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted observation requires exactly one observation payload")
 		}
 		observation := *fact.Observation
-		if observation.ID != fact.FactID || observation.RunID != fact.RunID || observation.NodeID != snapshot.Key.NodeID || observation.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
+		if err := domainautomation.ValidateHealConfidence(observation.Confidence); err != nil {
+			return domainautomation.HealObservation{}, err
+		}
+		for _, identity := range []string{
+			observation.ID,
+			observation.InstanceID.String(),
+			observation.EntryID.String(),
+			observation.StepExecutionID.String(),
+			observation.ElementTargetID,
+			observation.BaseNodeVersionID,
+		} {
+			if err := validateCanonicalHealIdentity(identity); err != nil {
+				return domainautomation.HealObservation{}, err
+			}
+		}
+		if observation.CandidateHash != "" {
+			if err := validateCanonicalHealIdentity(observation.CandidateHash); err != nil {
+				return domainautomation.HealObservation{}, err
+			}
+		}
+		if observation.ID != fact.FactID || observation.InstanceID != fact.InstanceID || observation.ElementTargetID != snapshot.Key.ElementTargetID || observation.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted observation does not match governance identity")
 		}
 		band, err := mapHealDecisionBand(observation.DecisionBand)
@@ -212,9 +350,9 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			outcome = domainautomation.HealSucceeded
 		}
 		return domainautomation.HealObservation{
-			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID,
-			ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: fact.Sequence,
-			NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID,
+			FactID: fact.FactID, CommitID: fact.CommitID, InstanceID: fact.InstanceID.String(),
+			EntryID: observation.EntryID.String(), StepExecutionID: observation.StepExecutionID.String(), Sequence: fact.Sequence,
+			ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 			CandidateHash: observation.CandidateHash, Band: band, Outcome: outcome, BaseIsCurrent: baseIsCurrent,
 		}, nil
 	case HealAcceptedReset:
@@ -222,13 +360,23 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted reset requires exactly one reset payload")
 		}
 		reset := *fact.Reset
-		if reset.NodeID != snapshot.Key.NodeID || reset.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
+		for _, identity := range []string{
+			reset.EntryID.String(),
+			reset.StepExecutionID.String(),
+			reset.ElementTargetID,
+			reset.BaseNodeVersionID,
+		} {
+			if err := validateCanonicalHealIdentity(identity); err != nil {
+				return domainautomation.HealObservation{}, err
+			}
+		}
+		if reset.ElementTargetID != snapshot.Key.ElementTargetID || reset.BaseNodeVersionID != snapshot.Key.BaseNodeVersionID {
 			return domainautomation.HealObservation{}, fmt.Errorf("accepted reset does not match governance identity")
 		}
 		return domainautomation.HealObservation{
-			FactID: fact.FactID, CommitID: fact.CommitID, RunID: fact.RunID,
-			ExecutionID: reset.ExecutionID, StepExecutionID: reset.StepExecutionID, Sequence: fact.Sequence,
-			NodeID: reset.NodeID, BaseNodeVersionID: reset.BaseNodeVersionID,
+			FactID: fact.FactID, CommitID: fact.CommitID, InstanceID: fact.InstanceID.String(),
+			EntryID: reset.EntryID.String(), StepExecutionID: reset.StepExecutionID.String(), Sequence: fact.Sequence,
+			ElementTargetID: reset.ElementTargetID, BaseNodeVersionID: reset.BaseNodeVersionID,
 			Outcome: domainautomation.HealOriginalRecovered, BaseIsCurrent: baseIsCurrent,
 		}, nil
 	default:
@@ -274,6 +422,5 @@ func terminalEffectForTransition(previous, next domainautomation.HealStreak) *He
 }
 
 func cloneHealStreak(streak domainautomation.HealStreak) domainautomation.HealStreak {
-	streak.Contributions = append([]domainautomation.ContributingHealFact(nil), streak.Contributions...)
-	return streak
+	return streak.Clone()
 }

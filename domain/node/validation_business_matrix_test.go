@@ -30,7 +30,7 @@ func TestValidationNodeRunBusinessMatrix(t *testing.T) {
 				tc.configure(d)
 			}
 			facts := &testFacts{}
-			err := (&ValidationNode{NodeID: "validation", Target: fingerprint.NodeSpec{ID: "target"}, Assertion: tc.assertion, MaxWait: 500 * time.Millisecond, Stability: time.Millisecond}).Run(context.Background(), &Runtime{Driver: d, Facts: facts})
+			err := (&ValidationNode{NodeID: "validation", Target: fingerprint.ElementTargetSpec{ID: "target"}, Assertion: tc.assertion, MaxWait: 500 * time.Millisecond, Stability: time.Millisecond}).Run(context.Background(), &Runtime{Driver: d, Facts: facts})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err=%v", err)
 			}

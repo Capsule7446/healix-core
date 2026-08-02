@@ -7,67 +7,68 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
 type nodeRepositoryFake struct {
-	current      domain.NodeAggregate
+	current      domain.ElementTargetAggregate
 	expected     domain.Revision
 	loadErr      error
 	createErr    error
 	saveErr      error
 	createCalls  int
 	saveCalls    int
-	saveInput    domain.NodeAggregate
+	saveInput    domain.ElementTargetAggregate
 	saveExpected domain.Revision
 }
 
-func (f *nodeRepositoryFake) Load(context.Context, string) (domain.NodeAggregate, error) {
+func (f *nodeRepositoryFake) Load(context.Context, string) (domain.ElementTargetAggregate, error) {
 	return f.current, f.loadErr
 }
-func (f *nodeRepositoryFake) Create(_ context.Context, value domain.NodeAggregate) (domain.NodeAggregate, error) {
+func (f *nodeRepositoryFake) Create(_ context.Context, value domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error) {
 	f.createCalls++
 	if f.createErr != nil {
-		return domain.NodeAggregate{}, f.createErr
+		return domain.ElementTargetAggregate{}, f.createErr
 	}
 	f.current = value
 	return value, nil
 }
-func (f *nodeRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.NodeAggregate) (domain.NodeAggregate, error) {
+func (f *nodeRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error) {
 	f.saveCalls++
 	f.saveExpected, f.saveInput = expected, value
 	if f.saveErr != nil {
-		return domain.NodeAggregate{}, f.saveErr
+		return domain.ElementTargetAggregate{}, f.saveErr
 	}
 	f.expected, f.current = expected, value
 	return value, nil
 }
 
 type workflowRepositoryFake struct {
-	current  domain.WorkflowAggregate
+	current  domain.FlowFragmentAggregate
 	expected domain.Revision
 }
 
-func (f *workflowRepositoryFake) Load(context.Context, string) (domain.WorkflowAggregate, error) {
+func (f *workflowRepositoryFake) Load(context.Context, string) (domain.FlowFragmentAggregate, error) {
 	return f.current, nil
 }
-func (f *workflowRepositoryFake) Create(_ context.Context, value domain.WorkflowAggregate) (domain.WorkflowAggregate, error) {
+func (f *workflowRepositoryFake) Create(_ context.Context, value domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) {
 	f.current = value
 	return value, nil
 }
-func (f *workflowRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.WorkflowAggregate) (domain.WorkflowAggregate, error) {
+func (f *workflowRepositoryFake) SaveAggregate(_ context.Context, expected domain.Revision, value domain.FlowFragmentAggregate) (domain.FlowFragmentAggregate, error) {
 	f.expected, f.current = expected, value
 	return value, nil
 }
 
-func TestRevisionConflictErrorExposesClassificationAndContext(t *testing.T) {
-	err := RevisionConflictError{AggregateKind: "node", ID: "node-1", Expected: 2, Actual: 3}
-	if !errors.Is(err, ErrRevisionConflict) {
-		t.Fatalf("errors.Is(%v, ErrRevisionConflict) = false", err)
+func TestRevisionConflictErrorExposesSafeClassification(t *testing.T) {
+	err := AutomationRevisionConflictError()
+	if !errors.Is(err, CodeAutomationRevisionConflict) {
+		t.Fatalf("fault.IsCode(%v, %v) = false", err, CodeAutomationRevisionConflict)
 	}
-	for _, context := range []string{"node", "node-1", "expected 2", "actual 3"} {
-		if !strings.Contains(err.Error(), context) {
-			t.Fatalf("Error() = %q, missing %q", err.Error(), context)
+	for _, sensitive := range []string{"node", "node-1", "expected 2", "actual 3"} {
+		if strings.Contains(err.Error(), sensitive) {
+			t.Fatalf("Error() leaked %q: %q", sensitive, err.Error())
 		}
 	}
 }
@@ -75,8 +76,8 @@ func TestRevisionConflictErrorExposesClassificationAndContext(t *testing.T) {
 func TestNodeServiceLifecycleAndPublication(t *testing.T) {
 	repository := &nodeRepositoryFake{}
 	service := NewNodeService(repository)
-	node := domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
+	node := domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
 	_, err := service.Create(context.Background(), node, version)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +94,7 @@ func TestNodeServiceLifecycleAndPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), "node", deleted.Node.Revision, 5); err != nil {
+	if _, err := service.Restore(context.Background(), "node", deleted.ElementTarget.Revision, 5); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Update(context.Background(), "node", "x", "", domain.Properties{}, 99, 6); err == nil {
@@ -103,13 +104,13 @@ func TestNodeServiceLifecycleAndPublication(t *testing.T) {
 
 func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	sentinel := errors.New("repository unavailable")
-	validNode := domain.Node{ID: "node", DisplayName: "Node", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	validVersion := domain.NodeVersion{ID: "node-v1", NodeID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
+	validNode := domain.ElementTarget{ID: "node", DisplayName: "ElementTarget", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	validVersion := domain.ElementTargetVersion{ID: "node-v1", ElementTargetID: "node", VersionNumber: 1, Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "button"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}}, Source: domain.SourceManual, CreatedAt: 1}
 
 	t.Run("invalid aggregate is rejected before create", func(t *testing.T) {
 		repository := &nodeRepositoryFake{}
-		_, err := NewNodeService(repository).Create(context.Background(), domain.Node{}, domain.NodeVersion{})
-		if err == nil || !strings.Contains(err.Error(), "create node") {
+		_, err := NewNodeService(repository).Create(context.Background(), domain.ElementTarget{}, domain.ElementTargetVersion{})
+		if !fault.IsCode(err, domain.CodeAggregateTransitionInvalid) {
 			t.Fatalf("Create() error = %v", err)
 		}
 		if repository.createCalls != 0 {
@@ -137,13 +138,15 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	})
 
 	t.Run("transition validation prevents save", func(t *testing.T) {
-		aggregate, err := domain.NewNode(validNode, validVersion)
+		aggregate, err := domain.NewElementTarget(validNode, validVersion)
 		if err != nil {
 			t.Fatal(err)
 		}
 		repository := &nodeRepositoryFake{current: aggregate}
-		_, err = NewNodeService(repository).Update(context.Background(), "node", "", "", domain.Properties{}, aggregate.Node.Revision, 2)
-		if err == nil || !strings.Contains(err.Error(), "transition node") {
+		_, err = NewNodeService(repository).Update(context.Background(), "node", "", "", domain.Properties{}, aggregate.ElementTarget.Revision, 2)
+		// The aggregate's own failure now propagates unwrapped as its registered
+		// AUTOMATION_ELEMENT_TARGET_INVALID code, carrying a displayName violation.
+		if !fault.IsCode(err, domain.CodeElementTargetInvalid) {
 			t.Fatalf("Update() error = %v", err)
 		}
 		if repository.saveCalls != 0 {
@@ -152,30 +155,30 @@ func TestNodeServiceRepositoryFailuresDoNotPartiallyWrite(t *testing.T) {
 	})
 
 	t.Run("save failure reports error after submitting transitioned aggregate", func(t *testing.T) {
-		aggregate, err := domain.NewNode(validNode, validVersion)
+		aggregate, err := domain.NewElementTarget(validNode, validVersion)
 		if err != nil {
 			t.Fatal(err)
 		}
 		repository := &nodeRepositoryFake{current: aggregate, saveErr: sentinel}
-		_, err = NewNodeService(repository).Update(context.Background(), "node", "Updated", "", domain.Properties{}, aggregate.Node.Revision, 2)
+		_, err = NewNodeService(repository).Update(context.Background(), "node", "Updated", "", domain.Properties{}, aggregate.ElementTarget.Revision, 2)
 		if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "persist node") {
 			t.Fatalf("Update() error = %v", err)
 		}
-		if repository.saveCalls != 1 || repository.saveExpected != aggregate.Node.Revision {
+		if repository.saveCalls != 1 || repository.saveExpected != aggregate.ElementTarget.Revision {
 			t.Fatalf("SaveAggregate() calls/expected = %d/%d", repository.saveCalls, repository.saveExpected)
 		}
-		if repository.saveInput.Node.DisplayName != "Updated" || repository.saveInput.Node.Revision != aggregate.Node.Revision+1 {
-			t.Fatalf("SaveAggregate() input = %#v", repository.saveInput.Node)
+		if repository.saveInput.ElementTarget.DisplayName != "Updated" || repository.saveInput.ElementTarget.Revision != aggregate.ElementTarget.Revision+1 {
+			t.Fatalf("SaveAggregate() input = %#v", repository.saveInput.ElementTarget)
 		}
 	})
 }
 
 func TestWorkflowServiceLifecycleAndPublication(t *testing.T) {
 	repository := &workflowRepositoryFake{}
-	service := NewWorkflowService(repository)
-	definition := domain.WorkflowDefinition{Steps: []domain.WorkflowStep{{ID: "press", DisplayName: "Press", Kind: domain.StepAction, Action: "press", Value: "Enter"}}}
-	workflow := domain.Workflow{ID: "workflow", DisplayName: "Workflow", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
-	version := domain.WorkflowVersion{ID: "workflow-v1", WorkflowID: "workflow", VersionNumber: 1, Definition: definition, CreatedAt: 1}
+	service := NewFlowFragmentService(repository)
+	definition := domain.FlowFragmentContent{Steps: []domain.FlowFragmentStep{{ID: "press", DisplayName: "Press", Kind: domain.StepAction, Action: "press", Value: "Enter"}}}
+	workflow := domain.FlowFragment{ID: "workflow", DisplayName: "FlowFragment", Properties: domain.Properties{}, CreatedAt: 1, UpdatedAt: 1}
+	version := domain.FlowFragmentVersion{ID: "workflow-v1", FlowFragmentID: "workflow", VersionNumber: 1, Definition: definition, CreatedAt: 1}
 	if _, err := service.Create(context.Background(), workflow, version); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +193,7 @@ func TestWorkflowServiceLifecycleAndPublication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Restore(context.Background(), "workflow", deleted.Workflow.Revision, 5); err != nil {
+	if _, err := service.Restore(context.Background(), "workflow", deleted.FlowFragment.Revision, 5); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Delete(context.Background(), "workflow", 99, 6); err == nil {

@@ -35,13 +35,13 @@ func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, par
 				return folders, nil
 			}
 		}
-		return nil, fmt.Errorf("folder %s: %w", id, domain.ErrFolderNotFound)
+		return nil, domain.FolderNotFoundError()
 	})
 }
 
 func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id string, expected domain.Revision) (FolderSnapshot, error) {
 	if isNilDependency(s.repository) {
-		return FolderSnapshot{}, ErrAutomationConfiguration
+		return FolderSnapshot{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(id) == "" {
 		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
@@ -51,11 +51,14 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 		return FolderSnapshot{}, fmt.Errorf("load folder forest: %w", err)
 	}
 	if snapshot.Revision != expected {
-		return FolderSnapshot{}, RevisionConflictError{AggregateKind: "folder forest", ID: string(kind), Expected: expected, Actual: snapshot.Revision}
+		return FolderSnapshot{}, AutomationRevisionConflictError()
 	}
 	forest, err := domain.NewFolderForest(snapshot.Folders)
 	if err != nil {
-		return FolderSnapshot{}, fmt.Errorf("validate folder forest: %w", err)
+		// NewFolderForest already returns AUTOMATION_FOLDER_INVALID or
+		// AUTOMATION_FOLDER_TREE_INVALID; an uncoded wrapper here would hide that
+		// classification behind an unclassified outer error.
+		return FolderSnapshot{}, err
 	}
 	occupancy, err := s.repository.Occupancy(ctx, kind, id)
 	if err != nil {
@@ -72,7 +75,8 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 	}
 	revision, err := expected.Next()
 	if err != nil {
-		return FolderSnapshot{}, fmt.Errorf("advance folder forest revision: %w", err)
+		// Revision.Next already returns a registered code.
+		return FolderSnapshot{}, err
 	}
 	result, err := s.repository.DeleteEmptyFolder(ctx, DeleteEmptyFolderCommand{
 		Kind:                      kind,
@@ -89,14 +93,14 @@ func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id st
 
 func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expected domain.Revision, apply func([]domain.Folder) ([]domain.Folder, error)) (FolderSnapshot, error) {
 	if isNilDependency(s.repository) {
-		return FolderSnapshot{}, ErrAutomationConfiguration
+		return FolderSnapshot{}, AutomationConfigurationError()
 	}
 	snapshot, err := s.repository.Load(ctx, kind)
 	if err != nil {
 		return FolderSnapshot{}, fmt.Errorf("load folder forest: %w", err)
 	}
 	if snapshot.Revision != expected {
-		return FolderSnapshot{}, RevisionConflictError{AggregateKind: "folder forest", ID: string(kind), Expected: expected, Actual: snapshot.Revision}
+		return FolderSnapshot{}, AutomationRevisionConflictError()
 	}
 	folders := append([]domain.Folder(nil), snapshot.Folders...)
 	folders, err = apply(folders)
@@ -104,7 +108,10 @@ func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expec
 		return FolderSnapshot{}, err
 	}
 	if _, err := domain.NewFolderForest(folders); err != nil {
-		return FolderSnapshot{}, fmt.Errorf("validate folder forest: %w", err)
+		// NewFolderForest already returns AUTOMATION_FOLDER_INVALID or
+		// AUTOMATION_FOLDER_TREE_INVALID; an uncoded wrapper here would hide that
+		// classification behind an unclassified outer error.
+		return FolderSnapshot{}, err
 	}
 	return s.persist(ctx, kind, expected, folders)
 }
@@ -112,7 +119,8 @@ func (s FolderService) change(ctx context.Context, kind domain.FolderKind, expec
 func (s FolderService) persist(ctx context.Context, kind domain.FolderKind, expected domain.Revision, folders []domain.Folder) (FolderSnapshot, error) {
 	revision, err := expected.Next()
 	if err != nil {
-		return FolderSnapshot{}, fmt.Errorf("advance folder forest revision: %w", err)
+		// Revision.Next already returns a registered code.
+		return FolderSnapshot{}, err
 	}
 	result, err := s.repository.Save(ctx, kind, expected, FolderSnapshot{Revision: revision, Folders: folders})
 	if err != nil {

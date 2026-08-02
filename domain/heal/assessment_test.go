@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func assessmentSpec() fingerprint.NodeSpec {
-	return fingerprint.NodeSpec{ID: "target", PageURL: "https://shop.test/checkout", Origin: "https://shop.test", Role: "button", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#submit"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"id": "submit"}, SiblingIndex: 0}}
+func assessmentSpec() fingerprint.ElementTargetSpec {
+	return fingerprint.ElementTargetSpec{ID: "target", PageURL: "https://shop.test/checkout", Origin: "https://shop.test", Role: "button", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#submit"}}, Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{"id": "submit"}, SiblingIndex: 0}}
 }
 func TestAssessBlocksOriginMismatch(t *testing.T) {
 	target := assessmentSpec()

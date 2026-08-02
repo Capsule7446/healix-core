@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 // PageObservation is the safe browser-to-domain projection used for framework detection.
@@ -28,19 +30,31 @@ type FrameworkDetector interface {
 // DetectFrameworks runs detectors and returns a validated, deterministic stack.
 func DetectFrameworks(ctx context.Context, observation PageObservation, detectors []FrameworkDetector) (FrameworkStack, error) {
 	stack := make(FrameworkStack, 0)
-	for i, detector := range detectors {
+	for index, detector := range detectors {
 		if isNilDetector(detector) {
-			return nil, fmt.Errorf("framework detector[%d] is required", i)
+			return nil, frameworkStackInvalidError([]fault.Violation{
+				mustViolation(fault.CodeFieldRequired, fmt.Sprintf("detectors.%d", index), "framework detector is required"),
+			})
 		}
 		matches, err := detector.Detect(ctx, observation)
 		if err != nil {
-			return nil, err
+			// A detector that already classified its own failure keeps that
+			// classification; wrapping it would nest two faults and make the host
+			// unwrap before it could route.
+			if _, classified := fault.CodeOf(err); classified {
+				return nil, err
+			}
+			return nil, frameworkDetectorFailedError(err)
 		}
 		stack = append(stack, matchInfos(matches)...)
 	}
 	stack = mergeFrameworkStack(SortFrameworkStack(stack))
+	// The stack here was assembled from detector output, not from caller input, so
+	// a shape failure is the port breaking its contract rather than the caller
+	// passing something wrong. Reporting the caller-facing stack code would tell
+	// the caller to fix data it never supplied.
 	if err := stack.Validate(); err != nil {
-		return nil, err
+		return nil, frameworkDetectorFailedError(err)
 	}
 	return stack, nil
 }

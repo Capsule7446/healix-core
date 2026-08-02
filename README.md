@@ -4,6 +4,8 @@
 
 当前发布版本为 **v0.5.0**。公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。
 
+主干在 v0.5.0 之后仍有未发布的破坏性重命名（执行实例：`Run*` → `Instance*`；自动化：`TestTask`/`Workflow`/`Node` → `ExecutionFlow`/`FlowFragment`/`ElementTarget`）与业务错误码契约（`domain/fault`）。本文的代码示例描述**当前仓库树**，不是 v0.5.0 标签；按标签取用时请以该标签的源码为准。
+
 ### v0.5.0
 
 此版本完成了执行模型与公开契约的收敛：以 `CompilePlan` 和 `RunProgram` 作为运行入口，并要求宿主在执行前验证 Claim/调度决定提供的完整执行身份。执行边界和宿主义务见下文的[端到端执行](#端到端执行)、[适配器必须保证什么](#adapter-必须保证什么)与[公开契约](docs/integration/public-contract.md)。
@@ -18,11 +20,12 @@
 
 **它提供：**
 
-- Environment、Folder 等受修订号控制的普通可变自动化资产，以及 Node、Workflow、TestTask 等具有不可变发布版本的自动化资产及其不变量；
+- `Environment`、`Folder` 等受修订号控制的普通可变自动化资产，以及 `ElementTarget`（节点）、`FlowFragment`（工作流）、`ExecutionFlow`（测试任务）等具有不可变发布版本的自动化资产及其不变量；
 - 从已发布快照构建并封存多顶层执行项 `execution.Plan`；
 - 按顶层执行项顺序和失败策略进行纯调度决策与领取执行权协调；
 - 把每个执行计划顶层执行项独立编译为 `node.Program`，并通过注入端口运行；
 - 选择器、元素指纹、变量插值、采样会话、确定性自愈和不可变执行事实；
+- 稳定的业务错误码契约：`domain/fault` 定义 `Kind`/`Code`/`Violation`，各上下文在自己的 `fault_codes.go` 中注册前缀化错误码；
 - Repository、Driver、Recorder、调度和事实提交等宿主端口。
 
 **它不提供：**
@@ -47,7 +50,7 @@ flowchart TB
     AX[执行<br/>工作器栅栏校验与事实提交]
   end
 
-  subgraph Domain[九个领域包]
+  subgraph Domain[十个领域包]
     DA[automation]
     DS[sampling]
     DE[execution]
@@ -57,6 +60,7 @@ flowchart TB
     DF[fingerprint]
     DI[interpolation]
     DP[parameter]
+    DU[fault]
   end
 
   Adapters[(宿主适配器<br/>数据库 / 队列 / 浏览器 / 事实)]
@@ -86,7 +90,7 @@ flowchart TB
 
 依赖始终由宿主指向应用层，再指向领域层；Core 不反向依赖基础设施。
 
-## 九个领域与四个应用模块
+## 十个领域与四个应用模块
 
 ### 领域层
 
@@ -98,18 +102,19 @@ flowchart TB
 | `domain/node` | 临时 `Program`/`Runtime` 执行模型、动作/等待/校验、重试、生命周期和运行端口 |
 | `domain/heal` | 无浏览器或 LLM 依赖的确定性重定位、评分、评估与候选证据 |
 | `domain/evidence` | 进度事实、终态事件、修复/校验观察和原子提交值语义 |
-| `domain/fingerprint` | `NodeSpec`、Selector、Fingerprint 和框架检测值对象 |
+| `domain/fingerprint` | `ElementTargetSpec`、`Selector`、`Fingerprint` 和框架检测值对象 |
 | `domain/interpolation` | `${name}` 表达式解析与展开 |
 | `domain/parameter` | 封闭类型的 `Value`（TEXT/NUMBER/BOOLEAN/SINGLE_SELECT/MULTI_SELECT）与字面量/父级引用 `Binding` |
+| `domain/fault` | 业务错误契约：`Kind` 补救类别、稳定 `Code`、安全消息/参数、字段级 `Violation`，以及 `CodeOf`/`KindOf`/`Describe`/`IsCode` 分类入口 |
 
-以上领域行为均已实现；涉及浏览器、存储或外部服务的部分仍只是端口边界。
+以上领域行为均已实现；涉及浏览器、存储或外部服务的部分仍只是端口边界。`fingerprint`、`interpolation`、`parameter` 与 `fault` 属于共享内核，可被两个有界上下文同时导入；该划分由 [`TestBoundedContextIsolation`](architecture/dependencies_test.go) 执行检查。
 
 ### 应用层
 
 | 模块 | 已实现 | 仅端口契约 / 宿主义务 |
 |---|---|---|
 | `application/automation` | 聚合命令服务、Revision 冲突、采样发布、修复审核 | Repository 事务、ID/时钟、授权、查询 API |
-| `application/scheduling` | `CreateRunService`、执行实例快照构建、`DecideAdvance`、`Coordinator` | 在同一目录/事务视图中解析 `latest`、原子创建/领取执行权、租约/栅栏校验、完整队列 |
+| `application/scheduling` | `CreateInstanceService`、执行实例快照构建、`DecideAdvance`、`Coordinator`、`CancelInstanceService`/`AbortInstanceService`/`ReorderQueueService` | 在同一目录/事务视图中解析 `latest`、原子创建/领取执行权、租约/栅栏校验、完整队列 |
 | `application/engine` | `CompilePlan`、`RunProgram`、私有 Program 与执行身份封印、步骤元数据映射 | 选择已调度 entry，注入并实现运行端口 |
 | `application/execution` | `EntryExecutor`、`execution.WorkerFence` 限定的 entry 执行、修复治理、进度与事实提交接口 | 进度存储和原子终态提交 |
 
@@ -126,17 +131,17 @@ sequenceDiagram
   participant B as 浏览器适配器
   participant F as 进度 / 事实适配器
 
-  H->>S: `CreateRun`(ctx, command)
+  H->>S: `CreateInstance`(ctx, command)
   S->>S: 在一致目录视图中解析 `latest` 与依赖
-  S-->>H: 不可变 `execution.RunSnapshot`（含已封存的执行计划）
+  S-->>H: 不可变 `execution.InstanceSnapshot`（含已封存的执行计划）
   H->>Q: 原子持久化执行实例、快照与顶层执行项状态
   H->>S: Coordinator.ProcessNext(ctx, workerID, occurredAt)
   S->>Q: ClaimNext(workerID, occurredAt) / LoadEntryStates
-  Q-->>S: claim（含不可变 RunSnapshot 与 WorkerFence）及当前状态
+  Q-->>S: claim（含不可变 InstanceSnapshot 与 WorkerFence）及当前状态
   S->>Q: ApplyDecision（原子 fencing）
-  S-->>H: claimed / error；可运行 executionID 由 claim / decision 适配器契约承接
+  S-->>H: claimed / error；可运行 entryID 由 claim / decision 适配器契约承接
   H->>E: CompilePlan(snapshot)
-  E-->>H: CompiledRun / 独立 CompiledEntry
+  E-->>H: CompiledPlan / 独立 CompiledEntry
   H->>E: RunProgram(ctx, entry, Config)
   E->>B: locate / action / wait / validate
   B-->>E: observation 或分类错误
@@ -146,7 +151,7 @@ sequenceDiagram
   F-->>H: 适配器的栅栏校验提交结果
 ```
 
-关键边界：执行实例创建是解析边界：所有 `latest` 指针必须从同一目录/事务视图解析为具体版本并冻结到不可变 `execution.RunSnapshot`。Core 为每个顶层执行项调用一次 `BrowserSessionFactory.Create`，并在推进到下一项前关闭该会话；宿主浏览器适配器负责确保每次创建具有全新的身份与存储隔离，Core 不验证其新鲜性。嵌套工作流调用复用该顶层执行项的会话。`Program` 与 `Runtime` 都是每次执行临时构造的执行模型，不是持久化资产。领取令牌、步骤修订号、提交身份与终态事实的原子性必须由适配器兑现。
+关键边界：执行实例创建是解析边界：所有 `latest` 指针必须从同一目录/事务视图解析为具体版本并冻结到不可变 `execution.InstanceSnapshot`。Core 为每个顶层执行项调用一次 `BrowserSessionFactory.Create`，并在推进到下一项前关闭该会话；宿主浏览器适配器负责确保每次创建具有全新的身份与存储隔离，Core 不验证其新鲜性。嵌套工作流调用复用该顶层执行项的会话。`Program` 与 `Runtime` 都是每次执行临时构造的执行模型，不是持久化资产。领取令牌、步骤修订号、提交身份与终态事实的原子性必须由适配器兑现。
 
 ## 安装
 
@@ -170,7 +175,7 @@ replace github.com/Capsule7446/healix-core => ../healix-core
 
 ### 1. 封存传输无关的执行计划
 
-`execution.Seal` 会验证 Draft、复制输入并按 `SequenceNumber` 固定入口顺序。真实运行还应提供 Plan 引用到的 workflow、node 与 reference snapshots。
+`execution.Seal` 会验证 `PlanSnapshot`、复制输入并按 `SequenceNumber` 固定入口顺序。执行实例与顶层执行项身份是封闭值对象（`execution.InstanceID` / `execution.EntryID`），必须经构造函数校验后才能填入。真实运行还应提供 Plan 引用到的 flow fragment、element target 与 reference snapshots。
 
 ```go
 package main
@@ -182,25 +187,34 @@ import (
 )
 
 func main() {
-    plan, err := execution.Seal(execution.Draft{
-        RunID:         "run-42",
+    instanceID, err := execution.NewInstanceID("instance-42")
+    if err != nil {
+        log.Fatal(err)
+    }
+    entryID, err := execution.NewEntryID("entry-1")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    plan, err := execution.Seal(execution.PlanSnapshot{
+        InstanceID:    instanceID,
         FailurePolicy: execution.FailurePolicyStopOnFailure,
-        Entries: []execution.WorkflowEntry{
+        Entries: []execution.Entry{
             {
-                ExecutionID:      "execution-1",
-                TestTaskItemID:   "item-1",
-                SequenceNumber:   1,
-                WorkflowID:       "workflow-login",
-                WorkflowVersionID: "workflow-login-v3",
+                ID:                entryID,
+                TestTaskItemID:    "item-1",
+                SequenceNumber:    1,
+                FlowFragmentID:    "flow-login",
+                WorkflowVersionID: "flow-login-v3",
             },
         },
         Workflows: []execution.WorkflowSnapshot{
             {
-                ID:         "workflow-login",
-                WorkflowID: "workflow-login",
-                VersionID:  "workflow-login-v3",
-                DisplayName:   "登录",
-                VersionNumber: 3,
+                ID:             "flow-login",
+                FlowFragmentID: "flow-login",
+                VersionID:      "flow-login-v3",
+                DisplayName:    "登录",
+                VersionNumber:  3,
                 Steps: []execution.Step{
                     {
                         ID:          "step-wait",
@@ -217,77 +231,77 @@ func main() {
         log.Fatal(err)
     }
 
-    _ = plan // 可交给 scheduling.DecideAdvance；编译需要完整 execution.RunSnapshot
+    _ = plan // 可交给 scheduling.DecideAdvance；编译需要完整 execution.InstanceSnapshot
 }
 ```
 
-### 2. 从已发布 TestTask 创建 Run
+### 2. 从已发布 ExecutionFlow 创建执行实例
 
-应用集成通过 `CreateRunService` 在一致目录视图中解析发布物，并原子封存 Run、Snapshot 与 entries：
+应用集成通过 `CreateInstanceService` 在一致目录视图中解析发布物，并原子封存 Instance、Snapshot 与 entries：
 
 ```go
-command := scheduling.CreateRunCommand{
-    CommandID:        commandID,
-    RunID:            runID,
-    TestTaskID:       testTaskID,
+command := scheduling.CreateInstanceCommand{
+    CommandID:         commandID,
+    InstanceID:        instanceID,
+    ExecutionFlowID:   executionFlowID,
     TestTaskVersionID: testTaskVersionID,
-    EnvironmentID:    environmentID,
-    Entries:          entryValues,
-    FailurePolicy:    execution.FailurePolicyStopOnFailure,
-    CreatedAt:        createdAt,
-    ScreenshotPolicy: screenshotPolicy,
-    HealerPolicy:     healerPolicy,
+    EnvironmentID:     environmentID,
+    Entries:           entryValues,
+    FailurePolicy:     execution.FailurePolicyStopOnFailure,
+    CreatedAt:         createdAt,
+    ScreenshotPolicy:  screenshotPolicy,
+    HealerPolicy:      healerPolicy,
 }
 
-service, err := scheduling.NewCreateRunService(store)
+service, err := scheduling.NewCreateInstanceService(store)
 if err != nil {
-    return fmt.Errorf("create run service: %w", err)
+    return fmt.Errorf("create instance service: %w", err)
 }
-result, err := service.CreateRun(ctx, command)
+result, err := service.CreateInstance(ctx, command)
 if err != nil {
-    return fmt.Errorf("create run: %w", err)
+    return fmt.Errorf("create instance: %w", err)
 }
 snapshot := result.Snapshot
 ```
 
-`store` 实现 `scheduling.CreateRunStore`，负责在同一事务视图中解析 TestTask、Workflow、Node、Environment 和全部 `latest`，并原子保存创建结果。调度协调器由宿主注入 `ClaimSource`、`EntryStateReader` 与 `DecisionWriter` 构造：`coordinator := scheduling.NewCoordinator(claims, states, writer)`，再调用 `coordinator.ProcessNext(ctx, workerID, occurredAt)`。协调器不接收 Plan 参数；它从 claim 适配器取得不可变 `RunSnapshot`，通过 decision writer 原子应用包含所选 execution identity 的决策。宿主通过 claim / decision 适配器契约承接该身份并驱动对应 entry。宿主必须保留完整 `snapshot` 供编译使用，不能只保存或传递其中的 Plan。
+`store` 实现 `scheduling.CreateInstanceStore`，负责在同一事务视图中解析 ExecutionFlow、FlowFragment、ElementTarget、Environment 和全部 `latest`，并原子保存创建结果。调度协调器由宿主注入 `ClaimSource`、`EntryStateReader` 与 `DecisionWriter` 构造：`coordinator := scheduling.NewCoordinator(claims, states, writer)`，再调用 `coordinator.ProcessNext(ctx, workerID, occurredAt)`。协调器不接收 Plan 参数；它从 claim 适配器取得不可变 `InstanceSnapshot`，通过 decision writer 原子应用包含所选 entry identity 的决策。宿主通过 claim / decision 适配器契约承接该身份并驱动对应 entry。宿主必须保留完整 `snapshot` 供编译使用，不能只保存或传递其中的 Plan。
 
-创建执行实例会把 TestTask 顶层执行项参数、Workflow 默认值以及每条嵌套调用边上的 `parameter.Binding` 解析为按调用路径隔离的作用域。`parameter.Value` 保留 TEXT、NUMBER、BOOLEAN、SINGLE_SELECT 与 MULTI_SELECT 类型；绑定只能是类型化字面量或父级引用。所有 `latest` 在此时解析并冻结，运行时不得再次查询当前指针。
+创建执行实例会把 ExecutionFlow 顶层执行项参数、FlowFragment 默认值以及每条嵌套调用边上的 `parameter.Binding` 解析为按调用路径隔离的作用域。`parameter.Value` 保留 TEXT、NUMBER、BOOLEAN、SINGLE_SELECT 与 MULTI_SELECT 类型；绑定只能是类型化字面量或父级引用。所有 `latest` 在此时解析并冻结，运行时不得再次查询当前指针。
 
 ### 3. 编译并运行被调度的 entry
 
 ```go
 compiled, err := engine.CompilePlan(snapshot)
 if err != nil {
-    return fmt.Errorf("compile run snapshot: %w", err)
+    return fmt.Errorf("compile instance snapshot: %w", err)
 }
 
-entry, ok := compiled.Entry(executionID)
+entry, ok := compiled.Entry(entryID)
 if !ok {
-    return fmt.Errorf("compiled entry %q not found", executionID)
+    return fmt.Errorf("compiled entry %q not found", entryID)
 }
 
 runResult, err := engine.RunProgram(ctx, entry, engine.Config{
-    RunID:            claimedRunID,
-    SnapshotDigest:   claimedSnapshotDigest,
-    ExecutionID:      claimedExecutionID,
-    ClaimToken:       claimToken,
-    AuthorityVerifier: authorityVerifier, // engine.ExecutionAuthorityVerifier，由宿主权威适配器实现
-    Driver:           driver,             // node.Driver，由宿主实现
-    Recorder:         recorder,           // node.Recorder，由宿主实现
-    Facts:            facts,              // node.ExecutionSink，由宿主实现
-    Healer:           heal.NewDefaultHealer(), // nil 表示关闭自愈
-    StepInterval:     100 * time.Millisecond,
+    InstanceID:        claimedInstanceID,
+    SnapshotDigest:    claimedSnapshotDigest,
+    EntryID:           claimedEntryID,
+    ClaimToken:        claimToken,
+    AuthorityVerifier: authorityVerifier,       // engine.ExecutionAuthorityVerifier，由宿主权威适配器实现
+    Driver:            driver,                  // node.Driver，由宿主实现
+    Recorder:          recorder,                // node.Recorder，由宿主实现
+    Facts:             facts,                   // node.ExecutionSink，由宿主实现
+    Healer:            heal.NewDefaultHealer(), // nil 表示关闭自愈
+    StepInterval:      100 * time.Millisecond,
 })
 ```
 
-宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `RunSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.RunSnapshot`，因为除 Plan 中冻结的 workflow/node/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
+宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`InstanceID + SnapshotDigest + EntryID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `InstanceSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.InstanceSnapshot`，因为除 Plan 中冻结的 flow fragment/element target/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
 
 ## 当前生命周期约束
 
-- Environment 是普通 Automation 资产；Run 只冻结其 `Properties` 副本。Core 没有 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret-store 模型。
-- TestTask 版本只能由显式手工创作创建；Sampling 与 Heal 只发布各自产物，不会隐式发布 TestTask 新版本。
-- `SamplingWorkspace` 是采样草稿/重写工作区，`Session` 是浏览器交互会话；二者不是别名，也不共享生命周期。
+- Environment 是普通 Automation 资产；执行实例只冻结其 `Properties` 副本。Core 没有 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret-store 模型。
+- `automation.ExecutionFlowVersion`（测试任务版本）只能由显式手工创作创建；Sampling 与 Heal 只发布各自产物，不会隐式发布新版本。
+- `sampling.UnpublishedFlowFragment` 是采样草稿/重写工作区，`sampling.Session` 是浏览器交互会话；二者不是别名，也不共享生命周期。
 - `evidence.HealObservation` 只记录观察，没有晋升状态；晋升是栅栏校验提交的结果。
 - `domain/heal` 提供确定性算法和值，但在运行生命周期中属于 Execution；`Program`/`Runtime` 同样是临时 Execution 模型。
 
@@ -296,9 +310,9 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 - **入站：** 校验外部 DTO，生成唯一 ID 和时间戳；创建执行实例时在同一目录/事务视图中解析完整依赖图、参数作用域、Environment 和所有 `latest`，再封存快照。
 - **自动化持久化：** 使用 opaque Revision 做 CAS，并在同一事务保存聚合、版本与指针变化。
 - **调度：** 原子 claim、不可伪造 token、worker fencing、事务化应用 decision，并返回与 Plan 完全一致的 entry 状态集合。
-- **浏览器执行：** 实现 `BrowserSessionFactory` 与 `node.Driver`/`Element`/`Locator`，尊重 `context.Context`；Core 为每个顶层执行项调用一次 `BrowserSessionFactory.Create` 并在推进前关闭会话，嵌套 Workflow 复用该会话。适配器必须保证每次创建使用全新的身份与存储隔离；Core 不验证会话新鲜性。目标缺失必须返回或包装 `node.ErrElementNotFound`，只有该类别会触发确定性自愈。
+- **浏览器执行：** 实现 `BrowserSessionFactory` 与 `node.Driver`/`Element`/`Locator`，尊重 `context.Context`；Core 为每个顶层执行项调用一次 `BrowserSessionFactory.Create` 并在推进前关闭会话，嵌套 Workflow 复用该会话。适配器必须保证每次创建使用全新的身份与存储隔离；Core 不验证会话新鲜性。目标缺失必须返回携带 `node.CodeElementNotFound` 的 fault，只有该类别会触发确定性自愈。
 - **记录与事实：** 对进度实施 fencing；按 revision、commit identity 和封印依赖目标原子提交终态与 facts。
-- **错误：** 保留 `errors.Is` / `errors.As` 分类并补充上下文，不依赖完整错误字符串。
+- **错误：** Core 不导出哨兵 error 变量；分类一律经业务错误码进行。用 `fault.CodeOf` / `fault.KindOf` / `fault.Describe` 读取边界故障的单一分类，用 `fault.IsCode` 询问某个错误码是否出现在整条链上；两者会给出不同答案，不要混用。包装原因时保留链路，不依赖完整错误字符串。`*fault.Error` 的私有 cause 只经 `Unwrap` 暴露，`Format` 已封住 `%+v` / `%#v`，因此日志不会泄露它。
 
 详见[适配器职责](docs/integration/adapter-responsibilities.md)。
 
@@ -312,6 +326,8 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 
 这些是当前代码边界，不是对宿主能力的暗示或路线图承诺。
 
+唯一的例外是持久化摘要：请求/快照摘要使用的域分隔 wire tag 被当作存储格式对待，改动其字节会静默作废按旧标签哈希的全部记录。这些标签由 `architecture/digest_wire_tag_test.go` 逐一登记，修改必须伴随迁移方案。
+
 ## 本地验证
 
 ```bash
@@ -320,18 +336,21 @@ make race       # go test -race ./...
 make vet        # go vet ./...
 make build      # go build ./...
 make coverage   # 生成 coverage.out 并检查 80% 门槛
-make lint       # golangci-lint run ./...
+make lint       # golangci-lint run ./...（可选，不在 CI 门禁内，当前仍有既有告警）
 make check      # fmt-check + vet + test + race + coverage + build + lint
 ```
 
-也可直接运行：
+CI 门禁是 `gofmt -l .`、`go vet ./...`、`go build ./...`、`go test ./...`、`go test -race ./...` 与 80% 覆盖率；`golangci-lint` 不在其中，原因见 [`.golangci.yml`](.golangci.yml) 顶部说明。也可直接运行：
 
 ```bash
+gofmt -l .
 go test ./...
 go test -race ./...
 go vet ./...
 go build ./...
 ```
+
+架构约束本身也是可执行测试，位于 `architecture/` 包：依赖方向与有界上下文隔离（`dependencies_test.go`）、业务错误码契约与注册表一致性（`fault_contract_guard_test.go`）、统一语言边界（`unified_language_boundary_test.go`）、执行坐标与证据坐标（`evidence_coordinate_test.go`）、顶层执行项状态机（`entry_status_enforcement_test.go`）、持久化摘要 wire tag（`digest_wire_tag_test.go`）与文档链接（`doc_links_test.go`）。另有 `contract/` 包以外部包形式锁定公开 API 与错误面。
 
 ## 继续阅读
 
@@ -340,7 +359,7 @@ go build ./...
 - [系统总览](docs/architecture/system-overview.md)：领域、应用和 adapter 的全局边界；
 - [上下文地图](docs/architecture/context-map.md)：Automation、Execution 与共享内核的协作；
 - [依赖规则](docs/architecture/dependency-rules.md)：允许的依赖方向与原子写入要求；
-- [端到端执行](docs/architecture/end-to-end-execution.md)：从 TestTask 发布到终态 Evidence；
+- [端到端执行](docs/architecture/end-to-end-execution.md)：从测试任务（`automation.ExecutionFlow`）发布到终态 Evidence；
 - [公开契约](docs/integration/public-contract.md)：稳定入口、错误面和兼容边界；
 - [适配器职责](docs/integration/adapter-responsibilities.md)：宿主必须兑现的事务与 IO 语义。
 

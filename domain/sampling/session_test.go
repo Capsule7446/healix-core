@@ -10,7 +10,7 @@ func validCapture(id, identity, value string) Capture {
 	return Capture{
 		CaptureID: id, IdentityKey: identity, PageURL: "https://example.test/login",
 		Kind: ActionClick, Value: value,
-		Spec: fingerprint.NodeSpec{
+		Spec: fingerprint.ElementTargetSpec{
 			Role:        "button",
 			Selectors:   []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#submit"}},
 			Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}},
@@ -30,7 +30,7 @@ func TestSessionAssignsStableNodeUUIDAndIdempotentCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !first.Created || first.NodeUUID == "" || first.NodeID == "" || first.Sequence != 2 {
+	if !first.Created || first.NodeUUID == "" || first.ElementTargetID == "" || first.Sequence != 2 {
 		t.Fatalf("first result = %+v", first)
 	}
 	repeated, err := session.Record(validCapture("capture-1", "login|css:#submit", ""))
@@ -47,7 +47,7 @@ func TestSessionAssignsStableNodeUUIDAndIdempotentCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Created || updated.NodeUUID != first.NodeUUID || updated.NodeID != first.NodeID {
+	if updated.Created || updated.NodeUUID != first.NodeUUID || updated.ElementTargetID != first.ElementTargetID {
 		t.Fatalf("updated result = %+v, first=%+v", updated, first)
 	}
 	snapshot := session.Snapshot()

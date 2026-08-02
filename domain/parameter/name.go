@@ -1,7 +1,6 @@
 package parameter
 
 import (
-	"errors"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,20 +12,23 @@ const MaxNameBytes = 64 * 1024
 // ValidateName verifies that name is nonblank after trimming, valid UTF-8,
 // contains no Unicode control or format runes, and does not exceed MaxNameBytes.
 // It validates without normalizing or trimming the returned name.
+// The rejected name never enters the fault: a name is caller input, and the
+// caller already knows which name it supplied.
 func ValidateName(name string) error {
-	if strings.TrimSpace(name) == "" {
-		return errors.New("name is required")
-	}
-	if !utf8.ValidString(name) {
-		return errors.New("name must be valid UTF-8")
-	}
-	if len(name) > MaxNameBytes {
-		return errors.New("name exceeds byte limit")
-	}
-	for _, r := range name {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			return errors.New("name contains control or format character")
-		}
+	if !isValidName(name) {
+		return nameInvalidError()
 	}
 	return nil
+}
+
+func isValidName(name string) bool {
+	if strings.TrimSpace(name) == "" || !utf8.ValidString(name) || len(name) > MaxNameBytes {
+		return false
+	}
+	for _, character := range name {
+		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) {
+			return false
+		}
+	}
+	return true
 }

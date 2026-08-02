@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type strictDetectorFunc func(context.Context, PageObservation) ([]FrameworkMatch, error)
@@ -79,7 +81,7 @@ func TestFingerprintValidateStrictBoundaries(t *testing.T) {
 }
 
 func TestNodeSpecValidateAggregatesAllFailuresWithoutMutation(t *testing.T) {
-	spec := NodeSpec{
+	spec := ElementTargetSpec{
 		UUID:      "not-a-uuid",
 		Selectors: []Selector{{Type: "bad", Priority: -1}, {Type: SelectorCSS}},
 		Fingerprint: Fingerprint{
@@ -88,21 +90,29 @@ func TestNodeSpecValidateAggregatesAllFailuresWithoutMutation(t *testing.T) {
 	}
 	before := spec.Selectors[0]
 	err := spec.Validate()
-	if err == nil {
-		t.Fatal("invalid node spec accepted")
+	descriptor := requireEnvelope(t, err, CodeElementTargetSpecInvalid)
+	// One envelope, every failure as an ordered violation, sub-validation failures
+	// degraded into this aggregate instead of nested faults.
+	want := []string{
+		violationKey(fault.CodeFieldInvalid, "uuid"),
+		violationKey(fault.CodeFieldRequired, "id"),
+		violationKey(fault.CodeFieldInvalid, "selectors.0"),
+		violationKey(fault.CodeFieldInvalid, "selectors.1"),
+		violationKey(fault.CodeFieldRequired, "fingerprint.tag"),
+		violationKey(fault.CodeFieldRequired, "fingerprint.attributes"),
+		violationKey(fault.CodeFieldInvalid, "fingerprint.framework.0.kind"),
 	}
-	for _, fragment := range []string{"uuid", "id is required", "selectors[0]", "unsupported type", "priority", "selectors[1]", "value is required", "fingerprint.tag"} {
-		if !strings.Contains(err.Error(), fragment) {
-			t.Errorf("error %q missing %q", err, fragment)
-		}
+	if got := violationKeys(descriptor.Violations()); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("violations =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
+	requireNoPublicLeak(t, err, "not-a-uuid", "bad")
 	if spec.Selectors[0] != before {
 		t.Fatal("validation mutated selector")
 	}
 }
 
 func TestNodeSpecValidateUUIDAndCollectionBoundaries(t *testing.T) {
-	base := NodeSpec{ID: "node", Selectors: []Selector{{Type: SelectorCSS, Value: "#x"}}, Fingerprint: validStrictFingerprint()}
+	base := ElementTargetSpec{ID: "node", Selectors: []Selector{{Type: SelectorCSS, Value: "#x"}}, Fingerprint: validStrictFingerprint()}
 	for _, uuid := range []string{"", "550E8400-E29B-41D4-A716-446655440000", "550e8400-e29b-41d4-a716-446655440000"} {
 		spec := base
 		spec.UUID = uuid

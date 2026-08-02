@@ -2,17 +2,17 @@ package scheduling
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type fencedSchedulingStore struct {
 	mu       sync.Mutex
-	snapshot execution.RunSnapshot
+	snapshot execution.InstanceSnapshot
 	active   execution.WorkerFence
 	claims   uint64
 	starts   int
@@ -25,7 +25,7 @@ func (s *fencedSchedulingStore) ClaimNext(_ context.Context, worker string, _ in
 		return Claim{}, false, nil
 	}
 	s.claims++
-	s.active = execution.WorkerFence{RunID: s.snapshot.RunID(), ClaimToken: fmt.Sprintf("%s-%d", worker, s.claims)}
+	s.active = execution.WorkerFence{InstanceID: s.snapshot.InstanceID(), ClaimToken: fmt.Sprintf("%s-%d", worker, s.claims)}
 	return Claim{Snapshot: s.snapshot, Fence: s.active}, true, nil
 }
 
@@ -33,7 +33,7 @@ func (s *fencedSchedulingStore) Release(_ context.Context, claim Claim) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if claim.Fence != s.active {
-		return &execution.StaleWorkerFenceError{Fence: claim.Fence}
+		return execution.NewStaleWorkerFenceError()
 	}
 	s.active = execution.WorkerFence{}
 	return nil
@@ -43,9 +43,9 @@ func (s *fencedSchedulingStore) ApplyDecision(_ context.Context, claim Claim, de
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if claim.Fence != s.active {
-		return ApplyDecisionResult{}, &execution.StaleWorkerFenceError{Fence: claim.Fence}
+		return ApplyDecisionResult{}, execution.NewStaleWorkerFenceError()
 	}
-	if decision.NextExecutionID != "" {
+	if decision.NextEntryID != (execution.EntryID{}) {
 		s.starts++
 	}
 	return ApplyDecisionResult{Fence: claim.Fence, Applied: true}, nil
@@ -80,8 +80,8 @@ func TestClaimAndDecisionFenceConformance(t *testing.T) {
 	}
 	stale := winner
 	stale.Fence.ClaimToken = "stale"
-	decision := Decision{NextExecutionID: "execution-1"}
-	if _, err := store.ApplyDecision(context.Background(), stale, decision, 2); !errors.Is(err, execution.ErrStaleWorkerFence) {
+	decision := Decision{NextEntryID: mustEntryID("execution-1")}
+	if _, err := store.ApplyDecision(context.Background(), stale, decision, 2); !fault.IsCode(err, execution.CodeWorkerFenceStale) {
 		t.Fatalf("stale decision error=%v", err)
 	}
 	if _, err := store.ApplyDecision(context.Background(), winner, decision, 2); err != nil {
@@ -90,7 +90,7 @@ func TestClaimAndDecisionFenceConformance(t *testing.T) {
 	if store.starts != 1 {
 		t.Fatalf("successor starts=%d", store.starts)
 	}
-	if err := store.Release(context.Background(), stale); !errors.Is(err, execution.ErrStaleWorkerFence) {
+	if err := store.Release(context.Background(), stale); !fault.IsCode(err, execution.CodeWorkerFenceStale) {
 		t.Fatalf("stale release error=%v", err)
 	}
 	if err := store.Release(context.Background(), winner); err != nil {
@@ -103,10 +103,10 @@ func TestClaimAndDecisionFenceConformance(t *testing.T) {
 	if reacquired.Fence.ClaimToken == winner.Fence.ClaimToken {
 		t.Fatal("same worker reacquisition reused claim token")
 	}
-	if _, err := store.ApplyDecision(context.Background(), winner, decision, 4); !errors.Is(err, execution.ErrStaleWorkerFence) {
+	if _, err := store.ApplyDecision(context.Background(), winner, decision, 4); !fault.IsCode(err, execution.CodeWorkerFenceStale) {
 		t.Fatalf("released ABA fence applied decision: %v", err)
 	}
-	if err := store.Release(context.Background(), winner); !errors.Is(err, execution.ErrStaleWorkerFence) {
+	if err := store.Release(context.Background(), winner); !fault.IsCode(err, execution.CodeWorkerFenceStale) {
 		t.Fatalf("released ABA fence released new claim: %v", err)
 	}
 	if _, err := store.ApplyDecision(context.Background(), reacquired, decision, 4); err != nil {

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/interpolation"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
@@ -27,63 +29,90 @@ func TestPlanFailurePolicyReturnsSealedPolicy(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotInvocationFindsAndOwnsValues(t *testing.T) {
-	snapshot, err := SealRunSnapshot(validRunSnapshotInput(t))
+func TestInstanceSnapshotInvocationFindsAndOwnsValues(t *testing.T) {
+	snapshot, err := SealInstanceSnapshot(validInstanceSnapshotInput(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	invocation, found := snapshot.Invocation("entry-1")
-	if !found || invocation.Path != "entry-1" {
+	invocation, found := snapshot.Invocation(mustInvocationPath("entry-1"))
+	if !found || invocation.Path != mustInvocationPath("entry-1") {
 		t.Fatalf("Invocation() = %#v, %v", invocation, found)
 	}
 	invocation.Values["count"] = invocation.Values["regions"]
-	again, found := snapshot.Invocation("entry-1")
+	again, found := snapshot.Invocation(mustInvocationPath("entry-1"))
 	if !found || again.Values["count"].Number() != "1.2" {
 		t.Fatalf("Invocation() aliases snapshot storage: %#v", again)
 	}
-	if missing, found := snapshot.Invocation("missing"); found || missing.Path != "" {
+	if missing, found := snapshot.Invocation(mustInvocationPath("missing")); found || missing.Path != (InvocationPath{}) {
 		t.Fatalf("missing Invocation() = %#v, %v", missing, found)
 	}
 }
 
+// TestReferenceValidateConfigurationMatrix exercises WORKFLOW_REF step shape
+// checking through the public WorkflowSnapshot.Validate() boundary rather
+// than the internal validateReferenceInto directly: the step-shape envelope
+// is the only surface a host actually observes.
 func TestReferenceValidateConfigurationMatrix(t *testing.T) {
 	literal := parameter.LiteralBinding(parameter.TextValue("value"))
 	tests := []struct {
 		name      string
 		reference *Reference
 		step      Step
-		want      string
+		wantOK    bool
+		wantField string
+		wantCode  fault.Code
+		wantErr   fault.Code
 	}{
-		{name: "minimal reference", reference: &Reference{WorkflowID: "workflow"}, step: Step{DisplayName: "call"}},
-		{name: "parent binding is resolved later", reference: &Reference{WorkflowID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("parent")}}, step: Step{DisplayName: "call"}},
-		{name: "nil reference", step: Step{DisplayName: "call"}, want: "requires a workflow reference"},
-		{name: "blank workflow", reference: &Reference{}, step: Step{DisplayName: "call"}, want: "requires a workflow reference"},
-		{name: "unsupported residual configuration", reference: &Reference{WorkflowID: "workflow"}, step: Step{DisplayName: "call", Action: "click"}, want: "unsupported step configuration"},
-		{name: "blank binding name", reference: &Reference{WorkflowID: "workflow", ParameterBindings: map[string]parameter.Binding{" ": literal}}, step: Step{DisplayName: "call"}, want: "empty parameter binding"},
-		{name: "invalid binding kind", reference: &Reference{WorkflowID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": {}}}, step: Step{DisplayName: "call"}, want: "unsupported parameter binding kind"},
+		{name: "minimal reference", reference: &Reference{FlowFragmentID: "workflow"}, wantOK: true},
+		{name: "parent binding is resolved later", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": parameter.ParentReferenceBinding("parent")}}, wantOK: true},
+		{name: "nil reference", reference: nil, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "blank workflow", reference: &Reference{}, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "unsupported residual configuration", reference: &Reference{FlowFragmentID: "workflow"}, step: Step{Action: "click"}, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "blank binding name", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{" ": literal}}, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "invalid binding kind", reference: &Reference{FlowFragmentID: "workflow", ParameterBindings: map[string]parameter.Binding{"value": {}}}, wantErr: parameter.CodeBindingInvalid},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			problems := test.reference.Validate(test.step)
-			joined := strings.Join(problems, "; ")
-			if test.want == "" && len(problems) != 0 {
-				t.Fatalf("Validate() problems = %v", problems)
-			}
-			if test.want != "" && !strings.Contains(joined, test.want) {
-				t.Fatalf("Validate() problems = %v, want containing %q", problems, test.want)
+			workflow := validWorkflowSnapshot()
+			workflow.Steps = []Step{mergeReferenceStep(test.step, "call", test.reference)}
+			err := workflow.Validate()
+			switch {
+			case test.wantOK:
+				if err != nil {
+					t.Fatalf("Validate() error = %v", err)
+				}
+			case test.wantErr != "":
+				if !fault.IsCode(err, test.wantErr) {
+					t.Fatalf("Validate() error = %v, want code %s", err, test.wantErr)
+				}
+			default:
+				requireStepShapeViolation(t, err, test.wantField, test.wantCode)
 			}
 		})
 	}
 }
 
+func mergeReferenceStep(base Step, id string, reference *Reference) Step {
+	base.ID, base.DisplayName, base.Kind = id, id, FlowFragmentReference
+	base.Reference = reference
+	return base
+}
+
+// TestValidationValidateBoundaryAndKindMatrix exercises Validation.Validate
+// directly: it is an internal shape check reached either through the
+// step-shape envelope (which discards its detail into a generic violation)
+// or, for the two interpolation cases, an already-classified fault that a
+// caller can match by code. It never echoes Kind, Expected, or Attribute, so
+// wantError checks static wording only, never an interpolated value.
 func TestValidationValidateBoundaryAndKindMatrix(t *testing.T) {
 	tests := []struct {
 		name      string
 		value     Validation
 		wait      bool
 		wantError string
+		wantCode  fault.Code
 	}{
 		{name: "boolean kind", value: Validation{Kind: "visible"}},
 		{name: "scalar kind", value: Validation{Kind: "text_equals", Expected: "ready", IgnoreCase: true}},
@@ -93,8 +122,8 @@ func TestValidationValidateBoundaryAndKindMatrix(t *testing.T) {
 		{name: "attribute kind", value: Validation{Kind: "attribute_equals", Attribute: "role", Expected: "button"}},
 		{name: "wait at lower boundaries", value: Validation{Kind: "visible", MaxWaitMS: validationMinWaitMS, StabilityMS: validationMinStabilityMS}, wait: true},
 		{name: "wait at upper boundaries", value: Validation{Kind: "visible", MaxWaitMS: validationMaxWaitMS, StabilityMS: validationMaxStabilityMS}, wait: true},
-		{name: "invalid scalar interpolation", value: Validation{Kind: "text_equals", Expected: "${broken"}, wantError: "expected value"},
-		{name: "invalid collection interpolation", value: Validation{Kind: "selected_set_equals", ExpectedValues: []string{"${broken"}}, wantError: "expected value"},
+		{name: "invalid scalar interpolation", value: Validation{Kind: "text_equals", Expected: "${broken"}, wantCode: interpolation.CodeExpressionInvalid},
+		{name: "invalid collection interpolation", value: Validation{Kind: "selected_set_equals", ExpectedValues: []string{"${broken"}}, wantCode: interpolation.CodeExpressionInvalid},
 		{name: "boolean comparison options", value: Validation{Kind: "visible", IgnoreCase: true}, wantError: "does not accept"},
 		{name: "scalar collection option", value: Validation{Kind: "text_equals", ExpectedValues: []string{"ready"}}, wantError: "one scalar"},
 		{name: "regex ignore case", value: Validation{Kind: "text_matches", Expected: "ready", IgnoreCase: true}, wantError: "regular expression"},
@@ -115,6 +144,12 @@ func TestValidationValidateBoundaryAndKindMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := test.value.Validate(test.wait)
+			if test.wantCode != "" {
+				if !fault.IsCode(err, test.wantCode) {
+					t.Fatalf("Validate() error = %v, want code %s", err, test.wantCode)
+				}
+				return
+			}
 			if test.wantError == "" {
 				if err != nil {
 					t.Fatalf("Validate() error = %v", err)
@@ -128,31 +163,39 @@ func TestValidationValidateBoundaryAndKindMatrix(t *testing.T) {
 	}
 }
 
-func validValidationGroupContract() (Step, *ValidationGroup, map[string]struct{}) {
+func validValidationGroupContract() (Step, *ValidationGroup) {
 	member := Step{
 		ID: "member", DisplayName: "Member", Kind: ValidationStep,
-		NodeID: "node", NodeVersionID: "node-v1", Validation: &Validation{Kind: "visible"},
+		ElementTargetID: "node", ElementTargetVersionID: "node-v1", Validation: &Validation{Kind: "visible"},
 	}
 	return Step{ID: "group", DisplayName: "Group", Kind: ValidationGroupStep}, &ValidationGroup{
 		MaxWaitMS: validationMinWaitMS, StabilityMS: validationMinStabilityMS,
 		Branches: []ValidationBranch{{ID: "branch", Name: "Branch", Steps: []Step{member}}},
-	}, map[string]struct{}{}
+	}
 }
 
+// TestValidationGroupValidateScenarioMatrix exercises VALIDATION_GROUP step
+// shape checking through the public WorkflowSnapshot.Validate() boundary. The
+// "member duplicate outside group" case adds a sibling root step with the
+// colliding id instead of pre-seeding an internal seen-set, because that set
+// is no longer exposed outside the step-shape walk.
 func TestValidationGroupValidateScenarioMatrix(t *testing.T) {
 	tests := []struct {
-		name   string
-		mutate func(*Step, **ValidationGroup, map[string]struct{})
-		want   string
+		name      string
+		mutate    func(*Step, **ValidationGroup)
+		extraStep *Step
+		wantOK    bool
+		wantField string
+		wantCode  fault.Code
 	}{
-		{name: "valid group"},
-		{name: "nil group", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) { *group = nil }, want: "requires group configuration"},
-		{name: "unsupported group step field", mutate: func(step *Step, _ **ValidationGroup, _ map[string]struct{}) { step.Action = "click" }, want: "unsupported step configuration"},
-		{name: "invalid group wait", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
+		{name: "valid group", wantOK: true},
+		{name: "nil group", mutate: func(_ *Step, group **ValidationGroup) { *group = nil }, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "unsupported group step field", mutate: func(step *Step, _ **ValidationGroup) { step.Action = "click" }, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "invalid group wait", mutate: func(_ *Step, group **ValidationGroup) {
 			(*group).MaxWaitMS = validationMinWaitMS - 1
-		}, want: "group \"Group\" wait"},
-		{name: "missing branches", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) { (*group).Branches = nil }, want: "requires 1-5 branches"},
-		{name: "too many branches", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
+		}, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "missing branches", mutate: func(_ *Step, group **ValidationGroup) { (*group).Branches = nil }, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "too many branches", mutate: func(_ *Step, group **ValidationGroup) {
 			branch := (*group).Branches[0]
 			(*group).Branches = make([]ValidationBranch, validationMaxBranches+1)
 			for index := range (*group).Branches {
@@ -162,24 +205,24 @@ func TestValidationGroupValidateScenarioMatrix(t *testing.T) {
 				copy.Steps[0].ID = "member-" + copy.ID
 				(*group).Branches[index] = copy
 			}
-		}, want: "requires 1-5 branches"},
-		{name: "blank branch identity", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) { (*group).Branches[0].ID = " " }, want: "branch id and name are required"},
-		{name: "duplicate branch identity", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
+		}, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "blank branch identity", mutate: func(_ *Step, group **ValidationGroup) { (*group).Branches[0].ID = " " }, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "duplicate branch identity", mutate: func(_ *Step, group **ValidationGroup) {
 			copy := (*group).Branches[0]
 			copy.Steps = append([]Step(nil), copy.Steps...)
 			copy.Steps[0].ID = "member-2"
 			(*group).Branches = append((*group).Branches, copy)
-		}, want: "duplicate branch id"},
-		{name: "branch without members", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) { (*group).Branches[0].Steps = nil }, want: "requires 1-10 validation steps"},
-		{name: "member duplicate outside group", mutate: func(_ *Step, _ **ValidationGroup, seen map[string]struct{}) { seen["member"] = struct{}{} }, want: "duplicate step id"},
-		{name: "blank member identity", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) { (*group).Branches[0].Steps[0].ID = "" }, want: "member step id and display name are required"},
-		{name: "non-validation member", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
+		}, wantField: "steps", wantCode: fault.CodeFieldDuplicate},
+		{name: "branch without members", mutate: func(_ *Step, group **ValidationGroup) { (*group).Branches[0].Steps = nil }, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "member duplicate outside group", extraStep: &Step{ID: "member", DisplayName: "Outer", Kind: ActionStep, Action: "noop", ElementTargetID: "node", ElementTargetVersionID: "node-v1"}, wantField: "steps", wantCode: fault.CodeFieldDuplicate},
+		{name: "blank member identity", mutate: func(_ *Step, group **ValidationGroup) { (*group).Branches[0].Steps[0].ID = "" }, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "non-validation member", mutate: func(_ *Step, group **ValidationGroup) {
 			(*group).Branches[0].Steps[0].Kind = WaitStep
-		}, want: "only accepts VALIDATION steps"},
-		{name: "invalid validation member", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
-			(*group).Branches[0].Steps[0].NodeID = ""
-		}, want: "requires an exact node reference"},
-		{name: "aggregate members above boundary", mutate: func(_ *Step, group **ValidationGroup, _ map[string]struct{}) {
+		}, wantField: "steps", wantCode: fault.CodeFieldInvalid},
+		{name: "invalid validation member", mutate: func(_ *Step, group **ValidationGroup) {
+			(*group).Branches[0].Steps[0].ElementTargetID = ""
+		}, wantField: "steps", wantCode: fault.CodeFieldRequired},
+		{name: "aggregate members above boundary", mutate: func(_ *Step, group **ValidationGroup) {
 			template := (*group).Branches[0].Steps[0]
 			(*group).Branches = make([]ValidationBranch, validationMaxBranches)
 			for branchIndex := range (*group).Branches {
@@ -191,23 +234,32 @@ func TestValidationGroupValidateScenarioMatrix(t *testing.T) {
 				}
 				(*group).Branches[branchIndex] = branch
 			}
-		}, want: "maximum is 20"},
+		}, wantField: "steps", wantCode: fault.CodeFieldInvalid},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			step, group, seen := validValidationGroupContract()
+			step, group := validValidationGroupContract()
+			step.ValidationGroup = group
 			if test.mutate != nil {
-				test.mutate(&step, &group, seen)
+				test.mutate(&step, &group)
+				step.ValidationGroup = group
 			}
-			problems := group.Validate(step, seen)
-			joined := strings.Join(problems, "; ")
-			if test.want == "" && len(problems) != 0 {
-				t.Fatalf("Validate() problems = %v", problems)
+			workflow := validWorkflowSnapshot()
+			var steps []Step
+			if test.extraStep != nil {
+				steps = append(steps, *test.extraStep)
 			}
-			if test.want != "" && !strings.Contains(joined, test.want) {
-				t.Fatalf("Validate() problems = %v, want containing %q", problems, test.want)
+			steps = append(steps, step)
+			workflow.Steps = steps
+			err := workflow.Validate()
+			if test.wantOK {
+				if err != nil {
+					t.Fatalf("Validate() error = %v", err)
+				}
+				return
 			}
+			requireStepShapeViolation(t, err, test.wantField, test.wantCode)
 		})
 	}
 }

@@ -21,15 +21,15 @@ func TestRuntimeBestEffortObservationDoesNotReturnError(t *testing.T) {
 
 func TestRuntimeLocatorUsesSelectorOverlay(t *testing.T) {
 	driver := &matrixDriver{}
-	var got fingerprint.NodeSpec
-	driver.locate = func(_ context.Context, spec fingerprint.NodeSpec) (Element, error) {
+	var got fingerprint.ElementTargetSpec
+	driver.locate = func(_ context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 		got = spec
 		return &matrixElement{exists: true}, nil
 	}
 	rt := &Runtime{Driver: driver, SelectorOverlay: map[string][]fingerprint.Selector{
 		"target": {{Type: fingerprint.SelectorCSS, Value: "#healed"}},
 	}}
-	if _, err := rt.locator().Locate(context.Background(), fingerprint.NodeSpec{
+	if _, err := rt.locator().Locate(context.Background(), fingerprint.ElementTargetSpec{
 		ID: "target", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}},
 	}); err != nil {
 		t.Fatal(err)

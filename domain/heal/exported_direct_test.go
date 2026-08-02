@@ -163,20 +163,20 @@ func TestAssessDirectMarginBoundariesAndErrorPrecedence(t *testing.T) {
 
 func TestDefaultHealerHealDirectErrorPrecedenceAndCollections(t *testing.T) {
 	invalid := &DefaultHealer{}
-	if _, err := invalid.Heal(context.Background(), fingerprint.NodeSpec{}, nil); err == nil || !strings.Contains(err.Error(), "review_cap") {
+	if _, err := invalid.Heal(context.Background(), fingerprint.ElementTargetSpec{}, nil); err == nil || !strings.Contains(err.Error(), "review_cap") {
 		t.Fatalf("configuration must precede nil snapshot: %v", err)
 	}
 	healer := NewDefaultHealer()
 	for name, candidates := range map[string][]SnapshotCandidate{"nil": nil, "empty": {}} {
 		t.Run(name, func(t *testing.T) {
-			decision, err := healer.Heal(context.Background(), fingerprint.NodeSpec{}, fakeSnapshot{candidates: candidates})
+			decision, err := healer.Heal(context.Background(), fingerprint.ElementTargetSpec{}, fakeSnapshot{candidates: candidates})
 			if err != nil || decision.Outcome != OutcomeNoCandidate || decision.Candidates != nil {
 				t.Fatalf("Heal() = %+v, %v", decision, err)
 			}
 		})
 	}
 	candidate := SnapshotCandidate{Selector: fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#x"}}
-	decision, err := healer.Heal(context.Background(), fingerprint.NodeSpec{}, fakeSnapshot{candidates: []SnapshotCandidate{candidate, candidate}})
+	decision, err := healer.Heal(context.Background(), fingerprint.ElementTargetSpec{}, fakeSnapshot{candidates: []SnapshotCandidate{candidate, candidate}})
 	if err != nil || len(decision.Candidates) != 2 {
 		t.Fatalf("duplicate snapshot candidates = %+v, %v", decision, err)
 	}

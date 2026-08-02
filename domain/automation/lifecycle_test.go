@@ -1,10 +1,11 @@
 package automation
 
 import (
-	"github.com/Capsule7446/healix-core/domain/parameter"
 	"math"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
@@ -15,9 +16,8 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 		}
 		invalid := base
 		invalid.ID = ""
-		if _, err := invalid.Delete(10); err == nil || !strings.Contains(err.Error(), "environment id") {
-			t.Fatalf("invalid source Delete error = %v", err)
-		}
+		_, err = invalid.Delete(10)
+		requireViolationOf(t, err, CodeEnvironmentInvalid, fault.CodeFieldRequired, "id")
 		overflow := base
 		overflow.Revision = Revision(math.MaxUint64)
 		if _, err := overflow.Delete(10); err == nil {
@@ -32,23 +32,22 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 		deleted.ID = ""
-		if _, err := deleted.Restore(11); err == nil || !strings.Contains(err.Error(), "environment id") {
-			t.Fatalf("invalid source Restore error = %v", err)
-		}
+		_, err = deleted.Restore(11)
+		requireViolationOf(t, err, CodeEnvironmentInvalid, fault.CodeFieldRequired, "id")
 	})
 
 	t.Run("node", func(t *testing.T) {
 		base := versionedNodeAggregate()
-		base.Node.UpdatedAt = 10
-		base.Node.CreatedAt = 10
+		base.ElementTarget.UpdatedAt = 10
+		base.ElementTarget.CreatedAt = 10
 		base.Current.CreatedAt = 10
 		base.Versions[0].CreatedAt = 10
 		invalid := base
-		invalid.Node.CurrentVersionID = "missing"
+		invalid.ElementTarget.CurrentVersionID = "missing"
 		if _, err := invalid.Delete(10); err == nil {
 			t.Fatal("invalid history accepted by Delete")
 		}
-		assertLifecycleTimeBoundaries(t, base.Node.UpdatedAt, func(at int64) error {
+		assertLifecycleTimeBoundaries(t, base.ElementTarget.UpdatedAt, func(at int64) error {
 			_, err := base.Delete(at)
 			return err
 		})
@@ -56,7 +55,7 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		deleted.Node.CurrentVersionID = "missing"
+		deleted.ElementTarget.CurrentVersionID = "missing"
 		if _, err := deleted.Restore(11); err == nil {
 			t.Fatal("invalid history accepted by Restore")
 		}
@@ -64,16 +63,16 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 
 	t.Run("workflow", func(t *testing.T) {
 		base := versionedWorkflowAggregate()
-		base.Workflow.UpdatedAt = 10
-		base.Workflow.CreatedAt = 10
+		base.FlowFragment.UpdatedAt = 10
+		base.FlowFragment.CreatedAt = 10
 		base.Current.CreatedAt = 10
 		base.Versions[0].CreatedAt = 10
 		invalid := base
-		invalid.Workflow.CurrentVersionID = "missing"
+		invalid.FlowFragment.CurrentVersionID = "missing"
 		if _, err := invalid.Delete(10); err == nil {
 			t.Fatal("invalid history accepted by Delete")
 		}
-		assertLifecycleTimeBoundaries(t, base.Workflow.UpdatedAt, func(at int64) error {
+		assertLifecycleTimeBoundaries(t, base.FlowFragment.UpdatedAt, func(at int64) error {
 			_, err := base.Delete(at)
 			return err
 		})
@@ -81,7 +80,7 @@ func TestLifecycleDeleteRestoreValidateSourceAndTimeBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		deleted.Workflow.CurrentVersionID = "missing"
+		deleted.FlowFragment.CurrentVersionID = "missing"
 		if _, err := deleted.Restore(11); err == nil {
 			t.Fatal("invalid history accepted by Restore")
 		}
@@ -103,14 +102,14 @@ func assertLifecycleTimeBoundaries(t *testing.T, updatedAt int64, transition fun
 
 func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	base := versionedNodeAggregate()
-	base.Node.UpdatedAt = base.Node.CreatedAt
-	base.Current.CreatedAt = base.Node.CreatedAt
-	created, err := NewNode(base.Node, base.Current)
+	base.ElementTarget.UpdatedAt = base.ElementTarget.CreatedAt
+	base.Current.CreatedAt = base.ElementTarget.CreatedAt
+	created, err := NewElementTarget(base.ElementTarget, base.Current)
 	if err != nil {
-		t.Fatalf("NewNode: %v", err)
+		t.Fatalf("NewElementTarget: %v", err)
 	}
-	if created.Node.Revision != 1 || created.Current.VersionNumber != 1 {
-		t.Fatalf("creation identities = revision %d version %d", created.Node.Revision, created.Current.VersionNumber)
+	if created.ElementTarget.Revision != 1 || created.Current.VersionNumber != 1 {
+		t.Fatalf("creation identities = revision %d version %d", created.ElementTarget.Revision, created.Current.VersionNumber)
 	}
 
 	properties := Properties{"owner": "updated"}
@@ -119,8 +118,8 @@ func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 		t.Fatalf("UpdateMetadata: %v", err)
 	}
 	properties["owner"] = "mutated"
-	if updated.Node.Revision != 2 || updated.Node.Properties["owner"] != "updated" || created.Node.DisplayName == updated.Node.DisplayName {
-		t.Fatalf("metadata update was mutable or not revisioned: %#v", updated.Node)
+	if updated.ElementTarget.Revision != 2 || updated.ElementTarget.Properties["owner"] != "updated" || created.ElementTarget.DisplayName == updated.ElementTarget.DisplayName {
+		t.Fatalf("metadata update was mutable or not revisioned: %#v", updated.ElementTarget)
 	}
 	deleted, err := updated.Delete(3)
 	if err != nil {
@@ -130,8 +129,8 @@ func TestNodeLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if deleted.Node.Revision != 3 || restored.Node.Revision != 4 || restored.Node.DeletedAt != 0 {
-		t.Fatalf("lifecycle revisions = deleted %d restored %d", deleted.Node.Revision, restored.Node.Revision)
+	if deleted.ElementTarget.Revision != 3 || restored.ElementTarget.Revision != 4 || restored.ElementTarget.DeletedAt != 0 {
+		t.Fatalf("lifecycle revisions = deleted %d restored %d", deleted.ElementTarget.Revision, restored.ElementTarget.Revision)
 	}
 }
 
@@ -139,12 +138,15 @@ func TestNodeLifecycleRejectsInvalidTransitions(t *testing.T) {
 	base := versionedNodeAggregate()
 	cases := []struct {
 		name string
-		run  func(NodeAggregate) error
+		run  func(ElementTargetAggregate) error
 	}{
-		{name: "stale metadata time", run: func(a NodeAggregate) error { _, err := a.UpdateMetadata("node", "", Properties{}, 0); return err }},
-		{name: "restore active", run: func(a NodeAggregate) error { _, err := a.Restore(2); return err }},
-		{name: "revision overflow", run: func(a NodeAggregate) error {
-			a.Node.Revision = Revision(math.MaxUint64)
+		{name: "stale metadata time", run: func(a ElementTargetAggregate) error {
+			_, err := a.UpdateMetadata("node", "", Properties{}, 0)
+			return err
+		}},
+		{name: "restore active", run: func(a ElementTargetAggregate) error { _, err := a.Restore(2); return err }},
+		{name: "revision overflow", run: func(a ElementTargetAggregate) error {
+			a.ElementTarget.Revision = Revision(math.MaxUint64)
 			_, err := a.Delete(2)
 			return err
 		}},
@@ -160,7 +162,7 @@ func TestNodeLifecycleRejectsInvalidTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := deleted.UpdateMetadata("node", "", Properties{}, 4); err != ErrDeletedAggregate {
+	if _, err := deleted.UpdateMetadata("node", "", Properties{}, 4); !fault.IsCode(err, CodeDeletedAggregate) {
 		t.Fatalf("deleted update error = %v", err)
 	}
 	if _, err := deleted.Delete(4); err == nil {
@@ -170,11 +172,11 @@ func TestNodeLifecycleRejectsInvalidTransitions(t *testing.T) {
 
 func TestWorkflowLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	base := versionedWorkflowAggregate()
-	base.Workflow.UpdatedAt = base.Workflow.CreatedAt
-	base.Current.CreatedAt = base.Workflow.CreatedAt
-	created, err := NewWorkflow(base.Workflow, base.Current)
+	base.FlowFragment.UpdatedAt = base.FlowFragment.CreatedAt
+	base.Current.CreatedAt = base.FlowFragment.CreatedAt
+	created, err := NewFlowFragment(base.FlowFragment, base.Current)
 	if err != nil {
-		t.Fatalf("NewWorkflow: %v", err)
+		t.Fatalf("NewFlowFragment: %v", err)
 	}
 	updated, err := created.UpdateMetadata("新流程", "folder", Properties{"owner": "team"}, 2)
 	if err != nil {
@@ -188,10 +190,10 @@ func TestWorkflowLifecycleTransitionsAreImmutableAndRevisioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if created.Workflow.Revision != 1 || updated.Workflow.Revision != 2 || deleted.Workflow.Revision != 3 || restored.Workflow.Revision != 4 {
+	if created.FlowFragment.Revision != 1 || updated.FlowFragment.Revision != 2 || deleted.FlowFragment.Revision != 3 || restored.FlowFragment.Revision != 4 {
 		t.Fatalf("unexpected workflow revisions")
 	}
-	if created.Workflow.DisplayName == updated.Workflow.DisplayName || restored.Workflow.DeletedAt != 0 {
+	if created.FlowFragment.DisplayName == updated.FlowFragment.DisplayName || restored.FlowFragment.DeletedAt != 0 {
 		t.Fatalf("workflow lifecycle mutated receiver or failed restore")
 	}
 }
@@ -204,7 +206,7 @@ func TestWorkflowLifecycleRejectsInvalidTransitions(t *testing.T) {
 	if _, err := base.Restore(2); err == nil {
 		t.Fatal("active workflow restore accepted")
 	}
-	base.Workflow.Revision = Revision(math.MaxUint64)
+	base.FlowFragment.Revision = Revision(math.MaxUint64)
 	if _, err := base.Delete(3); err == nil {
 		t.Fatal("revision overflow accepted")
 	}
@@ -214,9 +216,9 @@ func TestNewTestTaskCreatesValidImmutableAggregate(t *testing.T) {
 	plan := validTestTaskVersionPlan()
 	plan.Task.CurrentVersionID = "ignored"
 	plan.Task.Revision = 99
-	created, err := NewTestTask(plan.Task, plan.Version)
+	created, err := NewExecutionFlow(plan.Task, plan.Version)
 	if err != nil {
-		t.Fatalf("NewTestTask: %v", err)
+		t.Fatalf("NewExecutionFlow: %v", err)
 	}
 	if err := created.Validate(); err != nil {
 		t.Fatalf("created aggregate invalid: %v", err)
@@ -232,11 +234,11 @@ func TestNewTestTaskCreatesValidImmutableAggregate(t *testing.T) {
 
 func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.T) {
 	plan := validTestTaskVersionPlan()
-	created, err := NewTestTask(plan.Task, plan.Version)
+	created, err := NewExecutionFlow(plan.Task, plan.Version)
 	if err != nil {
 		t.Fatal(err)
 	}
-	publication := TestTaskVersionPublication{
+	publication := ExecutionFlowVersionPublication{
 		ID:                      "task-v2",
 		Items:                   cloneTestTaskVersion(plan.Version).Items,
 		FailurePolicy:           plan.Version.FailurePolicy,
@@ -250,7 +252,7 @@ func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.
 	}
 	publication.Items[0].Parameters["key"] = parameter.TextValue("mutated")
 	if published.Task.Revision != 2 || published.Task.CurrentVersionID != "task-v2" ||
-		published.Current.TestTaskID != "task" || published.Current.VersionNumber != 2 ||
+		published.Current.ExecutionFlowID != "task" || published.Current.VersionNumber != 2 ||
 		published.Current.SourceVersionID != "task-v1" ||
 		published.Current.Items[0].TestTaskVersionID != "task-v2" ||
 		published.Current.Items[0].SequenceNumber != 1 {
@@ -267,9 +269,8 @@ func TestTestTaskAggregatePublishVersionDerivesAuthorityAndOwnsInput(t *testing.
 func TestNewTestTaskRejectsInvalidCreation(t *testing.T) {
 	plan := validTestTaskVersionPlan()
 	plan.Version.CreatedAt = 2
-	if _, err := NewTestTask(plan.Task, plan.Version); err == nil || !strings.Contains(err.Error(), "timestamps") {
-		t.Fatalf("creation error = %v", err)
-	}
+	_, err := NewExecutionFlow(plan.Task, plan.Version)
+	requireViolationOf(t, err, CodeAggregateTransitionInvalid, fault.CodeFieldInvalid, "createdAt")
 }
 
 func TestEnvironmentAcceptsAllVariableKindsAndOwnsValues(t *testing.T) {
@@ -351,10 +352,10 @@ func TestTestTaskVersionPlanUsesRevisionForPublicationConcurrency(t *testing.T) 
 	plan.Version.SourceVersionID = "task-v1"
 	plan.Version.Items[0].TestTaskVersionID = plan.Version.ID
 	plan.Task.CurrentVersionID = plan.Version.ID
-	if err := plan.Validate(); err == nil || !strings.Contains(err.Error(), "expected revision") {
+	if err := plan.Validate(); !fault.IsCode(err, CodeExecutionFlowDependencyInvalid) {
 		t.Fatalf("missing expected revision error = %v", err)
 	}
-	plan.ExpectedTaskRevision = 1
+	plan.ExpectedExecutionFlowRevision = 1
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("revision-backed publication rejected: %v", err)
 	}

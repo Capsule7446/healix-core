@@ -1,36 +1,25 @@
 package execution
 
 import (
-	"errors"
-	"fmt"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// WorkerFence identifies the sole Host worker permitted to mutate one Run.
+// WorkerFence identifies the sole Host worker permitted to mutate one Instance.
 // ClaimToken is opaque and Host-generated. It must be globally unique for every
 // successful acquisition, including reacquisition by the same worker, so an old
 // released owner can never pass the fence through an ABA token reuse.
 type WorkerFence struct {
-	RunID      string
+	InstanceID InstanceID
 	ClaimToken string
 }
 
 func (f WorkerFence) Validate() error {
-	if f.RunID == "" || f.ClaimToken == "" {
-		return errors.New("worker fence run id and claim token are required")
+	if f.InstanceID.Validate() != nil || f.ClaimToken == "" {
+		return mustExecutionFault(fault.InvalidArgument, CodeWorkerFenceInvalid, "worker execution authority is invalid")
 	}
 	return nil
 }
 
-var ErrStaleWorkerFence = errors.New("stale worker fence")
-
-type StaleWorkerFenceError struct {
-	Fence WorkerFence
-}
-
-func (e *StaleWorkerFenceError) Error() string {
-	return fmt.Sprintf("%v: run %q", ErrStaleWorkerFence, e.Fence.RunID)
-}
-
-func (e *StaleWorkerFenceError) Is(target error) bool {
-	return target == ErrStaleWorkerFence
+func NewStaleWorkerFenceError() error {
+	return mustExecutionFault(fault.Conflict, CodeWorkerFenceStale, "worker execution authority is stale")
 }

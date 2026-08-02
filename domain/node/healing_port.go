@@ -10,12 +10,12 @@ import (
 // HealingPort is the execution-facing seam for selector recovery.
 // Node owns when recovery is requested; heal owns decision semantics.
 type HealingPort interface {
-	Recover(context.Context, fingerprint.NodeSpec, heal.DOMSnapshot) (heal.Decision, error)
+	Recover(context.Context, fingerprint.ElementTargetSpec, heal.DOMSnapshot) (heal.Decision, error)
 }
 
 type healerPortAdapter struct{ healer heal.Healer }
 
-func (a healerPortAdapter) Recover(ctx context.Context, target fingerprint.NodeSpec, snapshot heal.DOMSnapshot) (heal.Decision, error) {
+func (a healerPortAdapter) Recover(ctx context.Context, target fingerprint.ElementTargetSpec, snapshot heal.DOMSnapshot) (heal.Decision, error) {
 	return a.healer.Heal(ctx, target, snapshot)
 }
 

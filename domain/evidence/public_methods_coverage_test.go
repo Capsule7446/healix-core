@@ -2,14 +2,17 @@ package evidence
 
 import (
 	"math"
-	"strings"
 	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func validValidationProgressObservation() ValidationProgressObservation {
 	return ValidationProgressObservation{
-		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		ValidationStepID: "validation", NodeID: "node", NodeVersionID: "node-v1",
+		ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		Occurrence:       1,
+		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
 	}
@@ -17,9 +20,10 @@ func validValidationProgressObservation() ValidationProgressObservation {
 
 func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 	tests := []struct {
-		name      string
-		mutate    func(*ValidationProgressObservation)
-		wantError string
+		name          string
+		mutate        func(*ValidationProgressObservation)
+		wantViolation fault.Code
+		wantField     string
 	}{
 		{name: "valid"},
 		{name: "grouped progress", mutate: func(value *ValidationProgressObservation) { value.GroupID, value.BranchID = "group", "branch" }},
@@ -30,17 +34,17 @@ func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 			value.HealReviewStatus, value.HealConfidence = "review_pending", 0.5
 		}},
 		{name: "no candidate", mutate: func(value *ValidationProgressObservation) { value.HealReviewStatus = "no_candidate" }},
-		{name: "missing identity", mutate: func(value *ValidationProgressObservation) { value.ID = "" }, wantError: "requires identity and reason"},
-		{name: "missing reason", mutate: func(value *ValidationProgressObservation) { value.Reason = "" }, wantError: "requires identity and reason"},
-		{name: "timestamp lower boundary", mutate: func(value *ValidationProgressObservation) { value.ObservedAt = 0 }, wantError: "requires positive time"},
-		{name: "invalid expected value", mutate: func(value *ValidationProgressObservation) { value.Expected = ValidationValue{} }, wantError: "validation expected value"},
-		{name: "invalid actual value", mutate: func(value *ValidationProgressObservation) { value.Actual = ValidationValue{} }, wantError: "validation actual value"},
-		{name: "group without branch", mutate: func(value *ValidationProgressObservation) { value.GroupID = "group" }, wantError: "present together"},
-		{name: "branch without group", mutate: func(value *ValidationProgressObservation) { value.BranchID = "branch" }, wantError: "present together"},
-		{name: "confidence below boundary", mutate: func(value *ValidationProgressObservation) { value.HealConfidence = -0.0001 }, wantError: "confidence"},
-		{name: "confidence above boundary", mutate: func(value *ValidationProgressObservation) { value.HealConfidence = 1.0001 }, wantError: "confidence"},
-		{name: "confidence NaN", mutate: func(value *ValidationProgressObservation) { value.HealConfidence = math.NaN() }, wantError: "confidence"},
-		{name: "unsupported review status", mutate: func(value *ValidationProgressObservation) { value.HealReviewStatus = "UNKNOWN" }, wantError: "unsupported heal review status"},
+		{name: "missing identity", mutate: func(value *ValidationProgressObservation) { value.ID = "" }, wantViolation: fault.CodeFieldRequired, wantField: "identity"},
+		{name: "missing reason", mutate: func(value *ValidationProgressObservation) { value.Reason = "" }, wantViolation: fault.CodeFieldRequired, wantField: "identity"},
+		{name: "timestamp lower boundary", mutate: func(value *ValidationProgressObservation) { value.ObservedAt = 0 }, wantViolation: fault.CodeFieldInvalid, wantField: "observedAt"},
+		{name: "invalid expected value", mutate: func(value *ValidationProgressObservation) { value.Expected = ValidationValue{} }, wantViolation: fault.CodeFieldInvalid, wantField: "expected.kind"},
+		{name: "invalid actual value", mutate: func(value *ValidationProgressObservation) { value.Actual = ValidationValue{} }, wantViolation: fault.CodeFieldInvalid, wantField: "actual.kind"},
+		{name: "group without branch", mutate: func(value *ValidationProgressObservation) { value.GroupID = "group" }, wantViolation: fault.CodeFieldMismatch, wantField: "groupMembership"},
+		{name: "branch without group", mutate: func(value *ValidationProgressObservation) { value.BranchID = "branch" }, wantViolation: fault.CodeFieldMismatch, wantField: "groupMembership"},
+		{name: "confidence below boundary", mutate: func(value *ValidationProgressObservation) { value.HealConfidence = -0.0001 }, wantViolation: fault.CodeFieldInvalid, wantField: "heal.confidence"},
+		{name: "confidence above boundary", mutate: func(value *ValidationProgressObservation) { value.HealConfidence = 1.0001 }, wantViolation: fault.CodeFieldInvalid, wantField: "heal.confidence"},
+		{name: "confidence NaN", mutate: func(value *ValidationProgressObservation) { value.HealConfidence = math.NaN() }, wantViolation: fault.CodeFieldInvalid, wantField: "heal.confidence"},
+		{name: "unsupported review status", mutate: func(value *ValidationProgressObservation) { value.HealReviewStatus = "UNKNOWN" }, wantViolation: fault.CodeFieldInvalid, wantField: "healReviewStatus"},
 	}
 
 	for _, test := range tests {
@@ -50,29 +54,33 @@ func TestValidationProgressObservationValidateRuleMatrix(t *testing.T) {
 				test.mutate(&value)
 			}
 			err := value.Validate()
-			if test.wantError == "" {
+			if test.wantField == "" {
 				if err != nil {
 					t.Fatalf("Validate() error = %v", err)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.wantError)
-			}
+			requireViolation(t, err, CodeValidationObservationInvalid, test.wantViolation, test.wantField)
+			// "group" and "branch" are not usable as sentinels here: the field path
+			// groupMembership legitimately contains them, and a field name is not
+			// caller input.
+			requireNoPublicLeak(t, err, "UNKNOWN")
 		})
 	}
 }
 
 func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 	valid := HealObservation{
-		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		NodeID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
+		ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		Occurrence:      1,
+		ElementTargetID: "node", BaseNodeVersionID: "node-v1", ObservedAt: 1,
 		DecisionBand: DecisionUnknown,
 	}
 	tests := []struct {
-		name      string
-		mutate    func(*HealObservation)
-		wantError string
+		name          string
+		mutate        func(*HealObservation)
+		wantViolation fault.Code
+		wantField     string
 	}{
 		{name: "no candidate at lower confidence boundary"},
 		{name: "applied candidate at upper confidence boundary", mutate: func(value *HealObservation) {
@@ -81,13 +89,13 @@ func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 		{name: "below cap candidate", mutate: func(value *HealObservation) {
 			value.CandidateHash, value.DecisionBand, value.Confidence = "candidate", DecisionBelowCap, 0.5
 		}},
-		{name: "missing identity", mutate: func(value *HealObservation) { value.NodeID = "" }, wantError: "requires identity"},
-		{name: "timestamp below boundary", mutate: func(value *HealObservation) { value.ObservedAt = 0 }, wantError: "positive time"},
-		{name: "confidence below boundary", mutate: func(value *HealObservation) { value.Confidence = -0.0001 }, wantError: "confidence"},
-		{name: "confidence above boundary", mutate: func(value *HealObservation) { value.Confidence = 1.0001 }, wantError: "confidence"},
-		{name: "confidence infinity", mutate: func(value *HealObservation) { value.Confidence = math.Inf(1) }, wantError: "confidence"},
-		{name: "candidate with unknown band", mutate: func(value *HealObservation) { value.CandidateHash = "candidate" }, wantError: "requires APPLIED or BELOW_CAP"},
-		{name: "no candidate with applied band", mutate: func(value *HealObservation) { value.DecisionBand = DecisionApplied }, wantError: "must use UNKNOWN"},
+		{name: "missing identity", mutate: func(value *HealObservation) { value.ElementTargetID = "" }, wantViolation: fault.CodeFieldRequired, wantField: "identity"},
+		{name: "timestamp below boundary", mutate: func(value *HealObservation) { value.ObservedAt = 0 }, wantViolation: fault.CodeFieldInvalid, wantField: "observedAt"},
+		{name: "confidence below boundary", mutate: func(value *HealObservation) { value.Confidence = -0.0001 }, wantViolation: fault.CodeFieldInvalid, wantField: "confidence"},
+		{name: "confidence above boundary", mutate: func(value *HealObservation) { value.Confidence = 1.0001 }, wantViolation: fault.CodeFieldInvalid, wantField: "confidence"},
+		{name: "confidence infinity", mutate: func(value *HealObservation) { value.Confidence = math.Inf(1) }, wantViolation: fault.CodeFieldInvalid, wantField: "confidence"},
+		{name: "candidate with unknown band", mutate: func(value *HealObservation) { value.CandidateHash = "candidate-8f21" }, wantViolation: fault.CodeFieldMismatch, wantField: "decisionBand"},
+		{name: "no candidate with applied band", mutate: func(value *HealObservation) { value.DecisionBand = DecisionApplied }, wantViolation: fault.CodeFieldMismatch, wantField: "decisionBand"},
 	}
 
 	for _, test := range tests {
@@ -97,15 +105,16 @@ func TestHealObservationValidateBusinessBoundaryMatrix(t *testing.T) {
 				test.mutate(&value)
 			}
 			err := value.Validate()
-			if test.wantError == "" {
+			if test.wantField == "" {
 				if err != nil {
 					t.Fatalf("Validate() error = %v", err)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.wantError)
-			}
+			requireViolation(t, err, CodeHealObservationInvalid, test.wantViolation, test.wantField)
+			// The candidate hash identifies a heal candidate and the band is
+			// caller-declared; neither may appear in public text.
+			requireNoPublicLeak(t, err, "candidate-8f21", string(DecisionApplied), string(DecisionUnknown))
 		})
 	}
 }
@@ -153,8 +162,9 @@ func TestValidationValueEqualityKindsAndCollectionOwnership(t *testing.T) {
 
 func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 	valid := ValidationObservation{
-		ID: "observation", RunID: "run", ExecutionID: "execution", StepExecutionID: "step",
-		ValidationStepID: "validation", NodeID: "node", NodeVersionID: "node-v1",
+		ID: "observation", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+		Occurrence:       1,
+		ValidationStepID: "validation", ElementTargetID: "node", ElementTargetVersionID: "node-v1",
 		AssertionKind: "visible", Expected: AbsentValidationValue(), Actual: AbsentValidationValue(),
 		Reason: "passed", HealReviewStatus: "not_attempted", ObservedAt: 1,
 	}
@@ -195,7 +205,7 @@ func TestValidationObservationFinalDispositionStateMatrix(t *testing.T) {
 }
 
 func TestStepFactTerminalPhaseAndBoundaryMatrix(t *testing.T) {
-	valid := StepFact{ID: "fact", RunID: "run", ExecutionID: "execution", StepExecution: "step", Phase: PhaseSucceeded, ObservedAt: 1}
+	valid := StepFact{ID: "fact", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1, Phase: PhaseSucceeded, ObservedAt: 1}
 	tests := []struct {
 		name      string
 		mutate    func(*StepFact)
@@ -205,7 +215,7 @@ func TestStepFactTerminalPhaseAndBoundaryMatrix(t *testing.T) {
 		{name: "failed", mutate: func(value *StepFact) { value.Phase = PhaseFailed }},
 		{name: "canceled", mutate: func(value *StepFact) { value.Phase = PhaseCanceled }},
 		{name: "aborted", mutate: func(value *StepFact) { value.Phase = PhaseAborted }},
-		{name: "missing identity", mutate: func(value *StepFact) { value.StepExecution = "" }, wantError: true},
+		{name: "missing identity", mutate: func(value *StepFact) { value.StepExecutionID = execution.StepExecutionID{} }, wantError: true},
 		{name: "non-terminal phase", mutate: func(value *StepFact) { value.Phase = "RUNNING" }, wantError: true},
 		{name: "timestamp below boundary", mutate: func(value *StepFact) { value.ObservedAt = 0 }, wantError: true},
 	}
@@ -225,49 +235,43 @@ func TestStepFactTerminalPhaseAndBoundaryMatrix(t *testing.T) {
 
 func TestStepTransitionCommitRejectsCombinedFactLimitAndCrossStepHeal(t *testing.T) {
 	overLimit := StepTransitionCommit{CommitID: "commit", ExpectedRevision: 1, Event: StepPhaseEvent{
-		ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "Step",
+		ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "Step",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 	}}
 	overLimit.FinalValidations = make([]ValidationObservation, maxStepTransitionFacts/2+1)
 	overLimit.HealObservations = make([]HealObservation, maxStepTransitionFacts/2)
-	if err := overLimit.Validate(); err == nil || !strings.Contains(err.Error(), "fact limit") {
+	if err := overLimit.Validate(); !fault.IsCode(err, CodeCommitFactLimitExceeded) {
 		t.Fatalf("combined fact limit error = %v", err)
 	}
 
 	crossStep := StepTransitionCommit{CommitID: "commit", ExpectedRevision: 1, Event: StepPhaseEvent{
-		ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "Step",
+		ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "Step",
 		Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 	}, HealObservations: []HealObservation{{
-		ID: "heal", RunID: "run", ExecutionID: "execution", StepExecutionID: "other-step",
-		NodeID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 1,
+		ID: "heal", InstanceID: mustInstanceID("run"), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("other-step"),
+		ElementTargetID: "node", BaseNodeVersionID: "node-v1", DecisionBand: DecisionUnknown, ObservedAt: 1,
 	}}}
-	if err := crossStep.Validate(); err == nil || !strings.Contains(err.Error(), "committed step") {
-		t.Fatalf("cross-step heal error = %v", err)
-	}
+	requireViolation(t, crossStep.Validate(), CodeStepTransitionCommitInvalid, fault.CodeFieldMismatch, "healObservations.0")
 }
 
 func TestValidationGroupTerminalObservationRejectsIdentityAndMemberDuplicates(t *testing.T) {
 	valid := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
-		[]ValidationMemberIdentity{{BranchID: "branch", NodeID: "node"}}, 1,
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
+		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
 	missingIdentity := valid
 	missingIdentity.ID = ""
-	if err := missingIdentity.Validate(); err == nil || !strings.Contains(err.Error(), "identity") {
-		t.Fatalf("missing identity error = %v", err)
-	}
+	requireViolation(t, missingIdentity.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldRequired, "identity")
+
 	missingMemberIdentity := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
 		[]ValidationMemberIdentity{{BranchID: "branch"}}, 1,
 	)
-	if err := missingMemberIdentity.Validate(); err == nil || !strings.Contains(err.Error(), "member requires identity") {
-		t.Fatalf("missing member identity error = %v", err)
-	}
+	requireViolation(t, missingMemberIdentity.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldRequired, "expectedMembers.0")
+
 	duplicateMember := NewValidationGroupTerminalObservation(
-		"terminal", "run", "execution", "step", "group", ValidationTerminalPassed, "branch",
-		[]ValidationMemberIdentity{{BranchID: "branch", NodeID: "node"}, {BranchID: "branch", NodeID: "node"}}, 1,
+		"terminal", mustInstanceID("run"), mustEntryID("execution"), mustStepExecutionID("step"), 1, "group", ValidationTerminalPassed, "branch",
+		[]ValidationMemberIdentity{{BranchID: "branch", ElementTargetID: "node"}, {BranchID: "branch", ElementTargetID: "node"}}, 1,
 	)
-	if err := duplicateMember.Validate(); err == nil || !strings.Contains(err.Error(), "duplicated") {
-		t.Fatalf("duplicate member error = %v", err)
-	}
+	requireViolation(t, duplicateMember.Validate(), CodeValidationGroupObservationInvalid, fault.CodeFieldDuplicate, "expectedMembers.1")
 }
