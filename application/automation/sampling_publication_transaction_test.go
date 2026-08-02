@@ -2,11 +2,11 @@ package automation
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 func samplingOutcomeFor(t testing.TB, command SamplingPublicationCommand, status PublishSamplingStatus) PublishSamplingOutcome {
@@ -19,17 +19,17 @@ func samplingOutcomeFor(t testing.TB, command SamplingPublicationCommand, status
 	mappings := make([]domain.SamplingNodeMapping, len(publication.Nodes))
 	for index, node := range publication.Nodes {
 		mappings[index] = domain.SamplingNodeMapping{
-			TemporaryNodeID: node.TemporaryNodeID,
-			NodeID:          node.Aggregate.Node.ID,
-			NodeVersionID:   node.Aggregate.Current.ID,
-			ResolutionMode:  node.ResolutionMode,
+			TemporaryElementTargetID: node.TemporaryElementTargetID,
+			ElementTargetID:          node.Aggregate.ElementTarget.ID,
+			ElementTargetVersionID:   node.Aggregate.Current.ID,
+			ResolutionMode:           node.ResolutionMode,
 		}
 	}
 	return PublishSamplingOutcome{
 		Status: status, PublicationID: command.PublicationID, RequestDigest: digest,
 		Result: domain.SamplingPublicationResult{
-			WorkflowID: publication.Workflow.Workflow.ID, WorkflowVersionID: publication.Workflow.Current.ID,
-			VersionNumber: publication.Workflow.Current.VersionNumber, Nodes: mappings,
+			FlowFragmentID: publication.FlowFragment.FlowFragment.ID, WorkflowVersionID: publication.FlowFragment.Current.ID,
+			VersionNumber: publication.FlowFragment.Current.VersionNumber, Nodes: mappings,
 		},
 	}
 }
@@ -42,7 +42,7 @@ func TestSamplingPublicationRequestDigestIsDeterministicAndBoundarySensitive(t *
 		t.Fatalf("digests = %q %q, %v %v", first, second, err, secondErr)
 	}
 	changed := command
-	changed.Publication.Workflow.Workflow.DisplayName = "changed"
+	changed.Publication.FlowFragment.FlowFragment.DisplayName = "changed"
 	other, err := SamplingPublicationRequestDigest(changed)
 	if err != nil || other == first {
 		t.Fatalf("changed digest = %q, %v", other, err)
@@ -54,7 +54,7 @@ func TestSamplingPublicationServiceAcceptsAppliedAndReplay(t *testing.T) {
 		t.Run(string(status), func(t *testing.T) {
 			command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 			transaction := &samplingRepositoryFake{outcome: samplingOutcomeFor(t, command, status)}
-			result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
+			result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
 			if err != nil || result.WorkflowVersionID != "workflow-v1" {
 				t.Fatalf("publish = %#v, %v", result, err)
 			}
@@ -66,12 +66,12 @@ func TestSamplingPublicationServiceKeepsPrivateValidationSnapshot(t *testing.T) 
 	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 	outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
 	transaction := &samplingRepositoryFake{outcome: outcome, mutate: func(intent *PublishSamplingIntent) {
-		intent.Publication.Workflow.Workflow.ID = "mutated"
-		intent.Publication.Workflow.Workflow.Properties["mutated"] = "yes"
+		intent.Publication.FlowFragment.FlowFragment.ID = "mutated"
+		intent.Publication.FlowFragment.FlowFragment.Properties["mutated"] = "yes"
 	}}
-	result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
-	if err != nil || result.WorkflowID != "workflow" || command.Publication.Workflow.Workflow.ID != "workflow" {
-		t.Fatalf("publish = %#v, %v; command=%#v", result, err, command.Publication.Workflow.Workflow)
+	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
+	if err != nil || result.FlowFragmentID != "workflow" || command.Publication.FlowFragment.FlowFragment.ID != "workflow" {
+		t.Fatalf("publish = %#v, %v; command=%#v", result, err, command.Publication.FlowFragment.FlowFragment)
 	}
 }
 
@@ -84,14 +84,14 @@ func TestSamplingPublicationServiceRejectsMalformedOutcome(t *testing.T) {
 		{name: "status", mutate: func(outcome *PublishSamplingOutcome) { outcome.Status = "UNKNOWN" }},
 		{name: "publication", mutate: func(outcome *PublishSamplingOutcome) { outcome.PublicationID = "other" }},
 		{name: "digest", mutate: func(outcome *PublishSamplingOutcome) { outcome.RequestDigest = "sha256:" + strings.Repeat("0", 64) }},
-		{name: "workflow", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.WorkflowID = "other" }},
+		{name: "workflow", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.FlowFragmentID = "other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
 			test.mutate(&outcome)
-			_, err := NewSamplingPublicationService(&samplingRepositoryFake{outcome: outcome}, nil).Publish(context.Background(), command)
-			if !errors.Is(err, ErrSamplingPublicationContract) {
+			_, err := NewSamplingPublicationService(&samplingRepositoryFake{outcome: outcome}).Publish(context.Background(), command)
+			if !fault.IsCode(err, CodeSamplingPublicationContractViolation) {
 				t.Fatalf("error = %v", err)
 			}
 		})
@@ -100,68 +100,60 @@ func TestSamplingPublicationServiceRejectsMalformedOutcome(t *testing.T) {
 
 func TestSamplingPublicationServiceReturnsConfigurationErrorWithoutTransaction(t *testing.T) {
 	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
-	_, err := NewSamplingPublicationService(nil, nil).Publish(context.Background(), command)
-	if !errors.Is(err, ErrSamplingPublicationConfiguration) {
+	_, err := NewSamplingPublicationService(nil).Publish(context.Background(), command)
+	if !fault.IsCode(err, CodeSamplingPublicationUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestSamplingPublicationServiceReturnsOwnedMappings(t *testing.T) {
-	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
-	outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
-	transaction := &samplingRepositoryFake{outcome: outcome}
-	result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	transaction.outcome.Result.Nodes = append(transaction.outcome.Result.Nodes, domain.SamplingNodeMapping{TemporaryNodeID: "adapter-owned"})
-	if len(result.Nodes) != 0 {
-		t.Fatalf("returned mappings changed with adapter state: %#v", result.Nodes)
-	}
-}
-
-func TestSamplingPublicationServiceReplaysForceCreateBeforeAuthorization(t *testing.T) {
-	publication, err := MapSamplingPublication(SamplingPublicationRequest{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := SamplingPublicationCommand{PublicationID: "publication", ForceCreateAuthorization: "consumed", Publication: publication}
-	transaction := &samplingRepositoryFake{outcome: samplingOutcomeFor(t, command, PublishSamplingReplayed)}
-	authorizer := &forceCreateAuthorizerFake{err: errors.New("authorization already consumed")}
-
-	result, err := NewSamplingPublicationService(transaction, authorizer).Publish(context.Background(), command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.WorkflowVersionID != "workflow-v1" || authorizer.called || transaction.called {
-		t.Fatalf("replay = %#v, authorized=%v published=%v", result, authorizer.called, transaction.called)
+	command := createSamplingCommand(t)
+	for _, status := range []PublishSamplingStatus{PublishSamplingApplied, PublishSamplingReplayed} {
+		t.Run(string(status), func(t *testing.T) {
+			outcome := samplingOutcomeFor(t, command, status)
+			transaction := &samplingTransactionProbe{publishOutcome: outcome}
+			if status == PublishSamplingReplayed {
+				transaction.lookupOutcome, transaction.lookupFound = outcome, true
+			}
+			result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
+			if err != nil || len(result.Nodes) != 1 {
+				t.Fatalf("publish = %#v, %v", result, err)
+			}
+			if status == PublishSamplingApplied {
+				transaction.publishOutcome.Result.Nodes[0].ElementTargetVersionID = "adapter-mutated"
+			} else {
+				transaction.lookupOutcome.Result.Nodes[0].ElementTargetVersionID = "adapter-mutated"
+			}
+			if result.Nodes[0].ElementTargetVersionID != "forced-v1" {
+				t.Fatalf("returned mapping aliases adapter state: %#v", result.Nodes)
+			}
+		})
 	}
 }
 
-func TestSamplingPublicationServiceRequiresVerifiedForceCreateAuthorization(t *testing.T) {
-	publication, err := MapSamplingPublication(SamplingPublicationRequest{WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2, Workspace: sampledWorkflow("FORCE_CREATE"), Nodes: []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}}})
-	if err != nil {
-		t.Fatal(err)
+func TestSamplingPublicationServiceRejectsMalformedMappings(t *testing.T) {
+	command := createSamplingCommand(t)
+	tests := []struct {
+		name   string
+		mutate func(*PublishSamplingOutcome)
+	}{
+		{name: "missing", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes = nil }},
+		{name: "extra", mutate: func(outcome *PublishSamplingOutcome) {
+			outcome.Result.Nodes = append(outcome.Result.Nodes, outcome.Result.Nodes[0])
+		}},
+		{name: "temporary identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].TemporaryElementTargetID = "other" }},
+		{name: "target identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ElementTargetID = "other" }},
+		{name: "version identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ElementTargetVersionID = "other" }},
+		{name: "resolution mode", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ResolutionMode = "REUSE" }},
 	}
-	command := SamplingPublicationCommand{PublicationID: "publication", ForceCreateAuthorization: "authorization", Publication: publication}
-	transaction := &samplingRepositoryFake{outcome: samplingOutcomeFor(t, command, PublishSamplingApplied)}
-	if _, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command); !errors.Is(err, ErrSamplingPublicationAuthorization) || transaction.called {
-		t.Fatalf("missing authorizer = %v, called=%v", err, transaction.called)
-	}
-	authorizerCause := errors.New("authorization backend unavailable")
-	authorizer := &forceCreateAuthorizerFake{err: authorizerCause}
-	if _, err := NewSamplingPublicationService(transaction, authorizer).Publish(context.Background(), command); !errors.Is(err, ErrSamplingPublicationAuthorization) || !errors.Is(err, authorizerCause) || transaction.called {
-		t.Fatalf("rejected authorization = %v, called=%v", err, transaction.called)
-	}
-	authorizer.err = nil
-	expectedDigest, err := SamplingPublicationRequestDigest(command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewSamplingPublicationService(transaction, authorizer).Publish(context.Background(), command); err != nil || !authorizer.called || !transaction.called {
-		t.Fatalf("authorized publish = %v, authorized=%v called=%v", err, authorizer.called, transaction.called)
-	}
-	if authorizer.intent.PublicationID != command.PublicationID || authorizer.intent.RequestDigest != expectedDigest || authorizer.intent.AuthorizationReference != command.ForceCreateAuthorization {
-		t.Fatalf("authorization intent = %#v", authorizer.intent)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			outcome := samplingOutcomeFor(t, command, PublishSamplingApplied)
+			test.mutate(&outcome)
+			_, err := NewSamplingPublicationService(&samplingTransactionProbe{publishOutcome: outcome}).Publish(context.Background(), command)
+			if !fault.IsCode(err, CodeSamplingPublicationContractViolation) {
+				t.Fatalf("error = %v", err)
+			}
+		})
 	}
 }

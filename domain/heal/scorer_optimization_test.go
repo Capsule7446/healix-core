@@ -38,7 +38,7 @@ func randomScoringWeights(random *rand.Rand) Weights {
 }
 
 func TestPreparedTargetScorerMatchesLegacyDecision(t *testing.T) {
-	target := fingerprint.NodeSpec{ID: "checkout.submit", Fingerprint: benchmarkScoringFingerprint(0)}
+	target := fingerprint.ElementTargetSpec{ID: "checkout.submit", Fingerprint: benchmarkScoringFingerprint(0)}
 	candidates := make([]SnapshotCandidate, 64)
 	for index := range candidates {
 		candidates[index] = SnapshotCandidate{
@@ -83,7 +83,7 @@ func BenchmarkScoreCandidates(b *testing.B) {
 func BenchmarkDefaultHealerHealScoring(b *testing.B) {
 	for _, count := range []int{1, 32, 256} {
 		b.Run(fmt.Sprintf("candidates=%d", count), func(b *testing.B) {
-			target := fingerprint.NodeSpec{ID: "checkout.submit", Fingerprint: benchmarkScoringFingerprint(0)}
+			target := fingerprint.ElementTargetSpec{ID: "checkout.submit", Fingerprint: benchmarkScoringFingerprint(0)}
 			candidates := make([]SnapshotCandidate, count)
 			for index := range candidates {
 				candidates[index] = SnapshotCandidate{
@@ -133,7 +133,7 @@ func legacyScore(weights Weights, target, candidate fingerprint.Fingerprint) flo
 	return sum / total
 }
 
-func legacyHealDecision(healer *DefaultHealer, target fingerprint.NodeSpec, all []SnapshotCandidate) (Decision, error) {
+func legacyHealDecision(healer *DefaultHealer, target fingerprint.ElementTargetSpec, all []SnapshotCandidate) (Decision, error) {
 	narrowed := narrowByPathLCS(target.Fingerprint.Path, all)
 	scored := make([]Candidate, 0, len(narrowed))
 	for _, candidate := range narrowed {

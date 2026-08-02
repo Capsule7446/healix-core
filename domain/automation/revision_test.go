@@ -1,22 +1,29 @@
 package automation
 
 import (
-	"errors"
 	"math"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestRevisionValidationAndOverflow(t *testing.T) {
-	if !errors.Is(Revision(0).ValidatePersisted(), ErrRevisionZero) {
-		t.Fatal("zero revision accepted")
+	invalid := Revision(0).ValidatePersisted()
+	invalidDescriptor, invalidOK := fault.Describe(invalid)
+	if !fault.IsCode(invalid, CodePersistedRevisionInvalid) || !invalidOK || invalidDescriptor.Kind() != fault.FailedPrecondition || invalidDescriptor.Message() != "persisted revision must be non-zero" || len(invalidDescriptor.Params()) != 0 || len(invalidDescriptor.Violations()) != 0 {
+		t.Fatalf("zero revision error/descriptor = %v/%#v", invalid, invalidDescriptor)
 	}
 	if next, err := Revision(1).Next(); err != nil || next != 2 {
 		t.Fatalf("next = %d, %v", next, err)
 	}
-	if _, err := Revision(math.MaxUint64).Next(); !errors.Is(err, ErrRevisionOverflow) {
-		t.Fatalf("overflow = %v", err)
+	if err := Revision(math.MaxUint64).ValidatePersisted(); err != nil {
+		t.Fatalf("maximum persisted revision rejected: %v", err)
+	}
+	next, exhausted := Revision(math.MaxUint64).Next()
+	exhaustedDescriptor, exhaustedOK := fault.Describe(exhausted)
+	if next != 0 || !fault.IsCode(exhausted, CodeRevisionExhausted) || !exhaustedOK || exhaustedDescriptor.Kind() != fault.ResourceExhausted || exhaustedDescriptor.Message() != "revision value is exhausted" || len(exhaustedDescriptor.Params()) != 0 || len(exhaustedDescriptor.Violations()) != 0 {
+		t.Fatalf("overflow result/error/descriptor = %d/%v/%#v", next, exhausted, exhaustedDescriptor)
 	}
 }
 

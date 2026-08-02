@@ -7,7 +7,7 @@ import (
 )
 
 type NodeRepository interface {
-	Load(context.Context, string) (domain.NodeAggregate, error)
-	Create(context.Context, domain.NodeAggregate) (domain.NodeAggregate, error)
-	SaveAggregate(context.Context, domain.Revision, domain.NodeAggregate) (domain.NodeAggregate, error)
+	Load(context.Context, string) (domain.ElementTargetAggregate, error)
+	Create(context.Context, domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error)
+	SaveAggregate(context.Context, domain.Revision, domain.ElementTargetAggregate) (domain.ElementTargetAggregate, error)
 }

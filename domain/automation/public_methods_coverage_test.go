@@ -1,20 +1,20 @@
 package automation
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
 func TestHealStreakValidateStateAndRuleMatrix(t *testing.T) {
 	observing := HealStreak{
-		NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate",
+		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate",
 		Band: HealDecisionBandApplied, Contributions: contributions("run-1"),
 		LastSequence: 1, Observing: true, Disposition: HealStreakObserving,
 	}
 	autoPublish := HealStreak{
-		NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate",
+		ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate",
 		Band: HealDecisionBandApplied, Contributions: contributions("run-1", "run-2", "run-3"),
 		LastSequence: 3, Disposition: HealStreakAutoPublish,
 	}
@@ -31,17 +31,17 @@ func TestHealStreakValidateStateAndRuleMatrix(t *testing.T) {
 		{name: "observing", streak: observing},
 		{name: "auto publish", streak: autoPublish},
 		{name: "await approval", streak: awaitApproval},
-		{name: "reset", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", LastSequence: 1, Disposition: HealStreakReset}},
-		{name: "stale", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", LastSequence: 1, Disposition: HealStreakStale}},
-		{name: "rejected", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", LastSequence: 1, Disposition: HealStreakRejected}},
+		{name: "reset", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", LastSequence: 1, Disposition: HealStreakReset}},
+		{name: "stale", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", LastSequence: 1, Disposition: HealStreakStale}},
+		{name: "rejected", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", LastSequence: 1, Disposition: HealStreakRejected}},
 		{name: "consumed observation beyond last sequence", streak: func() HealStreak {
 			value := observing
 			value.LastSequence = 0
 			return value
 		}(), wantError: "exceeds last sequence"},
-		{name: "reset cannot be active", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", LastSequence: 1, Observing: true, Disposition: HealStreakReset}, wantError: "inactive node/base sequence identity"},
-		{name: "rejected requires candidate", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", LastSequence: 1, Disposition: HealStreakRejected}, wantError: "inactive candidate identity"},
-		{name: "active requires identity", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", Band: HealDecisionBandApplied, LastSequence: 1, Observing: true, Disposition: HealStreakObserving}, wantError: "requires node, base version, and candidate identity"},
+		{name: "reset cannot be active", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", LastSequence: 1, Observing: true, Disposition: HealStreakReset}, wantError: "inactive node/base sequence identity"},
+		{name: "rejected requires candidate", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", LastSequence: 1, Disposition: HealStreakRejected}, wantError: "inactive candidate identity"},
+		{name: "active requires identity", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", Band: HealDecisionBandApplied, LastSequence: 1, Observing: true, Disposition: HealStreakObserving}, wantError: "requires node, base version, and candidate identity"},
 		{name: "active rejects unknown band", streak: func() HealStreak {
 			value := observing
 			value.Band = HealDecisionBandUnknown
@@ -78,7 +78,7 @@ func TestHealStreakValidateStateAndRuleMatrix(t *testing.T) {
 			value.Disposition = HealStreakDisposition("UNKNOWN")
 			return value
 		}(), wantError: "unsupported inactive"},
-		{name: "active requires last sequence", streak: HealStreak{NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Observing: true, Disposition: HealStreakObserving}, wantError: "requires a last sequence"},
+		{name: "active requires last sequence", streak: HealStreak{ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Band: HealDecisionBandApplied, Observing: true, Disposition: HealStreakObserving}, wantError: "requires a last sequence"},
 		{name: "invalid contribution", streak: func() HealStreak {
 			value := observing
 			value.Contributions = append([]ContributingHealFact(nil), observing.Contributions...)
@@ -96,8 +96,8 @@ func TestHealStreakValidateStateAndRuleMatrix(t *testing.T) {
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("Validate() error = %v, want containing %q", err, test.wantError)
+			if !fault.IsCode(err, CodeHealStreakStateInvalid) {
+				t.Fatalf("Validate() error = %v, want %q", err, CodeHealStreakStateInvalid)
 			}
 		})
 	}
@@ -105,21 +105,21 @@ func TestHealStreakValidateStateAndRuleMatrix(t *testing.T) {
 
 func TestNodeAggregateCloneOwnsNestedMutableState(t *testing.T) {
 	original := versionedNodeAggregate()
-	original.Node.Properties = Properties{"region": "east"}
+	original.ElementTarget.Properties = Properties{"region": "east"}
 	original.Current.Fingerprint.Path = []string{"main", "button"}
 	original.Current.Fingerprint.Attributes = map[string]string{"role": "button"}
 	original.Current.Fingerprint.Framework = fingerprint.FrameworkStack{{Kind: fingerprint.FrameworkReact}}
 	original.Versions[1] = original.Current
 
 	cloned := original.Clone()
-	cloned.Node.Properties["region"] = "west"
+	cloned.ElementTarget.Properties["region"] = "west"
 	cloned.Current.Selectors[0].Value = "#changed"
 	cloned.Current.Fingerprint.Path[0] = "aside"
 	cloned.Current.Fingerprint.Attributes["role"] = "link"
 	cloned.Current.Fingerprint.Framework[0].Kind = fingerprint.FrameworkVue
 	cloned.Versions[1].Fingerprint.Framework[0].Kind = fingerprint.FrameworkAngular
 
-	if original.Node.Properties["region"] != "east" ||
+	if original.ElementTarget.Properties["region"] != "east" ||
 		original.Current.Selectors[0].Value != "#node" ||
 		original.Current.Fingerprint.Path[0] != "main" ||
 		original.Current.Fingerprint.Attributes["role"] != "button" ||

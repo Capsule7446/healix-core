@@ -86,7 +86,7 @@ func (e *executionBudgetEvaluator) stepsCost(parentVersionID string, steps []Ste
 				return executionCost{}, err
 			}
 			stepCost = addCost(stepCost, multiplyCost(childCost, int64(step.RepeatCount)))
-		case WorkflowReference:
+		case FlowFragmentReference:
 			resolution, exists := e.resolutions[WorkflowReferenceKey{ParentVersionID: parentVersionID, StepID: step.ID}]
 			if !exists {
 				return executionCost{}, fmt.Errorf("workflow reference step %q has no resolution", step.ID)

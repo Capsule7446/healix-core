@@ -71,7 +71,7 @@ func TestAssessCoversSafetyRulesAndURLNormalization(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		target     fingerprint.NodeSpec
+		target     fingerprint.ElementTargetSpec
 		candidate  Candidate
 		current    ExecutionContext
 		want       Disposition
@@ -79,7 +79,7 @@ func TestAssessCoversSafetyRulesAndURLNormalization(t *testing.T) {
 	}{
 		{
 			name: "scheme host case and fragment are normalized",
-			target: func() fingerprint.NodeSpec {
+			target: func() fingerprint.ElementTargetSpec {
 				value := target
 				value.PageURL = "HTTPS://SHOP.TEST/checkout#first"
 				return value
@@ -112,7 +112,7 @@ func TestAssessCoversSafetyRulesAndURLNormalization(t *testing.T) {
 		},
 		{
 			name: "malformed URLs compare as opaque values",
-			target: func() fingerprint.NodeSpec {
+			target: func() fingerprint.ElementTargetSpec {
 				value := target
 				value.PageURL = "%"
 				value.Origin = ""

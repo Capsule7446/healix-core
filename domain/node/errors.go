@@ -1,56 +1,15 @@
 package node
 
 import (
-	"context"
-	"errors"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
-
-// ErrorKind classifies execution failures without coupling the domain to a browser driver.
-type ErrorKind string
-
-const (
-	ErrorNotFound        ErrorKind = "not_found"
-	ErrorNotVisible      ErrorKind = "not_visible"
-	ErrorNotInteractable ErrorKind = "not_interactable"
-	ErrorTimeout         ErrorKind = "timeout"
-	ErrorNavigation      ErrorKind = "navigation"
-	ErrorAssertion       ErrorKind = "assertion"
-	ErrorContextClosed   ErrorKind = "context_closed"
-	ErrorTransientDriver ErrorKind = "transient_driver"
-	ErrorUnknown         ErrorKind = "unknown"
-)
-
-// ClassifiedError preserves the original driver error while exposing stable retry semantics.
-type ClassifiedError struct {
-	Kind      ErrorKind
-	Operation string
-	Err       error
-}
-
-func (e *ClassifiedError) Error() string {
-	if e == nil {
-		return "<nil>"
-	}
-	message := "unspecified error"
-	if e.Err != nil {
-		message = e.Err.Error()
-	}
-	if e.Operation == "" {
-		return string(e.Kind) + ": " + message
-	}
-	return e.Operation + " (" + string(e.Kind) + "): " + message
-}
-
-func (e *ClassifiedError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Err
-}
 
 func isExclusiveElementNotFound(err error) bool {
 	if err == nil {
 		return false
+	}
+	if nodeFault, ok := err.(*fault.Error); ok {
+		return nodeFault.Code() == CodeElementNotFound
 	}
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
 		children := joined.Unwrap()
@@ -67,45 +26,32 @@ func isExclusiveElementNotFound(err error) bool {
 	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
 		return isExclusiveElementNotFound(wrapped.Unwrap())
 	}
-	return err == ErrElementNotFound
+	return fault.IsCode(err, CodeElementNotFound)
 }
 
-func TransientError(operation string, err error) error {
+func isExclusiveTransientDriverFault(err error) bool {
 	if err == nil {
-		return nil
+		return false
 	}
-	return &ClassifiedError{Kind: ErrorTransientDriver, Operation: operation, Err: err}
-}
-
-func ClassifyError(operation string, err error) error {
-	if err == nil {
-		return nil
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !isExclusiveTransientDriverFault(child) {
+				return false
+			}
+		}
+		return true
 	}
-	if _, ok := err.(*ClassifiedError); ok {
-		return err
+	if nodeFault, ok := err.(*fault.Error); ok {
+		return nodeFault.Code() == CodeTransientDriver
 	}
-	kind := ErrorUnknown
-	switch {
-	case errors.Is(err, context.Canceled):
-		kind = ErrorContextClosed
-	case errors.Is(err, context.DeadlineExceeded):
-		kind = ErrorTimeout
-	case errors.Is(err, ErrElementNotFound):
-		kind = ErrorNotFound
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return isExclusiveTransientDriverFault(wrapped.Unwrap())
 	}
-	return &ClassifiedError{Kind: kind, Operation: operation, Err: err}
-}
-
-func errorKind(err error) ErrorKind {
-	if err == nil {
-		return ""
-	}
-	var classified *ClassifiedError
-	if errors.As(err, &classified) {
-		return classified.Kind
-	}
-	classified = ClassifyError("operation", err).(*ClassifiedError)
-	return classified.Kind
+	return fault.IsCode(err, CodeTransientDriver)
 }
 
 type RetryPolicy struct {
@@ -125,17 +71,18 @@ func Retry(policy RetryPolicy, operation func() error) error {
 }
 
 func RetryWithAttempts(policy RetryPolicy, operation func() error) (int, error) {
-	var err error
 	attempts := policy.normalized()
 	for attempt := 1; attempt <= attempts; attempt++ {
-		err = operation()
+		err := operation()
 		if err == nil {
 			return attempt, nil
 		}
-		var classified *ClassifiedError
-		if !errors.As(err, &classified) || classified.Kind != ErrorTransientDriver {
+		if !isExclusiveTransientDriverFault(err) {
+			return attempt, err
+		}
+		if attempt == attempts {
 			return attempt, err
 		}
 	}
-	return attempts, err
+	return attempts, nil
 }

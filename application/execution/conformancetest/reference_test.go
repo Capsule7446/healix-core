@@ -44,7 +44,7 @@ type referenceFixture struct {
 
 func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyingRuns int) conformancetest.Fixture {
 	fixture := &referenceFixture{
-		fence: domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"},
+		fence: domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
 		band:  band,
 		state: referenceState{
 			stepRevision:       1,
@@ -57,20 +57,20 @@ func newReferenceFixture(_ *testing.T, band evidence.DecisionBand, priorQualifyi
 	planner := execution.NewDefaultHealGovernancePlanner()
 	for index := 0; index < priorQualifyingRuns; index++ {
 		sequence := uint64(index + 1)
-		runID := fmt.Sprintf("run-prior-%d", index+1)
+		instanceID := fmt.Sprintf("run-prior-%d", index+1)
 		observation := evidence.HealObservation{
-			ID: "fact-" + runID, RunID: runID, ExecutionID: "execution", StepExecutionID: "step",
-			NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
+			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"),
+			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: int64(sequence),
 		}
 		decision, err := planner.PlanHealGovernance(execution.HealGovernancePlan{
 			Snapshot: execution.HealGovernanceSnapshot{
-				Key:                  execution.HealGovernanceKey{NodeID: "node", BaseNodeVersionID: "base"},
+				Key:                  execution.HealGovernanceKey{ElementTargetID: "node", BaseNodeVersionID: "base"},
 				CurrentNodeVersionID: "base", Revision: fixture.state.governanceRevision, Streak: fixture.state.streak,
 			},
 			Fact: execution.HealAcceptedFact{
-				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + runID,
-				RunID: runID, Sequence: sequence, Observation: &observation,
+				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: "commit-" + instanceID,
+				InstanceID: mustInstanceID(instanceID), Sequence: sequence, Observation: &observation,
 			},
 		})
 		if err != nil {
@@ -140,12 +140,12 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if fence != f.fence {
-		return evidence.StepTransitionCommitResult{}, &domainexecution.StaleWorkerFenceError{Fence: fence}
+		return evidence.StepTransitionCommitResult{}, domainexecution.NewStaleWorkerFenceError()
 	}
 	payload := fmt.Sprintf("%#v", commit)
 	if replay, exists := f.state.replays[commit.CommitID]; exists {
 		if replay.payload != payload {
-			return evidence.StepTransitionCommitResult{}, execution.ErrCommitIdentityConflict
+			return evidence.StepTransitionCommitResult{}, execution.CommitIdentityConflictError()
 		}
 		result := replay.result
 		result.WasApplied = false
@@ -153,7 +153,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 		return result, nil
 	}
 	if commit.ExpectedRevision != f.state.stepRevision {
-		return evidence.StepTransitionCommitResult{}, execution.ErrStepRevisionConflict
+		return evidence.StepTransitionCommitResult{}, execution.StepRevisionConflictError()
 	}
 	next := cloneState(f.state)
 	next.terminalFacts++
@@ -172,18 +172,18 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 		next.lastSequence++
 		decision, err := planner.PlanHealGovernance(execution.HealGovernancePlan{
 			Snapshot: execution.HealGovernanceSnapshot{
-				Key:                  execution.HealGovernanceKey{NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID},
+				Key:                  execution.HealGovernanceKey{ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID},
 				CurrentNodeVersionID: observation.BaseNodeVersionID, Revision: next.governanceRevision, Streak: next.streak,
 			},
 			Fact: execution.HealAcceptedFact{
 				Kind: execution.HealAcceptedObservation, FactID: observation.ID, CommitID: commit.CommitID,
-				RunID: observation.RunID, Sequence: next.lastSequence, Observation: &observation,
+				InstanceID: observation.InstanceID, Sequence: next.lastSequence, Observation: &observation,
 			},
 		})
 		if err != nil {
 			return evidence.StepTransitionCommitResult{}, err
 		}
-		if decision.Key.NodeID != observation.NodeID || decision.Key.BaseNodeVersionID != observation.BaseNodeVersionID || decision.FactID != observation.ID || decision.Sequence != next.lastSequence || decision.ExpectedRevision != next.governanceRevision {
+		if decision.Key.ElementTargetID != observation.ElementTargetID || decision.Key.BaseNodeVersionID != observation.BaseNodeVersionID || decision.FactID != observation.ID || decision.Sequence != next.lastSequence || decision.ExpectedRevision != next.governanceRevision {
 			return evidence.StepTransitionCommitResult{}, errors.New("planner decision authority mismatch")
 		}
 		next.streak = decision.NextStreak
@@ -217,7 +217,7 @@ func (f *referenceFixture) CommitStepTransition(_ context.Context, fence domaine
 	next.stepRevision++
 	promotions := []evidence.NodeVersionPromotion(nil)
 	if next.publications > f.state.publications {
-		promotions = []evidence.NodeVersionPromotion{{NodeID: "node", VersionID: "version-1"}}
+		promotions = []evidence.NodeVersionPromotion{{ElementTargetID: "node", VersionID: "version-1"}}
 	}
 	result := evidence.StepTransitionCommitResult{Revision: next.stepRevision, WasApplied: true, Promotions: promotions}
 	next.replays[commit.CommitID] = replayRecord{payload: payload, result: result}
@@ -243,7 +243,7 @@ func TestReferenceStateCloneIsIndependent(t *testing.T) {
 	fixture := newReferenceFixture(t, evidence.DecisionApplied, 2).(*referenceFixture)
 	clone := cloneState(fixture.state)
 	clone.acceptedFacts["other"] = struct{}{}
-	clone.streak.Contributions[0].RunID = "other"
+	clone.streak.Contributions[0].InstanceID = "other"
 	if reflect.DeepEqual(clone, fixture.state) {
 		t.Fatal("reference state clone aliases source")
 	}

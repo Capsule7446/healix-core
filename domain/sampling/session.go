@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+
+	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
 type Status string
@@ -58,7 +61,7 @@ type Capture struct {
 	Value       string
 	Values      []string
 	Hints       ActionHints
-	Spec        fingerprint.NodeSpec
+	Spec        fingerprint.ElementTargetSpec
 	Validation  *ValidationSample
 }
 
@@ -69,39 +72,39 @@ type ActionHints struct {
 
 type CapturedNode struct {
 	UUID string
-	Spec fingerprint.NodeSpec
+	Spec fingerprint.ElementTargetSpec
 }
 
 type RecordedAction struct {
-	UUID       string
-	Sequence   int
-	Kind       ActionKind
-	Value      string
-	Values     []string
-	Hints      ActionHints
-	PageURL    string
-	NodeUUID   string
-	NodeID     string
-	Validation *ValidationSample
+	UUID            string
+	Sequence        int
+	Kind            ActionKind
+	Value           string
+	Values          []string
+	Hints           ActionHints
+	PageURL         string
+	NodeUUID        string
+	ElementTargetID string
+	Validation      *ValidationSample
 }
 
 type CaptureResult struct {
-	SessionID  string
-	CaptureID  string
-	NodeUUID   string
-	NodeID     string
-	ActionUUID string
-	Sequence   int
-	Created    bool
+	SessionID       string
+	CaptureID       string
+	NodeUUID        string
+	ElementTargetID string
+	ActionUUID      string
+	Sequence        int
+	Created         bool
 }
 
 type Snapshot struct {
-	ID         string
-	WorkflowID string
-	StartURL   string
-	Status     Status
-	Nodes      []CapturedNode
-	Actions    []RecordedAction
+	ID             string
+	FlowFragmentID string
+	StartURL       string
+	Status         Status
+	Nodes          []CapturedNode
+	Actions        []RecordedAction
 }
 
 type Session struct {
@@ -117,21 +120,29 @@ type Session struct {
 }
 
 func NewSession(workflowID, startURL string) (*Session, error) {
+	var violations []fault.Violation
 	if strings.TrimSpace(workflowID) == "" {
-		return nil, fmt.Errorf("sampling: workflow ID is required")
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "flowFragmentId", "flow fragment id is required"))
 	}
 	if strings.TrimSpace(startURL) == "" {
-		return nil, fmt.Errorf("sampling: start URL is required")
+		// Returning here keeps the violation order deterministic: an empty string
+		// parses successfully, so continuing would add a redundant host violation.
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "startUrl", "start url is required"))
+		return nil, sessionInputInvalidError(violations)
 	}
-	parsedStartURL, err := url.Parse(startURL)
-	if err != nil {
-		return nil, fmt.Errorf("sampling: invalid start URL: %w", err)
+	// The shared rule adds the two checks this call site was missing: a start
+	// URL with userinfo (`https://trusted.test@evil.test/`) reads as the
+	// trusted host to whoever approves the sampling session, and one with a
+	// raw CR splits any request it is later concatenated into. The rejection
+	// reason is a closed vocabulary, so unlike url.Error — which formats the
+	// whole URL into its own text — it is safe to keep as a private cause.
+	if rejection := weburl.Check(startURL); rejection != weburl.Accepted {
+		code, message := startURLViolation(rejection)
+		violations = append(violations, mustViolation(code, "startUrl", message))
+		return nil, wrapSessionInputInvalidError(fmt.Errorf("start url rejected: %s", rejection), violations)
 	}
-	if parsedStartURL.Scheme != "http" && parsedStartURL.Scheme != "https" {
-		return nil, fmt.Errorf("sampling: start URL scheme must be http or https")
-	}
-	if parsedStartURL.Host == "" {
-		return nil, fmt.Errorf("sampling: start URL host is required")
+	if len(violations) != 0 {
+		return nil, sessionInputInvalidError(violations)
 	}
 	sessionID, err := NewUUID()
 	if err != nil {
@@ -157,10 +168,10 @@ func (s *Session) ID() string {
 
 func (s *Session) Start() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot start")
+		return internalError()
 	}
 	if s.status != StatusCreated {
-		return fmt.Errorf("sampling: session cannot start from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	actionID, err := NewUUID()
 	if err != nil {
@@ -173,28 +184,55 @@ func (s *Session) Start() error {
 	return nil
 }
 
-func (s *Session) Record(c Capture) (CaptureResult, error) {
-	if s == nil || s.status != StatusRecording {
-		return CaptureResult{}, fmt.Errorf("sampling: session is not recording")
-	}
+// shapeViolations reports every shape failure of a capture at once, in a fixed
+// field order. Returning at the first one meant a validate capture missing both
+// its identity key and its validation detail told the caller only about the
+// identity key, so fixing it surfaced the next failure instead of accepting the
+// capture — which is exactly what the one-fault-carrying-every-failure rule
+// exists to prevent.
+func (c Capture) shapeViolations() []fault.Violation {
+	var violations []fault.Violation
 	if strings.TrimSpace(c.CaptureID) == "" {
-		return CaptureResult{}, fmt.Errorf("sampling: capture ID is required")
-	}
-	if previous, ok := s.byCaptureID[c.CaptureID]; ok {
-		return previous, nil
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "captureId", "capture id is required"))
 	}
 	switch c.Kind {
 	case ActionClick, ActionInput, ActionSelect, ActionValidate:
 		if strings.TrimSpace(c.IdentityKey) == "" {
-			return CaptureResult{}, fmt.Errorf("sampling: node identity key is required")
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "identityKey", "capture identity key is required"))
 		}
 		if c.Kind == ActionValidate && c.Validation == nil {
-			return CaptureResult{}, fmt.Errorf("sampling: validation capture is required")
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "validation", "validate capture requires validation detail"))
 		}
 	case ActionPress:
 		if strings.TrimSpace(c.Value) == "" {
-			return CaptureResult{}, fmt.Errorf("sampling: press action value is required")
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "value", "press capture requires a value"))
 		}
+	default:
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "kind", "capture action kind is not supported"))
+	}
+	return violations
+}
+
+func (s *Session) Record(c Capture) (CaptureResult, error) {
+	if s == nil {
+		return CaptureResult{}, internalError()
+	}
+	if s.status != StatusRecording {
+		return CaptureResult{}, sessionStateInvalidError()
+	}
+	// The idempotent replay check needs a non-blank id, so it runs before the
+	// shape walk; everything after it accumulates.
+	if strings.TrimSpace(c.CaptureID) != "" {
+		if previous, ok := s.byCaptureID[c.CaptureID]; ok {
+			return previous, nil
+		}
+	}
+	if violations := c.shapeViolations(); len(violations) != 0 {
+		return CaptureResult{}, captureInvalidError(violations)
+	}
+	switch c.Kind {
+	case ActionClick, ActionInput, ActionSelect, ActionValidate:
+	case ActionPress:
 		actionUUID, err := NewUUID()
 		if err != nil {
 			return CaptureResult{}, err
@@ -208,8 +246,6 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		}
 		s.byCaptureID[c.CaptureID] = result
 		return result, nil
-	default:
-		return CaptureResult{}, fmt.Errorf("sampling: unsupported action kind %q", c.Kind)
 	}
 	c.Spec.PageURL = c.PageURL
 	c.Spec.Origin = originOf(c.PageURL)
@@ -226,8 +262,11 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		}
 		c.Spec.UUID = nodeUUID
 		c.Spec.ID = "node-" + compactUUID(nodeUUID)[:12]
+		// The spec already carries FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID with its
+		// own ordered violations. Wrapping it in a sampling code would nest two
+		// faults and force the host to unwrap recursively before classifying.
 		if err := c.Spec.Validate(); err != nil {
-			return CaptureResult{}, fmt.Errorf("sampling: invalid captured node: %w", err)
+			return CaptureResult{}, err
 		}
 		nodeIndex = len(s.nodes)
 		s.byIdentity[c.IdentityKey] = nodeIndex
@@ -239,7 +278,7 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		c.Spec.UUID = current.UUID
 		c.Spec.ID = current.Spec.ID
 		if err := c.Spec.Validate(); err != nil {
-			return CaptureResult{}, fmt.Errorf("sampling: invalid captured node update: %w", err)
+			return CaptureResult{}, err
 		}
 		s.nodes[nodeIndex].Spec = cloneSpec(c.Spec)
 	}
@@ -251,11 +290,11 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	node := s.nodes[nodeIndex]
 	action := RecordedAction{
 		UUID: actionUUID, Sequence: len(s.actions) + 1, Kind: c.Kind, Value: c.Value, Values: append([]string(nil), c.Values...), Hints: c.Hints,
-		PageURL: c.PageURL, NodeUUID: node.UUID, NodeID: node.Spec.ID, Validation: cloneValidation(c.Validation),
+		PageURL: c.PageURL, NodeUUID: node.UUID, ElementTargetID: node.Spec.ID, Validation: cloneValidation(c.Validation),
 	}
 	s.actions = append(s.actions, action)
 	result := CaptureResult{
-		SessionID: s.id, CaptureID: c.CaptureID, NodeUUID: node.UUID, NodeID: node.Spec.ID,
+		SessionID: s.id, CaptureID: c.CaptureID, NodeUUID: node.UUID, ElementTargetID: node.Spec.ID,
 		ActionUUID: action.UUID, Sequence: action.Sequence, Created: created,
 	}
 	s.byCaptureID[c.CaptureID] = result
@@ -269,10 +308,10 @@ func (s *Session) Complete() error {
 // Pause 暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
 func (s *Session) Pause() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot pause")
+		return internalError()
 	}
 	if s.status != StatusRecording {
-		return fmt.Errorf("sampling: session cannot pause from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	s.status = StatusPaused
 	return nil
@@ -280,10 +319,10 @@ func (s *Session) Pause() error {
 
 func (s *Session) Resume() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot resume")
+		return internalError()
 	}
 	if s.status != StatusPaused {
-		return fmt.Errorf("sampling: session cannot resume from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	s.status = StatusRecording
 	return nil
@@ -292,10 +331,10 @@ func (s *Session) Resume() error {
 // End 是正常的终端生命周期转换。  它有意与暂停不同：结束的会话可以编辑/发布，但永远不会恢复。
 func (s *Session) End() error {
 	if s == nil {
-		return fmt.Errorf("sampling: nil session cannot complete")
+		return internalError()
 	}
 	if s.status != StatusRecording && s.status != StatusPaused {
-		return fmt.Errorf("sampling: session cannot complete from %q", s.status)
+		return sessionStateInvalidError()
 	}
 	s.status = StatusEnded
 	return nil
@@ -325,7 +364,7 @@ func (s *Session) Snapshot() Snapshot {
 		actions[i].Validation = cloneValidation(actions[i].Validation)
 	}
 	return Snapshot{
-		ID: s.id, WorkflowID: s.workflowID, StartURL: s.startURL,
+		ID: s.id, FlowFragmentID: s.workflowID, StartURL: s.startURL,
 		Status: s.status, Nodes: nodes, Actions: actions,
 	}
 }
@@ -342,7 +381,10 @@ func cloneValidation(input *ValidationSample) *ValidationSample {
 func NewUUID() (string, error) {
 	var value [16]byte
 	if _, err := rand.Read(value[:]); err != nil {
-		return "", fmt.Errorf("sampling: generate UUID: %w", err)
+		// An entropy-source failure has no caller remediation, so it is INTERNAL and
+		// its cause stays private. Every call site forwards this already-classified
+		// fault rather than re-labelling it.
+		return "", wrapInternalError(err)
 	}
 	timestamp := uint64(time.Now().UnixMilli())
 	value[0] = byte(timestamp >> 40)
@@ -367,13 +409,32 @@ func originOf(value string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func cloneSpec(spec fingerprint.NodeSpec) fingerprint.NodeSpec {
-	copy := spec
-	copy.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
-	copy.Fingerprint.Attributes = make(map[string]string, len(spec.Fingerprint.Attributes))
-	for key, value := range spec.Fingerprint.Attributes {
-		copy.Fingerprint.Attributes[key] = value
+func cloneSpec(spec fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
+	copied := spec
+	copied.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
+	copied.Fingerprint = spec.Fingerprint.Clone()
+	return copied
+}
+
+// startURLViolation keeps one safe violation per shared rejection reason. The
+// messages stay distinct because a person fixing a start URL benefits from
+// knowing which rule they broke; none of them echoes the URL.
+//
+// A missing host keeps VALIDATION_FIELD_REQUIRED rather than the INVALID the
+// other reasons use. That is the published contract for this field, and it is
+// the honest code besides: the other reasons mean the caller supplied
+// something wrong, while a missing host means they supplied nothing.
+func startURLViolation(rejection weburl.Rejection) (fault.Code, string) {
+	switch rejection {
+	case weburl.RejectScheme:
+		return fault.CodeFieldInvalid, "start url scheme must be http or https"
+	case weburl.RejectHostMissing:
+		return fault.CodeFieldRequired, "start url host is required"
+	case weburl.RejectUserinfo:
+		return fault.CodeFieldInvalid, "start url cannot contain credentials"
+	case weburl.RejectControlChars:
+		return fault.CodeFieldInvalid, "start url cannot contain control characters"
+	default:
+		return fault.CodeFieldInvalid, "start url is not a valid url"
 	}
-	copy.Fingerprint.Path = append([]string(nil), spec.Fingerprint.Path...)
-	return copy
 }

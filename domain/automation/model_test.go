@@ -1,17 +1,17 @@
 package automation
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
 func TestNodeAggregateValidate(t *testing.T) {
-	aggregate := NodeAggregate{
-		Node: Node{ID: "node-1", DisplayName: "提交", Properties: Properties{}, CurrentVersionID: "version-1"},
-		Current: NodeVersion{
-			ID: "version-1", NodeID: "node-1", VersionNumber: 1,
+	aggregate := ElementTargetAggregate{
+		ElementTarget: ElementTarget{ID: "node-1", DisplayName: "提交", Properties: Properties{}, CurrentVersionID: "version-1"},
+		Current: ElementTargetVersion{
+			ID: "version-1", ElementTargetID: "node-1", VersionNumber: 1,
 			Selectors:   []fingerprint.Selector{{Type: fingerprint.SelectorTestID, Value: "submit"}},
 			Fingerprint: fingerprint.Fingerprint{Tag: "button", Attributes: map[string]string{}},
 			Source:      SourceManual,
@@ -20,10 +20,8 @@ func TestNodeAggregateValidate(t *testing.T) {
 	if err := aggregate.Validate(); err != nil {
 		t.Fatalf("expected valid aggregate: %v", err)
 	}
-	aggregate.Node.DisplayName = " "
-	if err := aggregate.Validate(); err == nil || !strings.Contains(err.Error(), "display name") {
-		t.Fatalf("expected display name error, got %v", err)
-	}
+	aggregate.ElementTarget.DisplayName = " "
+	requireViolationOf(t, aggregate.Validate(), CodeElementTargetInvalid, fault.CodeFieldRequired, "displayName")
 }
 
 func TestEnvironmentValidateURL(t *testing.T) {

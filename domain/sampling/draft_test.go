@@ -6,18 +6,19 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-func draftFixture() TemporarySamplingWorkflow {
-	return TemporarySamplingWorkflow{
+func draftFixture() UnpublishedFlowFragment {
+	return UnpublishedFlowFragment{
 		ID: "workflow", DisplayName: "workflow", Properties: automation.Properties{},
-		Steps: []automation.WorkflowStep{
-			{ID: "a", DisplayName: "a", Kind: automation.StepAction, NodeID: "node-a"},
-			{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.WorkflowStep{{ID: "b", DisplayName: "b", Kind: automation.StepAction, NodeID: "node-b"}}},
-			{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.WorkflowStep{{ID: "c", DisplayName: "c", Kind: automation.StepValidation, NodeID: "node-c"}}}}}},
+		Steps: []automation.FlowFragmentStep{
+			{ID: "a", DisplayName: "a", Kind: automation.StepAction, ElementTargetID: "node-a"},
+			{ID: "repeat", DisplayName: "repeat", Kind: automation.StepRepeat, Children: []automation.FlowFragmentStep{{ID: "b", DisplayName: "b", Kind: automation.StepAction, ElementTargetID: "node-b"}}},
+			{ID: "group", DisplayName: "group", Kind: automation.StepValidationGroup, ValidationGroup: &automation.ValidationGroup{Branches: []automation.ValidationBranch{{ID: "branch", Name: "branch", Steps: []automation.FlowFragmentStep{{ID: "c", DisplayName: "c", Kind: automation.StepValidation, ElementTargetID: "node-c"}}}}}},
 		},
-		Nodes: []TemporarySamplingNode{
+		Nodes: []UnpublishedElementTarget{
 			{ID: "node-a", Properties: automation.Properties{}, Selectors: []fingerprint.Selector{}, StepIDs: []string{"a"}},
 			{ID: "node-b", Properties: automation.Properties{}, Selectors: []fingerprint.Selector{}, StepIDs: []string{"b"}},
 			{ID: "node-c", Properties: automation.Properties{}, Selectors: []fingerprint.Selector{}, StepIDs: []string{"c"}},
@@ -30,19 +31,19 @@ func draftFixture() TemporarySamplingWorkflow {
 func TestDraftCommandsInsertMoveReorderAndDeleteImmutably(t *testing.T) {
 	original := draftFixture()
 	before := draftFixture()
-	inserted, err := InsertDraftStep(original, StepContainer{ParentStepID: "repeat"}, 1, automation.WorkflowStep{ID: "d", DisplayName: "d", Kind: automation.StepAction, NodeID: "node-a"})
+	inserted, err := InsertUnpublishedFlowFragmentStep(original, FlowFragmentStepContainer{ParentStepID: "repeat"}, 1, automation.FlowFragmentStep{ID: "d", DisplayName: "d", Kind: automation.StepAction, ElementTargetID: "node-a"})
 	if err != nil || len(inserted.Steps[1].Children) != 2 || inserted.Nodes[0].StepIDs[1] != "d" {
 		t.Fatalf("insert = %#v, %v", inserted, err)
 	}
-	moved, err := MoveDraftStep(inserted, "d", StepContainer{ParentStepID: "group", BranchID: "branch"}, 1)
+	moved, err := MoveUnpublishedFlowFragmentStep(inserted, "d", FlowFragmentStepContainer{ParentStepID: "group", BranchID: "branch"}, 1)
 	if err != nil || moved.Steps[2].ValidationGroup.Branches[0].Steps[1].ID != "d" {
 		t.Fatalf("move = %#v, %v", moved, err)
 	}
-	reordered, err := ReorderDraftSteps(moved, StepContainer{}, []string{"group", "repeat", "a"})
+	reordered, err := ReorderUnpublishedFlowFragmentSteps(moved, FlowFragmentStepContainer{}, []string{"group", "repeat", "a"})
 	if err != nil || reordered.Steps[0].ID != "group" {
 		t.Fatalf("reorder = %#v, %v", reordered, err)
 	}
-	deleted, err := DeleteDraftStep(reordered, "a")
+	deleted, err := DeleteUnpublishedFlowFragmentStep(reordered, "a")
 	if err != nil || len(deleted.ValidationCapturedActionIDs) != 1 || len(deleted.Nodes[0].StepIDs) != 1 {
 		t.Fatalf("delete = %#v, %v", deleted, err)
 	}
@@ -51,12 +52,12 @@ func TestDraftCommandsInsertMoveReorderAndDeleteImmutably(t *testing.T) {
 	}
 }
 
-func TestMoveDraftStepUsesFinalPositionWithinContainer(t *testing.T) {
+func TestMoveUnpublishedFlowFragmentStepUsesFinalPositionWithinContainer(t *testing.T) {
 	workflow := draftFixture()
-	workflow.Steps = []automation.WorkflowStep{
-		{ID: "a", DisplayName: "a", Kind: automation.StepAction, NodeID: "node-a"},
-		{ID: "b", DisplayName: "b", Kind: automation.StepAction, NodeID: "node-b"},
-		{ID: "c", DisplayName: "c", Kind: automation.StepValidation, NodeID: "node-c"},
+	workflow.Steps = []automation.FlowFragmentStep{
+		{ID: "a", DisplayName: "a", Kind: automation.StepAction, ElementTargetID: "node-a"},
+		{ID: "b", DisplayName: "b", Kind: automation.StepAction, ElementTargetID: "node-b"},
+		{ID: "c", DisplayName: "c", Kind: automation.StepValidation, ElementTargetID: "node-c"},
 	}
 	for _, test := range []struct {
 		name  string
@@ -69,7 +70,7 @@ func TestMoveDraftStepUsesFinalPositionWithinContainer(t *testing.T) {
 		{name: "last to start", step: "c", index: 0, want: []string{"c", "a", "b"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			moved, err := MoveDraftStep(workflow, test.step, StepContainer{}, test.index)
+			moved, err := MoveUnpublishedFlowFragmentStep(workflow, test.step, FlowFragmentStepContainer{}, test.index)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,28 +85,28 @@ func TestMoveDraftStepUsesFinalPositionWithinContainer(t *testing.T) {
 	}
 }
 
-func TestUpdateDraftStepCoversEveryNestedContainerAndRebuildsReferences(t *testing.T) {
+func TestUpdateUnpublishedFlowFragmentStepCoversEveryNestedContainerAndRebuildsReferences(t *testing.T) {
 	tests := []struct {
 		name   string
 		stepID string
-		got    func(TemporarySamplingWorkflow) automation.WorkflowStep
+		got    func(UnpublishedFlowFragment) automation.FlowFragmentStep
 	}{
 		{
 			name:   "root step",
 			stepID: "a",
-			got:    func(workflow TemporarySamplingWorkflow) automation.WorkflowStep { return workflow.Steps[0] },
+			got:    func(workflow UnpublishedFlowFragment) automation.FlowFragmentStep { return workflow.Steps[0] },
 		},
 		{
 			name:   "repeat child",
 			stepID: "b",
-			got: func(workflow TemporarySamplingWorkflow) automation.WorkflowStep {
+			got: func(workflow UnpublishedFlowFragment) automation.FlowFragmentStep {
 				return workflow.Steps[1].Children[0]
 			},
 		},
 		{
 			name:   "validation branch member",
 			stepID: "c",
-			got: func(workflow TemporarySamplingWorkflow) automation.WorkflowStep {
+			got: func(workflow UnpublishedFlowFragment) automation.FlowFragmentStep {
 				return workflow.Steps[2].ValidationGroup.Branches[0].Steps[0]
 			},
 		},
@@ -117,15 +118,15 @@ func TestUpdateDraftStepCoversEveryNestedContainerAndRebuildsReferences(t *testi
 			before := draftFixture()
 			replacement := test.got(original)
 			replacement.DisplayName = "updated " + test.stepID
-			replacement.NodeID = "unused"
+			replacement.ElementTargetID = "unused"
 			replacement.Values = []string{"owned"}
 
-			updated, err := UpdateDraftStep(original, replacement)
+			updated, err := UpdateUnpublishedFlowFragmentStep(original, replacement)
 			if err != nil {
 				t.Fatal(err)
 			}
 			got := test.got(updated)
-			if got.DisplayName != replacement.DisplayName || got.NodeID != "unused" || !reflect.DeepEqual(got.Values, []string{"owned"}) {
+			if got.DisplayName != replacement.DisplayName || got.ElementTargetID != "unused" || !reflect.DeepEqual(got.Values, []string{"owned"}) {
 				t.Fatalf("updated step = %#v", got)
 			}
 			if !reflect.DeepEqual(original, before) {
@@ -158,26 +159,32 @@ func TestUpdateDraftStepCoversEveryNestedContainerAndRebuildsReferences(t *testi
 	}
 }
 
-func TestUpdateDraftStepRejectsInvalidIdentityAndReferenceWithoutMutation(t *testing.T) {
+func TestUpdateUnpublishedFlowFragmentStepRejectsInvalidIdentityAndReferenceWithoutMutation(t *testing.T) {
 	tests := []struct {
-		name        string
-		replacement automation.WorkflowStep
-		wantError   string
+		name          string
+		replacement   automation.FlowFragmentStep
+		wantCode      fault.Code
+		wantViolation fault.Code
+		wantField     string
 	}{
 		{
-			name:        "blank id",
-			replacement: automation.WorkflowStep{ID: " \t\n", DisplayName: "blank", Kind: automation.StepAction},
-			wantError:   "id is required",
+			name:          "blank id",
+			replacement:   automation.FlowFragmentStep{ID: " \t\n", DisplayName: "blank", Kind: automation.StepAction},
+			wantCode:      CodeDraftInvalid,
+			wantViolation: fault.CodeFieldRequired,
+			wantField:     "stepId",
 		},
 		{
 			name:        "unknown id",
-			replacement: automation.WorkflowStep{ID: "missing", DisplayName: "missing", Kind: automation.StepAction},
-			wantError:   "was not found",
+			replacement: automation.FlowFragmentStep{ID: "missing", DisplayName: "missing", Kind: automation.StepAction},
+			wantCode:    CodeDraftStepNotFound,
 		},
 		{
-			name:        "unknown node",
-			replacement: automation.WorkflowStep{ID: "a", DisplayName: "invalid", Kind: automation.StepAction, NodeID: "missing"},
-			wantError:   "unknown temporary node",
+			name:          "unknown node",
+			replacement:   automation.FlowFragmentStep{ID: "a", DisplayName: "invalid", Kind: automation.StepAction, ElementTargetID: "missing"},
+			wantCode:      CodeWorkspaceInvalid,
+			wantViolation: fault.CodeFieldMismatch,
+			wantField:     "steps.elementTargetId",
 		},
 	}
 
@@ -185,11 +192,14 @@ func TestUpdateDraftStepRejectsInvalidIdentityAndReferenceWithoutMutation(t *tes
 		t.Run(test.name, func(t *testing.T) {
 			workflow := draftFixture()
 			before := draftFixture()
-			got, err := UpdateDraftStep(workflow, test.replacement)
-			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("UpdateDraftStep() error = %v, want containing %q", err, test.wantError)
+			got, err := UpdateUnpublishedFlowFragmentStep(workflow, test.replacement)
+			if test.wantField == "" {
+				requireEnvelope(t, err, test.wantCode)
+			} else {
+				requireViolation(t, err, test.wantCode, test.wantViolation, test.wantField)
 			}
-			if !reflect.DeepEqual(got, TemporarySamplingWorkflow{}) {
+			requireNoPublicLeak(t, err, "missing")
+			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) {
 				t.Fatalf("rejected update returned partial workflow: %#v", got)
 			}
 			if !reflect.DeepEqual(workflow, before) {
@@ -199,13 +209,13 @@ func TestUpdateDraftStepRejectsInvalidIdentityAndReferenceWithoutMutation(t *tes
 	}
 }
 
-func TestReorderDraftStepsAcceptsEveryExactPermutation(t *testing.T) {
+func TestReorderUnpublishedFlowFragmentStepsAcceptsEveryExactPermutation(t *testing.T) {
 	original := draftFixture()
 	before := draftFixture()
 	for _, orderedIDs := range permutations([]string{"a", "repeat", "group"}) {
 		name := strings.Join(orderedIDs, "-")
 		t.Run(name, func(t *testing.T) {
-			reordered, err := ReorderDraftSteps(original, StepContainer{}, orderedIDs)
+			reordered, err := ReorderUnpublishedFlowFragmentSteps(original, FlowFragmentStepContainer{}, orderedIDs)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -223,7 +233,7 @@ func TestReorderDraftStepsAcceptsEveryExactPermutation(t *testing.T) {
 	}
 }
 
-func TestReorderDraftStepsRejectsNonPermutations(t *testing.T) {
+func TestReorderUnpublishedFlowFragmentStepsRejectsNonPermutations(t *testing.T) {
 	tests := []struct {
 		name       string
 		orderedIDs []string
@@ -240,11 +250,10 @@ func TestReorderDraftStepsRejectsNonPermutations(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			workflow := draftFixture()
 			before := draftFixture()
-			got, err := ReorderDraftSteps(workflow, StepContainer{}, test.orderedIDs)
-			if err == nil || !strings.Contains(err.Error(), "exact step permutation") {
-				t.Fatalf("ReorderDraftSteps() error = %v", err)
-			}
-			if !reflect.DeepEqual(got, TemporarySamplingWorkflow{}) {
+			got, err := ReorderUnpublishedFlowFragmentSteps(workflow, FlowFragmentStepContainer{}, test.orderedIDs)
+			requireViolation(t, err, CodeDraftInvalid, fault.CodeFieldInvalid, "orderedStepIds")
+			requireNoPublicLeak(t, err, "missing", "extra")
+			if !reflect.DeepEqual(got, UnpublishedFlowFragment{}) {
 				t.Fatalf("rejected reorder returned partial workflow: %#v", got)
 			}
 			if !reflect.DeepEqual(workflow, before) {
@@ -272,26 +281,26 @@ func permutations(values []string) [][]string {
 
 func TestDraftCommandsRejectInvalidIdentitiesAndReferences(t *testing.T) {
 	workflow := draftFixture()
-	if _, err := InsertDraftStep(workflow, StepContainer{}, 0, automation.WorkflowStep{ID: "a", DisplayName: "duplicate", Kind: automation.StepAction, NodeID: "node-a"}); err == nil {
+	if _, err := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, 0, automation.FlowFragmentStep{ID: "a", DisplayName: "duplicate", Kind: automation.StepAction, ElementTargetID: "node-a"}); err == nil {
 		t.Fatal("duplicate step was accepted")
 	}
-	if _, err := InsertDraftStep(workflow, StepContainer{}, 0, automation.WorkflowStep{ID: "unknown", DisplayName: "unknown", Kind: automation.StepAction, NodeID: "missing"}); err == nil {
+	if _, err := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{}, 0, automation.FlowFragmentStep{ID: "unknown", DisplayName: "unknown", Kind: automation.StepAction, ElementTargetID: "missing"}); err == nil {
 		t.Fatal("unknown node reference was accepted")
 	}
-	if _, err := DeleteDraftNode(workflow, "node-a"); err == nil {
+	if _, err := DeleteUnpublishedElementTarget(workflow, "node-a"); err == nil {
 		t.Fatal("referenced node deletion was accepted")
 	}
-	if _, err := ReorderDraftSteps(workflow, StepContainer{}, []string{"a", "repeat"}); err == nil {
+	if _, err := ReorderUnpublishedFlowFragmentSteps(workflow, FlowFragmentStepContainer{}, []string{"a", "repeat"}); err == nil {
 		t.Fatal("partial reorder was accepted")
 	}
-	if _, err := InsertDraftStep(workflow, StepContainer{ParentStepID: "a"}, 0, automation.WorkflowStep{ID: "child", DisplayName: "child", Kind: automation.StepAction, NodeID: "node-a"}); err == nil {
+	if _, err := InsertUnpublishedFlowFragmentStep(workflow, FlowFragmentStepContainer{ParentStepID: "a"}, 0, automation.FlowFragmentStep{ID: "child", DisplayName: "child", Kind: automation.StepAction, ElementTargetID: "node-a"}); err == nil {
 		t.Fatal("action child container was accepted")
 	}
 }
 
-func TestDeleteDraftNodeRemovesUnreferencedNode(t *testing.T) {
+func TestDeleteUnpublishedElementTargetRemovesUnreferencedNode(t *testing.T) {
 	workflow := draftFixture()
-	got, err := DeleteDraftNode(workflow, "unused")
+	got, err := DeleteUnpublishedElementTarget(workflow, "unused")
 	if err != nil || len(got.Nodes) != len(workflow.Nodes)-1 {
 		t.Fatalf("delete node = %#v, %v", got, err)
 	}

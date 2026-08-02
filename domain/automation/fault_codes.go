@@ -1,0 +1,224 @@
+package automation
+
+import "github.com/Capsule7446/healix-core/domain/fault"
+
+const (
+	CodeExecutionFlowInvalid              fault.Code = "AUTOMATION_EXECUTION_FLOW_INVALID"
+	CodeExecutionFlowHistoryInvalid       fault.Code = "AUTOMATION_EXECUTION_FLOW_HISTORY_INVALID"
+	CodeExecutionFlowDependencyInvalid    fault.Code = "AUTOMATION_EXECUTION_FLOW_DEPENDENCY_INVALID"
+	CodeSamplingPublicationContentInvalid fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID"
+
+	CodePersistedRevisionInvalid          fault.Code = "AUTOMATION_PERSISTED_REVISION_INVALID"
+	CodeRevisionExhausted                 fault.Code = "AUTOMATION_REVISION_EXHAUSTED"
+	CodePersistedVersionNumberInvalid     fault.Code = "AUTOMATION_PERSISTED_VERSION_NUMBER_INVALID"
+	CodeHealCandidateIdentityInvalid      fault.Code = "AUTOMATION_HEAL_CANDIDATE_IDENTITY_INVALID"
+	CodeHealCandidateStateInvalid         fault.Code = "AUTOMATION_HEAL_CANDIDATE_STATE_INVALID"
+	CodeHealCandidateReviewStatusInvalid  fault.Code = "AUTOMATION_HEAL_CANDIDATE_REVIEW_STATUS_INVALID"
+	CodeHealCandidateReviewCommandInvalid fault.Code = "AUTOMATION_HEAL_CANDIDATE_REVIEW_COMMAND_INVALID"
+	CodeHealApprovalStatusInvalid         fault.Code = "AUTOMATION_HEAL_APPROVAL_STATUS_INVALID"
+	CodeHealDecisionBandInvalid           fault.Code = "AUTOMATION_HEAL_DECISION_BAND_INVALID"
+	CodeHealConfidenceInvalid             fault.Code = "AUTOMATION_HEAL_CONFIDENCE_INVALID"
+	CodeHealStreakStateInvalid            fault.Code = "AUTOMATION_HEAL_STREAK_STATE_INVALID"
+	CodeHealObservationInvalid            fault.Code = "AUTOMATION_HEAL_OBSERVATION_INVALID"
+	CodeHealSequenceConflict              fault.Code = "AUTOMATION_HEAL_SEQUENCE_CONFLICT"
+	CodeHealProvenanceConflict            fault.Code = "AUTOMATION_HEAL_PROVENANCE_CONFLICT"
+	CodeHealStreakRejectionInvalid        fault.Code = "AUTOMATION_HEAL_STREAK_REJECTION_INVALID"
+
+	CodeElementTargetInvalid        fault.Code = "AUTOMATION_ELEMENT_TARGET_INVALID"
+	CodeElementTargetHistoryInvalid fault.Code = "AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID"
+	CodeFlowFragmentInvalid         fault.Code = "AUTOMATION_FLOW_FRAGMENT_INVALID"
+	CodeFlowFragmentHistoryInvalid  fault.Code = "AUTOMATION_FLOW_FRAGMENT_HISTORY_INVALID"
+	CodeEnvironmentInvalid          fault.Code = "AUTOMATION_ENVIRONMENT_INVALID"
+	CodeAggregateTransitionInvalid  fault.Code = "AUTOMATION_AGGREGATE_TRANSITION_INVALID"
+)
+
+func persistedRevisionInvalidError() error {
+	return mustAutomationFault(fault.FailedPrecondition, CodePersistedRevisionInvalid, "persisted revision must be non-zero")
+}
+
+func persistedVersionNumberInvalidError() error {
+	return mustAutomationFault(fault.FailedPrecondition, CodePersistedVersionNumberInvalid, "persisted version number must be positive")
+}
+
+func revisionExhaustedError() error {
+	return mustAutomationFault(fault.ResourceExhausted, CodeRevisionExhausted, "revision value is exhausted")
+}
+
+func healCandidateIdentityInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealCandidateIdentityInvalid, "heal candidate identity is invalid")
+}
+
+func healCandidateStateInvalidError() error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeHealCandidateStateInvalid, "heal candidate state does not allow this operation")
+}
+
+func healCandidateReviewStatusInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealCandidateReviewStatusInvalid, "heal candidate review status is invalid")
+}
+
+func healCandidateReviewCommandInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealCandidateReviewCommandInvalid, "heal candidate review command is invalid")
+}
+
+func healApprovalStatusInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealApprovalStatusInvalid, "heal approval status is invalid")
+}
+
+func healDecisionBandInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealDecisionBandInvalid, "heal decision band is invalid")
+}
+
+func healConfidenceInvalidError() error {
+	return mustAutomationFault(fault.InvalidArgument, CodeHealConfidenceInvalid, "heal confidence is invalid")
+}
+
+func healStreakStateInvalidError(cause error) error {
+	return wrapAutomationFault(cause, fault.FailedPrecondition, CodeHealStreakStateInvalid, "persisted heal streak state is invalid")
+}
+
+func healObservationInvalidError(cause error) error {
+	return wrapAutomationFault(cause, fault.InvalidArgument, CodeHealObservationInvalid, "heal observation is invalid")
+}
+
+func healSequenceConflictError(cause error) error {
+	return wrapAutomationFault(cause, fault.Conflict, CodeHealSequenceConflict, "heal sequence conflicts with persisted ordering")
+}
+
+func healProvenanceConflictError(cause error) error {
+	return wrapAutomationFault(cause, fault.Conflict, CodeHealProvenanceConflict, "heal observation conflicts with persisted provenance")
+}
+
+func healStreakRejectionInvalidError(cause error) error {
+	return wrapAutomationFault(cause, fault.FailedPrecondition, CodeHealStreakRejectionInvalid, "heal streak cannot be rejected in its current state")
+}
+
+// executionFlowInvalidError is the aggregate validation envelope for execution
+// flow input: one top-level fault carrying every field failure as an ordered
+// violation, never one code per failing field and never a joined message.
+//
+// Violations beyond fault.MaxViolations are dropped rather than allowed to fail
+// construction, because the input reaching this envelope is untrusted and a
+// construction failure would surface as a panic. The kept prefix is
+// deterministic: callers build the slice by walking their input in order.
+func executionFlowInvalidError(violations []fault.Violation) error {
+	if len(violations) > fault.MaxViolations {
+		violations = violations[:fault.MaxViolations]
+	}
+	return mustAutomationFault(fault.InvalidArgument, CodeExecutionFlowInvalid, "execution flow input is invalid", fault.WithViolations(violations...))
+}
+
+// executionFlowHistoryInvalidError covers the version history itself — ordering,
+// uniqueness, and the source chain — rather than the shape of any one version.
+// It is FAILED_PRECONDITION because the remediation is to repair persisted
+// history, not to correct a field the caller just supplied.
+func executionFlowHistoryInvalidError(violations []fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeExecutionFlowHistoryInvalid, "execution flow version history is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// executionFlowDependencyInvalidError covers dependency resolution: the snapshot
+// set, the reference graph, and the bindings between them. Kept separate from the
+// field-level execution flow envelope because a caller fixes a broken dependency
+// graph by re-resolving the catalog, not by editing a field.
+func executionFlowDependencyInvalidError(violations []fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeExecutionFlowDependencyInvalid, "execution flow dependency resolution is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// classifySamplingPublicationContent classifies the publication's content shape
+// at its one exported boundary. The dozen checks inside stay ordinary Go errors,
+// which the contract permits for internal invariants, and travel on as a private
+// cause; only the crossing needs a code. An already-classified failure — a node
+// aggregate's own fault, or a revision code — passes through rather than being
+// buried under a second one.
+//
+// This code is distinct from the four AUTOMATION_SAMPLING_PUBLICATION_* codes
+// produced in application/automation: those are transaction-level (digest,
+// availability, adapter contract, authority), this one is content-level.
+func classifySamplingPublicationContent(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if _, classified := fault.CodeOf(cause); classified {
+		return cause
+	}
+	return wrapAutomationFault(cause, fault.InvalidArgument, CodeSamplingPublicationContentInvalid, "sampling publication content is invalid")
+}
+
+// capViolations keeps the deterministic leading prefix when an aggregate exceeds
+// the envelope cap, so untrusted input cannot turn validation into a panic.
+func capViolations(violations []fault.Violation) []fault.Violation {
+	if len(violations) > fault.MaxViolations {
+		return violations[:fault.MaxViolations]
+	}
+	return violations
+}
+
+// elementTargetInvalidError is the aggregate validation envelope for element
+// target input: selectors, fingerprint, properties, and version source. One
+// top-level fault carries every field failure as an ordered violation, never one
+// code per failing field and never a joined message.
+func elementTargetInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeElementTargetInvalid, "element target content is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// elementTargetHistoryInvalidError covers the version history itself — ordering,
+// uniqueness, and ownership — rather than the shape of any one version. It is
+// FAILED_PRECONDITION because the remediation is to repair persisted history,
+// not to correct a field the caller just supplied.
+func elementTargetHistoryInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeElementTargetHistoryInvalid, "element target version history is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// flowFragmentInvalidError is the aggregate validation envelope for flow
+// fragment input: metadata, the step tree, and parameter definitions. Parameter
+// definitions are flow fragment content, so their own structural failures
+// degrade into this same envelope rather than minting a separate code.
+func flowFragmentInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeFlowFragmentInvalid, "flow fragment content is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// flowFragmentHistoryInvalidError covers the version history itself, mirroring
+// elementTargetHistoryInvalidError for the flow fragment aggregate family.
+func flowFragmentHistoryInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeFlowFragmentHistoryInvalid, "flow fragment version history is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// environmentInvalidError is the aggregate validation envelope for environment
+// input: identity, base URL, and typed variables.
+func environmentInvalidError(violations ...fault.Violation) error {
+	return mustAutomationFault(fault.InvalidArgument, CodeEnvironmentInvalid, "environment content is invalid", fault.WithViolations(capViolations(violations)...))
+}
+
+// aggregateTransitionInvalidError is the single shared helper for the
+// empty-transition and bad-timestamp checks common to every automation
+// aggregate — environment, element target, flow fragment, and execution flow —
+// mirroring how DeletedAggregateError is one cross-aggregate helper rather than
+// four copies. It is FAILED_PRECONDITION because the remediation is to reach a
+// valid prior state (a fresh timestamp, a non-terminal lifecycle state, a new
+// version identity) before retrying, not to correct a field's shape.
+func aggregateTransitionInvalidError(violation fault.Violation) error {
+	return mustAutomationFault(fault.FailedPrecondition, CodeAggregateTransitionInvalid, "automation aggregate transition is invalid", fault.WithViolations(violation))
+}
+
+func mustViolation(code fault.Code, field, message string) fault.Violation {
+	violation, constructionErr := fault.NewViolation(code, field, message)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return violation
+}
+
+func wrapAutomationFault(cause error, kind fault.Kind, code fault.Code, message string, options ...fault.Option) error {
+	err, constructionErr := fault.Wrap(cause, kind, code, message, options...)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func mustAutomationFault(kind fault.Kind, code fault.Code, message string, options ...fault.Option) error {
+	err, constructionErr := fault.New(kind, code, message, options...)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}

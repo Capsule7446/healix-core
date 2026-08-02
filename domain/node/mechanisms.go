@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
 // Locator centralizes single-page resolution and the runtime selector overlay.
 type Locator interface {
-	Locate(context.Context, fingerprint.NodeSpec) (Element, error)
+	Locate(context.Context, fingerprint.ElementTargetSpec) (Element, error)
 }
 
 // Reader centralizes browser-neutral element reads used by waits and assertions.
@@ -46,9 +47,7 @@ func (p Poller) Run(ctx context.Context, timeout time.Duration, condition func(c
 			return nil
 		}
 		if err != nil {
-			if errors.Is(err, ErrElementNotFound) {
-				lastErr = err
-			} else if IsTransient(err) {
+			if fault.IsCode(err, CodeElementNotFound) || isExclusiveTransientDriverFault(err) {
 				lastErr = err
 			} else {
 				return err
@@ -58,12 +57,13 @@ func (p Poller) Run(ctx context.Context, timeout time.Duration, condition func(c
 		case <-ticker.C:
 		case <-pollCtx.Done():
 			if ctx.Err() != nil {
-				return fmt.Errorf("poll canceled: %w", ClassifyError("poll", ctx.Err()))
+				return fmt.Errorf("poll canceled: %w", classifyNodeFault(ctx.Err()))
 			}
 			if lastErr != nil {
-				return fmt.Errorf("poll timeout after %s: %w", timeout, &ClassifiedError{Kind: ErrorTimeout, Operation: "poll", Err: errors.Join(lastErr, pollCtx.Err())})
+				cause := errors.Join(lastErr, pollCtx.Err())
+				return fmt.Errorf("poll timeout after %s: %w", timeout, mustWrapNodeFault(cause, fault.DeadlineExceeded, CodeTimeout, "node operation timed out"))
 			}
-			return fmt.Errorf("poll timeout after %s: %w", timeout, &ClassifiedError{Kind: ErrorTimeout, Operation: "poll", Err: pollCtx.Err()})
+			return fmt.Errorf("poll timeout after %s: %w", timeout, mustWrapNodeFault(pollCtx.Err(), fault.DeadlineExceeded, CodeTimeout, "node operation timed out"))
 		}
 	}
 }
@@ -102,14 +102,13 @@ func (rt *Runtime) operationRunner() OperationRunner { return OperationRunner{Po
 
 type runtimeLocator struct{ runtime *Runtime }
 
-func (l runtimeLocator) Locate(ctx context.Context, spec fingerprint.NodeSpec) (Element, error) {
+func (l runtimeLocator) Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 	if l.runtime == nil || l.runtime.Driver == nil {
-		return nil, errors.New("node: locator driver is required")
+		// Folded into EXECUTION_STEP_CONFIGURATION_INVALID rather than a fifth
+		// code: the remediation is identical to a missing workflow-call target —
+		// supply the missing dependency — and this site can never accumulate a
+		// second violation alongside it.
+		return nil, stepConfigurationInvalidError(mustViolation(fault.CodeFieldRequired, "driver", "node driver is required"))
 	}
 	return l.runtime.Driver.Locate(ctx, l.runtime.effectiveSpec(spec))
-}
-
-func IsTransient(err error) bool {
-	var classified *ClassifiedError
-	return errors.As(err, &classified) && classified.Kind == ErrorTransientDriver
 }

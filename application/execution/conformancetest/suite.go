@@ -2,7 +2,6 @@ package conformancetest
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type FaultPoint string
@@ -55,14 +55,14 @@ func Run(t *testing.T, factory Factory) {
 		before := fixture.Snapshot()
 		stale := fixture.Fence()
 		stale.ClaimToken += "-stale"
-		if _, err := fixture.CommitStepTransition(context.Background(), stale, commit("commit-stale", 1, "run-stale", evidence.DecisionApplied), execution.NewDefaultHealGovernancePlanner()); !errors.Is(err, domainexecution.ErrStaleWorkerFence) {
+		if _, err := fixture.CommitStepTransition(context.Background(), stale, commit("commit-stale", 1, "run-stale", evidence.DecisionApplied), execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
 			t.Fatalf("stale fence error = %v", err)
 		}
 		if got := fixture.Snapshot(); !reflect.DeepEqual(got, before) {
 			t.Fatalf("stale fence changed state: before=%#v after=%#v", before, got)
 		}
 		badRevision := commit("commit-revision", before.StepRevision+1, "run-revision", evidence.DecisionApplied)
-		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), badRevision, execution.NewDefaultHealGovernancePlanner()); !errors.Is(err, execution.ErrStepRevisionConflict) {
+		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), badRevision, execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, execution.CodeStepRevisionConflict) {
 			t.Fatalf("stale revision error = %v", err)
 		}
 		if got := fixture.Snapshot(); !reflect.DeepEqual(got, before) {
@@ -87,8 +87,12 @@ func Run(t *testing.T, factory Factory) {
 		}
 		changed := command
 		changed.Event.Timestamp++
-		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), changed, execution.NewDefaultHealGovernancePlanner()); !errors.Is(err, execution.ErrCommitIdentityConflict) {
+		beforeConflict := fixture.Snapshot()
+		if _, err := fixture.CommitStepTransition(context.Background(), fixture.Fence(), changed, execution.NewDefaultHealGovernancePlanner()); !fault.IsCode(err, execution.CodeCommitIdentityConflict) {
 			t.Fatalf("identity conflict error = %v", err)
+		}
+		if got := fixture.Snapshot(); !reflect.DeepEqual(got, beforeConflict) {
+			t.Fatalf("identity conflict changed state: before=%#v after=%#v", beforeConflict, got)
 		}
 	})
 
@@ -160,7 +164,7 @@ func Run(t *testing.T, factory Factory) {
 		for err := range errorsFound {
 			if err == nil {
 				succeeded++
-			} else if !errors.Is(err, execution.ErrStepRevisionConflict) {
+			} else if !fault.IsCode(err, execution.CodeStepRevisionConflict) {
 				t.Fatalf("race error = %v", err)
 			}
 		}
@@ -171,17 +175,45 @@ func Run(t *testing.T, factory Factory) {
 	})
 }
 
-func commit(id string, revision evidence.StepRevision, runID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
+// mustInstanceID is safe here because every value handed to commit is a
+// literal written a few lines above it. A malformed one is a defect in this
+// file, not something a Host running the suite can provoke.
+func mustInstanceID(value string) domainexecution.InstanceID {
+	id, err := domainexecution.NewInstanceID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func mustEntryID(value string) domainexecution.EntryID {
+	id, err := domainexecution.NewEntryID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func mustStepExecutionID(value string) domainexecution.StepExecutionID {
+	id, err := domainexecution.NewStepExecutionID(value)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
+func commit(id string, revision evidence.StepRevision, instanceID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
 	return evidence.StepTransitionCommit{
 		CommitID:         id,
 		ExpectedRevision: revision,
 		Event: evidence.StepPhaseEvent{
-			ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "step",
-			Kind: "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
+			ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "step",
+			InvocationPath: domainexecution.RootInvocationPath(mustEntryID("execution")),
+			Kind:           "ACTION", Phase: "SUCCEEDED", Occurrence: 1, Timestamp: 1,
 		},
 		HealObservations: []evidence.HealObservation{{
-			ID: "fact-" + runID, RunID: runID, ExecutionID: "execution", StepExecutionID: "step",
-			NodeID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
+			ID: "fact-" + instanceID, InstanceID: mustInstanceID(instanceID), EntryID: mustEntryID("execution"), StepExecutionID: mustStepExecutionID("step"), Occurrence: 1,
+			ElementTargetID: "node", BaseNodeVersionID: "base", CandidateHash: "candidate", Confidence: 0.9,
 			DecisionBand: band, Succeeded: true, ObservedAt: 1,
 		}},
 	}

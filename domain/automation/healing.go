@@ -1,11 +1,14 @@
 package automation
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 // VersionMeta 是版本生命周期规则所需的最少信息。删除的版本仍然是序列的一部分，因此仍然会影响下一个版本号。
@@ -15,20 +18,32 @@ type VersionMeta struct {
 	DeletedAt     int64
 }
 
-var ErrVersionNumberOverflow = fmt.Errorf("version number overflow")
+const CodeVersionNumberExhausted fault.Code = "AUTOMATION_VERSION_NUMBER_EXHAUSTED"
+
+func VersionNumberOverflowError() error {
+	err, constructionErr := fault.New(
+		fault.ResourceExhausted,
+		CodeVersionNumberExhausted,
+		"automation version number capacity is exhausted",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 func NextVersionNumber(existing []VersionMeta) (int, error) {
 	maximum := 0
 	for _, version := range existing {
 		if version.VersionNumber <= 0 {
-			return 0, fmt.Errorf("persisted version %q requires a positive version number", version.ID)
+			return 0, persistedVersionNumberInvalidError()
 		}
 		if version.VersionNumber > maximum {
 			maximum = version.VersionNumber
 		}
 	}
 	if maximum == math.MaxInt {
-		return 0, ErrVersionNumberOverflow
+		return 0, VersionNumberOverflowError()
 	}
 	return maximum + 1, nil
 }
@@ -68,17 +83,17 @@ const (
 func ValidateHealDecisionBand(candidateHash string, band HealDecisionBand) error {
 	hasCandidate := strings.TrimSpace(candidateHash) != ""
 	if !hasCandidate && band != HealDecisionBandUnknown {
-		return fmt.Errorf("heal observation without a candidate must use UNKNOWN decision band")
+		return healDecisionBandInvalidError()
 	}
 	if hasCandidate && band != HealDecisionBandApplied && band != HealDecisionBandBelowCap {
-		return fmt.Errorf("heal observation with a candidate requires APPLIED or BELOW_CAP decision band")
+		return healDecisionBandInvalidError()
 	}
 	return nil
 }
 
 func ValidateHealConfidence(confidence float64) error {
 	if math.IsNaN(confidence) || confidence < 0 || confidence > 1 {
-		return fmt.Errorf("heal confidence must be between 0 and 1")
+		return healConfidenceInvalidError()
 	}
 	return nil
 }
@@ -105,7 +120,7 @@ const (
 // HealCandidateReviewCommand carries stable candidate identity and review metadata.
 type HealCandidate struct {
 	Hash              string
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 	Status            HealCandidateStatus
 	PageURL           string
@@ -120,7 +135,7 @@ func (candidate HealCandidate) Validate() error {
 		return err
 	}
 	if candidate.Status != HealCandidateAwaitingApproval {
-		return fmt.Errorf("heal candidate %q is not awaiting approval", candidate.Hash)
+		return healCandidateStateInvalidError()
 	}
 	return nil
 }
@@ -130,15 +145,15 @@ func (candidate HealCandidate) ValidateReviewed() error {
 		return err
 	}
 	if candidate.Status != HealCandidatePromoted && candidate.Status != HealCandidateRejected {
-		return fmt.Errorf("heal candidate %q is not reviewed", candidate.Hash)
+		return healCandidateStateInvalidError()
 	}
 	return nil
 }
 
 func (candidate HealCandidate) validateIdentity() error {
-	if strings.TrimSpace(candidate.Hash) == "" || strings.TrimSpace(candidate.NodeID) == "" ||
+	if strings.TrimSpace(candidate.Hash) == "" || strings.TrimSpace(candidate.ElementTargetID) == "" ||
 		strings.TrimSpace(candidate.BaseNodeVersionID) == "" {
-		return fmt.Errorf("heal candidate requires identity")
+		return healCandidateIdentityInvalidError()
 	}
 	return candidate.Revision.ValidatePersisted()
 }
@@ -148,19 +163,23 @@ func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate
 		return HealCandidate{}, err
 	}
 	if status != HealCandidatePromoted && status != HealCandidateRejected {
-		return HealCandidate{}, fmt.Errorf("unsupported reviewed heal candidate status %q", status)
+		return HealCandidate{}, healCandidateReviewStatusInvalidError()
+	}
+	nextRevision, err := candidate.Revision.Next()
+	if err != nil {
+		return HealCandidate{}, err
 	}
 	next := candidate
 	next.Selectors = append([]fingerprint.Selector(nil), candidate.Selectors...)
-	next.Fingerprint = cloneFingerprint(candidate.Fingerprint)
+	next.Fingerprint = candidate.Fingerprint.Clone()
 	next.Status = status
-	next.Revision++
+	next.Revision = nextRevision
 	return next, nil
 }
 
 type HealCandidateReviewCommand struct {
 	CommandID                 string
-	NodeID                    string
+	ElementTargetID           string
 	BaseNodeVersionID         string
 	CandidateHash             string
 	ExpectedCandidateRevision Revision
@@ -168,20 +187,26 @@ type HealCandidateReviewCommand struct {
 }
 
 func (command HealCandidateReviewCommand) Validate(approval HealApprovalStatus) error {
-	if strings.TrimSpace(command.CommandID) == "" || strings.TrimSpace(command.NodeID) == "" || strings.TrimSpace(command.BaseNodeVersionID) == "" ||
-		strings.TrimSpace(command.CandidateHash) == "" {
-		return fmt.Errorf("heal candidate review requires command, node, base version, and candidate hash")
+	for _, identity := range []string{
+		command.CommandID,
+		command.ElementTargetID,
+		command.BaseNodeVersionID,
+		command.CandidateHash,
+	} {
+		if identity != strings.TrimSpace(identity) || parameter.ValidateName(identity) != nil {
+			return healCandidateReviewCommandInvalidError()
+		}
 	}
 	if err := command.ExpectedCandidateRevision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal candidate review requires expected candidate revision: %w", err)
+		return err
 	}
 	if err := command.ExpectedNodeRevision.ValidatePersisted(); err != nil {
-		return fmt.Errorf("heal candidate review requires expected node revision: %w", err)
+		return err
 	}
 	switch approval {
 	case HealApprovalApproved, HealApprovalRejected:
 	default:
-		return fmt.Errorf("unsupported heal approval status %q", approval)
+		return healApprovalStatusInvalidError()
 	}
 	return nil
 }
@@ -200,8 +225,8 @@ const (
 type ContributingHealFact struct {
 	FactID          string
 	CommitID        string
-	RunID           string
-	ExecutionID     string
+	InstanceID      string
+	EntryID         string
 	StepExecutionID string
 	Sequence        uint64
 }
@@ -209,11 +234,11 @@ type ContributingHealFact struct {
 type HealObservation struct {
 	FactID            string
 	CommitID          string
-	RunID             string
-	ExecutionID       string
+	InstanceID        string
+	EntryID           string
 	StepExecutionID   string
 	Sequence          uint64
-	NodeID            string
+	ElementTargetID   string
 	BaseNodeVersionID string
 	CandidateHash     string
 	Band              HealDecisionBand
@@ -222,7 +247,7 @@ type HealObservation struct {
 }
 
 type HealStreak struct {
-	NodeID               string
+	ElementTargetID      string
 	BaseNodeVersionID    string
 	CandidateHash        string
 	Band                 HealDecisionBand
@@ -239,34 +264,34 @@ type HealStreakDecision struct {
 
 func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecision, error) {
 	if err := streak.validate(); err != nil {
-		return HealStreakDecision{}, err
+		return HealStreakDecision{}, healStreakStateInvalidError(err)
 	}
 	if err := observation.validate(); err != nil {
-		return HealStreakDecision{}, err
+		return HealStreakDecision{}, healObservationInvalidError(err)
 	}
 	contribution := observation.contribution()
 	for _, existing := range streak.consumedProvenance() {
 		if existing == contribution {
-			return HealStreakDecision{Next: streak.clone()}, nil
+			return HealStreakDecision{Next: streak.Clone()}, nil
 		}
-		if existing.FactID == contribution.FactID || existing.CommitID == contribution.CommitID || existing.RunID == contribution.RunID || existing.Sequence == contribution.Sequence {
-			return HealStreakDecision{}, fmt.Errorf("heal contribution replay conflicts with persisted provenance")
+		if existing.FactID == contribution.FactID || existing.CommitID == contribution.CommitID || existing.InstanceID == contribution.InstanceID || existing.Sequence == contribution.Sequence {
+			return HealStreakDecision{}, healProvenanceConflictError(errors.New("heal contribution replay conflicts with persisted provenance"))
 		}
 	}
 	if observation.Sequence <= streak.LastSequence {
-		return HealStreakDecision{}, fmt.Errorf("heal observation sequence %d is not newer than %d", observation.Sequence, streak.LastSequence)
+		return HealStreakDecision{}, healSequenceConflictError(fmt.Errorf("heal observation sequence %d is not newer than %d", observation.Sequence, streak.LastSequence))
 	}
 	if streak.Disposition == HealStreakAutoPublish || streak.Disposition == HealStreakAwaitApproval {
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
 	}
 	if streak.Disposition == HealStreakStale {
-		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.NodeID == streak.NodeID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
+		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.ElementTargetID == streak.ElementTargetID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
 			return HealStreakDecision{Next: newHealStreak(observation)}, nil
 		}
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
 	}
 	if streak.Disposition == HealStreakRejected {
-		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.NodeID == streak.NodeID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
+		if observation.Outcome == HealSucceeded && observation.Band != HealDecisionBandUnknown && observation.BaseIsCurrent && observation.ElementTargetID == streak.ElementTargetID && observation.BaseNodeVersionID != streak.BaseNodeVersionID {
 			return HealStreakDecision{Next: newHealStreak(observation)}, nil
 		}
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
@@ -278,7 +303,7 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 		return HealStreakDecision{Next: streak.withObservation(contribution)}, nil
 	}
 	advanced := streak.withObservation(contribution)
-	if streak.Observing && (streak.NodeID != observation.NodeID || streak.BaseNodeVersionID != observation.BaseNodeVersionID) {
+	if streak.Observing && (streak.ElementTargetID != observation.ElementTargetID || streak.BaseNodeVersionID != observation.BaseNodeVersionID) {
 		return HealStreakDecision{Next: advanced}, nil
 	}
 	if !observation.BaseIsCurrent {
@@ -313,7 +338,10 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 }
 
 func (streak HealStreak) Validate() error {
-	return streak.validate()
+	if err := streak.validate(); err != nil {
+		return healStreakStateInvalidError(err)
+	}
+	return nil
 }
 
 func (streak HealStreak) validate() error {
@@ -325,21 +353,29 @@ func (streak HealStreak) validate() error {
 		return fmt.Errorf("consumed heal observation exceeds last sequence")
 	}
 	if !streak.Observing && streak.Disposition == "" && len(streak.Contributions) == 0 {
+		if strings.TrimSpace(streak.ElementTargetID) != "" ||
+			strings.TrimSpace(streak.BaseNodeVersionID) != "" ||
+			strings.TrimSpace(streak.CandidateHash) != "" ||
+			streak.Band != "" ||
+			len(streak.ConsumedObservations) != 0 ||
+			streak.LastSequence != 0 {
+			return fmt.Errorf("empty heal streak contains persisted state")
+		}
 		return nil
 	}
 	if streak.Disposition == HealStreakReset || streak.Disposition == HealStreakStale {
-		if streak.Observing || strings.TrimSpace(streak.NodeID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || streak.LastSequence == 0 {
+		if streak.Observing || strings.TrimSpace(streak.ElementTargetID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || streak.LastSequence == 0 {
 			return fmt.Errorf("%s heal streak requires inactive node/base sequence identity", streak.Disposition)
 		}
 		return nil
 	}
 	if streak.Disposition == HealStreakRejected {
-		if streak.Observing || strings.TrimSpace(streak.NodeID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" || streak.LastSequence == 0 {
+		if streak.Observing || strings.TrimSpace(streak.ElementTargetID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" || streak.LastSequence == 0 {
 			return fmt.Errorf("rejected heal streak requires inactive candidate identity")
 		}
 		return validateHealContributions(streak.Contributions)
 	}
-	if strings.TrimSpace(streak.NodeID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" {
+	if strings.TrimSpace(streak.ElementTargetID) == "" || strings.TrimSpace(streak.BaseNodeVersionID) == "" || strings.TrimSpace(streak.CandidateHash) == "" {
 		return fmt.Errorf("heal streak requires node, base version, and candidate identity")
 	}
 	if streak.Band != HealDecisionBandApplied && streak.Band != HealDecisionBandBelowCap {
@@ -371,15 +407,15 @@ func (streak HealStreak) validate() error {
 
 func (streak HealStreak) Reject(sequence uint64) (HealStreakDecision, error) {
 	if err := streak.validate(); err != nil {
-		return HealStreakDecision{}, err
+		return HealStreakDecision{}, healStreakStateInvalidError(err)
 	}
 	if streak.Disposition != HealStreakAwaitApproval {
-		return HealStreakDecision{}, fmt.Errorf("only an await-approval heal streak can be rejected")
+		return HealStreakDecision{}, healStreakRejectionInvalidError(errors.New("only an await-approval heal streak can be rejected"))
 	}
 	if sequence == 0 || sequence <= streak.LastSequence {
-		return HealStreakDecision{}, fmt.Errorf("heal rejection sequence %d is not newer than %d", sequence, streak.LastSequence)
+		return HealStreakDecision{}, healSequenceConflictError(fmt.Errorf("heal rejection sequence %d is not newer than %d", sequence, streak.LastSequence))
 	}
-	next := streak.clone()
+	next := streak.Clone()
 	next.LastSequence = sequence
 	next.Observing = false
 	next.Disposition = HealStreakRejected
@@ -395,7 +431,7 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 			return fmt.Errorf("heal contribution sequences must be strictly increasing")
 		}
 		for _, earlier := range contributions[:index] {
-			if earlier.FactID == contribution.FactID || earlier.CommitID == contribution.CommitID || earlier.RunID == contribution.RunID || earlier.Sequence == contribution.Sequence {
+			if earlier.FactID == contribution.FactID || earlier.CommitID == contribution.CommitID || earlier.InstanceID == contribution.InstanceID || earlier.Sequence == contribution.Sequence {
 				return fmt.Errorf("heal contribution identity is duplicated")
 			}
 		}
@@ -404,15 +440,15 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 }
 
 func (contribution ContributingHealFact) validate() error {
-	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.RunID) == "" || strings.TrimSpace(contribution.ExecutionID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
-		return fmt.Errorf("heal contribution requires fact, commit, run, execution, step, and sequence identity")
+	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.InstanceID) == "" || strings.TrimSpace(contribution.EntryID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
+		return fmt.Errorf("heal contribution requires fact, commit, instance, entry, step, and sequence identity")
 	}
 	return nil
 }
 
 func (observation HealObservation) validate() error {
-	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.RunID) == "" || strings.TrimSpace(observation.ExecutionID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.NodeID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
-		return fmt.Errorf("heal observation requires fact, commit, run, execution, step, sequence, node, and base version identity")
+	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.InstanceID) == "" || strings.TrimSpace(observation.EntryID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
+		return fmt.Errorf("heal observation requires fact, commit, instance, entry, step, sequence, node, and base version identity")
 	}
 	if observation.Outcome != HealSucceeded && observation.Outcome != HealOriginalRecovered && observation.Outcome != HealFailed {
 		return fmt.Errorf("unsupported heal outcome %q", observation.Outcome)
@@ -428,14 +464,14 @@ func (observation HealObservation) validate() error {
 
 func (observation HealObservation) contribution() ContributingHealFact {
 	return ContributingHealFact{
-		FactID: observation.FactID, CommitID: observation.CommitID, RunID: observation.RunID,
-		ExecutionID: observation.ExecutionID, StepExecutionID: observation.StepExecutionID, Sequence: observation.Sequence,
+		FactID: observation.FactID, CommitID: observation.CommitID, InstanceID: observation.InstanceID,
+		EntryID: observation.EntryID, StepExecutionID: observation.StepExecutionID, Sequence: observation.Sequence,
 	}
 }
 
 func newHealStreak(observation HealObservation) HealStreak {
 	return HealStreak{
-		NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID,
+		ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 		CandidateHash: observation.CandidateHash, Band: observation.Band,
 		Contributions:        []ContributingHealFact{observation.contribution()},
 		ConsumedObservations: []ContributingHealFact{observation.contribution()},
@@ -446,14 +482,14 @@ func newHealStreak(observation HealObservation) HealStreak {
 
 func newHealTerminal(observation HealObservation, disposition HealStreakDisposition) HealStreak {
 	return HealStreak{
-		NodeID: observation.NodeID, BaseNodeVersionID: observation.BaseNodeVersionID,
+		ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
 		LastSequence: observation.Sequence, Disposition: disposition,
 		ConsumedObservations: []ContributingHealFact{observation.contribution()},
 	}
 }
 
 func (streak HealStreak) matches(observation HealObservation) bool {
-	return streak.NodeID == observation.NodeID && streak.BaseNodeVersionID == observation.BaseNodeVersionID &&
+	return streak.ElementTargetID == observation.ElementTargetID && streak.BaseNodeVersionID == observation.BaseNodeVersionID &&
 		streak.CandidateHash == observation.CandidateHash && streak.Band == observation.Band
 }
 
@@ -462,7 +498,11 @@ func (streak HealStreak) isTerminal() bool {
 		streak.Disposition == HealStreakReset || streak.Disposition == HealStreakStale || streak.Disposition == HealStreakRejected
 }
 
-func (streak HealStreak) clone() HealStreak {
+// Clone is the one deep copy of a heal streak. It was unexported, so the two
+// application layers that also needed one hand-rolled theirs, and both stopped
+// after Contributions — leaving ConsumedObservations shared with the source.
+// Exporting it is what makes the second field impossible to forget.
+func (streak HealStreak) Clone() HealStreak {
 	streak.Contributions = append([]ContributingHealFact(nil), streak.Contributions...)
 	streak.ConsumedObservations = append([]ContributingHealFact(nil), streak.ConsumedObservations...)
 	return streak
@@ -476,14 +516,14 @@ func (streak HealStreak) consumedProvenance() []ContributingHealFact {
 }
 
 func (streak HealStreak) withObservation(contribution ContributingHealFact) HealStreak {
-	next := streak.clone()
+	next := streak.Clone()
 	next.ConsumedObservations = append(next.consumedProvenance(), contribution)
 	next.LastSequence = contribution.Sequence
 	return next
 }
 
 func (streak HealStreak) withDisposition(disposition HealStreakDisposition) HealStreak {
-	next := streak.clone()
+	next := streak.Clone()
 	next.Observing = false
 	next.Disposition = disposition
 	return next

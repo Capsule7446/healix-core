@@ -1,9 +1,13 @@
 package evidence
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Capsule7446/healix-core/domain/execution"
+)
 
 func validProgressEvent(phase ProgressPhase) StepProgressEvent {
-	return StepProgressEvent{ID: "step", ExecutionID: "execution", WorkflowStepID: "workflow-step", DisplayName: "Step", Kind: "action", Phase: phase, Occurrence: 1, Timestamp: 1}
+	return StepProgressEvent{ID: mustStepExecutionID("step"), EntryID: mustEntryID("execution"), FlowFragmentStepID: "workflow-step", DisplayName: "Step", Kind: "action", Phase: phase, Occurrence: 1, Timestamp: 1}
 }
 
 func TestStepProgressEventAcceptsOnlyRuntimeNonTerminalPhases(t *testing.T) {
@@ -21,7 +25,7 @@ func TestStepProgressEventAcceptsOnlyRuntimeNonTerminalPhases(t *testing.T) {
 
 func TestStepProgressEventRejectsMissingIdentityAndRuntimeCoordinates(t *testing.T) {
 	missingIdentity := validProgressEvent(ProgressRunning)
-	missingIdentity.ID = ""
+	missingIdentity.ID = execution.StepExecutionID{}
 	if err := missingIdentity.Validate(); err == nil {
 		t.Fatal("missing identity accepted")
 	}

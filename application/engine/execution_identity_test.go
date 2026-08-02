@@ -2,10 +2,10 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/node"
@@ -39,8 +39,8 @@ func (n *executionIdentityProbeNode) Run(ctx context.Context, runtime *node.Runt
 		return err
 	}
 	return runtime.Facts.RecordProgress(ctx,
-		domainexecution.WorkerFence{RunID: runtime.RunID, ClaimToken: runtime.ClaimToken},
-		node.Event{RunID: runtime.RunID, NodeID: n.ID(), Occurrence: 1, Phase: node.PhaseRunning},
+		domainexecution.WorkerFence{InstanceID: runtime.InstanceID, ClaimToken: runtime.ClaimToken},
+		node.Event{InstanceID: runtime.InstanceID, NodeID: n.ID(), Occurrence: 1, Phase: node.PhaseRunning},
 	)
 }
 
@@ -53,8 +53,8 @@ func (d executionIdentityProbeDriver) Navigate(context.Context, string) error {
 	return nil
 }
 func (executionIdentityProbeDriver) Press(context.Context, string) error { return nil }
-func (executionIdentityProbeDriver) Locate(context.Context, fingerprint.NodeSpec) (node.Element, error) {
-	return nil, node.ErrElementNotFound
+func (executionIdentityProbeDriver) Locate(context.Context, fingerprint.ElementTargetSpec) (node.Element, error) {
+	return nil, node.NewElementNotFoundError()
 }
 func (executionIdentityProbeDriver) Snapshot(context.Context) (heal.DOMSnapshot, error) {
 	return nil, nil
@@ -65,7 +65,7 @@ type executionIdentityProbeRecorder struct {
 	probe *executionIdentityProbe
 }
 
-func (r executionIdentityProbeRecorder) Start(context.Context, string) (node.RecordingTimeline, error) {
+func (r executionIdentityProbeRecorder) Start(context.Context, domainexecution.InstanceID) (node.RecordingTimeline, error) {
 	r.probe.recorderCalls++
 	return &engineTestTimeline{}, nil
 }
@@ -100,7 +100,7 @@ func (f executionIdentityProbeFacts) CommitTerminal(context.Context, domainexecu
 }
 
 func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,29 +112,29 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 		name   string
 		mutate func(*CompiledEntry, *Config)
 	}{
-		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.RunID = "wrong-run" }},
+		{name: "config run", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.InstanceID = mustInstanceID("wrong-run") }},
 		{name: "config snapshot", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.SnapshotDigest = "wrong-digest" }},
-		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.ExecutionID = "wrong-execution" }},
+		{name: "config execution", mutate: func(_ *CompiledEntry, cfg *Config) { cfg.EntryID = mustEntryID("wrong-execution") }},
 		{name: "missing claim token without facts", mutate: func(_ *CompiledEntry, cfg *Config) {
 			cfg.ClaimToken = ""
 			cfg.Facts = nil
 		}},
-		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.RunID = "wrong-run" }},
+		{name: "entry run", mutate: func(entry *CompiledEntry, _ *Config) { entry.InstanceID = mustInstanceID("wrong-run") }},
 		{name: "entry snapshot", mutate: func(entry *CompiledEntry, _ *Config) { entry.SnapshotDigest = "wrong-digest" }},
-		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.ExecutionID = "wrong-execution" }},
+		{name: "entry execution", mutate: func(entry *CompiledEntry, _ *Config) { entry.EntryID = mustEntryID("wrong-execution") }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			entry, ok := compiled.Entry("execution-entry")
+			entry, ok := compiled.Entry(mustEntryID("execution-entry"))
 			if !ok {
 				t.Fatal("execution-entry is missing")
 			}
 			probe := &executionIdentityProbe{}
 			entry.program.Root = &executionIdentityProbeNode{probe: probe}
 			cfg := Config{
-				RunID:             entry.RunID,
+				InstanceID:        entry.InstanceID,
 				SnapshotDigest:    entry.SnapshotDigest,
-				ExecutionID:       entry.ExecutionID,
+				EntryID:           entry.EntryID,
 				ClaimToken:        "claim",
 				AuthorityVerifier: probe,
 				Driver:            executionIdentityProbeDriver{probe: probe},
@@ -144,7 +144,7 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 			test.mutate(&entry, &cfg)
 
 			result, err := RunProgram(context.Background(), entry, cfg)
-			if !errors.Is(err, ErrExecutionIdentityMismatch) {
+			if !fault.IsCode(err, CodeExecutionIdentityMismatch) {
 				t.Fatalf("RunProgram() error = %v, want stable execution identity mismatch; side effects = %+v", err, probe)
 			}
 			if result.ExecutionOutcome != ExecutionNotStarted {
@@ -158,7 +158,7 @@ func TestRunProgramRejectsExecutionIdentityMismatchWithoutSideEffects(t *testing
 }
 
 func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,30 +166,34 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok := compiled.Entry("execution-entry")
+	entry, ok := compiled.Entry(mustEntryID("execution-entry"))
 	if !ok {
 		t.Fatal("execution-entry is missing")
 	}
-	stale := &domainexecution.StaleWorkerFenceError{Fence: domainexecution.WorkerFence{RunID: entry.RunID, ClaimToken: "stale"}}
+	stale := domainexecution.NewStaleWorkerFenceError()
 	tests := []struct {
 		name     string
 		verifier ExecutionAuthorityVerifier
-		wantErr  error
+		wantCode fault.Code
 	}{
-		{name: "missing verifier", wantErr: ErrExecutionAuthorityRequired},
-		{name: "stale authority", verifier: &executionIdentityProbe{authorityErr: stale}, wantErr: domainexecution.ErrStaleWorkerFence},
+		{name: "missing verifier"},
+		{name: "stale authority", verifier: &executionIdentityProbe{authorityErr: stale}, wantCode: domainexecution.CodeWorkerFenceStale},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			probe := &executionIdentityProbe{}
 			entryCopy := entry
 			entryCopy.program.Root = &executionIdentityProbeNode{probe: probe}
-			cfg := Config{RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+			cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID,
 				ClaimToken: "claim", AuthorityVerifier: test.verifier, Driver: executionIdentityProbeDriver{probe: probe},
 				Recorder: executionIdentityProbeRecorder{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 			result, err := RunProgram(context.Background(), entryCopy, cfg)
-			if !errors.Is(err, test.wantErr) {
-				t.Fatalf("RunProgram() error = %v, want %v", err, test.wantErr)
+			if test.wantCode != "" {
+				if !fault.IsCode(err, test.wantCode) {
+					t.Fatalf("RunProgram() error = %v, want code %v", err, test.wantCode)
+				}
+			} else if !fault.IsCode(err, CodeExecutionAuthorityVerifierRequired) {
+				t.Fatalf("RunProgram() error = %v, want %v", err, ExecutionAuthorityVerifierRequiredError())
 			}
 			if result.ExecutionOutcome != ExecutionNotStarted || probe.runtimeCalls != 0 || probe.driverCalls != 0 || probe.recorderCalls != 0 || probe.factCalls != 0 {
 				t.Fatalf("authority rejection produced side effects: result=%+v probe=%+v", result, probe)
@@ -199,7 +203,7 @@ func TestRunProgramRequiresCurrentExecutionAuthorityBeforeSideEffects(t *testing
 }
 
 func TestRunProgramForwardsCompleteExecutionAuthority(t *testing.T) {
-	snapshot, err := runSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
+	snapshot, err := instanceSnapshotForCompilerTest(minimalCompilerPlan(), map[string]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,18 +211,18 @@ func TestRunProgramForwardsCompleteExecutionAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, ok := compiled.Entry("execution-entry")
+	entry, ok := compiled.Entry(mustEntryID("execution-entry"))
 	if !ok {
 		t.Fatal("execution-entry is missing")
 	}
 	probe := &executionIdentityProbe{}
 	entry.program.Root = &executionIdentityProbeNode{probe: probe}
-	cfg := Config{RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID,
+	cfg := Config{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID,
 		ClaimToken: "claim", AuthorityVerifier: probe, Driver: executionIdentityProbeDriver{probe: probe}, Facts: executionIdentityProbeFacts{probe: probe}}
 	if _, err := RunProgram(context.Background(), entry, cfg); err != nil {
 		t.Fatal(err)
 	}
-	want := ExecutionAuthority{RunID: entry.RunID, SnapshotDigest: entry.SnapshotDigest, ExecutionID: entry.ExecutionID, ClaimToken: "claim"}
+	want := ExecutionAuthority{InstanceID: entry.InstanceID, SnapshotDigest: entry.SnapshotDigest, EntryID: entry.EntryID, ClaimToken: "claim"}
 	if probe.authorityCalls != 1 || probe.authority != want {
 		t.Fatalf("authority calls = %d, authority = %+v, want %+v", probe.authorityCalls, probe.authority, want)
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/interpolation"
@@ -77,7 +78,7 @@ type ValidationNode struct {
 	// 对于独立验证，GroupID 和 BranchID 为空。它们是执行身份，而不是持久的表达式模型，并让证据适配器将成员观察结果附加到其组 StepExecution。
 	GroupID   string
 	BranchID  string
-	Target    fingerprint.NodeSpec
+	Target    fingerprint.ElementTargetSpec
 	Assertion ValidationAssertion
 	MaxWait   time.Duration
 	Stability time.Duration
@@ -87,7 +88,7 @@ func (v *ValidationNode) ID() string { return v.NodeID }
 
 func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
-		return fmt.Errorf("validation %s: wait step interval: %w", v.NodeID, err)
+		return classifyNodeFault(err)
 	}
 	execution := NewStepExecution(v.NodeID)
 	if err := transitionValidation(ctx, rt, execution, v.NodeID, PhaseRunning); err != nil {
@@ -104,7 +105,7 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	}
 	started := time.Now()
 	validationErr := v.waitStable(ctx, rt)
-	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, ErrorKind: errorKind(validationErr)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, EntryID: rt.EntryID, Occurrence: rt.mustActiveOccurrence(v.NodeID), NodeID: v.NodeID, Operation: "validation", Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: validationErr == nil, FaultKind: nodeFaultKind(validationErr), FaultCode: nodeFaultCode(validationErr)})
 	if validationErr != nil {
 		return validationFail(ctx, rt, execution, v.NodeID, errors.Join(validationErr))
 	}
@@ -155,17 +156,18 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	})
 	if pollErr != nil {
 		reason := "timeout"
-		if errorKind(pollErr) != ErrorTimeout {
+		if !fault.IsCode(pollErr, CodeTimeout) {
 			reason = "system_error"
 		}
 		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, lastActualValues, reason, true); err != nil {
 			return err
 		}
-		actual := lastActual
-		if validationEvidenceIsSensitive(v.Target, v.Assertion) {
-			actual = "••••••••"
-		}
-		return fmt.Errorf("assertion was not continuously satisfied within %s (last actual %q): %w", maxWait, actual, pollErr)
+		// The observed value does not belong in error text at all. Masking it by
+		// field name only covered password/file/token/secret/api_key patterns, so any
+		// other business field — a confirmation number, arbitrary page text — was
+		// echoed in full. The value already reaches the caller through the evidence
+		// record above, which applies the masking policy on the channel built for it.
+		return fmt.Errorf("assertion was not continuously satisfied within %s: %w", maxWait, pollErr)
 	}
 	return nil
 }
@@ -193,7 +195,7 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 	}
 	exists, err := el.Exists(ctx)
 	if err != nil {
-		if errors.Is(err, ErrElementNotFound) {
+		if fault.IsCode(err, CodeElementNotFound) {
 			return assertion.Kind == "not_exists", "<absent>", nil
 		}
 		return false, "", err
@@ -238,7 +240,7 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 
 	reader, ok := el.(ValidationStateReader)
 	if !ok {
-		return false, "", fmt.Errorf("driver element does not provide validation state for %q", assertion.Kind)
+		return false, "", unsupportedAssertionKindError(fmt.Errorf("driver element does not provide validation state for %q", assertion.Kind))
 	}
 	state, err := reader.ValidationState(ctx)
 	if err != nil {
@@ -280,8 +282,17 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 		}
 		return compareSet(assertion, state.SelectedTexts)
 	default:
-		return false, "", fmt.Errorf("unsupported validation assertion %q", assertion.Kind)
+		return false, "", unsupportedAssertionKindError(fmt.Errorf("unsupported validation assertion %q", assertion.Kind))
 	}
+}
+
+// unsupportedAssertionKindError classifies every "this assertion.Kind cannot be
+// evaluated" leaf failure under one code, distinguished from every other step
+// configuration failure by its violation field path. assertion.Kind is treated
+// as caller input and never echoed publicly; the concrete value stays on the
+// private cause.
+func unsupportedAssertionKindError(cause error) error {
+	return wrapStepConfigurationInvalidError(cause, mustViolation(fault.CodeFieldInvalid, "assertion.kind", "assertion kind is not supported"))
 }
 
 // solvedAssertion 仅扩展持久断言合约允许的值。属性名称故意是静态的：允许在 DOM 属性名称中进行插值使得验证形状数据依赖，并且在工作区验证期间被拒绝。
@@ -306,7 +317,10 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 
 // locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
-	target := v.Target
+	// Resolved against the overlay for the same reason as the step path: after
+	// an earlier heal it is the installed selector, not the compiled one, whose
+	// failure is being recovered from and staged as evidence.
+	target := rt.effectiveSpec(v.Target)
 	el, err := rt.locator().Locate(ctx, target)
 	if err == nil {
 		return el, false, nil
@@ -319,29 +333,29 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	}
 	snapshot, err := rt.Driver.Snapshot(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("snapshot for healing: %w", err)
+		return nil, false, classifyNodeFault(err)
 	}
 	decision, err := rt.healingPort().Recover(ctx, target, snapshot)
 	if err != nil {
 		return nil, false, err
 	}
 	if err := decision.Validate(); err != nil {
-		return nil, false, fmt.Errorf("invalid heal decision: %w", err)
+		return nil, false, classifyNodeFault(err)
 	}
-	if err := rt.recordHealSamples(ctx, HealSampleRecord{RunID: rt.RunID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
-		return nil, false, fmt.Errorf("record heal samples: %w", err)
+	if err := rt.recordHealSamples(ctx, HealSampleRecord{InstanceID: rt.InstanceID, NodeID: v.NodeID, SpecID: target.ID, OldSelector: firstSelector(target), Outcome: decision.Outcome, Samples: heal.SortSamples(decision.Samples(target.Fingerprint, rt.healingReviewCap()))}); err != nil {
+		return nil, false, evidenceRecordFailedError(err)
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate {
 		if rt.Facts != nil {
-			if err := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
-				return nil, false, fmt.Errorf("record heal decision: %w", err)
+			if err := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); err != nil {
+				return nil, false, evidenceRecordFailedError(err)
 			}
 		}
 		return nil, true, nil
 	}
-	assessment, err := heal.Assess(target, decision, heal.ExecutionContext{PageURL: rt.PageURL, Origin: rt.Origin}, rt.HealingPolicy)
+	assessment, err := heal.Assess(target, decision, rt.currentLocation(ctx), rt.HealingPolicy)
 	if err != nil {
-		return nil, false, fmt.Errorf("assess heal decision: %w", err)
+		return nil, false, classifyNodeFault(err)
 	}
 	if assessment.Disposition != heal.DispositionAllow {
 		if assessment.Disposition == heal.DispositionBlock && decision.Outcome != heal.OutcomeNoCandidate {
@@ -350,29 +364,28 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 		}
 		if rt.Facts != nil {
 			oldSelector := firstSelector(target)
-			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
-				return nil, false, fmt.Errorf("record validation heal decision: %w", recordErr)
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, oldSelector, decision); recordErr != nil {
+				return nil, false, evidenceRecordFailedError(recordErr)
 			}
 		}
-		return nil, false, fmt.Errorf("validation healing refused: %s", assessment.Explanation)
+		return nil, false, healingRefusedError(fmt.Errorf("validation healing refused: %s", assessment.Explanation))
 	}
 	if decision.Outcome == heal.OutcomeNoCandidate || decision.Best == nil {
 		if rt.Facts != nil {
-			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
-				return nil, false, fmt.Errorf("record no-candidate heal decision: %w", recordErr)
+			if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+				return nil, false, evidenceRecordFailedError(recordErr)
 			}
 		}
 		return nil, true, nil
 	}
-	healed := target
-	healed.Selectors = append([]fingerprint.Selector{decision.Best.Selector}, healed.Selectors...)
+	healed := promoteSelector(target, decision.Best.Selector)
 	el, err = rt.Driver.Locate(ctx, healed)
 	if err != nil {
 		return nil, false, fmt.Errorf("re-locate after heal: %w", err)
 	}
 	if rt.Facts != nil {
-		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
-			return nil, false, fmt.Errorf("record heal decision: %w", recordErr)
+		if recordErr := rt.Facts.StageHealDecision(ctx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, v.NodeID, target.ID, firstSelector(target), decision); recordErr != nil {
+			return nil, false, evidenceRecordFailedError(recordErr)
 		}
 	}
 	rt.setSelectorOverlay(healed)
@@ -410,7 +423,7 @@ func compareScalar(assertion ValidationAssertion, actual string, normalizeWhites
 		}
 		return re.MatchString(actual), actual, nil
 	default:
-		return false, actual, fmt.Errorf("unsupported scalar validation %q", assertion.Kind)
+		return false, actual, unsupportedAssertionKindError(fmt.Errorf("unsupported scalar validation %q", assertion.Kind))
 	}
 }
 
@@ -468,7 +481,10 @@ func (g *ValidationGroupNode) ID() string { return g.NodeID }
 func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	for branchIndex, branch := range g.Branches {
 		if branch.ID == "" {
-			return fmt.Errorf("validation group %s: branch %d requires an ID", g.NodeID, branchIndex)
+			return wrapStepConfigurationInvalidError(
+				fmt.Errorf("validation group %s: branch %d requires an ID", g.NodeID, branchIndex),
+				mustViolation(fault.CodeFieldRequired, fmt.Sprintf("branches.%d.id", branchIndex), "validation branch id is required"),
+			)
 		}
 		for memberIndex, member := range branch.Nodes {
 			if member == nil {
@@ -626,7 +642,7 @@ func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime,
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
 		Assertion: assertion, Actual: actual, ActualValues: append([]string(nil), actualValues...), Passed: passed, Reason: reason,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: final,
@@ -669,7 +685,7 @@ func (r *validationObservationRecorder) recordGroupFinal(ctx context.Context, rt
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalEventTimeout)
 	defer cancel()
-	return rt.Facts.StageValidationGroupTerminal(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationGroupTerminalObservation{
+	return rt.Facts.StageValidationGroupTerminal(cleanupCtx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, ValidationGroupTerminalObservation{
 		GroupID: group.NodeID, TerminalReason: terminalReason, WinningBranchID: winningBranchID,
 		ExpectedMembers: members, ObservedAtMS: time.Now().UnixMilli(),
 	})
@@ -699,7 +715,7 @@ func (r *validationObservationRecorder) recordWithDisposition(ctx context.Contex
 		}
 		assertion.ExpectedValues = nil
 	}
-	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}, ValidationObservation{
+	return rt.Facts.StageValidationObservation(cleanupCtx, domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}, ValidationObservation{
 		NodeID: validation.NodeID, GroupID: validation.GroupID, BranchID: validation.BranchID,
 		Assertion: assertion, Actual: actual, ActualValues: append([]string(nil), actualValues...), Passed: passed, Reason: reason, BranchDisposition: disposition,
 		Selector: selector, ObservedAtMS: time.Now().UnixMilli(), Final: true,
@@ -730,8 +746,7 @@ func validationTerminalReason(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "canceled"
 	}
-	var classified *ClassifiedError
-	if errors.As(err, &classified) && classified.Kind == ErrorTimeout {
+	if fault.IsCode(err, CodeTimeout) {
 		return "timeout"
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -740,7 +755,7 @@ func validationTerminalReason(err error) string {
 	return "system_error"
 }
 
-func validationEvidenceIsSensitive(target fingerprint.NodeSpec, assertion ValidationAssertion) bool {
+func validationEvidenceIsSensitive(target fingerprint.ElementTargetSpec, assertion ValidationAssertion) bool {
 	if !strings.HasPrefix(assertion.Kind, "value_") && !strings.HasPrefix(assertion.Kind, "selected_set_") && assertion.Kind != "attribute_equals" && assertion.Kind != "attribute_contains" {
 		return false
 	}

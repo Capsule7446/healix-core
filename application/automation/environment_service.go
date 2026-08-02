@@ -18,11 +18,13 @@ func NewEnvironmentService(repository EnvironmentRepository) EnvironmentService 
 
 func (s EnvironmentService) Create(ctx context.Context, value domain.Environment) (domain.Environment, error) {
 	if isNilDependency(s.repository) {
-		return domain.Environment{}, ErrAutomationConfiguration
+		return domain.Environment{}, AutomationConfigurationError()
 	}
 	created, err := domain.NewEnvironment(value)
 	if err != nil {
-		return domain.Environment{}, fmt.Errorf("create environment: %w", err)
+		// The domain constructor already returns a registered code; wrapping it
+		// here would bury that code under an unclassified layer.
+		return domain.Environment{}, err
 	}
 	result, err := s.repository.Create(ctx, created)
 	if err != nil {
@@ -47,7 +49,7 @@ func (s EnvironmentService) Restore(ctx context.Context, id string, expected dom
 
 func (s EnvironmentService) transition(ctx context.Context, id string, expected domain.Revision, apply func(domain.Environment) (domain.Environment, error)) (domain.Environment, error) {
 	if isNilDependency(s.repository) {
-		return domain.Environment{}, ErrAutomationConfiguration
+		return domain.Environment{}, AutomationConfigurationError()
 	}
 	if strings.TrimSpace(id) == "" {
 		return domain.Environment{}, fmt.Errorf("environment ID is required")
@@ -57,11 +59,11 @@ func (s EnvironmentService) transition(ctx context.Context, id string, expected 
 		return domain.Environment{}, fmt.Errorf("load environment %q: %w", id, err)
 	}
 	if current.Revision != expected {
-		return domain.Environment{}, RevisionConflictError{AggregateKind: "environment", ID: id, Expected: expected, Actual: current.Revision}
+		return domain.Environment{}, AutomationRevisionConflictError()
 	}
 	next, err := apply(current)
 	if err != nil {
-		return domain.Environment{}, fmt.Errorf("transition environment %q: %w", id, err)
+		return domain.Environment{}, err
 	}
 	result, err := s.repository.Update(ctx, expected, next)
 	if err != nil {

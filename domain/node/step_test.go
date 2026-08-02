@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"reflect"
 	"testing"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 )
@@ -36,18 +37,43 @@ func (e selectingTestElement) Select(_ context.Context, option string, more ...s
 	return nil
 }
 
+type textTestElement struct {
+	testElement
+	text   string
+	inputs *[]string
+}
+
+func (e textTestElement) Text(context.Context) (string, error) { return e.text, nil }
+func (e textTestElement) Input(_ context.Context, value string) error {
+	*e.inputs = append(*e.inputs, value)
+	return nil
+}
+
+type testHealingPort struct {
+	decision heal.Decision
+	err      error
+	calls    int
+	specs    []fingerprint.ElementTargetSpec
+}
+
+func (p *testHealingPort) Recover(_ context.Context, spec fingerprint.ElementTargetSpec, _ heal.DOMSnapshot) (heal.Decision, error) {
+	p.calls++
+	p.specs = append(p.specs, spec)
+	return p.decision, p.err
+}
+
 type testSnapshot struct{}
 
 func (testSnapshot) Candidates(context.Context) ([]heal.SnapshotCandidate, error) { return nil, nil }
 
 type testDriver struct {
-	locate      func(context.Context, fingerprint.NodeSpec) (Element, error)
-	locateSpecs []fingerprint.NodeSpec
+	locate      func(context.Context, fingerprint.ElementTargetSpec) (Element, error)
+	locateSpecs []fingerprint.ElementTargetSpec
 }
 
 func (d *testDriver) Navigate(context.Context, string) error { return nil }
 func (d *testDriver) Press(context.Context, string) error    { return nil }
-func (d *testDriver) Locate(ctx context.Context, spec fingerprint.NodeSpec) (Element, error) {
+func (d *testDriver) Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error) {
 	d.locateSpecs = append(d.locateSpecs, spec)
 	if d.locate != nil {
 		return d.locate(ctx, spec)
@@ -61,12 +87,22 @@ func (d *testDriver) WaitNetworkIdle(context.Context) error { return nil }
 
 type testHealer struct {
 	decision heal.Decision
-	err      error
-	calls    int
+	// decisions, when non-empty, is consumed one entry per call so a test can
+	// drive a spec through more than one recovery inside a single entry.
+	decisions []heal.Decision
+	err       error
+	calls     int
+	specs     []fingerprint.ElementTargetSpec
 }
 
-func (h *testHealer) Heal(context.Context, fingerprint.NodeSpec, heal.DOMSnapshot) (heal.Decision, error) {
+func (h *testHealer) Heal(_ context.Context, spec fingerprint.ElementTargetSpec, _ heal.DOMSnapshot) (heal.Decision, error) {
 	h.calls++
+	h.specs = append(h.specs, spec)
+	if len(h.decisions) > 0 {
+		decision := h.decisions[0]
+		h.decisions = h.decisions[1:]
+		return decision, h.err
+	}
 	return h.decision, h.err
 }
 
@@ -76,6 +112,7 @@ type testFacts struct {
 	healDecisionErr        error
 	events                 []Event
 	healSpecIDs            []string
+	healOldSelectors       []fingerprint.Selector
 	healDecisions          []heal.Decision
 	validationObservations []ValidationObservation
 	validationGroups       []ValidationGroupTerminalObservation
@@ -108,9 +145,10 @@ func (m *testFacts) recordEvent(ctx context.Context, evt Event) error {
 	m.events = append(m.events, evt)
 	return nil
 }
-func (m *testFacts) StageHealDecision(_ context.Context, fence domainexecution.WorkerFence, _, specID string, _ fingerprint.Selector, decision heal.Decision) error {
+func (m *testFacts) StageHealDecision(_ context.Context, fence domainexecution.WorkerFence, _, specID string, oldSelector fingerprint.Selector, decision heal.Decision) error {
 	m.fences = append(m.fences, fence)
 	m.healSpecIDs = append(m.healSpecIDs, specID)
+	m.healOldSelectors = append(m.healOldSelectors, oldSelector)
 	m.healDecisions = append(m.healDecisions, decision)
 	return m.healDecisionErr
 }
@@ -136,14 +174,14 @@ func validDecision(selector fingerprint.Selector) heal.Decision {
 
 func TestExecutionFactsUseWorkerFenceForProgressAndTerminalCommit(t *testing.T) {
 	sink := &testFacts{}
-	runtime := &Runtime{RunID: "run", ClaimToken: "claim", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), ClaimToken: "claim", Facts: sink}
 	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
 		t.Fatal(err)
 	}
 	if err := runtime.emitTerminal(context.Background(), "step", PhaseSucceeded); err != nil {
 		t.Fatal(err)
 	}
-	want := domainexecution.WorkerFence{RunID: "run", ClaimToken: "claim"}
+	want := domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"}
 	if len(sink.fences) != 2 || sink.fences[0] != want || sink.fences[1] != want {
 		t.Fatalf("fences = %#v, want progress and terminal fenced by %#v", sink.fences, want)
 	}
@@ -151,7 +189,7 @@ func TestExecutionFactsUseWorkerFenceForProgressAndTerminalCommit(t *testing.T) 
 
 func TestEmitRunningRollbackPreservesSuccessfulOccurrenceSequence(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{errors.New("persist failed"), nil, nil}}
-	runtime := &Runtime{RunID: "run", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
 		t.Fatal("first RUNNING emit should fail")
@@ -169,7 +207,7 @@ func TestEmitRunningRollbackPreservesSuccessfulOccurrenceSequence(t *testing.T) 
 
 func TestEmitRunningRollbackHandlesRepeatedFailures(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{errors.New("one"), errors.New("two"), nil}}
-	runtime := &Runtime{RunID: "run", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	for i := 0; i < 2; i++ {
 		if err := runtime.emit(context.Background(), "step", PhaseRunning); err == nil {
@@ -186,7 +224,7 @@ func TestEmitRunningRollbackHandlesRepeatedFailures(t *testing.T) {
 
 func TestEmitRunningRollbackPreservesNestedSameIDLIFO(t *testing.T) {
 	sink := &testFacts{}
-	runtime := &Runtime{RunID: "run", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 	if err := runtime.emit(context.Background(), "step", PhaseRunning); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +251,7 @@ func TestEmitRunningRollbackPreservesNestedSameIDLIFO(t *testing.T) {
 
 func TestEmitTerminalFailureRetainsOccurrenceForFallback(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{nil, errors.New("succeeded failed"), nil}}
-	runtime := &Runtime{RunID: "run", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	occurrence, err := runtime.beginOccurrence(context.Background(), "step")
 	if err != nil {
@@ -233,7 +271,7 @@ func TestEmitTerminalFailureRetainsOccurrenceForFallback(t *testing.T) {
 
 func TestOccurrenceCleanupAfterAllTerminalWritesFailAllowsReuse(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{nil, errors.New("succeeded failed"), errors.New("failed failed"), nil, nil}}
-	runtime := &Runtime{RunID: "run", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	occurrence, err := runtime.beginOccurrence(context.Background(), "step")
 	if err != nil {
@@ -259,7 +297,7 @@ func TestOccurrenceCleanupAfterAllTerminalWritesFailAllowsReuse(t *testing.T) {
 
 func TestOccurrenceCleanupPreservesNestedSameIDLIFO(t *testing.T) {
 	sink := &testFacts{eventErrors: []error{nil, nil, errors.New("inner canceled failed"), nil}}
-	runtime := &Runtime{RunID: "run", Facts: sink}
+	runtime := &Runtime{InstanceID: mustInstanceID("run"), Facts: sink}
 
 	outer, err := runtime.beginOccurrence(context.Background(), "step")
 	if err != nil {
@@ -310,22 +348,22 @@ func TestStepExecutionRejectsInvalidTransitions(t *testing.T) {
 func TestHealedSelectorOverlayIsSharedBySpecID(t *testing.T) {
 	oldSelector := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#old", Priority: 0}
 	newSelector := fingerprint.Selector{Type: fingerprint.SelectorTestID, Value: "submit", Priority: 0}
-	spec := fingerprint.NodeSpec{ID: "login.submit", Selectors: []fingerprint.Selector{oldSelector}}
+	spec := fingerprint.ElementTargetSpec{ID: "login.submit", Selectors: []fingerprint.Selector{oldSelector}}
 
-	driver := &testDriver{locate: func(_ context.Context, got fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(_ context.Context, got fingerprint.ElementTargetSpec) (Element, error) {
 		if len(got.Selectors) > 0 && got.Selectors[0].Value == newSelector.Value {
 			return testElement{}, nil
 		}
-		return nil, fmt.Errorf("old selector failed: %w", ErrElementNotFound)
+		return nil, fmt.Errorf("old selector failed: %w", NewElementNotFoundError())
 	}}
 	healer := &testHealer{decision: validDecision(newSelector)}
 	facts := &testFacts{}
 	rt := &Runtime{
-		RunID:  "run-1",
-		Specs:  map[string]fingerprint.NodeSpec{spec.ID: spec},
-		Driver: driver,
-		Healer: healer,
-		Facts:  facts,
+		InstanceID: mustInstanceID("run-1"),
+		Specs:      map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
+		Driver:     driver,
+		Healer:     healer,
+		Facts:      facts,
 	}
 	first := &StepNode{NodeID: "click-submit", Target: spec, Action: Action{Kind: ActionNoop}}
 	second := &StepNode{NodeID: "check-submit", Target: spec, Action: Action{Kind: ActionNoop}}
@@ -361,13 +399,230 @@ func TestHealedSelectorOverlayIsSharedBySpecID(t *testing.T) {
 	}
 }
 
+// TestSecondHealOfOneSpecBuildsOnTheOverlayNotTheCompiledSpec pins the second
+// recovery of a spec inside one entry — the case a page navigation creates
+// when the selector installed by the first heal goes stale too.
+//
+// Locating already consults the overlay, so what fails the second time is the
+// healed selector, not the compiled one. Handing the healer the compiled spec
+// instead would ask it to recover from a selector that stopped being the live
+// one at the first heal, stage that same dead selector as the decision's
+// old_selector, and rebuild the overlay from the compiled list — silently
+// discarding the first healed selector as a fallback. Recovery evidence that
+// names the wrong predecessor is worse than absent evidence: it reads as a
+// complete chain.
+func TestSecondHealOfOneSpecBuildsOnTheOverlayNotTheCompiledSpec(t *testing.T) {
+	compiled := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#v1"}
+	firstHealed := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#v2"}
+	secondHealed := fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#v3"}
+	spec := fingerprint.ElementTargetSpec{ID: "login.submit", Selectors: []fingerprint.Selector{compiled}}
+
+	live := firstHealed.Value
+	driver := &testDriver{locate: func(_ context.Context, got fingerprint.ElementTargetSpec) (Element, error) {
+		if len(got.Selectors) > 0 && got.Selectors[0].Value == live {
+			return testElement{}, nil
+		}
+		return nil, NewElementNotFoundError()
+	}}
+	healer := &testHealer{decisions: []heal.Decision{validDecision(firstHealed), validDecision(secondHealed)}}
+	facts := &testFacts{}
+	rt := &Runtime{
+		InstanceID: mustInstanceID("run-1"),
+		Specs:      map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
+		Driver:     driver,
+		Healer:     healer,
+		Facts:      facts,
+	}
+
+	if err := (&StepNode{NodeID: "click-submit", Target: spec, Action: Action{Kind: ActionNoop}}).Run(context.Background(), rt); err != nil {
+		t.Fatalf("first step: %v", err)
+	}
+	live = secondHealed.Value
+	if err := (&StepNode{NodeID: "confirm-submit", Target: spec, Action: Action{Kind: ActionNoop}}).Run(context.Background(), rt); err != nil {
+		t.Fatalf("second step: %v", err)
+	}
+
+	if healer.calls != 2 {
+		t.Fatalf("healer calls = %d, want 2", healer.calls)
+	}
+	if got := healer.specs[0].Selectors[0]; got != compiled {
+		t.Fatalf("first heal saw %v, want compiled %v", got, compiled)
+	}
+	if got := healer.specs[1].Selectors[0]; got != firstHealed {
+		t.Fatalf("second heal saw %v, want the healed selector that just failed %v", got, firstHealed)
+	}
+	wantOverlay := []fingerprint.Selector{secondHealed, firstHealed, compiled}
+	if got := rt.SelectorOverlay[spec.ID]; !reflect.DeepEqual(got, wantOverlay) {
+		t.Fatalf("overlay = %v, want the healed selectors kept as fallbacks %v", got, wantOverlay)
+	}
+	wantStaged := []fingerprint.Selector{compiled, firstHealed}
+	if !reflect.DeepEqual(facts.healOldSelectors, wantStaged) {
+		t.Fatalf("staged old selectors = %v, want %v", facts.healOldSelectors, wantStaged)
+	}
+	if got := rt.Specs[spec.ID].Selectors[0]; got != compiled {
+		t.Fatalf("compiled Specs mutated to %v, want %v", got, compiled)
+	}
+}
+
+// TestInjectedHealingPortIsUsedInPreferenceToHealer covers the seam a host
+// integrates through when it supplies its own recovery service rather than the
+// in-process heal.Healer.
+//
+// Both fields feed one call site, and the adapter around Healer is what every
+// other healing test exercises — so the injected-port arm carried no evidence
+// at all despite being the arm an external integrator lands on. The two cases
+// below separate the two things the field has to do: enable recovery on its
+// own, and win when the algorithmic healer is also present.
+func TestInjectedHealingPortIsUsedInPreferenceToHealer(t *testing.T) {
+	healedSelector := fingerprint.Selector{Type: fingerprint.SelectorTestID, Value: "submit"}
+	spec := fingerprint.ElementTargetSpec{ID: "login.submit", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
+
+	tests := []struct {
+		name       string
+		withHealer bool
+	}{
+		{name: "port alone enables recovery"},
+		{name: "port wins over healer", withHealer: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			driver := &testDriver{locate: func(_ context.Context, got fingerprint.ElementTargetSpec) (Element, error) {
+				if len(got.Selectors) > 0 && got.Selectors[0].Value == healedSelector.Value {
+					return testElement{}, nil
+				}
+				return nil, NewElementNotFoundError()
+			}}
+			port := &testHealingPort{decision: validDecision(healedSelector)}
+			rt := &Runtime{
+				InstanceID: mustInstanceID("run-1"),
+				Specs:      map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
+				Driver:     driver,
+				Healing:    port,
+				Facts:      &testFacts{},
+			}
+			var healer *testHealer
+			if test.withHealer {
+				healer = &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#wrong"})}
+				rt.Healer = healer
+			}
+
+			if err := (&StepNode{NodeID: "click-submit", Target: spec, Action: Action{Kind: ActionNoop}}).Run(context.Background(), rt); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if port.calls != 1 {
+				t.Fatalf("port calls = %d, want 1", port.calls)
+			}
+			if got := port.specs[0].ID; got != spec.ID {
+				t.Fatalf("port saw spec %q, want %q", got, spec.ID)
+			}
+			if got := rt.SelectorOverlay[spec.ID][0]; got != healedSelector {
+				t.Fatalf("overlay selector = %v, want the port's candidate %v", got, healedSelector)
+			}
+			if healer != nil && healer.calls != 0 {
+				t.Fatalf("healer calls = %d, want 0 when a port is injected", healer.calls)
+			}
+		})
+	}
+}
+
+// TestHealedSelectorOverlaySurvivesAWorkflowCallScope pins the overlay against
+// the one boundary in the tree that swaps runtime state mid-execution.
+//
+// A workflow call replaces the parameter scope for the duration of the target,
+// and a healed selector is not parameter state — it is a fact about the live
+// page that outlives any binding frame. Rediscovering it per sub-workflow
+// would spend a second recovery on an element the run has already relocated.
+func TestHealedSelectorOverlaySurvivesAWorkflowCallScope(t *testing.T) {
+	healedSelector := fingerprint.Selector{Type: fingerprint.SelectorTestID, Value: "submit"}
+	spec := fingerprint.ElementTargetSpec{ID: "shared.submit", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
+
+	driver := &testDriver{locate: func(_ context.Context, got fingerprint.ElementTargetSpec) (Element, error) {
+		if len(got.Selectors) > 0 && got.Selectors[0].Value == healedSelector.Value {
+			return testElement{}, nil
+		}
+		return nil, NewElementNotFoundError()
+	}}
+	healer := &testHealer{decision: validDecision(healedSelector)}
+	rt := &Runtime{
+		InstanceID: mustInstanceID("run-1"),
+		Specs:      map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
+		Driver:     driver,
+		Healer:     healer,
+		Facts:      &testFacts{},
+	}
+
+	parentStep := &StepNode{NodeID: "parent-submit", Target: spec, Action: Action{Kind: ActionNoop}}
+	if err := parentStep.Run(context.Background(), rt); err != nil {
+		t.Fatalf("parent step: %v", err)
+	}
+	childStep := &StepNode{NodeID: "child-submit", Target: spec, Action: Action{Kind: ActionNoop}}
+	call := &WorkflowCallNode{NodeID: "call", Target: &WorkflowNode{NodeID: "child", Children: []Node{childStep}}}
+	if err := call.Run(context.Background(), rt); err != nil {
+		t.Fatalf("workflow call: %v", err)
+	}
+
+	if healer.calls != 1 {
+		t.Fatalf("healer calls = %d, want 1 — the sub-workflow re-healed a spec the parent already recovered", healer.calls)
+	}
+	last := driver.locateSpecs[len(driver.locateSpecs)-1]
+	if got := last.Selectors[0]; got != healedSelector {
+		t.Fatalf("child located with %v, want the overlay selector %v", got, healedSelector)
+	}
+}
+
+// TestExtractAfterHealingWritesHealedElementTextForLaterInterpolation joins the
+// two halves that only meet in a real run: recovery hands back an element, and
+// extract turns that element into a scratchpad variable other steps read.
+//
+// Nothing rebinds the element between the heal and the read, so the risk is not
+// arithmetic — it is that a future change routes extract past the healed
+// element and captures text from the stale one. A downstream ${var} step makes
+// that visible at the point a host would notice it.
+func TestExtractAfterHealingWritesHealedElementTextForLaterInterpolation(t *testing.T) {
+	healedSelector := fingerprint.Selector{Type: fingerprint.SelectorTestID, Value: "order"}
+	spec := fingerprint.ElementTargetSpec{ID: "receipt.order", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#old"}}}
+
+	var inputs []string
+	element := textTestElement{text: "ORDER-42", inputs: &inputs}
+	driver := &testDriver{locate: func(_ context.Context, got fingerprint.ElementTargetSpec) (Element, error) {
+		if len(got.Selectors) > 0 && got.Selectors[0].Value == healedSelector.Value {
+			return element, nil
+		}
+		return nil, NewElementNotFoundError()
+	}}
+	rt := &Runtime{
+		InstanceID: mustInstanceID("run-1"),
+		Specs:      map[string]fingerprint.ElementTargetSpec{spec.ID: spec},
+		Driver:     driver,
+		Healer:     &testHealer{decision: validDecision(healedSelector)},
+		Facts:      &testFacts{},
+		Scratchpad: map[string]any{},
+	}
+
+	extract := &StepNode{NodeID: "read-order", Target: spec, Action: Action{Kind: ActionExtract, Value: "order_id"}}
+	if err := extract.Run(context.Background(), rt); err != nil {
+		t.Fatalf("extract step: %v", err)
+	}
+	if got := rt.Scratchpad["order_id"]; got != "ORDER-42" {
+		t.Fatalf("scratchpad order_id = %#v, want the healed element's text", got)
+	}
+
+	echo := &StepNode{NodeID: "echo-order", Target: spec, Action: Action{Kind: ActionInput, Value: "${order_id}"}}
+	if err := echo.Run(context.Background(), rt); err != nil {
+		t.Fatalf("echo step: %v", err)
+	}
+	if !reflect.DeepEqual(inputs, []string{"ORDER-42"}) {
+		t.Fatalf("inputs = %v, want the extracted value interpolated", inputs)
+	}
+}
+
 func TestStepDoesNotHealSystemLocateErrors(t *testing.T) {
 	systemErr := errors.New("browser disconnected")
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, systemErr
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
-	step := &StepNode{NodeID: "submit", Target: fingerprint.NodeSpec{ID: "submit"}}
+	step := &StepNode{NodeID: "submit", Target: fingerprint.ElementTargetSpec{ID: "submit"}}
 	err := step.Run(context.Background(), &Runtime{Driver: driver, Healer: healer})
 	if !errors.Is(err, systemErr) {
 		t.Fatalf("Run error = %v, want system locate error", err)
@@ -379,11 +634,11 @@ func TestStepDoesNotHealSystemLocateErrors(t *testing.T) {
 
 func TestStepDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 	systemErr := errors.New("browser disconnected")
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
-		return nil, errors.Join(ErrElementNotFound, systemErr)
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+		return nil, errors.Join(NewElementNotFoundError(), systemErr)
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
-	step := &StepNode{NodeID: "submit", Target: fingerprint.NodeSpec{ID: "submit"}}
+	step := &StepNode{NodeID: "submit", Target: fingerprint.ElementTargetSpec{ID: "submit"}}
 	err := step.Run(context.Background(), &Runtime{Driver: driver, Healer: healer})
 	if !errors.Is(err, systemErr) || healer.calls != 0 {
 		t.Fatalf("Run error = %v, healer calls = %d", err, healer.calls)
@@ -391,13 +646,13 @@ func TestStepDoesNotHealMixedNotFoundAndSystemLocateErrors(t *testing.T) {
 }
 
 func TestOptionalStepSkipsMissingTargetWithoutHealing(t *testing.T) {
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
-		return nil, ErrElementNotFound
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+		return nil, NewElementNotFoundError()
 	}}
 	healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 	facts := &testFacts{}
-	step := &StepNode{NodeID: "close-modal", Target: fingerprint.NodeSpec{ID: "modal.close"}, Optional: true}
-	err := step.Run(context.Background(), &Runtime{RunID: "run-1", Driver: driver, Healer: healer, Facts: facts})
+	step := &StepNode{NodeID: "close-modal", Target: fingerprint.ElementTargetSpec{ID: "modal.close"}, Optional: true}
+	err := step.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run-1"), Driver: driver, Healer: healer, Facts: facts})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -411,12 +666,12 @@ func TestOptionalStepSkipsMissingTargetWithoutHealing(t *testing.T) {
 
 func TestStepExpandsSelectValuesWithoutMutatingCompiledAction(t *testing.T) {
 	var selections [][]string
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return selectingTestElement{selections: &selections}, nil
 	}}
 	step := &StepNode{
 		NodeID: "choose-groups",
-		Target: fingerprint.NodeSpec{ID: "groups"},
+		Target: fingerprint.ElementTargetSpec{ID: "groups"},
 		Action: Action{Kind: ActionSelect, Values: []string{"${PRIMARY}", "${SECONDARY}"}},
 	}
 	rt := &Runtime{Driver: driver, Scratchpad: map[string]any{"PRIMARY": "A", "SECONDARY": "B"}}
@@ -438,13 +693,13 @@ func TestStepExpandsSelectValuesWithoutMutatingCompiledAction(t *testing.T) {
 
 func TestStepPersistsCanceledEventAfterExecutionContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		cancel()
 		return nil, context.Canceled
 	}}
 	facts := &testFacts{rejectCanceled: true}
-	step := &StepNode{NodeID: "cancelled", Target: fingerprint.NodeSpec{ID: "target"}}
-	err := step.Run(ctx, &Runtime{RunID: "run-1", Driver: driver, Facts: facts})
+	step := &StepNode{NodeID: "cancelled", Target: fingerprint.ElementTargetSpec{ID: "target"}}
+	err := step.Run(ctx, &Runtime{InstanceID: mustInstanceID("run-1"), Driver: driver, Facts: facts})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run error = %v, want context canceled", err)
 	}
@@ -454,20 +709,20 @@ func TestStepPersistsCanceledEventAfterExecutionContextCancellation(t *testing.T
 }
 
 func TestStepRejectsInvalidHealDecision(t *testing.T) {
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
-		return nil, ErrElementNotFound
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
+		return nil, NewElementNotFoundError()
 	}}
 	healer := &testHealer{decision: heal.Decision{Outcome: heal.OutcomeApplied}}
-	step := &StepNode{NodeID: "submit", Target: fingerprint.NodeSpec{ID: "submit"}}
+	step := &StepNode{NodeID: "submit", Target: fingerprint.ElementTargetSpec{ID: "submit"}}
 	err := step.Run(context.Background(), &Runtime{Driver: driver, Healer: healer})
-	if err == nil || !strings.Contains(err.Error(), "invalid heal decision") {
+	if err == nil || !fault.IsCode(err, CodeOperationFailed) {
 		t.Fatalf("Run error = %v, want invalid decision error", err)
 	}
 }
 
 func TestStepPropagatesCriticalFactErrors(t *testing.T) {
 	auditErr := errors.New("audit unavailable")
-	spec := fingerprint.NodeSpec{ID: "submit", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#submit"}}}
+	spec := fingerprint.ElementTargetSpec{ID: "submit", Selectors: []fingerprint.Selector{{Type: fingerprint.SelectorCSS, Value: "#submit"}}}
 
 	t.Run("execution event", func(t *testing.T) {
 		facts := &testFacts{eventErrFor: map[Phase]error{PhaseSucceeded: auditErr}}
@@ -485,16 +740,16 @@ func TestStepPropagatesCriticalFactErrors(t *testing.T) {
 	})
 
 	t.Run("heal decision", func(t *testing.T) {
-		driver := &testDriver{locate: func(_ context.Context, got fingerprint.NodeSpec) (Element, error) {
+		driver := &testDriver{locate: func(_ context.Context, got fingerprint.ElementTargetSpec) (Element, error) {
 			if got.Selectors[0].Value == "#new" {
 				return testElement{}, nil
 			}
-			return nil, ErrElementNotFound
+			return nil, NewElementNotFoundError()
 		}}
 		healer := &testHealer{decision: validDecision(fingerprint.Selector{Type: fingerprint.SelectorCSS, Value: "#new"})}
 		facts := &testFacts{healDecisionErr: auditErr}
 		step := &StepNode{NodeID: "submit", Target: spec}
-		err := step.Run(context.Background(), &Runtime{RunID: "run-1", Driver: driver, Healer: healer, Facts: facts})
+		err := step.Run(context.Background(), &Runtime{InstanceID: mustInstanceID("run-1"), Driver: driver, Healer: healer, Facts: facts})
 		if !errors.Is(err, auditErr) {
 			t.Fatalf("Run error = %v, want audit error", err)
 		}
@@ -504,10 +759,10 @@ func TestStepPropagatesCriticalFactErrors(t *testing.T) {
 
 func TestWaitElementPropagatesSystemLocateError(t *testing.T) {
 	systemErr := errors.New("browser disconnected")
-	driver := &testDriver{locate: func(context.Context, fingerprint.NodeSpec) (Element, error) {
+	driver := &testDriver{locate: func(context.Context, fingerprint.ElementTargetSpec) (Element, error) {
 		return nil, systemErr
 	}}
-	wait := &WaitNode{NodeID: "wait-submit", Kind: WaitElement, Target: fingerprint.NodeSpec{ID: "submit"}}
+	wait := &WaitNode{NodeID: "wait-submit", Kind: WaitElement, Target: fingerprint.ElementTargetSpec{ID: "submit"}}
 	err := wait.Run(context.Background(), &Runtime{Driver: driver})
 	if !errors.Is(err, systemErr) {
 		t.Fatalf("Run error = %v, want system locate error", err)

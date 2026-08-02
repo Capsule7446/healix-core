@@ -12,7 +12,7 @@
 
 ## 输出
 
-`evidence.StepTransitionCommitResult` 或 error；标准冲突分类为 `ErrStepRevisionConflict`、`ErrCommitIdentityConflict`。事务内通过 `HealGovernancePlanner` 计算的 promotions 仅由 `StepTransitionCommitResult.Promotions` 返回。
+`evidence.StepTransitionCommitResult` 或 error；标准冲突分类为 `EXECUTION_STEP_REVISION_CONFLICT`（`StepRevisionConflictError()`）与 `EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT`（`CommitIdentityConflictError()`）。事务内通过 `HealGovernancePlanner` 计算的 promotions 仅由 `StepTransitionCommitResult.Promotions` 返回。
 
 ## 时序
 
@@ -38,10 +38,14 @@ sequenceDiagram
 flowchart TD
     A[接收 commit] --> B{claim fencing 有效?}
     B -- 否 --> E1[拒绝过期工作器]
-    B -- 是 --> C{commit identity 冲突?}
-    C -- 是 --> E2[ErrCommitIdentityConflict]
+    B -- 是 --> B2{证据 InstanceID 与栅栏一致?}
+    B2 -- 否 --> E4[EXECUTION_STEP_TRANSITION_COMMIT_RUN_MISMATCH]
+    B2 -- 是 --> B3{payload 在预算内?}
+    B3 -- 否 --> E5[EXECUTION_STEP_TRANSITION_COMMIT_PAYLOAD_TOO_LARGE]
+    B3 -- 是 --> C{commit identity 冲突?}
+    C -- 是 --> E2[EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT]
     C -- 否 --> D{expected revision 匹配?}
-    D -- 否 --> E3[ErrStepRevisionConflict]
+    D -- 否 --> E3[EXECUTION_STEP_REVISION_CONFLICT]
     D -- 是 --> F[事务内由 HealGovernancePlanner 计算治理决策]
     F --> G[原子写终态、最终事实与治理结果]
     G --> H[仅通过 StepTransitionCommitResult.Promotions 返回 promotions]
@@ -50,14 +54,12 @@ flowchart TD
 ## 不变量
 
 - 终态迁移与最终 facts 必须同一原子事务。
+- `StepTransitionService.Commit` 在把 commit 交给适配器前依次做四件事：`fence.Validate()`、`commit.Validate()`、校验每条证据的 `InstanceID` 与栅栏一致（否则 `EXECUTION_STEP_TRANSITION_COMMIT_RUN_MISMATCH`）、以及 payload 预算检查。四者返回的都是各自已分类的 fault，服务不再在外层包一层未分类错误。
+- payload 预算按走查到的内容字节计量，不是 `json.Marshal` 的长度：总量上限 `MaxStepTransitionPayloadBytes = 1 << 20`（1 MiB），单个字符串上限 64 KiB，两者超限返回同一个 `EXECUTION_STEP_TRANSITION_COMMIT_PAYLOAD_TOO_LARGE`。计量的走查另有 64 层深度上限，但那只是防环护栏，超过深度的部分不计入字节数，不会因此报错。条数由 `domain/evidence` 以 10,000 条另行封顶。
 - adapter 必须校验 fencing、revision 与 commit identity 幂等性。
 - `StepTransitionCommit` 携带终态证据、`HealObservation` 与 `OriginalSelectorResets`，调用方不得提交 promotions。
 - promotions 必须在事务内通过 `HealGovernancePlanner` 计算，并且仅在 `StepTransitionCommitResult.Promotions` 中返回。
 - `StepTransitionService` 已实现；port 契约与应用服务不等于已存在生产持久化适配器。
-
-## 当前边界与延期能力
-
-以下能力当前**不受支持或明确延期**：lease heartbeat 与过期恢复、active cancellation registry、完整队列实现、参数优先级合并、生产级 adapters 与 read projections。调用方不得从现有接口推断这些能力已经存在。
 
 ## 源码与测试
 

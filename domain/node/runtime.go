@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -17,13 +18,22 @@ const terminalEventTimeout = 5 * time.Second
 
 const operationObservationTimeout = 5 * time.Second
 
-// ErrElementNotFound 是 Driver 合约的显式业务信号，表明 NodeSpec 的每个定位器均已耗尽。取消、格式错误的选择器和浏览器故障必须保持可区分的错误。
-var ErrElementNotFound = errors.New("node: element not found")
+// NewElementNotFoundError is the Driver contract's explicit business signal that
+// every selector in an ElementTargetSpec has been exhausted. Cancellation,
+// invalid selectors, and browser failures remain distinguishable.
+func NewElementNotFoundError() error {
+	return mustWrapNodeFault(
+		errors.New("element lookup exhausted"),
+		fault.NotFound,
+		CodeElementNotFound,
+		"element was not found",
+	)
+}
 
-// Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 NodeSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
+// Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 ElementTargetSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
 type Program struct {
 	Root  Node
-	Specs map[string]fingerprint.NodeSpec
+	Specs map[string]fingerprint.ElementTargetSpec
 }
 
 // Phase 是某个 step 在 RUNNING -> [HEALING] -> TRANSITIONING ->
@@ -76,18 +86,18 @@ var stepPhaseTransitions = map[Phase]map[Phase]struct{}{
 
 func (e *StepExecution) CanTransition(next Phase) error {
 	if e == nil {
-		return fmt.Errorf("node: nil step execution")
+		return stepPhaseTransitionInvalidError(errors.New("node: nil step execution"))
 	}
-	if err := ValidatePhaseTransition(e.phase, next); err != nil {
-		return fmt.Errorf("node %s: invalid step phase transition %q -> %q", e.nodeID, e.phase, next)
-	}
-	return nil
+	// ValidatePhaseTransition already returns a fully classified fault; return it
+	// unchanged rather than discarding its detail to build a second one — the
+	// contract forbids wrapping an already-coded fault in another fault.
+	return ValidatePhaseTransition(e.phase, next)
 }
 
 // ValidatePhaseTransition 向持久性适配器公开相同的域保护，因此部分或重复写入无法产生不可能的 StepExecution 历史记录。
 func ValidatePhaseTransition(current, next Phase) error {
 	if _, ok := stepPhaseTransitions[current][next]; !ok {
-		return fmt.Errorf("invalid step phase transition %q -> %q", current, next)
+		return stepPhaseTransitionInvalidError(fmt.Errorf("invalid step phase transition %q -> %q", current, next))
 	}
 	return nil
 }
@@ -102,7 +112,7 @@ func (e *StepExecution) Transition(next Phase) error {
 
 // Event describes one runtime phase transition.
 type Event struct {
-	RunID      string
+	InstanceID domainexecution.InstanceID
 	NodeID     string
 	Occurrence int
 	Phase      Phase
@@ -111,7 +121,9 @@ type Event struct {
 
 // OperationObservation is an optional, framework-neutral execution fact.
 type OperationObservation struct {
-	RunID      string
+	InstanceID domainexecution.InstanceID
+	EntryID    domainexecution.EntryID
+	Occurrence int
 	NodeID     string
 	Operation  string
 	Selector   fingerprint.Selector
@@ -119,7 +131,8 @@ type OperationObservation struct {
 	Attempt    int
 	DurationMS int64
 	Succeeded  bool
-	ErrorKind  ErrorKind
+	FaultKind  fault.Kind
+	FaultCode  fault.Code
 }
 
 // OperationObserver can be implemented alongside ExecutionSink without changing
@@ -146,22 +159,40 @@ type Element interface {
 	WaitStable(ctx context.Context) error
 }
 
-// Driver 按优先级顺序将 NodeSpec 的选择器与实时页面比对解析、
+// Driver 按优先级顺序将 ElementTargetSpec 的选择器与实时页面比对解析、
 // 执行导航，并为自愈提供 DOMSnapshot。
 type Driver interface {
 	Navigate(ctx context.Context, url string) error
 	Press(ctx context.Context, key string) error
-	Locate(ctx context.Context, spec fingerprint.NodeSpec) (Element, error)
+	Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error)
 	Snapshot(ctx context.Context) (heal.DOMSnapshot, error)
 	// WaitNetworkIdle 阻塞到页面网络空闲；超时通过 ctx 控制
 	// （WaitNode 的条件超时）。
 	WaitNetworkIdle(ctx context.Context) error
 }
 
+// PageLocation is where the browser actually is at the moment it is asked.
+type PageLocation struct {
+	URL    string
+	Origin string
+}
+
+// PageLocator reports the live browser location.
+//
+// Healing rewrites a selector against whatever page is currently loaded, so
+// the only thing separating a legitimate repair from executing an attacker's
+// DOM is whether that page is still the origin the target was recorded on.
+// Answering from anything cached — the plan, the last navigation, a field set
+// at runtime construction — cannot detect the redirect that makes the question
+// worth asking, so the answer has to come from the browser at heal time.
+type PageLocator interface {
+	CurrentLocation(ctx context.Context) (PageLocation, error)
+}
+
 // Recorder 是框架无关的会话录制端口，由宿主提供适配器。
 // Runtime 上的 Recorder 为 nil 表示"录屏关闭"，Start/Stop 也就不会被调用。
 type Recorder interface {
-	Start(ctx context.Context, runID string) (RecordingTimeline, error)
+	Start(ctx context.Context, instanceID domainexecution.InstanceID) (RecordingTimeline, error)
 	Stop(ctx context.Context, retain bool) error
 }
 
@@ -171,7 +202,7 @@ type HealSampleObserver interface {
 }
 
 type HealSampleRecord struct {
-	RunID       string
+	InstanceID  domainexecution.InstanceID
 	NodeID      string
 	SpecID      string
 	OldSelector fingerprint.Selector
@@ -197,20 +228,22 @@ type ExecutionSink interface {
 // Runtime、Driver、Page 和 Element 端口在当前版本均要求由单个顺序执行器访问；
 // 并发调度、资源池和跨页面生命周期属于延期能力。
 type Runtime struct {
-	RunID      string
+	InstanceID domainexecution.InstanceID
+	EntryID    domainexecution.EntryID
 	ClaimToken string
-	PageURL    string
-	Origin     string
 	// StepInterval 控制可执行叶步骤之间的最小暂停时间。第一个叶子步骤立即开始；容器节点和验证组成员不消耗额外的时间间隔。
 	StepInterval time.Duration
-	// Specs 按 ID 索引每个 StepNode 的 NodeSpec，使断言可以引用
+	// Specs 按 ID 索引每个 StepNode 的 ElementTargetSpec，使断言可以引用
 	// 该 step 自身目标以外的其他元素。
-	Specs map[string]fingerprint.NodeSpec
-	// SelectorOverlay 是本次 run 内按 NodeSpec ID 保存的 healed selector 列表。
+	Specs map[string]fingerprint.ElementTargetSpec
+	// SelectorOverlay 是本次 run 内按 ElementTargetSpec ID 保存的 healed selector 列表。
 	// 编译出的 Specs/StepNode 保持不变，同一 spec 的后续 step、repeat 和断言
 	// 都通过 effectiveSpec 读取该 overlay。
-	SelectorOverlay      map[string][]fingerprint.Selector
-	Driver               Driver
+	SelectorOverlay map[string][]fingerprint.Selector
+	Driver          Driver
+	// PageLocator 供自愈安全评估读取实时页面位置；nil 表示无法确认位置，
+	// 自愈一律拒绝。
+	PageLocator          PageLocator
 	Healer               heal.Healer // nil = 关闭自愈
 	Healing              HealingPort
 	Recorder             Recorder      // nil = 关闭录屏
@@ -261,6 +294,23 @@ func (rt *Runtime) observeOperationBestEffort(ctx context.Context, observation O
 	_ = rt.observeOperation(cleanupCtx, observation)
 }
 
+// currentLocation asks the live page where it is.
+//
+// Every failure mode collapses to the zero context — no port, a port error, a
+// blank answer — because heal.Assess reads that as "cannot confirm" and
+// refuses. Returning a stale or assumed location instead would answer the
+// question with the very value a redirect has already invalidated.
+func (rt *Runtime) currentLocation(ctx context.Context) heal.ExecutionContext {
+	if rt == nil || rt.PageLocator == nil {
+		return heal.ExecutionContext{}
+	}
+	location, err := rt.PageLocator.CurrentLocation(ctx)
+	if err != nil {
+		return heal.ExecutionContext{}
+	}
+	return heal.ExecutionContext{PageURL: location.URL, Origin: location.Origin}
+}
+
 func (rt *Runtime) healingPort() HealingPort {
 	if rt.Healing != nil {
 		return rt.Healing
@@ -300,6 +350,17 @@ func (rt *Runtime) activeOccurrence(nodeID string) (int, error) {
 		return 0, fmt.Errorf("node %s without active occurrence", nodeID)
 	}
 	return stack[len(stack)-1], nil
+}
+
+// mustActiveOccurrence returns the active occurrence for nodeID, or 0 if
+// none is active. Observations are best-effort and must not break execution
+// when the occurrence stack is empty (e.g. during terminal cleanup).
+func (rt *Runtime) mustActiveOccurrence(nodeID string) int {
+	occurrence, err := rt.activeOccurrence(nodeID)
+	if err != nil {
+		return 0
+	}
+	return occurrence
 }
 
 // releaseOccurrence releases only the occurrence owned by one invocation. It is
@@ -342,8 +403,8 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 		}
 		occurrence = stack[len(stack)-1]
 	}
-	evt := Event{RunID: rt.RunID, NodeID: nodeID, Occurrence: occurrence, Phase: phase}
-	fence := domainexecution.WorkerFence{RunID: rt.RunID, ClaimToken: rt.ClaimToken}
+	evt := Event{InstanceID: rt.InstanceID, NodeID: nodeID, Occurrence: occurrence, Phase: phase}
+	fence := domainexecution.WorkerFence{InstanceID: rt.InstanceID, ClaimToken: rt.ClaimToken}
 	var recordErr error
 	if rt.Facts != nil {
 		if phase == PhaseSucceeded || phase == PhaseFailed || phase == PhaseCanceled {
@@ -354,7 +415,7 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 	}
 	if phase == PhaseRunning {
 		if recordErr != nil {
-			return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, recordErr)
+			return evidenceRecordFailedError(recordErr)
 		}
 		rt.occurrences[nodeID] = occurrence
 		rt.activeOccurrences[nodeID] = append(stack, occurrence)
@@ -366,7 +427,7 @@ func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 		}
 	}
 	if recordErr != nil {
-		return fmt.Errorf("record execution event %s/%s: %w", nodeID, phase, recordErr)
+		return evidenceRecordFailedError(recordErr)
 	}
 	return nil
 }
@@ -385,7 +446,7 @@ func failurePhase(ctx context.Context) Phase {
 	return PhaseFailed
 }
 
-func (rt *Runtime) effectiveSpec(base fingerprint.NodeSpec) fingerprint.NodeSpec {
+func (rt *Runtime) effectiveSpec(base fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
 	spec := base
 	if canonical, ok := rt.Specs[base.ID]; ok {
 		spec = canonical
@@ -396,15 +457,35 @@ func (rt *Runtime) effectiveSpec(base fingerprint.NodeSpec) fingerprint.NodeSpec
 	return spec
 }
 
-func (rt *Runtime) specByID(id string) (fingerprint.NodeSpec, bool) {
+func (rt *Runtime) specByID(id string) (fingerprint.ElementTargetSpec, bool) {
 	spec, ok := rt.Specs[id]
 	if !ok {
-		return fingerprint.NodeSpec{}, false
+		return fingerprint.ElementTargetSpec{}, false
 	}
 	return rt.effectiveSpec(spec), true
 }
 
-func (rt *Runtime) setSelectorOverlay(spec fingerprint.NodeSpec) {
+// promoteSelector puts the healed candidate at the head of base's selector
+// list, keeping the rest as ordered fallbacks.
+//
+// An equal selector already in the list is removed rather than duplicated:
+// across repeated recoveries of one spec the healer can land on a selector it
+// produced before, and a list that grows a duplicate on every heal would make
+// the driver retry a known-dead selector once per past attempt.
+func promoteSelector(base fingerprint.ElementTargetSpec, healed fingerprint.Selector) fingerprint.ElementTargetSpec {
+	selectors := make([]fingerprint.Selector, 0, len(base.Selectors)+1)
+	selectors = append(selectors, healed)
+	for _, selector := range base.Selectors {
+		if selector != healed {
+			selectors = append(selectors, selector)
+		}
+	}
+	spec := base
+	spec.Selectors = selectors
+	return spec
+}
+
+func (rt *Runtime) setSelectorOverlay(spec fingerprint.ElementTargetSpec) {
 	if rt.SelectorOverlay == nil {
 		rt.SelectorOverlay = make(map[string][]fingerprint.Selector)
 	}

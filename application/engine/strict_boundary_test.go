@@ -2,12 +2,14 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/node"
 )
 
@@ -15,21 +17,21 @@ func TestCompileSnapshotDraftRejectsDuplicatePublicIdentities(t *testing.T) {
 	base := minimalCompilerPlan()
 	tests := []struct {
 		name   string
-		mutate func(*execution.Draft)
+		mutate func(*execution.PlanSnapshot)
 		want   string
 	}{
-		{"workflow version", func(d *execution.Draft) { d.Workflows = append(d.Workflows, d.Workflows[0]) }, "duplicate workflow version"},
-		{"node dependency", func(d *execution.Draft) {
+		{"workflow version", func(d *execution.PlanSnapshot) { d.Workflows = append(d.Workflows, d.Workflows[0]) }, "duplicate workflow version"},
+		{"node dependency", func(d *execution.PlanSnapshot) {
 			nodeSnapshot := compilerNodeSnapshot(compilerNodeV1, "button")
 			d.Nodes = []execution.NodeSnapshot{nodeSnapshot, nodeSnapshot}
 		}, "duplicate node dependency"},
-		{"execution", func(d *execution.Draft) { d.Entries = append(d.Entries, d.Entries[0]) }, "duplicate execution"},
+		{"execution", func(d *execution.PlanSnapshot) { d.Entries = append(d.Entries, d.Entries[0]) }, "duplicate execution"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			draft := base
 			tt.mutate(&draft)
-			snapshot, err := runSnapshotForCompilerTest(base, nil)
+			snapshot, err := instanceSnapshotForCompilerTest(base, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -54,9 +56,16 @@ func TestRunProgramRejectsNilContextAndNegativeInterval(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := runProgram(tt.ctx, program, Config{RunID: "run", Driver: &engineTestDriver{}, StepInterval: tt.interval})
-			if err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("error = %v, want %q", err, tt.want)
+			_, err := runProgram(tt.ctx, program, Config{InstanceID: mustInstanceID("run"), Driver: &engineTestDriver{}, StepInterval: tt.interval})
+			if err == nil || !fault.IsCode(err, CodeRuntimeConfigurationInvalid) {
+				t.Fatalf("error = %v, want code %s", err, CodeRuntimeConfigurationInvalid)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || strings.Contains(descriptor.Message(), tt.want) {
+				t.Fatalf("public message = %#v (ok=%v), must not carry %q", descriptor, ok, tt.want)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), tt.want) {
+				t.Fatalf("private cause = %v, want it to retain %q", cause, tt.want)
 			}
 		})
 	}
@@ -93,7 +102,7 @@ func TestMillisecondsDurationRejectsOnlyInvalidInt64Boundaries(t *testing.T) {
 
 func TestCompilerRejectsNegativeWaitMilliseconds(t *testing.T) {
 	base := minimalCompilerPlan()
-	snapshot, err := runSnapshotForCompilerTest(base, nil)
+	snapshot, err := instanceSnapshotForCompilerTest(base, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

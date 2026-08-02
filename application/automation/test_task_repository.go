@@ -6,8 +6,8 @@ import (
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
-type TestTaskRepository interface {
-	Load(context.Context, string) (domain.TestTaskAggregate, error)
-	Create(context.Context, domain.TestTaskAggregate) (domain.TestTaskAggregate, error)
-	SaveAggregate(context.Context, domain.Revision, domain.TestTaskAggregate) (domain.TestTaskAggregate, error)
+type ExecutionFlowRepository interface {
+	Load(context.Context, string) (domain.ExecutionFlowAggregate, error)
+	Create(context.Context, domain.ExecutionFlowAggregate) (domain.ExecutionFlowAggregate, error)
+	SaveAggregate(context.Context, domain.Revision, domain.ExecutionFlowAggregate) (domain.ExecutionFlowAggregate, error)
 }

@@ -126,7 +126,7 @@ func TestDecisionRejectsEveryInvalidSelectorShape(t *testing.T) {
 func TestDefaultHealerRejectsInvalidConfigurationBeforeSnapshot(t *testing.T) {
 	h := NewDefaultHealer()
 	h.Thresholds = Thresholds{ReviewCap: 0.9, AppliedCap: 0.8}
-	_, err := h.Heal(context.Background(), fingerprint.NodeSpec{}, nil)
+	_, err := h.Heal(context.Background(), fingerprint.ElementTargetSpec{}, nil)
 	if err == nil {
 		t.Fatal("Heal should reject invalid thresholds")
 	}
@@ -146,27 +146,27 @@ func TestDefaultHealerRejectsNilAndPropagatesSnapshotFailures(t *testing.T) {
 	if err := nilHealer.Validate(); err == nil || !strings.Contains(err.Error(), "nil") {
 		t.Fatalf("nil healer validation error = %v", err)
 	}
-	if _, err := nilHealer.Heal(context.Background(), fingerprint.NodeSpec{}, fakeSnapshot{}); err == nil {
+	if _, err := nilHealer.Heal(context.Background(), fingerprint.ElementTargetSpec{}, fakeSnapshot{}); err == nil {
 		t.Fatal("nil healer unexpectedly healed")
 	}
 
 	healer := NewDefaultHealer()
-	if _, err := healer.Heal(context.Background(), fingerprint.NodeSpec{}, nil); err == nil || !strings.Contains(err.Error(), "snapshot is nil") {
+	if _, err := healer.Heal(context.Background(), fingerprint.ElementTargetSpec{}, nil); err == nil || !strings.Contains(err.Error(), "snapshot is nil") {
 		t.Fatalf("nil snapshot error = %v", err)
 	}
 	snapshotErr := errors.New("snapshot unavailable")
-	if _, err := healer.Heal(context.Background(), fingerprint.NodeSpec{}, fakeSnapshot{err: snapshotErr}); !errors.Is(err, snapshotErr) {
+	if _, err := healer.Heal(context.Background(), fingerprint.ElementTargetSpec{}, fakeSnapshot{err: snapshotErr}); !errors.Is(err, snapshotErr) {
 		t.Fatalf("snapshot error = %v, want %v", err, snapshotErr)
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := healer.Heal(canceled, fingerprint.NodeSpec{}, fakeSnapshot{err: canceled.Err()}); !errors.Is(err, context.Canceled) {
+	if _, err := healer.Heal(canceled, fingerprint.ElementTargetSpec{}, fakeSnapshot{err: canceled.Err()}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled snapshot error = %v", err)
 	}
 }
 
 func TestHealThresholdBoundariesAreInclusive(t *testing.T) {
-	target := fingerprint.NodeSpec{Fingerprint: fingerprint.Fingerprint{
+	target := fingerprint.ElementTargetSpec{Fingerprint: fingerprint.Fingerprint{
 		Tag: "button", Attributes: map[string]string{"id": "submit"},
 	}}
 	healer := &DefaultHealer{
@@ -209,8 +209,8 @@ func TestHealRejectsInvalidCandidateSelectorFromSnapshot(t *testing.T) {
 	}
 }
 
-func loginSubmitTarget() fingerprint.NodeSpec {
-	return fingerprint.NodeSpec{
+func loginSubmitTarget() fingerprint.ElementTargetSpec {
+	return fingerprint.ElementTargetSpec{
 		ID:   "login.submit",
 		Role: "button",
 		Fingerprint: fingerprint.Fingerprint{
@@ -329,7 +329,7 @@ func TestHeal_PicksHighestScoringOfMultipleCandidates(t *testing.T) {
 }
 
 func TestHeal_TiedCandidatesUseStableTotalOrder(t *testing.T) {
-	target := fingerprint.NodeSpec{Fingerprint: fingerprint.Fingerprint{
+	target := fingerprint.ElementTargetSpec{Fingerprint: fingerprint.Fingerprint{
 		Tag: "button", Text: "保存", Path: []string{"html", "body", "section", "button"},
 	}}
 	left := SnapshotCandidate{
@@ -355,7 +355,7 @@ func TestHeal_TiedCandidatesUseStableTotalOrder(t *testing.T) {
 }
 
 func TestHeal_TiedCandidatesUseSelectorPriorityAsDeterministicKey(t *testing.T) {
-	target := fingerprint.NodeSpec{Fingerprint: fingerprint.Fingerprint{
+	target := fingerprint.ElementTargetSpec{Fingerprint: fingerprint.Fingerprint{
 		Tag: "button", Text: "保存", Path: []string{"html", "body", "button"},
 	}}
 	highPriority := SnapshotCandidate{

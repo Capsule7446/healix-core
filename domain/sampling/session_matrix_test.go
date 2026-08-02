@@ -2,9 +2,9 @@ package sampling
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -13,18 +13,18 @@ func TestNewSessionRejectsMissingBusinessIdentity(t *testing.T) {
 		name       string
 		workflowID string
 		startURL   string
-		want       string
+		wantField  string
 	}{
-		{name: "empty workflow", startURL: "https://example.test", want: "workflow ID"},
-		{name: "blank workflow", workflowID: "  ", startURL: "https://example.test", want: "workflow ID"},
-		{name: "empty start URL", workflowID: "flow", want: "start URL"},
-		{name: "blank start URL", workflowID: "flow", startURL: "\t", want: "start URL"},
+		{name: "empty workflow", startURL: "https://example.test", wantField: "flowFragmentId"},
+		{name: "blank workflow", workflowID: "  ", startURL: "https://example.test", wantField: "flowFragmentId"},
+		{name: "empty start URL", workflowID: "flow", wantField: "startUrl"},
+		{name: "blank start URL", workflowID: "flow", startURL: "\t", wantField: "startUrl"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := NewSession(test.workflowID, test.startURL); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("NewSession() error = %v, want containing %q", err, test.want)
-			}
+			_, err := NewSession(test.workflowID, test.startURL)
+			requireViolation(t, err, CodeSessionInputInvalid, fault.CodeFieldRequired, test.wantField)
+			requireNoPublicLeak(t, err, "https://example.test")
 		})
 	}
 }
@@ -68,9 +68,9 @@ func TestSessionLifecycleTransitionMatrix(t *testing.T) {
 	var nilSession *Session
 	for _, operation := range operations {
 		t.Run(operation.name+"/nil", func(t *testing.T) {
-			if err := operation.run(nilSession); err == nil || !strings.Contains(err.Error(), "nil session") {
-				t.Fatalf("nil session error = %v", err)
-			}
+			// A nil receiver is a caller code defect with no runtime remediation,
+			// so it is INTERNAL rather than a lifecycle precondition failure.
+			requireEnvelope(t, operation.run(nilSession), CodeInternal)
 		})
 	}
 }
@@ -100,7 +100,7 @@ func TestSessionPauseResumePreservesIdentityAndSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Created || second.NodeUUID != first.NodeUUID || second.NodeID != first.NodeID || second.Sequence != first.Sequence+1 {
+	if second.Created || second.NodeUUID != first.NodeUUID || second.ElementTargetID != first.ElementTargetID || second.Sequence != first.Sequence+1 {
 		t.Fatalf("identity/sequence changed across pause: first=%+v second=%+v", first, second)
 	}
 }
@@ -137,9 +137,10 @@ func TestSessionInterruptAndFailAreTerminalAndIdempotent(t *testing.T) {
 
 func TestSessionRecordActionContractMatrix(t *testing.T) {
 	tests := []struct {
-		name    string
-		capture Capture
-		wantErr string
+		name          string
+		capture       Capture
+		wantViolation fault.Code
+		wantField     string
 	}{
 		{name: "click", capture: validCapture("click", "button", "")},
 		{name: "input", capture: func() Capture { c := validCapture("input", "field", "alice"); c.Kind = ActionInput; return c }()},
@@ -156,15 +157,15 @@ func TestSessionRecordActionContractMatrix(t *testing.T) {
 			return c
 		}()},
 		{name: "press", capture: Capture{CaptureID: "press", Kind: ActionPress, Value: "Enter", PageURL: "https://example.test"}},
-		{name: "missing capture id", capture: Capture{Kind: ActionPress, Value: "Enter"}, wantErr: "capture ID"},
-		{name: "missing identity", capture: Capture{CaptureID: "missing-identity", Kind: ActionClick}, wantErr: "identity key"},
+		{name: "missing capture id", capture: Capture{Kind: ActionPress, Value: "Enter"}, wantViolation: fault.CodeFieldRequired, wantField: "captureId"},
+		{name: "missing identity", capture: Capture{CaptureID: "missing-identity", Kind: ActionClick}, wantViolation: fault.CodeFieldRequired, wantField: "identityKey"},
 		{name: "missing validation", capture: func() Capture {
 			c := validCapture("missing-validation", "status", "")
 			c.Kind = ActionValidate
 			return c
-		}(), wantErr: "validation capture"},
-		{name: "missing press value", capture: Capture{CaptureID: "press-empty", Kind: ActionPress}, wantErr: "press action value"},
-		{name: "unsupported navigate", capture: Capture{CaptureID: "navigate", Kind: ActionNavigate}, wantErr: "unsupported action"},
+		}(), wantViolation: fault.CodeFieldRequired, wantField: "validation"},
+		{name: "missing press value", capture: Capture{CaptureID: "press-empty", Kind: ActionPress}, wantViolation: fault.CodeFieldRequired, wantField: "value"},
+		{name: "unsupported navigate", capture: Capture{CaptureID: "navigate", Kind: ActionNavigate}, wantViolation: fault.CodeFieldInvalid, wantField: "kind"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -176,12 +177,14 @@ func TestSessionRecordActionContractMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err = session.Record(test.capture)
-			if test.wantErr == "" && err != nil {
-				t.Fatalf("valid capture rejected: %v", err)
+			if test.wantField == "" {
+				if err != nil {
+					t.Fatalf("valid capture rejected: %v", err)
+				}
+				return
 			}
-			if test.wantErr != "" && (err == nil || !strings.Contains(err.Error(), test.wantErr)) {
-				t.Fatalf("error=%v want containing %q", err, test.wantErr)
-			}
+			requireViolation(t, err, CodeCaptureInvalid, test.wantViolation, test.wantField)
+			requireNoPublicLeak(t, err, "Enter", string(ActionNavigate))
 		})
 	}
 }
@@ -225,8 +228,10 @@ func TestSessionRejectsInvalidNewAndUpdatedNodeSpecifications(t *testing.T) {
 	}
 	invalid := validCapture("invalid-new", "invalid-new", "")
 	invalid.Spec.Selectors = nil
-	if _, err := session.Record(invalid); err == nil || !strings.Contains(err.Error(), "invalid captured node") {
-		t.Fatalf("invalid new node error = %v", err)
+	// The spec's own fault passes through unwrapped: nesting it inside a sampling
+	// code would force the host to unwrap recursively before classifying.
+	if _, err := session.Record(invalid); !fault.IsCode(err, fingerprint.CodeElementTargetSpecInvalid) {
+		t.Fatalf("invalid new node error = %v, want code %s", err, fingerprint.CodeElementTargetSpecInvalid)
 	}
 	first, err := session.Record(validCapture("valid", "stable", ""))
 	if err != nil {
@@ -235,8 +240,8 @@ func TestSessionRejectsInvalidNewAndUpdatedNodeSpecifications(t *testing.T) {
 	update := validCapture("invalid-update", "changed-identity", "")
 	update.NodeUUID = first.NodeUUID
 	update.Spec.Fingerprint.Tag = ""
-	if _, err := session.Record(update); err == nil || !strings.Contains(err.Error(), "invalid captured node update") {
-		t.Fatalf("invalid update error = %v", err)
+	if _, err := session.Record(update); !fault.IsCode(err, fingerprint.CodeElementTargetSpecInvalid) {
+		t.Fatalf("invalid update error = %v, want code %s", err, fingerprint.CodeElementTargetSpecInvalid)
 	}
 	snapshot := session.Snapshot()
 	if len(snapshot.Nodes) != 1 || snapshot.Nodes[0].Spec.Fingerprint.Tag != "button" {

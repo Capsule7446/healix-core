@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 type coordinatorPortStub struct {
@@ -54,7 +55,7 @@ func (s *writerPortStub) ApplyDecision(_ context.Context, claim Claim, decision 
 
 func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 	plan := sealedCoordinatorPlan(t)
-	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}
+	claim := Claim{Snapshot: plan, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
 	releaseFailure, stateFailure := errors.New("release"), errors.New("states")
 
 	claims := &coordinatorPortStub{claim: claim, found: true, releaseErr: releaseFailure}
@@ -67,7 +68,7 @@ func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	claims = &coordinatorPortStub{claim: claim, found: true}
-	states = &statePortStub{states: []EntryState{{ExecutionID: "execution-1", Status: execution.ExecutionPending}}}
+	states = &statePortStub{states: []EntryState{{EntryID: mustEntryID("execution-1"), Status: execution.EntryPending}}}
 	writer := &writerPortStub{result: ApplyDecisionResult{Fence: claim.Fence, Applied: true}}
 	claimed, err := NewCoordinator(claims, states, writer).ProcessNext(ctx, "worker-x", 42)
 	if err != nil || !claimed || claims.releaseContextErr != nil {
@@ -98,42 +99,42 @@ func TestCoordinatorExportedBoundaryAndReleaseSemantics(t *testing.T) {
 	}
 }
 
-func validCancelCommand() CancelRunCommand {
-	return CancelRunCommand{CommandID: "c", RunID: "run", ExpectedStatus: execution.Running, ExpectedRevision: 1, At: 2}
+func validCancelCommand() CancelInstanceCommand {
+	return CancelInstanceCommand{CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: 1, At: 2}
 }
-func validAbortCommand() AbortRunCommand {
-	return AbortRunCommand{CommandID: "a", RunID: "run", ExpectedRevision: 1, At: 2, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "token"}}
+func validAbortCommand() AbortInstanceCommand {
+	return AbortInstanceCommand{CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: 1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "token"}}
 }
 
-func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
-	cancelInvalid := []CancelRunCommand{{}, {CommandID: "c", RunID: "run", ExpectedStatus: execution.Running, ExpectedRevision: -1, At: 2}, {CommandID: "c", RunID: "run", ExpectedStatus: execution.Running, At: 0}, {CommandID: "c", RunID: "run", ExpectedStatus: execution.Succeeded, At: 2}}
-	abortInvalid := []AbortRunCommand{{}, {CommandID: "a", RunID: "run", ExpectedRevision: -1, At: 2, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "t"}}, {CommandID: "a", RunID: "run", At: 0, Fence: execution.WorkerFence{RunID: "run", ClaimToken: "t"}}, {CommandID: "a", RunID: "run", At: 2, Fence: execution.WorkerFence{RunID: "other", ClaimToken: "t"}}, {CommandID: "a", RunID: "run", At: 2, Fence: execution.WorkerFence{RunID: "run"}}}
+func TestInstanceCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
+	cancelInvalid := []CancelInstanceCommand{{}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, ExpectedRevision: -1, At: 2}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Running, At: 0}, {CommandID: "c", InstanceID: mustInstanceID("run"), ExpectedStatus: execution.Succeeded, At: 2}}
+	abortInvalid := []AbortInstanceCommand{{}, {CommandID: "a", InstanceID: mustInstanceID("run"), ExpectedRevision: -1, At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 0, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("other"), ClaimToken: "t"}}, {CommandID: "a", InstanceID: mustInstanceID("run"), At: 2, Fence: execution.WorkerFence{InstanceID: mustInstanceID("run")}}}
 	for _, command := range cancelInvalid {
-		if result, err := NewCancelRunService(nil, nil).CancelRun(context.Background(), command); err == nil || result != (RunCommandResult{}) {
+		if result, err := NewCancelInstanceService(nil, nil).CancelInstance(context.Background(), command); err == nil || result != (InstanceCommandResult{}) {
 			t.Fatalf("cancel invalid result/error=%#v/%v", result, err)
 		}
 	}
 	for _, command := range abortInvalid {
-		if result, err := NewAbortRunService(nil, nil).AbortRun(context.Background(), command); err == nil || result != (RunCommandResult{}) {
+		if result, err := NewAbortInstanceService(nil, nil).AbortInstance(context.Background(), command); err == nil || result != (InstanceCommandResult{}) {
 			t.Fatalf("abort invalid result/error=%#v/%v", result, err)
 		}
 	}
 	var typedNilStore *commandStoreStub
 	for _, call := range []func() error{
 		func() error {
-			_, err := NewCancelRunService(nil, nil).CancelRun(context.Background(), validCancelCommand())
+			_, err := NewCancelInstanceService(nil, nil).CancelInstance(context.Background(), validCancelCommand())
 			return err
 		},
 		func() error {
-			_, err := NewCancelRunService(typedNilStore, nil).CancelRun(context.Background(), validCancelCommand())
+			_, err := NewCancelInstanceService(typedNilStore, nil).CancelInstance(context.Background(), validCancelCommand())
 			return err
 		},
 		func() error {
-			_, err := NewAbortRunService(nil, nil).AbortRun(context.Background(), validAbortCommand())
+			_, err := NewAbortInstanceService(nil, nil).AbortInstance(context.Background(), validAbortCommand())
 			return err
 		},
 		func() error {
-			_, err := NewAbortRunService(typedNilStore, nil).AbortRun(context.Background(), validAbortCommand())
+			_, err := NewAbortInstanceService(typedNilStore, nil).AbortInstance(context.Background(), validAbortCommand())
 			return err
 		},
 	} {
@@ -143,23 +144,24 @@ func TestRunCommandServicesExportedInvalidAndDependencyMatrix(t *testing.T) {
 					t.Fatal("nil dependency panicked")
 				}
 			}()
-			if call() == nil {
-				t.Fatal("expected dependency error")
+			err := call()
+			if !fault.IsCode(err, CodeSchedulingDependencyRequired) {
+				t.Fatalf("dependency error = %v", err)
 			}
 		}()
 	}
 }
 
 func TestCancelSignalFailureReturnsCommittedResult(t *testing.T) {
-	store := &commandStoreStub{cancelResult: RunCommandResult{Run: validCommandRun(t, execution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}}
-	result, err := NewCancelRunService(store, signalStub{store: store, err: errors.New("down")}).CancelRun(context.Background(), validCancelCommand())
-	if !errors.Is(err, ErrRunSignalRetryable) || !result.WasApplied {
+	store := &commandStoreStub{cancelResult: InstanceCommandResult{Run: validCommandInstance(t, execution.Canceled), Revision: 2, WasApplied: true, SignalRequired: true}}
+	result, err := NewCancelInstanceService(store, signalStub{store: store, err: errors.New("down")}).CancelInstance(context.Background(), validCancelCommand())
+	if !fault.IsCode(err, CodeInstanceSignalRetryable) || !result.WasApplied {
 		t.Fatalf("result/error=%#v/%v", result, err)
 	}
 }
 
 func TestReorderQueueExportedBoundaryAndOwnership(t *testing.T) {
-	invalid := []ReorderQueueCommand{{}, {CommandID: "r", ScopeID: "s", ExpectedRevision: -1, RunIDs: []string{"a"}}, {CommandID: "r", ScopeID: "s", RunIDs: nil}, {CommandID: "r", ScopeID: "s", RunIDs: []string{" "}}}
+	invalid := []ReorderQueueCommand{{}, {CommandID: "r", ScopeID: "s", ExpectedRevision: -1, InstanceIDs: []string{"a"}}, {CommandID: "r", ScopeID: "s", InstanceIDs: nil}, {CommandID: "r", ScopeID: "s", InstanceIDs: []string{" "}}}
 	for _, command := range invalid {
 		if result, err := NewReorderQueueService(nil).ReorderQueue(context.Background(), command); err == nil || !reflect.DeepEqual(result, ReorderQueueResult{}) {
 			t.Fatalf("invalid result/error=%#v/%v", result, err)
@@ -173,22 +175,22 @@ func TestReorderQueueExportedBoundaryAndOwnership(t *testing.T) {
 					t.Fatal("nil store panicked")
 				}
 			}()
-			if _, err := NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", RunIDs: []string{"a"}}); err == nil {
+			if _, err := NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", InstanceIDs: []string{"a"}}); err == nil {
 				t.Fatal("expected error")
 			}
 		}()
 	}
 	failure := errors.New("store")
-	result, err := NewReorderQueueService(&queueStoreStub{result: ReorderQueueResult{ScopeID: "bad"}, err: failure}).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", RunIDs: []string{"a"}})
+	result, err := NewReorderQueueService(&queueStoreStub{result: ReorderQueueResult{ScopeID: "bad"}, err: failure}).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", InstanceIDs: []string{"a"}})
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, ReorderQueueResult{}) {
 		t.Fatalf("store result/error=%#v/%v", result, err)
 	}
 	input := []string{"b", "a"}
-	store := &queueStoreStub{result: ReorderQueueResult{ScopeID: "s", Revision: 1, RunIDs: []string{"b", "a"}, WasApplied: true}}
-	result, err = NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", RunIDs: input})
+	store := &queueStoreStub{result: ReorderQueueResult{ScopeID: "s", Revision: 1, InstanceIDs: []string{"b", "a"}, WasApplied: true}}
+	result, err = NewReorderQueueService(store).ReorderQueue(context.Background(), ReorderQueueCommand{CommandID: "r", ScopeID: "s", InstanceIDs: input})
 	input[0] = "changed"
-	store.seen.RunIDs[1] = "changed"
-	if err != nil || !reflect.DeepEqual(result.RunIDs, []string{"b", "a"}) {
+	store.seen.InstanceIDs[1] = "changed"
+	if err != nil || !reflect.DeepEqual(result.InstanceIDs, []string{"b", "a"}) {
 		t.Fatalf("owned result/error=%#v/%v", result, err)
 	}
 }

@@ -5,6 +5,9 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Daily, off-peak. The fuzz job below is the only consumer.
+    - cron: '17 3 * * *'
 
 permissions:
   contents: read
@@ -50,6 +53,33 @@ jobs:
         run: go test -coverprofile=coverage.out ./...
       - name: Enforce coverage threshold
         run: ./scripts/check-coverage.sh coverage.out 80
+      # The total alone is satisfiable by averaging: one package can fall well
+      # below the line while better-covered neighbours hold the number up.
+      - name: Enforce per-package coverage threshold
+        run: ./scripts/check-package-coverage.sh coverage.out 80
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    # `go test ./...` runs each fuzz target's seed corpus only — the property is
+    # asserted but never searched. This job does the searching, on a schedule
+    # rather than per-PR because a fixed short budget on every push finds less
+    # than one long budget a day and slows every push to do it.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Run every fuzz target
+        run: ./scripts/fuzz.sh 120s
+      # Go writes a failing input to testdata/fuzz/<Target>/<hash>. Printing it
+      # into the log keeps the reproducer without adding a fourth action to pin.
+      - name: Print the failing corpus entry
+        if: failure()
+        run: |
+          find . -path '*/testdata/fuzz/*' -type f -print -exec cat {} \; || true
 
   lint:
     name: Static analysis

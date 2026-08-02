@@ -1,12 +1,17 @@
 package execution
 
 import (
+	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
 
 	domainautomation "github.com/Capsule7446/healix-core/domain/automation"
 	"github.com/Capsule7446/healix-core/domain/evidence"
+	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
+	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
 func TestDefaultHealGovernancePlannerRejectsEveryPlanIdentityBoundary(t *testing.T) {
@@ -16,26 +21,28 @@ func TestDefaultHealGovernancePlannerRejectsEveryPlanIdentityBoundary(t *testing
 		mutate func(*HealGovernancePlan)
 		want   string
 	}{
-		{name: "blank node", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Key.NodeID = " \t\n" }, want: "requires node and base identity"},
+		{name: "blank node", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Key.ElementTargetID = " \t\n" }, want: "requires node and base identity"},
 		{name: "blank base version", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Key.BaseNodeVersionID = " \t\n" }, want: "requires node and base identity"},
 		{name: "blank current version", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.CurrentNodeVersionID = " \t\n" }, want: "requires current node version identity"},
 		{name: "zero revision", mutate: func(plan *HealGovernancePlan) { plan.Snapshot.Revision = 0 }, want: "snapshot revision"},
 		{name: "missing fact id", mutate: func(plan *HealGovernancePlan) { plan.Fact.FactID = "" }, want: "requires fact, commit, run, and sequence identity"},
 		{name: "missing commit id", mutate: func(plan *HealGovernancePlan) { plan.Fact.CommitID = "" }, want: "requires fact, commit, run, and sequence identity"},
-		{name: "missing run id", mutate: func(plan *HealGovernancePlan) { plan.Fact.RunID = "" }, want: "requires fact, commit, run, and sequence identity"},
+		{name: "missing run id", mutate: func(plan *HealGovernancePlan) { plan.Fact.InstanceID = domainexecution.InstanceID{} }, want: "requires fact, commit, run, and sequence identity"},
 		{name: "zero sequence", mutate: func(plan *HealGovernancePlan) { plan.Fact.Sequence = 0 }, want: "requires fact, commit, run, and sequence identity"},
 	}
 
-	for _, test := range tests {
+	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			plan := valid
 			observation := *valid.Fact.Observation
 			plan.Fact.Observation = &observation
 			test.mutate(&plan)
 			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
-			if err == nil || !strings.Contains(err.Error(), test.want) || !reflect.DeepEqual(decision, HealGovernanceDecision{}) {
-				t.Fatalf("PlanHealGovernance() = (%#v, %v), want %q", decision, err, test.want)
+			if index < 4 {
+				assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
+				return
 			}
+			assertHealGovernanceFault(t, decision, err, CodeHealAcceptedFactInvalid, fault.InvalidArgument, "accepted heal fact is invalid")
 		})
 	}
 }
@@ -51,8 +58,8 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 		{name: "observation missing payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation = nil }, want: "exactly one observation payload"},
 		{name: "observation has reset payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Reset = validResetPayload() }, want: "exactly one observation payload"},
 		{name: "observation fact mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ID = "other" }, want: "does not match governance identity"},
-		{name: "observation run mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.RunID = "other" }, want: "does not match governance identity"},
-		{name: "observation node mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.NodeID = "other" }, want: "does not match governance identity"},
+		{name: "observation run mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.InstanceID = mustInstanceID("other") }, want: "does not match governance identity"},
+		{name: "observation node mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.ElementTargetID = "other" }, want: "does not match governance identity"},
 		{name: "observation base mismatch", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.BaseNodeVersionID = "other" }, want: "does not match governance identity"},
 		{name: "unsupported decision band", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.DecisionBand = "INVALID" }, want: "unsupported evidence decision band"},
 		{name: "reset missing payload", mutate: func(plan *HealGovernancePlan) { plan.Fact.Kind, plan.Fact.Observation = HealAcceptedReset, nil }, want: "exactly one reset payload"},
@@ -61,7 +68,7 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 		}, want: "exactly one reset payload"},
 		{name: "reset node mismatch", mutate: func(plan *HealGovernancePlan) {
 			plan.Fact.Kind, plan.Fact.Observation, plan.Fact.Reset = HealAcceptedReset, nil, validResetPayload()
-			plan.Fact.Reset.NodeID = "other"
+			plan.Fact.Reset.ElementTargetID = "other"
 		}, want: "does not match governance identity"},
 		{name: "reset base mismatch", mutate: func(plan *HealGovernancePlan) {
 			plan.Fact.Kind, plan.Fact.Observation, plan.Fact.Reset = HealAcceptedReset, nil, validResetPayload()
@@ -76,16 +83,188 @@ func TestDefaultHealGovernancePlannerRejectsEveryAcceptedFactShapeMismatch(t *te
 			plan.Fact.Observation = &observation
 			test.mutate(&plan)
 			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
-			if err == nil || !strings.Contains(err.Error(), test.want) || !reflect.DeepEqual(decision, HealGovernanceDecision{}) {
-				t.Fatalf("PlanHealGovernance() = (%#v, %v), want %q", decision, err, test.want)
-			}
+			assertHealGovernanceFault(t, decision, err, CodeHealAcceptedFactInvalid, fault.InvalidArgument, "accepted heal fact is invalid")
+		})
+	}
+}
+
+func assertHealGovernanceFault(t *testing.T, decision HealGovernanceDecision, err error, code fault.Code, kind fault.Kind, message string) {
+	t.Helper()
+	if !reflect.DeepEqual(decision, HealGovernanceDecision{}) {
+		t.Fatalf("decision = %#v, want zero", decision)
+	}
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != code || descriptor.Kind() != kind || descriptor.Message() != message {
+		t.Fatalf("descriptor = %#v, ok = %v, error = %v", descriptor, ok, err)
+	}
+	if len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || err.Error() != string(code)+": "+message {
+		t.Fatalf("unsafe public contract: %#v, error = %v", descriptor, err)
+	}
+}
+
+func TestDefaultHealGovernancePlannerExposesSafeFaultFamilies(t *testing.T) {
+	planner := NewDefaultHealGovernancePlanner()
+
+	snapshotPlan := healGovernancePlan("run-1", 1, evidence.DecisionApplied, domainautomation.HealStreak{})
+	snapshotPlan.Snapshot.CurrentNodeVersionID = "secret\ncurrent"
+	decision, err := planner.PlanHealGovernance(snapshotPlan)
+	assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
+
+	factPlan := healGovernancePlan("run-1", 1, evidence.DecisionApplied, domainautomation.HealStreak{})
+	factPlan.Fact.Kind = HealAcceptedFactKind("secret\nkind")
+	decision, err = planner.PlanHealGovernance(factPlan)
+	assertHealGovernanceFault(t, decision, err, CodeHealAcceptedFactInvalid, fault.InvalidArgument, "accepted heal fact is invalid")
+
+	streak, terminal := matureHealStreak(t, evidence.DecisionApplied)
+	effectPlan := healGovernancePlan("run-next", streak.LastSequence+1, evidence.DecisionApplied, streak)
+	effectPlan.Snapshot.ExistingTerminalEffect = &HealTerminalEffectSnapshot{Kind: HealEffectReset, CandidateHash: terminal.Effect.CandidateHash, Band: terminal.Effect.Band, Contributions: terminal.Effect.Contributions}
+	decision, err = planner.PlanHealGovernance(effectPlan)
+	assertHealGovernanceFault(t, decision, err, CodeHealTerminalEffectConflict, fault.Conflict, "heal terminal effect conflicts with persisted state")
+}
+
+func TestDefaultHealGovernancePlannerPrioritizesPersistedStateFaults(t *testing.T) {
+	planner := NewDefaultHealGovernancePlanner()
+	streak, terminal := matureHealStreak(t, evidence.DecisionApplied)
+
+	streakPlan := healGovernancePlan("run-next", streak.LastSequence+1, evidence.DecisionApplied, streak)
+	streakPlan.Snapshot.Key.ElementTargetID = "other-node"
+	streakPlan.Fact.FactID = ""
+	decision, err := planner.PlanHealGovernance(streakPlan)
+	assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
+
+	effectPlan := healGovernancePlan("run-next", streak.LastSequence+1, evidence.DecisionApplied, streak)
+	effectPlan.Snapshot.ExistingTerminalEffect = &HealTerminalEffectSnapshot{Kind: HealEffectReset, CandidateHash: terminal.Effect.CandidateHash, Band: terminal.Effect.Band, Contributions: terminal.Effect.Contributions}
+	effectPlan.Fact.FactID = ""
+	decision, err = planner.PlanHealGovernance(effectPlan)
+	assertHealGovernanceFault(t, decision, err, CodeHealTerminalEffectConflict, fault.Conflict, "heal terminal effect conflicts with persisted state")
+}
+
+func TestDefaultHealGovernancePlannerRejectsMalformedPersistedStreakIdentities(t *testing.T) {
+	streak, _ := matureHealStreak(t, evidence.DecisionApplied)
+	tests := []struct {
+		name   string
+		mutate func(*domainautomation.HealStreak)
+	}{
+		{name: "node", mutate: func(value *domainautomation.HealStreak) { value.ElementTargetID = "secret\x00node" }},
+		{name: "base", mutate: func(value *domainautomation.HealStreak) { value.BaseNodeVersionID = " base " }},
+		{name: "candidate", mutate: func(value *domainautomation.HealStreak) { value.CandidateHash = "secret‮candidate" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := healGovernancePlan("run-next", streak.LastSequence+1, evidence.DecisionApplied, streak)
+			plan.Fact.FactID = ""
+			test.mutate(&plan.Snapshot.Streak)
+			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
+			assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
+		})
+	}
+}
+
+func TestDefaultHealGovernancePlannerRejectsMalformedPersistedProvenance(t *testing.T) {
+	streak, _ := matureHealStreak(t, evidence.DecisionApplied)
+	tests := []struct {
+		name   string
+		mutate func(*domainautomation.ContributingHealFact)
+	}{
+		{name: "fact", mutate: func(value *domainautomation.ContributingHealFact) { value.FactID = "secret\x00fact" }},
+		{name: "commit", mutate: func(value *domainautomation.ContributingHealFact) { value.CommitID = " secret-commit " }},
+		{name: "run", mutate: func(value *domainautomation.ContributingHealFact) { value.InstanceID = "secret‮run" }},
+		{name: "execution", mutate: func(value *domainautomation.ContributingHealFact) { value.EntryID = string([]byte{0xff}) }},
+		{name: "step", mutate: func(value *domainautomation.ContributingHealFact) {
+			value.StepExecutionID = strings.Repeat("x", parameter.MaxNameBytes+1)
+		}},
+	}
+	for _, collection := range []string{"contributions", "consumed"} {
+		for _, test := range tests {
+			t.Run(collection+" "+test.name, func(t *testing.T) {
+				plan := healGovernancePlan("run-next", streak.LastSequence+1, evidence.DecisionApplied, streak)
+				plan.Fact.FactID = ""
+				if collection == "contributions" {
+					test.mutate(&plan.Snapshot.Streak.Contributions[0])
+				} else {
+					test.mutate(&plan.Snapshot.Streak.ConsumedObservations[0])
+				}
+				decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
+				assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
+			})
+		}
+	}
+}
+
+func TestDefaultHealGovernancePlannerRejectsMalformedTerminalEffectIdentities(t *testing.T) {
+	streak, terminal := matureHealStreak(t, evidence.DecisionApplied)
+	tests := []struct {
+		name   string
+		mutate func(*HealTerminalEffectSnapshot)
+	}{
+		{name: "malformed version", mutate: func(effect *HealTerminalEffectSnapshot) { effect.VersionID = "secret\x00version" }},
+		{name: "auto publish review", mutate: func(effect *HealTerminalEffectSnapshot) { effect.ReviewID = "review" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := healGovernancePlan("run-next", streak.LastSequence+1, evidence.DecisionApplied, streak)
+			plan.Fact.FactID = ""
+			plan.Snapshot.ExistingTerminalEffect = &HealTerminalEffectSnapshot{Kind: terminal.Effect.Kind, CandidateHash: terminal.Effect.CandidateHash, Band: terminal.Effect.Band, Contributions: terminal.Effect.Contributions}
+			test.mutate(plan.Snapshot.ExistingTerminalEffect)
+			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
+			assertHealGovernanceFault(t, decision, err, CodeHealTerminalEffectConflict, fault.Conflict, "heal terminal effect conflicts with persisted state")
+		})
+	}
+}
+
+func TestDefaultHealGovernancePlannerRejectsNoncanonicalIdentities(t *testing.T) {
+	malformed := []string{
+		" identity ",
+		"identity\x00",
+		"identity‮",
+		string([]byte{0xff}),
+		strings.Repeat("x", parameter.MaxNameBytes+1),
+	}
+	for _, identity := range malformed {
+		t.Run(fmt.Sprintf("%q", identity), func(t *testing.T) {
+			snapshotPlan := healGovernancePlan("run-1", 1, evidence.DecisionApplied, domainautomation.HealStreak{})
+			snapshotPlan.Snapshot.Key.ElementTargetID = identity
+			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(snapshotPlan)
+			assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
+
+			factPlan := healGovernancePlan("run-1", 1, evidence.DecisionApplied, domainautomation.HealStreak{})
+			factPlan.Fact.CommitID = identity
+			decision, err = NewDefaultHealGovernancePlanner().PlanHealGovernance(factPlan)
+			assertHealGovernanceFault(t, decision, err, CodeHealAcceptedFactInvalid, fault.InvalidArgument, "accepted heal fact is invalid")
+		})
+	}
+}
+
+func TestDefaultHealGovernancePlannerRejectsMalformedNestedFactPayloads(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*HealGovernancePlan)
+	}{
+		{name: "observation execution control", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.EntryID = mustEntryID("secret\x00execution") }},
+		{name: "observation step format", mutate: func(plan *HealGovernancePlan) {
+			plan.Fact.Observation.StepExecutionID = mustStepExecutionID("secret​step")
+		}},
+		{name: "observation candidate invalid UTF-8", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.CandidateHash = string([]byte{0xff}) }},
+		{name: "observation candidate whitespace", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.CandidateHash = "   " }},
+		{name: "observation invalid confidence", mutate: func(plan *HealGovernancePlan) { plan.Fact.Observation.Confidence = math.NaN() }},
+		{name: "reset execution control", mutate: func(plan *HealGovernancePlan) {
+			plan.Fact.Kind, plan.Fact.Observation, plan.Fact.Reset = HealAcceptedReset, nil, validResetPayload()
+			plan.Fact.Reset.EntryID = mustEntryID("secret\x00execution")
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := healGovernancePlan("run-1", 1, evidence.DecisionApplied, domainautomation.HealStreak{})
+			test.mutate(&plan)
+			decision, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan)
+			assertHealGovernanceFault(t, decision, err, CodeHealAcceptedFactInvalid, fault.InvalidArgument, "accepted heal fact is invalid")
 		})
 	}
 }
 
 func validResetPayload() *evidence.HealCandidateReset {
 	return &evidence.HealCandidateReset{
-		ExecutionID: "execution-reset", StepExecutionID: "step-reset", NodeID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
+		EntryID: mustEntryID("execution-reset"), StepExecutionID: mustStepExecutionID("step-reset"), Occurrence: 1, ElementTargetID: "node", BaseNodeVersionID: "base", ObservedAt: 1,
 	}
 }
 
@@ -127,7 +306,7 @@ func TestDefaultHealGovernancePlannerRejectsFailedCandidateGovernanceEvidence(t 
 		t.Run(string(band), func(t *testing.T) {
 			plan := healGovernancePlan("run-failed", 1, band, domainautomation.HealStreak{})
 			plan.Fact.Observation.Succeeded = false
-			if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan); err == nil || !strings.Contains(err.Error(), "non-success heal observation") {
+			if _, err := NewDefaultHealGovernancePlanner().PlanHealGovernance(plan); !fault.IsCode(err, domainautomation.CodeHealObservationInvalid) || err.Error() != "AUTOMATION_HEAL_OBSERVATION_INVALID: heal observation is invalid" {
 				t.Fatalf("failed candidate governance evidence error = %v", err)
 			}
 		})
@@ -189,9 +368,8 @@ func TestDefaultHealGovernancePlannerCandidateStatusMatchesEveryStreakState(t *t
 			if status == domainautomation.HealCandidateObserving {
 				plan.Snapshot.Streak = domainautomation.HealStreak{}
 			}
-			if _, err := planner.PlanHealGovernance(plan); err == nil || !strings.Contains(err.Error(), "conflicts with streak disposition") {
-				t.Fatalf("mismatched status error = %v", err)
-			}
+			decision, err := planner.PlanHealGovernance(plan)
+			assertHealGovernanceFault(t, decision, err, CodeHealGovernanceSnapshotInvalid, fault.FailedPrecondition, "heal governance snapshot is invalid")
 		})
 	}
 }
@@ -208,8 +386,8 @@ func TestDefaultHealGovernancePlannerValidatesEveryTerminalEffectKind(t *testing
 	reset := validResetPayload()
 	reset.ObservedAt = 2
 	resetPlan := HealGovernancePlan{
-		Snapshot: HealGovernanceSnapshot{Key: HealGovernanceKey{NodeID: "node", BaseNodeVersionID: "base"}, CurrentNodeVersionID: "base", Revision: 2, Streak: first.NextStreak},
-		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", RunID: "reset-run", Sequence: 2, Reset: reset},
+		Snapshot: HealGovernanceSnapshot{Key: HealGovernanceKey{ElementTargetID: "node", BaseNodeVersionID: "base"}, CurrentNodeVersionID: "base", Revision: 2, Streak: first.NextStreak},
+		Fact:     HealAcceptedFact{Kind: HealAcceptedReset, FactID: "reset", CommitID: "reset-commit", InstanceID: mustInstanceID("reset-run"), Sequence: 2, Reset: reset},
 	}
 	resetDecision, err := planner.PlanHealGovernance(resetPlan)
 	if err != nil {
@@ -280,9 +458,8 @@ func TestDefaultHealGovernancePlannerRejectsEveryTerminalEffectConflict(t *testi
 			effect.Contributions = append([]HealContributionSnapshot(nil), effect.Contributions...)
 			plan.Snapshot.ExistingTerminalEffect = &effect
 			test.mutate(&plan)
-			if _, err := planner.PlanHealGovernance(plan); err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("terminal effect error = %v, want %q", err, test.want)
-			}
+			decision, err := planner.PlanHealGovernance(plan)
+			assertHealGovernanceFault(t, decision, err, CodeHealTerminalEffectConflict, fault.Conflict, "heal terminal effect conflicts with persisted state")
 		})
 	}
 }

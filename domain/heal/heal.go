@@ -129,5 +129,5 @@ type DOMSnapshot interface {
 
 // Healer 重新定位其选择器不再使用确定性指纹评分进行解析的元素，而无需外部模型调用。
 type Healer interface {
-	Heal(ctx context.Context, target fingerprint.NodeSpec, snapshot DOMSnapshot) (Decision, error)
+	Heal(ctx context.Context, target fingerprint.ElementTargetSpec, snapshot DOMSnapshot) (Decision, error)
 }

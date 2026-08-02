@@ -1,10 +1,8 @@
 package sampling
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
@@ -35,27 +33,26 @@ const (
 	SamplingLifecycleInterrupted SamplingLifecycle = "INTERRUPTED"
 )
 
-type SamplingWorkflowStatus string
+type PublicationStatus string
 
 const (
-	SamplingWorkflowUnsaved SamplingWorkflowStatus = "UNSAVED"
-	SamplingWorkflowSaving  SamplingWorkflowStatus = "SAVING"
-	SamplingWorkflowSaved   SamplingWorkflowStatus = "SAVED"
-	SamplingWorkflowFailed  SamplingWorkflowStatus = "FAILED"
+	PublicationStatusUnpublished PublicationStatus = "UNSAVED"
+	PublicationStatusPublishing  PublicationStatus = "SAVING"
+	PublicationStatusPublished   PublicationStatus = "SAVED"
+	PublicationStatusFailed      PublicationStatus = "FAILED"
 )
 
-type SamplingResolutionMode string
+type ResolutionMode string
 
 const (
-	SamplingResolutionUndecided   SamplingResolutionMode = "UNDECIDED"
-	SamplingResolutionCreate      SamplingResolutionMode = "CREATE"
-	SamplingResolutionMerge       SamplingResolutionMode = "MERGE"
-	SamplingResolutionReuse       SamplingResolutionMode = "REUSE"
-	SamplingResolutionForceCreate SamplingResolutionMode = "FORCE_CREATE"
+	ResolutionModeUndecided ResolutionMode = "UNDECIDED"
+	ResolutionModeCreate    ResolutionMode = "CREATE"
+	ResolutionModeMerge     ResolutionMode = "MERGE"
+	ResolutionModeReuse     ResolutionMode = "REUSE"
 )
 
-type SamplingCandidate struct {
-	NodeID          string
+type ElementTargetCandidate struct {
+	ElementTargetID string
 	DisplayName     string
 	VersionID       string
 	VersionNumber   int
@@ -64,7 +61,7 @@ type SamplingCandidate struct {
 	Exact           bool
 }
 
-type TemporarySamplingNode struct {
+type UnpublishedElementTarget struct {
 	ID             string
 	DisplayName    string
 	Properties     automation.Properties
@@ -73,12 +70,12 @@ type TemporarySamplingNode struct {
 	Selectors      []fingerprint.Selector
 	Fingerprint    fingerprint.Fingerprint
 	StepIDs        []string
-	ResolutionMode SamplingResolutionMode
+	ResolutionMode ResolutionMode
 	ExistingNodeID string
-	Candidates     []SamplingCandidate
+	Candidates     []ElementTargetCandidate
 }
 
-type TemporarySamplingWorkflow struct {
+type UnpublishedFlowFragment struct {
 	ID            string
 	SessionID     string
 	DisplayName   string
@@ -92,34 +89,42 @@ type TemporarySamplingWorkflow struct {
 	ValidationInsertGroupID     string
 	ValidationInsertBranchID    string
 	ValidationCapturedActionIDs []string
-	Status                      SamplingWorkflowStatus
+	Status                      PublicationStatus
 	ErrorMessage                string
-	Steps                       []automation.WorkflowStep
+	Steps                       []automation.FlowFragmentStep
 	Parameters                  []automation.ParameterDefinition
-	Nodes                       []TemporarySamplingNode
-	SavedWorkflowID             string
-	SavedVersionID              string
-	SavedVersionNumber          int
+	Nodes                       []UnpublishedElementTarget
 }
 
-// RebuildTemporaryNodeReferences 从可编辑工作流树中派生临时 Node -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
-func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
+// RebuildUnpublishedElementTargetReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
+func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment) error {
 	if workflow == nil {
-		return errors.New("temporary sampling workflow is required")
+		// A nil receiver is a caller code defect with no runtime remediation.
+		return internalError()
 	}
 	stepIDsByNode := make(map[string][]string, len(workflow.Nodes))
 	for _, node := range workflow.Nodes {
 		stepIDsByNode[node.ID] = nil
 	}
-	var walk func([]automation.WorkflowStep) error
-	walk = func(steps []automation.WorkflowStep) error {
+	// The walk collects every undefined reference before returning. Stopping at the
+	// first meant a draft with several took one rebuild attempt per reference. Walk
+	// order is the tree's own depth-first order, so the report is a function of the
+	// input, and the cap is the only reason to stop early.
+	var violations []fault.Violation
+	var walk func([]automation.FlowFragmentStep) error
+	walk = func(steps []automation.FlowFragmentStep) error {
 		for _, step := range steps {
-			if step.NodeID != "" {
-				stepIDs, ok := stepIDsByNode[step.NodeID]
+			if step.ElementTargetID != "" {
+				stepIDs, ok := stepIDsByNode[step.ElementTargetID]
 				if !ok {
-					return fmt.Errorf("sampling step %s references unknown temporary node %s", step.ID, step.NodeID)
+					// Both the step id and the temporary element target id are caller
+					// identities; neither may appear in the public violation.
+					if len(violations) < fault.MaxViolations {
+						violations = append(violations, mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that the draft does not define"))
+					}
+				} else {
+					stepIDsByNode[step.ElementTargetID] = append(stepIDs, step.ID)
 				}
-				stepIDsByNode[step.NodeID] = append(stepIDs, step.ID)
 			}
 			if err := walk(step.Children); err != nil {
 				return err
@@ -137,17 +142,22 @@ func RebuildTemporaryNodeReferences(workflow *TemporarySamplingWorkflow) error {
 	if err := walk(workflow.Steps); err != nil {
 		return err
 	}
+	// The projection is only written once every reference resolved, so a rejected
+	// rebuild never leaves a partially derived projection behind.
+	if len(violations) != 0 {
+		return workspaceInvalidError(violations)
+	}
 	for index := range workflow.Nodes {
 		workflow.Nodes[index].StepIDs = stepIDsByNode[workflow.Nodes[index].ID]
 	}
 	return nil
 }
 
-type SamplingWorkspace struct {
+type SamplingSessionState struct {
 	BrowserStatus     SamplingBrowserStatus
 	CaptureStatus     SamplingCaptureStatus
 	ValidationArmed   bool
 	BrowserSessionID  string
 	CurrentWorkflowID string
-	Workflows         []TemporarySamplingWorkflow
+	Workflows         []UnpublishedFlowFragment
 }

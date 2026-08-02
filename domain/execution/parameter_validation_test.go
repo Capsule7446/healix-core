@@ -8,10 +8,10 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func directParameterDraft(definitions []Parameter, values map[string]parameter.Value) Draft {
-	return Draft{RunID: "run", FailurePolicy: FailurePolicyStopOnFailure,
-		Entries:   []WorkflowEntry{{ExecutionID: "entry", TestTaskItemID: "item", SequenceNumber: 1, WorkflowID: "workflow", WorkflowVersionID: "v1", Parameters: ParameterSnapshot{ID: "snapshot", SchemaVersion: 1, WorkflowVersionID: "v1", Values: values}}},
-		Workflows: []WorkflowSnapshot{{ID: "workflow", WorkflowID: "workflow", VersionID: "v1", DisplayName: "Workflow", VersionNumber: 1, Parameters: definitions, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
+func directParameterDraft(definitions []Parameter, values map[string]parameter.Value) PlanSnapshot {
+	return PlanSnapshot{InstanceID: mustInstanceID("run"), FailurePolicy: FailurePolicyStopOnFailure,
+		Entries:   []Entry{{ID: mustEntryID("entry"), TestTaskItemID: "item", SequenceNumber: 1, FlowFragmentID: "workflow", WorkflowVersionID: "v1", Parameters: ParameterSnapshot{ID: "snapshot", SchemaVersion: 1, WorkflowVersionID: "v1", Values: values}}},
+		Workflows: []WorkflowSnapshot{{ID: "workflow", FlowFragmentID: "workflow", VersionID: "v1", DisplayName: "FlowFragment", VersionNumber: 1, Parameters: definitions, Steps: []Step{{ID: "wait", DisplayName: "Wait", Kind: WaitStep, WaitKind: "sleep", WaitMS: 1}}}},
 	}
 }
 
@@ -90,15 +90,13 @@ func TestSealAccountsForParameterOptionCollectionElements(t *testing.T) {
 		options[i] = fmt.Sprintf("option-%d", i)
 	}
 	draft := directParameterDraft([]Parameter{{Name: "choice", DisplayName: "Choice", Type: parameter.SingleSelect, Required: true, Options: options}}, map[string]parameter.Value{"choice": parameter.SingleSelectValue(options[0])})
-	if _, err := Seal(draft); err == nil || !strings.Contains(err.Error(), "collection elements") {
-		t.Fatalf("error = %v", err)
-	}
+	_, err := Seal(draft)
+	requireCreateInstancePlanRejection(t, err, "collection elements")
 }
 
 func TestSealAccountsForTypedSnapshotAndMultiSelectResources(t *testing.T) {
 	large := strings.Repeat("x", MaxStringBytes+1)
 	draft := directParameterDraft([]Parameter{{Name: "regions", DisplayName: "Regions", Type: parameter.MultiSelect, Required: true, Options: []string{large}}}, map[string]parameter.Value{"regions": parameter.MultiSelectValue([]string{large})})
-	if _, err := Seal(draft); err == nil || !strings.Contains(err.Error(), "string exceeds") {
-		t.Fatalf("error = %v", err)
-	}
+	_, err := Seal(draft)
+	requireCreateInstancePlanRejection(t, err, "string exceeds")
 }

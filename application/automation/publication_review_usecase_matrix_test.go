@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	domain "github.com/Capsule7446/healix-core/domain/automation"
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/sampling"
 )
 
@@ -33,17 +34,17 @@ func (transaction *samplingTransactionProbe) PublishSampling(_ context.Context, 
 	return transaction.publishOutcome, transaction.publishErr
 }
 
-func forceCreateSamplingCommand(t testing.TB) SamplingPublicationCommand {
+func createSamplingCommand(t testing.TB) SamplingPublicationCommand {
 	t.Helper()
 	publication, err := MapSamplingPublication(SamplingPublicationRequest{
-		WorkflowID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
-		Workspace: sampledWorkflow(sampling.SamplingResolutionForceCreate),
-		Nodes:     []SamplingNodeAuthority{{TemporaryNodeID: "temporary-node", NodeID: "forced", NodeVersionID: "forced-v1", ForceCreateAuthorized: true}},
+		FlowFragmentID: "workflow", WorkflowVersionID: "workflow-v1", PublishedAt: 2,
+		Workspace: sampledWorkflow(sampling.ResolutionModeCreate),
+		Nodes:     []SamplingNodeAuthority{{TemporaryElementTargetID: "temporary-node", ElementTargetID: "forced", ElementTargetVersionID: "forced-v1"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return SamplingPublicationCommand{PublicationID: "publication", ForceCreateAuthorization: "authorization", Publication: publication}
+	return SamplingPublicationCommand{PublicationID: "publication", Publication: publication}
 }
 
 func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing.T) {
@@ -51,49 +52,62 @@ func TestSamplingPublicationPublishCoversLookupAndTransactionFailures(t *testing
 	command := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
 
 	transaction := &samplingTransactionProbe{lookupErr: failure}
-	result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
+	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 0 {
 		t.Fatalf("lookup failure/result/error/calls = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
 
 	transaction = &samplingTransactionProbe{publishErr: failure}
-	result, err = NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
+	result, err = NewSamplingPublicationService(transaction).Publish(context.Background(), command)
 	if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 1 {
 		t.Fatalf("publish failure/result/error/calls = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
-	if transaction.intent.PublicationID != command.PublicationID || transaction.intent.RequestDigest == "" || transaction.intent.Publication.Workflow.Workflow.ID != command.Publication.Workflow.Workflow.ID || transaction.intent.Publication.Workflow.Current.ID != command.Publication.Workflow.Current.ID {
+	if transaction.intent.PublicationID != command.PublicationID || transaction.intent.RequestDigest == "" || transaction.intent.Publication.FlowFragment.FlowFragment.ID != command.Publication.FlowFragment.FlowFragment.ID || transaction.intent.Publication.FlowFragment.Current.ID != command.Publication.FlowFragment.Current.ID {
 		t.Fatalf("publish intent = %#v", transaction.intent)
+	}
+}
+
+func TestSamplingPublicationLookupIdentityConflictPreventsPublish(t *testing.T) {
+	command := createSamplingCommand(t)
+	transaction := &samplingTransactionProbe{lookupErr: SamplingPublicationIdentityConflictError()}
+	result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
+	if !fault.IsCode(err, CodeSamplingPublicationIdentityConflict) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.lookupCalls != 1 || transaction.publishCalls != 0 {
+		t.Fatalf("result/error/lookup/publish = %#v/%v/%d/%d", result, err, transaction.lookupCalls, transaction.publishCalls)
 	}
 }
 
 func TestSamplingPublicationPublishRejectsInvalidCommandBeforeDependencies(t *testing.T) {
 	plain := SamplingPublicationCommand{PublicationID: "publication", Publication: samplingPublicationFixture(t)}
-	force := forceCreateSamplingCommand(t)
 	tests := []struct {
 		name    string
 		command SamplingPublicationCommand
 		want    string
 	}{
 		{name: "missing publication identity", command: func() SamplingPublicationCommand { value := plain; value.PublicationID = " "; return value }(), want: "sampling publication id is required"},
-		{name: "authorization not applicable", command: func() SamplingPublicationCommand {
-			value := plain
-			value.ForceCreateAuthorization = "unexpected"
-			return value
-		}(), want: "force-create authorization is not applicable"},
-		{name: "force create authorization required", command: func() SamplingPublicationCommand { value := force; value.ForceCreateAuthorization = ""; return value }(), want: "force-create authorization is required"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			transaction := &samplingTransactionProbe{}
-			if _, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), test.command); err == nil || !strings.Contains(err.Error(), test.want) || transaction.lookupCalls != 0 || transaction.publishCalls != 0 {
+			_, err := NewSamplingPublicationService(transaction).Publish(context.Background(), test.command)
+			if err == nil || transaction.lookupCalls != 0 || transaction.publishCalls != 0 {
 				t.Fatalf("error/lookup/publish calls = %v/%d/%d", err, transaction.lookupCalls, transaction.publishCalls)
+			}
+			if !fault.IsCode(err, CodeSamplingPublicationCommandInvalid) {
+				t.Fatalf("error = %v, want code %s", err, CodeSamplingPublicationCommandInvalid)
+			}
+			descriptor, ok := fault.Describe(err)
+			if !ok || strings.Contains(descriptor.Message(), test.want) {
+				t.Fatalf("public message = %#v (ok=%v), must not carry %q", descriptor, ok, test.want)
+			}
+			if cause := errors.Unwrap(err); cause == nil || !strings.Contains(cause.Error(), test.want) {
+				t.Fatalf("private cause = %v, want it to retain %q", cause, test.want)
 			}
 		})
 	}
 }
 
 func TestSamplingPublicationReplayValidatesEveryAuthoritativeFieldBeforeReturning(t *testing.T) {
-	command := forceCreateSamplingCommand(t)
+	command := createSamplingCommand(t)
 	valid := samplingOutcomeFor(t, command, PublishSamplingReplayed)
 	tests := []struct {
 		name   string
@@ -104,7 +118,7 @@ func TestSamplingPublicationReplayValidatesEveryAuthoritativeFieldBeforeReturnin
 		{name: "request digest", mutate: func(outcome *PublishSamplingOutcome) { outcome.RequestDigest = "sha256:other" }},
 		{name: "workflow version", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.WorkflowVersionID = "other" }},
 		{name: "mapping count", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes = nil }},
-		{name: "mapping identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].NodeVersionID = "other" }},
+		{name: "mapping identity", mutate: func(outcome *PublishSamplingOutcome) { outcome.Result.Nodes[0].ElementTargetVersionID = "other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -112,8 +126,8 @@ func TestSamplingPublicationReplayValidatesEveryAuthoritativeFieldBeforeReturnin
 			outcome.Result.Nodes = append([]domain.SamplingNodeMapping(nil), valid.Result.Nodes...)
 			test.mutate(&outcome)
 			transaction := &samplingTransactionProbe{lookupOutcome: outcome, lookupFound: true}
-			result, err := NewSamplingPublicationService(transaction, nil).Publish(context.Background(), command)
-			if !errors.Is(err, ErrSamplingPublicationContract) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.publishCalls != 0 {
+			result, err := NewSamplingPublicationService(transaction).Publish(context.Background(), command)
+			if !fault.IsCode(err, CodeSamplingPublicationContractViolation) || !reflect.DeepEqual(result, domain.SamplingPublicationResult{}) || transaction.publishCalls != 0 {
 				t.Fatalf("result/error/publish calls = %#v/%v/%d", result, err, transaction.publishCalls)
 			}
 		})
@@ -170,7 +184,7 @@ func (transaction *healReviewTransactionProbe) CommitHealReview(_ context.Contex
 	}
 	return HealReviewOutcome{
 		Status: HealReviewApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest,
-		Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, Node: intent.NextNode, Streak: intent.NextStreak},
+		Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, ElementTarget: intent.NextNode, Streak: intent.NextStreak},
 	}, nil
 }
 
@@ -252,7 +266,7 @@ func TestHealReviewApproveCoversDependencyFailuresWithoutCommit(t *testing.T) {
 			test.configure(source, nodes, transaction, reviewer, verifier, identity)
 			service := newHealReviewMatrixService(t, source, nodes, transaction, reviewer, reviewClockFake(10), verifier, identity)
 			result, err := service.Approve(context.Background(), command)
-			if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.NodeAggregate{}) {
+			if !errors.Is(err, failure) || !reflect.DeepEqual(result, domain.ElementTargetAggregate{}) {
 				t.Fatalf("result/error = %#v/%v", result, err)
 			}
 			wantCommitCalls := 0
@@ -318,7 +332,7 @@ func TestHealReviewRejectCoversDependencyFailuresWithoutPartialCommit(t *testing
 
 func TestHealReviewRejectReplayIsIdempotentAndSkipsMutableDependencies(t *testing.T) {
 	source, nodes, command := healReviewMatrixFixture(t)
-	request := HealReviewRequest{CommandID: command.CommandID, Decision: HealReviewReject, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision}
+	request := HealReviewRequest{CommandID: command.CommandID, Decision: HealReviewReject, ElementTargetID: command.ElementTargetID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision}
 	digest, err := HealReviewRequestIdentityDigest(request)
 	if err != nil {
 		t.Fatal(err)
@@ -358,15 +372,15 @@ func TestHealReviewUseCasesRejectInvalidIdentityAndTrustedTimeBeforeCommit(t *te
 		{name: "candidate identity", configure: func(source *healReviewSourceProbe, _ *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			source.candidate.Hash = "other"
 			return reviewClockFake(10)
-		}, target: ErrHealReviewCASConflict},
+		}, target: CodeHealReviewAuthorityConflict},
 		{name: "node identity", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
-			nodes.current.Node.ID = "other"
+			nodes.current.ElementTarget.ID = "other"
 			return reviewClockFake(10)
-		}, target: ErrHealReviewCASConflict},
+		}, target: CodeHealReviewAuthorityConflict},
 		{name: "node revision", configure: func(_ *healReviewSourceProbe, nodes *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
-			nodes.current.Node.Revision++
+			nodes.current.ElementTarget.Revision++
 			return reviewClockFake(10)
-		}, target: ErrRevisionConflict},
+		}, target: CodeAutomationRevisionConflict},
 		{name: "trusted time", configure: func(_ *healReviewSourceProbe, _ *nodeRepositoryFake, _ *domain.HealCandidateReviewCommand) ReviewClock {
 			return reviewClockFake(0)
 		}, want: "trusted review time must be positive"},
@@ -395,7 +409,7 @@ func TestHealReviewUseCasesRejectInvalidIdentityAndTrustedTimeBeforeCommit(t *te
 func validHealReviewReplay(t *testing.T, decision HealReviewDecision) (*healReviewSourceProbe, *nodeRepositoryFake, domain.HealCandidateReviewCommand, HealReviewOutcome) {
 	t.Helper()
 	source, nodes, command := healReviewMatrixFixture(t)
-	request := HealReviewRequest{CommandID: command.CommandID, Decision: decision, NodeID: command.NodeID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision}
+	request := HealReviewRequest{CommandID: command.CommandID, Decision: decision, ElementTargetID: command.ElementTargetID, BaseNodeVersionID: command.BaseNodeVersionID, CandidateHash: command.CandidateHash, ExpectedCandidateRevision: command.ExpectedCandidateRevision, ExpectedNodeRevision: command.ExpectedNodeRevision}
 	digest, err := HealReviewRequestIdentityDigest(request)
 	if err != nil {
 		t.Fatal(err)
@@ -414,7 +428,7 @@ func validHealReviewReplay(t *testing.T, decision HealReviewDecision) (*healRevi
 		if err != nil {
 			t.Fatal(err)
 		}
-		result.Node = &node
+		result.ElementTarget = &node
 	} else {
 		rejection, err := source.streak.Reject(4)
 		if err != nil {
@@ -450,7 +464,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 				} else {
 					err = service.Reject(context.Background(), command)
 				}
-				if !errors.Is(err, ErrHealReviewContract) || transaction.commitCalls != 0 || source.candidateCalls != 0 {
+				if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 0 || source.candidateCalls != 0 {
 					t.Fatalf("error/commit/candidate calls = %v/%d/%d", err, transaction.commitCalls, source.candidateCalls)
 				}
 			})
@@ -461,9 +475,9 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 		name   string
 		mutate func(*HealReviewOutcome)
 	}{
-		{name: "decision shape", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Node = nil }},
-		{name: "node invalid", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Node.Current.ID = "" }},
-		{name: "node identity", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Node.Node.Revision++ }},
+		{name: "decision shape", mutate: func(outcome *HealReviewOutcome) { outcome.Result.ElementTarget = nil }},
+		{name: "node invalid", mutate: func(outcome *HealReviewOutcome) { outcome.Result.ElementTarget.Current.ID = "" }},
+		{name: "node identity", mutate: func(outcome *HealReviewOutcome) { outcome.Result.ElementTarget.ElementTarget.Revision++ }},
 		{name: "version candidate mismatch", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Candidate.PageURL = "https://other.test" }},
 	}
 	for _, test := range approveMutations {
@@ -473,7 +487,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 			test.mutate(&outcome)
 			transaction := &healReviewTransactionProbe{lookupFound: true, lookupOutcome: outcome}
 			_, err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{}).Approve(context.Background(), command)
-			if !errors.Is(err, ErrHealReviewContract) || transaction.commitCalls != 0 {
+			if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 0 {
 				t.Fatalf("error/commit calls = %v/%d", err, transaction.commitCalls)
 			}
 		})
@@ -485,7 +499,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 	}{
 		{name: "decision shape", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Streak = nil }},
 		{name: "streak invalid", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Streak.LastSequence = 0 }},
-		{name: "streak identity", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Streak.NodeID = "other" }},
+		{name: "streak identity", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Streak.ElementTargetID = "other" }},
 	}
 	for _, test := range rejectMutations {
 		t.Run("reject/"+test.name, func(t *testing.T) {
@@ -494,7 +508,7 @@ func TestHealReviewReplayRejectsMalformedAuthoritativeResults(t *testing.T) {
 			test.mutate(&outcome)
 			transaction := &healReviewTransactionProbe{lookupFound: true, lookupOutcome: outcome}
 			err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{}).Reject(context.Background(), command)
-			if !errors.Is(err, ErrHealReviewContract) || transaction.commitCalls != 0 {
+			if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 0 {
 				t.Fatalf("error/commit calls = %v/%d", err, transaction.commitCalls)
 			}
 		})
@@ -507,19 +521,19 @@ func TestHealReviewAppliedOutcomeRejectsEveryDivergentAuthoritativeValue(t *test
 		mutate func(*HealReviewOutcome)
 	}{
 		{name: "candidate", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Candidate.Revision++ }},
-		{name: "node", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Node = nil }},
+		{name: "node", mutate: func(outcome *HealReviewOutcome) { outcome.Result.ElementTarget = nil }},
 		{name: "streak", mutate: func(outcome *HealReviewOutcome) { outcome.Result.Streak = &domain.HealStreak{} }},
 	}
 	for _, test := range mutations {
 		t.Run(test.name, func(t *testing.T) {
 			source, nodes, command := healReviewMatrixFixture(t)
 			transaction := &healReviewTransactionProbe{commitBuilder: func(intent HealReviewIntent) HealReviewOutcome {
-				outcome := HealReviewOutcome{Status: HealReviewApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, Node: intent.NextNode, Streak: intent.NextStreak}}
+				outcome := HealReviewOutcome{Status: HealReviewApplied, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, ElementTarget: intent.NextNode, Streak: intent.NextStreak}}
 				test.mutate(&outcome)
 				return outcome
 			}}
 			result, err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v2"}).Approve(context.Background(), command)
-			if !errors.Is(err, ErrHealReviewContract) || !reflect.DeepEqual(result, domain.NodeAggregate{}) || transaction.commitCalls != 1 {
+			if !fault.IsCode(err, CodeHealReviewContractViolation) || !reflect.DeepEqual(result, domain.ElementTargetAggregate{}) || transaction.commitCalls != 1 {
 				t.Fatalf("result/error/commit calls = %#v/%v/%d", result, err, transaction.commitCalls)
 			}
 		})
@@ -531,7 +545,7 @@ func TestHealReviewConcurrentReplayReturnsAuthoritativeWinner(t *testing.T) {
 		t.Run(string(decision), func(t *testing.T) {
 			source, nodes, command := healReviewMatrixFixture(t)
 			transaction := &healReviewTransactionProbe{commitBuilder: func(intent HealReviewIntent) HealReviewOutcome {
-				return HealReviewOutcome{Status: HealReviewReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, Node: intent.NextNode, Streak: intent.NextStreak}}
+				return HealReviewOutcome{Status: HealReviewReplayed, CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, ElementTarget: intent.NextNode, Streak: intent.NextStreak}}
 			}}
 			service := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v2", sequence: 4})
 			if decision == HealReviewApprove {
@@ -544,6 +558,26 @@ func TestHealReviewConcurrentReplayReturnsAuthoritativeWinner(t *testing.T) {
 			}
 			if transaction.commitCalls != 1 {
 				t.Fatalf("commit calls = %d", transaction.commitCalls)
+			}
+		})
+	}
+}
+
+func TestHealReviewUseCasesRejectInvalidCommandsBeforeSideEffects(t *testing.T) {
+	for _, decision := range []HealReviewDecision{HealReviewApprove, HealReviewReject} {
+		t.Run(string(decision), func(t *testing.T) {
+			source, nodes, command := healReviewMatrixFixture(t)
+			command.CommandID = "malicious\ncommand"
+			transaction := &healReviewTransactionProbe{}
+			service := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v2", sequence: 4})
+			var err error
+			if decision == HealReviewApprove {
+				_, err = service.Approve(context.Background(), command)
+			} else {
+				err = service.Reject(context.Background(), command)
+			}
+			if !fault.IsCode(err, domain.CodeHealCandidateReviewCommandInvalid) || transaction.lookupCalls != 0 || transaction.commitCalls != 0 || source.candidateCalls != 0 || source.streakCalls != 0 {
+				t.Fatalf("error/lookup/commit/candidate/streak = %v/%d/%d/%d/%d", err, transaction.lookupCalls, transaction.commitCalls, source.candidateCalls, source.streakCalls)
 			}
 		})
 	}
@@ -577,7 +611,7 @@ func TestHealReviewUseCasesRejectInvalidCandidateReviewerAndGeneratedIdentity(t 
 			} else {
 				err = service.Reject(context.Background(), command)
 			}
-			if err == nil || !strings.Contains(err.Error(), "not awaiting approval") || transaction.commitCalls != 0 {
+			if !fault.IsCode(err, domain.CodeHealCandidateStateInvalid) || transaction.commitCalls != 0 {
 				t.Fatalf("error/commit = %v/%d", err, transaction.commitCalls)
 			}
 		})
@@ -587,7 +621,7 @@ func TestHealReviewUseCasesRejectInvalidCandidateReviewerAndGeneratedIdentity(t 
 		source, nodes, command := healReviewMatrixFixture(t)
 		transaction := &healReviewTransactionProbe{}
 		_, err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{versionID: "node-v1"}).Approve(context.Background(), command)
-		if err == nil || !strings.Contains(err.Error(), "new version id must differ from the current version") || transaction.commitCalls != 0 {
+		if !fault.IsCode(err, domain.CodeElementTargetHistoryInvalid) || transaction.commitCalls != 0 {
 			t.Fatalf("error/commit = %v/%d", err, transaction.commitCalls)
 		}
 	})
@@ -596,7 +630,7 @@ func TestHealReviewUseCasesRejectInvalidCandidateReviewerAndGeneratedIdentity(t 
 		source, nodes, command := healReviewMatrixFixture(t)
 		transaction := &healReviewTransactionProbe{}
 		err := newHealReviewMatrixService(t, source, nodes, transaction, reviewerAuthorizerFake{id: "reviewer"}, reviewClockFake(10), candidateVerifierFake{}, &healReviewIdentityProbe{sequence: 3}).Reject(context.Background(), command)
-		if err == nil || !strings.Contains(err.Error(), "not newer") || transaction.commitCalls != 0 {
+		if !fault.IsCode(err, domain.CodeHealSequenceConflict) || transaction.commitCalls != 0 {
 			t.Fatalf("error/commit = %v/%d", err, transaction.commitCalls)
 		}
 	})
@@ -629,10 +663,10 @@ func TestHealReviewCommitRejectsUnsupportedAndMalformedConcurrentOutcomes(t *tes
 		want    string
 	}{
 		{name: "unsupported status", want: "unsupported status", builder: func(intent HealReviewIntent) HealReviewOutcome {
-			return HealReviewOutcome{Status: "UNKNOWN", CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, Node: intent.NextNode, Streak: intent.NextStreak}}
+			return HealReviewOutcome{Status: "UNKNOWN", CommandID: intent.CommandID, RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, ElementTarget: intent.NextNode, Streak: intent.NextStreak}}
 		}},
 		{name: "malformed concurrent replay", want: "validate concurrent heal review replay", builder: func(intent HealReviewIntent) HealReviewOutcome {
-			return HealReviewOutcome{Status: HealReviewReplayed, CommandID: "other", RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, Node: intent.NextNode, Streak: intent.NextStreak}}
+			return HealReviewOutcome{Status: HealReviewReplayed, CommandID: "other", RequestDigest: intent.RequestDigest, Result: HealReviewResult{Decision: intent.Decision, Candidate: intent.NextCandidate, ElementTarget: intent.NextNode, Streak: intent.NextStreak}}
 		}},
 	}
 	for _, decision := range []HealReviewDecision{HealReviewApprove, HealReviewReject} {
@@ -647,7 +681,7 @@ func TestHealReviewCommitRejectsUnsupportedAndMalformedConcurrentOutcomes(t *tes
 				} else {
 					err = service.Reject(context.Background(), command)
 				}
-				if err == nil || !strings.Contains(err.Error(), test.want) || transaction.commitCalls != 1 {
+				if !fault.IsCode(err, CodeHealReviewContractViolation) || transaction.commitCalls != 1 {
 					t.Fatalf("error/commit calls = %v/%d", err, transaction.commitCalls)
 				}
 			})

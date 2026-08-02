@@ -7,8 +7,8 @@
 ## 输入
 
 - `ctx context.Context`。
-- `CompiledEntry`：由不可变 `execution.RunSnapshot` 编译得到，包含 `node.Program`、执行身份与元数据；入口不接受裸 `node.Program`。
-- `Config`：`RunID + SnapshotDigest + ExecutionID + ClaimToken` 必须来自已领取执行权的独立权威；前三项与 entry 的私有封印一致，ClaimToken 必须非空。`AuthorityVerifier` 必填，并必须在任何运行端口可见前向领取权威验证完整四元身份仍然有效；非空 ClaimToken 本身不构成授权证明。Driver 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是在 `CompilePlan` 时从不可变 RunSnapshot 编入私有 Program。
+- `CompiledEntry`：由不可变 `execution.InstanceSnapshot` 编译得到，包含 `node.Program`、执行身份与元数据；入口不接受裸 `node.Program`。
+- `Config`：`InstanceID + SnapshotDigest + EntryID + ClaimToken` 必须来自已领取执行权的独立权威；前三项与 entry 的私有封印一致，ClaimToken 必须非空。`AuthorityVerifier` 必填，并必须在任何运行端口可见前向领取权威验证完整四元身份仍然有效；非空 ClaimToken 本身不构成授权证明。Driver 必填；Healer、录制器、Facts、StepTimeline、CompletionChain、ReadOnlyBrowser、CompletionObserver 可选；另含 StepInterval。运行时参数不属于 `Config`，而是在 `CompilePlan` 时从不可变 InstanceSnapshot 编入私有 Program。
 
 配置约束：
 
@@ -21,14 +21,16 @@
 唯一公开运行入口 `RunProgram(ctx, entry, cfg)` 返回：
 
 ```go
-type RunResult struct {
+type EntryResult struct {
     ExecutionOutcome ExecutionOutcome
     RecordingOutcome RecordingOutcome
     TimelineOutcome  TimelineOutcome
 }
 ```
 
-结构化结果分别表达执行、录制和时间线，不要求调用方解析错误字符串。root、timeline finish 与 recorder stop 可通过错误链同时保留。
+`ExecutionOutcome` 的取值为 `OutcomeSucceeded` / `OutcomeFailed` / `OutcomeCanceled` / `ExecutionNotStarted`。
+
+结构化结果分别表达执行、录制和时间线，不要求调用方解析错误字符串。root、timeline finish 与 recorder stop 可通过错误链同时保留。离开 `RunProgram` 前还有一道兜底分类：没有 fault 码的失败被补上 `EXECUTION_OPERATION_FAILED`，已带码的失败原样透传，因此这个入口不会返回未分类错误。
 
 ## 时序
 
@@ -42,7 +44,7 @@ sequenceDiagram
     Caller->>C: RunProgram(ctx, entry, cfg)
     C->>C: 校验 entry 私有封印与权威执行身份
     opt recorder
-      C->>Recorder: Start(runID)
+      C->>Recorder: Start(ctx, InstanceID)
       Recorder-->>C: RecordingTimeline
     end
     C->>C: new execution-local Runtime
@@ -56,17 +58,17 @@ sequenceDiagram
     opt recorder
       C->>Recorder: Stop（分离上下文 5 秒，retain=true）
     end
-    C-->>Caller: RunResult + 合并错误
+    C-->>Caller: EntryResult + 合并错误
 ```
 
 ## 不变量
 
-- 身份校验发生在创建 Runtime 或访问 Driver、Recorder、Facts 等端口之前；错配返回 `ErrExecutionIdentityMismatch` 与 `ExecutionNotStarted`。
+- 身份校验发生在创建 Runtime 或访问 Driver、Recorder、Facts 等端口之前；错配返回 `EXECUTION_IDENTITY_MISMATCH` 与 `ExecutionNotStarted`，缺失 `AuthorityVerifier` 返回 `EXECUTION_AUTHORITY_VERIFIER_REQUIRED`。
 - 每次调用根据 `CompiledEntry` 私有 Program 创建新的运行时和 Scratchpad；运行变量来自编译后的不可变调用作用域与 Environment 数据。
 - 录制器 Start 失败时不执行 root；成功后始终尝试 分离的 Stop。
 - 录制器 Start 建立本次运行唯一的相对时间轴零点。
 - StepTimeline STARTED 写入失败时叶子行为不执行。
-- FINISHED 写入失败不改写叶子真实结果；`RunResult` 分别表达 ExecutionOutcome 与 TimelineOutcome。
+- FINISHED 写入失败不改写叶子真实结果；`EntryResult` 分别表达 ExecutionOutcome 与 TimelineOutcome。
 - completion Handler 在叶子返回前严格串行执行；Handler 失败不改变节点结果。
 - 当前总是 `retain=true`，不提供 活动取消注册表。
 

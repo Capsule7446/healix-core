@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 const (
@@ -17,7 +19,7 @@ const (
 	validationMaxGroupSteps  = 20
 )
 
-// ValidationAssertionKind 是一种独立于框架的语句，针对一个精确版本化的 Node 进行评估。框架适配器将 DOM/ARIA 详细信息转换为这些含义；没有特定于框架的选择器或类属于这里。
+// ValidationAssertionKind 是一种独立于框架的语句，针对一个精确版本化的 ElementTarget 进行评估。框架适配器将 DOM/ARIA 详细信息转换为这些含义；没有特定于框架的选择器或类属于这里。
 type ValidationAssertionKind string
 
 const (
@@ -168,11 +170,11 @@ type ValidationConfig struct {
 	SupportedKinds []ValidationAssertionKind
 }
 
-// ValidationBranch 是固定 (AND...) OR (AND...) 组语法中的一个 AND 分支。步骤保留为 WorkflowStep 值，以便 DTO 映射器和实现器可以使用一种递归模式，而聚合验证则阻止任何其他类型进入分支。
+// ValidationBranch 是固定 (AND...) OR (AND...) 组语法中的一个 AND 分支。步骤保留为 FlowFragmentStep 值，以便 DTO 映射器和实现器可以使用一种递归模式，而聚合验证则阻止任何其他类型进入分支。
 type ValidationBranch struct {
 	ID    string
 	Name  string
-	Steps []WorkflowStep
+	Steps []FlowFragmentStep
 }
 
 // ValidationGroup 是 AND 分支的一级析取。它的Wait被每个成员节点继承；嵌套组和操作节点无效。
@@ -181,93 +183,99 @@ type ValidationGroup struct {
 	Branches []ValidationBranch
 }
 
-func validateStandaloneValidationStep(step WorkflowStep) []string {
-	var problems []string
+// validateStandaloneValidationStep returns ordered violations rather than a
+// joined message. Step and member display names are author-written content
+// and never reach the violation text; the recursive step tree carries no flat
+// index (existing precedent), so fields describe the aspect that failed.
+func validateStandaloneValidationStep(step FlowFragmentStep) []fault.Violation {
+	var violations []fault.Violation
 	if step.Validation == nil {
-		return []string{fmt.Sprintf("validation step %q requires validation configuration", step.DisplayName)}
+		return []fault.Violation{mustViolation(fault.CodeFieldRequired, "steps.validation", "validation step requires validation configuration")}
 	}
 	if step.ValidationGroup != nil || step.Action != "" || step.Reference != nil ||
 		step.Value != "" || len(step.Values) != 0 || step.WaitKind != "" || step.WaitMS != 0 ||
 		step.RepeatCount != 0 || len(step.Children) != 0 || step.Optional {
-		problems = append(problems, fmt.Sprintf("validation step %q contains unsupported action or child configuration", step.DisplayName))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validation", "validation step contains unsupported action or child configuration"))
 	}
-	if strings.TrimSpace(step.NodeID) == "" || strings.TrimSpace(step.NodeVersionID) == "" {
-		problems = append(problems, fmt.Sprintf("validation step %q requires an exact node reference", step.DisplayName))
+	if strings.TrimSpace(step.ElementTargetID) == "" || strings.TrimSpace(step.ElementTargetVersionID) == "" {
+		violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.validation.elementTarget", "validation step requires an exact element target reference"))
 	}
 	if err := step.Validation.Assertion.Validate(); err != nil {
-		problems = append(problems, fmt.Sprintf("validation step %q assertion: %v", step.DisplayName, err))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validation.assertion", "validation assertion is invalid"))
 	}
 	if err := step.Validation.Wait.Validate(); err != nil {
-		problems = append(problems, fmt.Sprintf("validation step %q wait: %v", step.DisplayName, err))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validation.wait", "validation wait is invalid"))
 	}
-	return problems
+	return violations
 }
 
-func validateValidationGroupStep(step WorkflowStep, seen map[string]struct{}) []string {
-	var problems []string
+// validateValidationGroupStep mirrors validateStandaloneValidationStep for a
+// validation-group root step and its branch members.
+func validateValidationGroupStep(step FlowFragmentStep, seen map[string]struct{}) []fault.Violation {
 	if step.ValidationGroup == nil {
-		return []string{fmt.Sprintf("validation group %q requires group configuration", step.DisplayName)}
+		return []fault.Violation{mustViolation(fault.CodeFieldRequired, "steps.validationGroup", "validation group requires group configuration")}
 	}
+	var violations []fault.Violation
 	if step.Validation != nil || step.Action != "" || step.Reference != nil ||
-		step.NodeID != "" || step.NodeVersionID != "" || step.Value != "" || len(step.Values) != 0 ||
+		step.ElementTargetID != "" || step.ElementTargetVersionID != "" || step.Value != "" || len(step.Values) != 0 ||
 		step.WaitKind != "" || step.WaitMS != 0 || step.RepeatCount != 0 || len(step.Children) != 0 || step.Optional {
-		problems = append(problems, fmt.Sprintf("validation group %q contains unsupported step configuration", step.DisplayName))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup", "validation group contains unsupported step configuration"))
 	}
 	group := step.ValidationGroup
 	if err := group.Wait.Validate(); err != nil {
-		problems = append(problems, fmt.Sprintf("validation group %q wait: %v", step.DisplayName, err))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.wait", "validation group wait is invalid"))
 	}
 	if len(group.Branches) == 0 || len(group.Branches) > validationMaxBranches {
-		problems = append(problems, fmt.Sprintf("validation group %q requires 1-%d branches", step.DisplayName, validationMaxBranches))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches", "validation group branch count is unsupported"))
 	}
 	branchIDs := make(map[string]struct{}, len(group.Branches))
 	total := 0
 	for _, branch := range group.Branches {
 		if strings.TrimSpace(branch.ID) == "" || strings.TrimSpace(branch.Name) == "" {
-			problems = append(problems, fmt.Sprintf("validation group %q branch id and name are required", step.DisplayName))
+			violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.validationGroup.branches", "validation group branch id and name are required"))
 		}
 		if _, exists := branchIDs[branch.ID]; exists && branch.ID != "" {
-			problems = append(problems, fmt.Sprintf("validation group %q has duplicate branch id %q", step.DisplayName, branch.ID))
+			violations = append(violations, mustViolation(fault.CodeFieldDuplicate, "steps.validationGroup.branches", "validation group branch id is duplicated"))
 		}
 		branchIDs[branch.ID] = struct{}{}
 		if len(branch.Steps) == 0 || len(branch.Steps) > validationMaxBranchSteps {
-			problems = append(problems, fmt.Sprintf("validation group %q branch %q requires 1-%d validation steps", step.DisplayName, branch.Name, validationMaxBranchSteps))
+			violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches", "validation group branch step count is unsupported"))
 		}
 		total += len(branch.Steps)
 		for _, member := range branch.Steps {
 			if strings.TrimSpace(member.ID) == "" || strings.TrimSpace(member.DisplayName) == "" {
-				problems = append(problems, fmt.Sprintf("validation group %q member step id and display name are required", step.DisplayName))
+				violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.validationGroup.branches.member", "validation group member step id and display name are required"))
 			}
 			if _, exists := seen[member.ID]; exists && member.ID != "" {
-				problems = append(problems, fmt.Sprintf("duplicate step id %q", member.ID))
+				violations = append(violations, mustViolation(fault.CodeFieldDuplicate, "steps.validationGroup.branches.member", "step id is duplicated"))
 			}
 			seen[member.ID] = struct{}{}
 			if member.Kind != StepValidation {
-				problems = append(problems, fmt.Sprintf("validation group %q branch %q only accepts VALIDATION steps", step.DisplayName, branch.Name))
+				violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches.member", "validation group branch members must be validation steps"))
 				continue
 			}
 			if member.Validation == nil {
-				problems = append(problems, fmt.Sprintf("validation group %q member %q requires validation configuration", step.DisplayName, member.DisplayName))
+				violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.validationGroup.branches.member", "validation group member requires validation configuration"))
 				continue
 			}
 			if member.ValidationGroup != nil || member.Action != "" || member.Reference != nil ||
 				member.Value != "" || len(member.Values) != 0 || member.WaitKind != "" || member.WaitMS != 0 ||
 				member.RepeatCount != 0 || len(member.Children) != 0 || member.Optional {
-				problems = append(problems, fmt.Sprintf("validation group %q member %q contains unsupported action or child configuration", step.DisplayName, member.DisplayName))
+				violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches.member", "validation group member contains unsupported action or child configuration"))
 			}
-			if strings.TrimSpace(member.NodeID) == "" || strings.TrimSpace(member.NodeVersionID) == "" {
-				problems = append(problems, fmt.Sprintf("validation group %q member %q requires an exact node reference", step.DisplayName, member.DisplayName))
+			if strings.TrimSpace(member.ElementTargetID) == "" || strings.TrimSpace(member.ElementTargetVersionID) == "" {
+				violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.validationGroup.branches.member.elementTarget", "validation group member requires an exact element target reference"))
 			}
 			if err := member.Validation.Assertion.Validate(); err != nil {
-				problems = append(problems, fmt.Sprintf("validation group %q member %q assertion: %v", step.DisplayName, member.DisplayName, err))
+				violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches.member.assertion", "validation group member assertion is invalid"))
 			}
 			if !member.Validation.Wait.isZero() {
-				problems = append(problems, fmt.Sprintf("validation group %q member %q must inherit the group wait", step.DisplayName, member.DisplayName))
+				violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches.member.wait", "validation group member must inherit the group wait"))
 			}
 		}
 	}
 	if total > validationMaxGroupSteps {
-		problems = append(problems, fmt.Sprintf("validation group %q has %d validation steps; maximum is %d", step.DisplayName, total, validationMaxGroupSteps))
+		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.validationGroup.branches", "validation group exceeds its maximum total step count"))
 	}
-	return problems
+	return violations
 }

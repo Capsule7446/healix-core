@@ -56,6 +56,16 @@
 | `TestValueRejectsOversizedStrings` | `Value Rejects Oversized Strings`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/value_test.go`](../../domain/parameter/value_test.go) · `TestValueRejectsOversizedStrings` |
 | `TestClosedValuesCloneAndValidate` | `Closed Values Clone And Validate`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/value_test.go`](../../domain/parameter/value_test.go) · `TestClosedValuesCloneAndValidate` |
 
+| `TestNewNumberValueRejectsWithoutEchoingInput` | 导出构造器收到非法数字输入（含哨兵值）。 | 返回 PARAMETER_VALUE_INVALID；公共文本与私有 cause 均不含被拒输入。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestNewNumberValueRejectsWithoutEchoingInput` |
+| `TestNewNumberValueRejectsOversizedInputWithSameCode` | 超出 MaxValueStringBytes 的数字输入。 | 与其他值非法情形共用同一 code，不单独设 OUT_OF_RANGE。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestNewNumberValueRejectsOversizedInputWithSameCode` |
+| `TestValidateNameRejectsWithoutEchoingName` | 空白、控制字符、格式字符、非法 UTF-8、超字节上限五类名称。 | 一律返回 PARAMETER_NAME_INVALID；被拒名称不进公共文本。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestValidateNameRejectsWithoutEchoingName` |
+| `TestValueValidateRejectsUnsupportedTypeWithoutEchoingIt` | 闭集之外的值类型。 | 返回 PARAMETER_VALUE_INVALID；类型取值不回显。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestValueValidateRejectsUnsupportedTypeWithoutEchoingIt` |
+| `TestConstraintValidateRejectsWithoutEchoingTypesOrOptions` | 选项不匹配与类型不匹配两类约束失败。 | 返回 PARAMETER_CONSTRAINT_UNSATISFIED；约束类型、值类型、选项值均不回显。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestConstraintValidateRejectsWithoutEchoingTypesOrOptions` |
+| `TestConstraintValidatePropagatesValueCodeUnchanged` | 值自身非法时经由约束校验返回。 | 保持 PARAMETER_VALUE_INVALID，不被改标为约束失败。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestConstraintValidatePropagatesValueCodeUnchanged` |
+| `TestNewNumberValueNeverReturnsAValueItsOwnValidatorRejects` | `New Number Value Never Returns AValue Its Own Validator Rejects`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestNewNumberValueNeverReturnsAValueItsOwnValidatorRejects` |
+| `TestValidateNameContract` | `Validate Name Contract`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/name_test.go`](../../domain/parameter/name_test.go) · `TestValidateNameContract` |
+| `TestLiteralBindingRejectsInvalidClosedValueBeforeResolution` | `Literal Binding Rejects Invalid Closed Value Before Resolution`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/public_methods_matrix_test.go`](../../domain/parameter/public_methods_matrix_test.go) · `TestLiteralBindingRejectsInvalidClosedValueBeforeResolution` |
+
 ## Cross-cutting / Conformance Cases
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。

@@ -2,22 +2,99 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 
 	"github.com/Capsule7446/healix-core/domain/evidence"
 	domainexecution "github.com/Capsule7446/healix-core/domain/execution"
-)
-
-var (
-	ErrStepRevisionConflict   = errors.New("step revision conflict")
-	ErrCommitIdentityConflict = errors.New("step transition commit identity conflict")
-	ErrFactCommitterRequired  = errors.New("fact committer is required")
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
 const (
+	CodeFactCommitterRequired  fault.Code = "EXECUTION_FACT_COMMITTER_REQUIRED"
+	CodeStepRevisionConflict   fault.Code = "EXECUTION_STEP_REVISION_CONFLICT"
+	CodeCommitIdentityConflict fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT"
+	// CodeStepTransitionCommitPayloadTooLarge covers both the overall payload
+	// budget and any one string exceeding its own byte limit: the remediation is
+	// always to shrink the commit, never to correct a specific field's value.
+	CodeStepTransitionCommitPayloadTooLarge fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_PAYLOAD_TOO_LARGE"
+	// CodeStepTransitionCommitRunMismatch covers a commit fact whose own InstanceID
+	// disagrees with the claimed worker fence's InstanceID. FAILED_PRECONDITION: the
+	// caller must re-read the authoritative claim, not supply a different value.
+	CodeStepTransitionCommitRunMismatch fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_RUN_MISMATCH"
+)
+
+func stepTransitionCommitPayloadTooLargeError(cause error) error {
+	err, constructionErr := fault.Wrap(cause, fault.OutOfRange, CodeStepTransitionCommitPayloadTooLarge, "step transition commit payload is too large")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func stepTransitionCommitInstanceMismatchError(cause error) error {
+	err, constructionErr := fault.Wrap(cause, fault.FailedPrecondition, CodeStepTransitionCommitRunMismatch, "step transition commit does not match the claimed run")
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func StepRevisionConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeStepRevisionConflict,
+		"step transition revision conflicts with current state",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func CommitIdentityConflictError() error {
+	err, constructionErr := fault.New(
+		fault.Conflict,
+		CodeCommitIdentityConflict,
+		"step transition commit identity conflicts with the previously accepted commit",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+func FactCommitterRequiredError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeFactCommitterRequired,
+		"execution fact committer is required",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
+
+const (
+	// Expressed in walked content bytes.
+	//
+	// It was the same number when the measure was len(json.Marshal), and it was
+	// briefly scaled to 1<<18 on the theory that the old framing ran about 4.5x
+	// the content, so a quarter of the limit would hold the boundary where it
+	// was. That reasoning was wrong: the ratio is not a constant. Framing is
+	// charged per field, not per byte, so a commit made of a few long strings
+	// carries almost no framing while a commit made of many short fields carries
+	// a lot. Five sixty-kilobyte strings each pass the per-string cap and total
+	// 300 KiB of content — accepted under the old megabyte of JSON, rejected by
+	// a quarter-megabyte of content.
+	//
+	// No single factor preserves a shape-dependent boundary, so there is nothing
+	// to preserve and the question is which way to be wrong. Rejecting a payload
+	// a host successfully sent yesterday is the worse failure, and the real
+	// blow-up is already bounded from two other directions:
+	// maxStepTransitionStringBytes caps any one string at 64 KiB and
+	// maxStepTransitionFacts caps the fact count at 10,000.
 	MaxStepTransitionPayloadBytes = 1 << 20
 	maxStepTransitionStringBytes  = 64 << 10
 )
@@ -31,18 +108,76 @@ func ownStepTransitionCommit(commit evidence.StepTransitionCommit) (evidence.Ste
 	if err := validateStepTransitionStringBounds(reflect.ValueOf(commit)); err != nil {
 		return evidence.StepTransitionCommit{}, err
 	}
-	payload, err := json.Marshal(commit)
-	if err != nil {
-		return evidence.StepTransitionCommit{}, fmt.Errorf("encode step transition commit: %w", err)
+	// The size is measured by walking the value, and the copy is made by the type
+	// that owns it. Both used to be one json.Marshal round trip, which measured
+	// the wrong thing and produced the wrong copy: an execution coordinate is a
+	// struct whose only field is unexported, so it encoded as {} — two bytes
+	// toward the budget instead of its real length, and a zero value on the way
+	// back out.
+	if size := stepTransitionPayloadBytes(reflect.ValueOf(commit)); size > MaxStepTransitionPayloadBytes {
+		return evidence.StepTransitionCommit{}, stepTransitionCommitPayloadTooLargeError(fmt.Errorf("step transition commit exceeds byte limit %d", MaxStepTransitionPayloadBytes))
 	}
-	if len(payload) > MaxStepTransitionPayloadBytes {
-		return evidence.StepTransitionCommit{}, fmt.Errorf("step transition commit exceeds byte limit %d", MaxStepTransitionPayloadBytes)
+	return commit.Clone(), nil
+}
+
+// stepTransitionPayloadBytes measures the content a commit carries: string
+// bytes plus a fixed width per fixed-size field. It replaced len(json.Marshal),
+// which measured the wrong thing twice over — it counted the framing of one
+// particular encoding, and it counted each execution coordinate as the two
+// bytes of {} rather than its real length.
+//
+// The unit changed, and no scalar can carry the old boundary across: the old
+// measure charged framing per field, so its ratio to content depended on the
+// shape of the commit. See MaxStepTransitionPayloadBytes for which way that
+// leaves the limit and why.
+//
+// Unexported string fields are counted: reflect can read their length even
+// though it cannot hand them out.
+func stepTransitionPayloadBytes(value reflect.Value) int {
+	return walkStepTransitionBytes(value, 0)
+}
+
+// maxStepTransitionWalkDepth bounds the walk. The commit tree is finite today,
+// but json.Marshal used to return an error on a cycle and the walk that replaced
+// it would recurse until the stack gave out. A pointer field added to an
+// observation is all it would take.
+const maxStepTransitionWalkDepth = 64
+
+func walkStepTransitionBytes(value reflect.Value, depth int) int {
+	if !value.IsValid() || depth > maxStepTransitionWalkDepth {
+		return 0
 	}
-	var owned evidence.StepTransitionCommit
-	if err := json.Unmarshal(payload, &owned); err != nil {
-		return evidence.StepTransitionCommit{}, fmt.Errorf("clone step transition commit: %w", err)
+	switch value.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if value.IsNil() {
+			return 1
+		}
+		return walkStepTransitionBytes(value.Elem(), depth+1)
+	case reflect.String:
+		return value.Len()
+	case reflect.Struct:
+		total := 0
+		for index := 0; index < value.NumField(); index++ {
+			total += walkStepTransitionBytes(value.Field(index), depth+1)
+		}
+		return total
+	case reflect.Slice, reflect.Array:
+		total := 0
+		for index := 0; index < value.Len(); index++ {
+			total += walkStepTransitionBytes(value.Index(index), depth+1)
+		}
+		return total
+	case reflect.Map:
+		total := 0
+		iterator := value.MapRange()
+		for iterator.Next() {
+			total += walkStepTransitionBytes(iterator.Key(), depth+1)
+			total += walkStepTransitionBytes(iterator.Value(), depth+1)
+		}
+		return total
+	default:
+		return 8
 	}
-	return owned, nil
 }
 
 func validateStepTransitionStringBounds(value reflect.Value) error {
@@ -57,7 +192,7 @@ func validateStepTransitionStringBounds(value reflect.Value) error {
 		return validateStepTransitionStringBounds(value.Elem())
 	case reflect.String:
 		if value.Len() > maxStepTransitionStringBytes {
-			return fmt.Errorf("step transition string exceeds byte limit %d", maxStepTransitionStringBytes)
+			return stepTransitionCommitPayloadTooLargeError(fmt.Errorf("step transition string exceeds byte limit %d", maxStepTransitionStringBytes))
 		}
 	case reflect.Struct:
 		for index := 0; index < value.NumField(); index++ {
@@ -101,10 +236,13 @@ func NewFactCommitter(transaction StepTransitionTransaction, planner HealGoverna
 
 func (c FactCommitter) CommitStepTransition(ctx context.Context, fence domainexecution.WorkerFence, commit evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
 	if isNilInterface(c.transaction) {
-		return evidence.StepTransitionCommitResult{}, ErrFactCommitterRequired
+		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
 	if isNilInterface(c.planner) {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("heal governance planner is required")
+		// Same missing-dependency failure as the branch above, and it already has a
+		// registered code; leaving it bare made one of two identical conditions
+		// unclassifiable.
+		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
 	return c.transaction.CommitStepTransition(ctx, fence, commit, c.planner)
 }
@@ -119,15 +257,19 @@ func NewStepTransitionService(committer FactCommitter) StepTransitionService {
 
 func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution.WorkerFence, commit evidence.StepTransitionCommit) (evidence.StepTransitionCommitResult, error) {
 	if isNilInterface(s.committer.transaction) || isNilInterface(s.committer.planner) {
-		return evidence.StepTransitionCommitResult{}, ErrFactCommitterRequired
+		return evidence.StepTransitionCommitResult{}, FactCommitterRequiredError()
 	}
+	// Both validators return their own classified faults. Wrapping them in an
+	// uncoded fmt.Errorf put an unclassified layer on the outside of a coded fault
+	// exactly at the public boundary, which is what forced hosts to fall back to a
+	// blanket INTERNAL response.
 	if err := fence.Validate(); err != nil {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("validate worker fence: %w", err)
+		return evidence.StepTransitionCommitResult{}, err
 	}
 	if err := commit.Validate(); err != nil {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("validate step transition commit: %w", err)
+		return evidence.StepTransitionCommitResult{}, err
 	}
-	if err := validateCommitRunBinding(fence.RunID, commit); err != nil {
+	if err := validateCommitInstanceBinding(fence.InstanceID, commit); err != nil {
 		return evidence.StepTransitionCommitResult{}, err
 	}
 	owned, err := ownStepTransitionCommit(commit)
@@ -136,26 +278,26 @@ func (s StepTransitionService) Commit(ctx context.Context, fence domainexecution
 	}
 	result, err := s.committer.CommitStepTransition(ctx, fence, owned)
 	if err != nil {
-		return evidence.StepTransitionCommitResult{}, fmt.Errorf("commit step transition: %w", err)
+		return evidence.StepTransitionCommitResult{}, err
 	}
 	result.Promotions = append([]evidence.NodeVersionPromotion(nil), result.Promotions...)
 	return result, nil
 }
 
-func validateCommitRunBinding(runID string, commit evidence.StepTransitionCommit) error {
+func validateCommitInstanceBinding(instanceID domainexecution.InstanceID, commit evidence.StepTransitionCommit) error {
 	for _, observation := range commit.FinalValidations {
-		if observation.RunID != runID {
-			return fmt.Errorf("validation observation run %q does not match worker fence run %q", observation.RunID, runID)
+		if observation.InstanceID != instanceID {
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation observation instance %q does not match worker fence instance %q", observation.InstanceID, instanceID))
 		}
 	}
 	for _, group := range commit.FinalValidationGroups {
-		if group.RunID != runID {
-			return fmt.Errorf("validation group run %q does not match worker fence run %q", group.RunID, runID)
+		if group.InstanceID != instanceID {
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("validation group instance %q does not match worker fence instance %q", group.InstanceID, instanceID))
 		}
 	}
 	for _, observation := range commit.HealObservations {
-		if observation.RunID != runID {
-			return fmt.Errorf("heal observation run %q does not match worker fence run %q", observation.RunID, runID)
+		if observation.InstanceID != instanceID {
+			return stepTransitionCommitInstanceMismatchError(fmt.Errorf("heal observation instance %q does not match worker fence instance %q", observation.InstanceID, instanceID))
 		}
 	}
 	return nil

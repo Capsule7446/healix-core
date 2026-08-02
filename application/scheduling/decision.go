@@ -1,13 +1,23 @@
 package scheduling
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/Capsule7446/healix-core/domain/execution"
+	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-var ErrInvalidEntryStates = errors.New("invalid ordered execution states")
+const CodeEntryStatesInvalid fault.Code = "EXECUTION_ENTRY_STATES_INVALID"
+
+func invalidEntryStatesError() error {
+	err, constructionErr := fault.New(
+		fault.FailedPrecondition,
+		CodeEntryStatesInvalid,
+		"execution entry states are invalid",
+	)
+	if constructionErr != nil {
+		panic(constructionErr)
+	}
+	return err
+}
 
 type SkipCause string
 
@@ -18,71 +28,83 @@ const (
 )
 
 type EntryState struct {
-	ExecutionID string
-	Status      execution.ExecutionStatus
-	SkipCause   SkipCause
+	EntryID   execution.EntryID
+	Status    execution.EntryStatus
+	SkipCause SkipCause
 }
 
 type ExecutionTransition struct {
-	ExecutionID string
-	From        execution.ExecutionStatus
-	To          execution.ExecutionStatus
-	Cause       SkipCause
+	EntryID execution.EntryID
+	From    execution.EntryStatus
+	To      execution.EntryStatus
+	Cause   SkipCause
 }
 
 type Decision struct {
-	NextExecutionID string
-	Transitions     []ExecutionTransition
-	FinalStatus     *execution.RunStatus
+	NextEntryID execution.EntryID
+	Transitions []ExecutionTransition
+	FinalStatus *execution.InstanceStatus
 }
 
 // DecideAdvance makes a serial scheduling decision using the run snapshot as the
 // sole authority for membership, order, and failure policy.
-func DecideAdvance(snapshot execution.RunSnapshot, states []EntryState) (Decision, error) {
+func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (Decision, error) {
 	if snapshot.Digest() == "" {
-		return Decision{}, fmt.Errorf("%w: unsealed run snapshot", ErrInvalidEntryStates)
+		return Decision{}, invalidEntryStatesError()
 	}
 	plan := snapshot.Plan()
 	entries := plan.Entries
 	if len(states) != len(entries) {
-		return Decision{}, fmt.Errorf("%w: state count %d does not match plan count %d", ErrInvalidEntryStates, len(states), len(entries))
+		return Decision{}, invalidEntryStatesError()
 	}
 
-	byID := make(map[string]EntryState, len(states))
+	byID := make(map[execution.EntryID]EntryState, len(states))
 	for _, state := range states {
-		if _, exists := byID[state.ExecutionID]; exists {
-			return Decision{}, fmt.Errorf("%w: duplicate execution identity %q", ErrInvalidEntryStates, state.ExecutionID)
+		if _, exists := byID[state.EntryID]; exists {
+			return Decision{}, invalidEntryStatesError()
 		}
-		byID[state.ExecutionID] = state
+		byID[state.EntryID] = state
 	}
 	ordered := make([]EntryState, len(entries))
 	for i, entry := range entries {
-		state, exists := byID[entry.ExecutionID]
+		state, exists := byID[entry.ID]
 		if !exists {
-			return Decision{}, fmt.Errorf("%w: missing execution identity %q", ErrInvalidEntryStates, entry.ExecutionID)
+			return Decision{}, invalidEntryStatesError()
 		}
 		ordered[i] = state
-		delete(byID, entry.ExecutionID)
+		delete(byID, entry.ID)
 	}
 	if len(byID) != 0 {
-		return Decision{}, fmt.Errorf("%w: state contains identity outside plan", ErrInvalidEntryStates)
+		return Decision{}, invalidEntryStatesError()
 	}
 	stopIndex, stopCause, finalStatus, err := validateSerialShape(ordered, plan.FailurePolicy)
 	if err != nil {
 		return Decision{}, err
 	}
 	if stopIndex >= 0 {
-		return stopAfter(entries, ordered, stopIndex, stopCause, finalStatus), nil
+		decision, err := stopAfter(entries, ordered, stopIndex, stopCause, finalStatus)
+		if err != nil {
+			return Decision{}, err
+		}
+		return decision, nil
 	}
 
 	failed := false
 	for i, state := range ordered {
 		switch state.Status {
-		case execution.ExecutionRunning:
+		case execution.EntryRunning:
 			return Decision{}, nil
-		case execution.ExecutionPending:
-			return Decision{NextExecutionID: entries[i].ExecutionID}, nil
-		case execution.ExecutionFailed:
+		case execution.EntryPending:
+			transition := ExecutionTransition{
+				EntryID: entries[i].ID,
+				From:    execution.EntryPending,
+				To:      execution.EntryRunning,
+			}
+			if err := execution.ValidateEntryStatusTransition(transition.From, transition.To); err != nil {
+				return Decision{}, err
+			}
+			return Decision{NextEntryID: entries[i].ID, Transitions: []ExecutionTransition{transition}}, nil
+		case execution.EntryFailed:
 			failed = true
 		}
 	}
@@ -93,52 +115,52 @@ func DecideAdvance(snapshot execution.RunSnapshot, states []EntryState) (Decisio
 	return Decision{FinalStatus: &status}, nil
 }
 
-func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (int, SkipCause, execution.RunStatus, error) {
+func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (int, SkipCause, execution.InstanceStatus, error) {
 	frontierSeen := false
 	stopIndex := -1
 	var expectedCause SkipCause
-	var finalStatus execution.RunStatus
+	var finalStatus execution.InstanceStatus
 	for i, state := range states {
 		status := state.Status
 		if !isKnownStatus(status) {
-			return -1, "", "", fmt.Errorf("%w: unknown status %q", ErrInvalidEntryStates, status)
+			return -1, "", "", invalidEntryStatesError()
 		}
-		if status == execution.ExecutionSkipped {
+		if status == execution.EntrySkipped {
 			if state.SkipCause == "" {
-				return -1, "", "", fmt.Errorf("%w: skipped execution at position %d requires a cause", ErrInvalidEntryStates, i+1)
+				return -1, "", "", invalidEntryStatesError()
 			}
 		} else if state.SkipCause != "" {
-			return -1, "", "", fmt.Errorf("%w: non-skipped execution at position %d has skip cause %q", ErrInvalidEntryStates, i+1, state.SkipCause)
+			return -1, "", "", invalidEntryStatesError()
 		}
 
 		if stopIndex >= 0 {
-			if status == execution.ExecutionPending {
+			if status == execution.EntryPending {
 				continue
 			}
-			if status != execution.ExecutionSkipped {
-				return -1, "", "", fmt.Errorf("%w: status %q at position %d follows stop-causing status", ErrInvalidEntryStates, status, i+1)
+			if status != execution.EntrySkipped {
+				return -1, "", "", invalidEntryStatesError()
 			}
 			if state.SkipCause != expectedCause {
-				return -1, "", "", fmt.Errorf("%w: skip cause %q at position %d, expected %q", ErrInvalidEntryStates, state.SkipCause, i+1, expectedCause)
+				return -1, "", "", invalidEntryStatesError()
 			}
 			continue
 		}
-		if status == execution.ExecutionSkipped {
-			return -1, "", "", fmt.Errorf("%w: skipped execution at position %d has no causal predecessor", ErrInvalidEntryStates, i+1)
+		if status == execution.EntrySkipped {
+			return -1, "", "", invalidEntryStatesError()
 		}
-		if status == execution.ExecutionPending {
+		if status == execution.EntryPending {
 			frontierSeen = true
 			continue
 		}
-		if status == execution.ExecutionRunning {
+		if status == execution.EntryRunning {
 			if frontierSeen {
-				return -1, "", "", fmt.Errorf("%w: running execution at position %d follows active frontier", ErrInvalidEntryStates, i+1)
+				return -1, "", "", invalidEntryStatesError()
 			}
 			frontierSeen = true
 			continue
 		}
 		if frontierSeen {
-			return -1, "", "", fmt.Errorf("%w: terminal execution at position %d follows active frontier", ErrInvalidEntryStates, i+1)
+			return -1, "", "", invalidEntryStatesError()
 		}
 		expectedCause, finalStatus = stopFor(status, policy)
 		if expectedCause != "" {
@@ -148,30 +170,34 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 	return stopIndex, expectedCause, finalStatus, nil
 }
 
-func stopFor(status execution.ExecutionStatus, policy execution.FailurePolicy) (SkipCause, execution.RunStatus) {
+func stopFor(status execution.EntryStatus, policy execution.FailurePolicy) (SkipCause, execution.InstanceStatus) {
 	switch status {
-	case execution.ExecutionFailed:
+	case execution.EntryFailed:
 		if policy == execution.FailurePolicyStopOnFailure {
 			return SkipCausePriorFailure, execution.Failed
 		}
-	case execution.ExecutionCanceled:
+	case execution.EntryCanceled:
 		return SkipCausePriorCancellation, execution.Canceled
-	case execution.ExecutionAborted:
+	case execution.EntryAborted:
 		return SkipCausePriorAbort, execution.Aborted
 	}
 	return "", ""
 }
 
-func isKnownStatus(status execution.ExecutionStatus) bool {
-	return status == execution.ExecutionPending || status == execution.ExecutionRunning || execution.IsTerminalExecutionStatus(status)
+func isKnownStatus(status execution.EntryStatus) bool {
+	return status == execution.EntryPending || status == execution.EntryRunning || execution.IsTerminalEntryStatus(status)
 }
 
-func stopAfter(entries []execution.WorkflowEntry, states []EntryState, index int, cause SkipCause, status execution.RunStatus) Decision {
+func stopAfter(entries []execution.Entry, states []EntryState, index int, cause SkipCause, status execution.InstanceStatus) (Decision, error) {
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {
-		if states[i].Status == execution.ExecutionPending {
-			transitions = append(transitions, ExecutionTransition{ExecutionID: entries[i].ExecutionID, From: execution.ExecutionPending, To: execution.ExecutionSkipped, Cause: cause})
+		if states[i].Status == execution.EntryPending {
+			transition := ExecutionTransition{EntryID: entries[i].ID, From: execution.EntryPending, To: execution.EntrySkipped, Cause: cause}
+			if err := execution.ValidateEntryStatusTransition(transition.From, transition.To); err != nil {
+				return Decision{}, invalidEntryStatesError()
+			}
+			transitions = append(transitions, transition)
 		}
 	}
-	return Decision{Transitions: transitions, FinalStatus: &status}
+	return Decision{Transitions: transitions, FinalStatus: &status}, nil
 }

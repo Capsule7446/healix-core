@@ -3,9 +3,11 @@ package node
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/heal"
 	"github.com/Capsule7446/healix-core/domain/parameter"
@@ -53,25 +55,65 @@ func TestWorkflowCallNodeIDUsesExplicitThenTargetIdentity(t *testing.T) {
 	}
 }
 
-func TestLeafCompletionErrorPreservesAllCausesAndMessage(t *testing.T) {
-	nodeErr := errors.New("node failed")
-	timelineErr := errors.New("timeline failed")
-	observationErr := errors.New("observation failed")
-	err := &LeafCompletionError{NodeErr: nodeErr, TimelineErr: timelineErr, ObservationErr: observationErr}
-
-	if got, want := err.Error(), "node failed\ntimeline failed\nobservation failed"; got != want {
-		t.Fatalf("Error() = %q, want %q", got, want)
+func TestLifecycleSideEffectFaultsExposeSafeStableContracts(t *testing.T) {
+	cause := errors.New("node=node-secret occurrence=999 adapter=adapter-secret")
+	tests := []struct {
+		name    string
+		err     error
+		code    fault.Code
+		message string
+	}{
+		{"start", stepTimelineStartError(cause), CodeStepTimelineStartFailed, "step timeline start could not be recorded"},
+		{"finish", stepTimelineFinishError(cause), CodeStepTimelineFinishFailed, "step timeline finish could not be recorded"},
+		{"observation", nodeCompletionObservationError(cause), CodeNodeCompletionObservation, "node completion observation could not be recorded"},
 	}
-	for _, cause := range []error{nodeErr, timelineErr, observationErr} {
-		if !errors.Is(err, cause) {
-			t.Fatalf("LeafCompletionError does not wrap %v", cause)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor, ok := fault.Describe(test.err)
+			if !ok || descriptor.Code() != test.code || descriptor.Kind() != fault.Internal || descriptor.Message() != test.message || len(descriptor.Params()) != 0 || len(descriptor.Violations()) != 0 || !errors.Is(test.err, cause) {
+				t.Fatalf("descriptor/error = %#v/%v", descriptor, test.err)
+			}
+			for _, secret := range []string{"node-secret", "999", "adapter-secret", cause.Error()} {
+				if strings.Contains(test.err.Error(), secret) {
+					t.Fatalf("public error leaked %q: %q", secret, test.err.Error())
+				}
+			}
+		})
+	}
+}
+
+func TestLeafCompletionErrorPreservesCausesBehindSafeContract(t *testing.T) {
+	nodeErr := errors.New("node-secret")
+	timelineCause := errors.New("timeline-secret")
+	observationCause := errors.New("observation-secret")
+	err := newLeafCompletionError(
+		nodeErr,
+		stepTimelineFinishError(timelineCause),
+		nodeCompletionObservationError(observationCause),
+	)
+
+	descriptor, ok := fault.Describe(err)
+	if !ok || descriptor.Code() != CodeLeafCompletionFailed || descriptor.Kind() != fault.Internal || descriptor.Message() != "leaf execution completion failed" {
+		t.Fatalf("descriptor/error = %#v/%v", descriptor, err)
+	}
+	for _, secret := range []string{"node-secret", "timeline-secret", "observation-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("public error leaked %q: %q", secret, err.Error())
 		}
+	}
+	for _, cause := range []error{nodeErr, timelineCause, observationCause} {
+		if !errors.Is(err, cause) {
+			t.Fatalf("completion error does not wrap %v", cause)
+		}
+	}
+	if !fault.IsCode(err, CodeStepTimelineFinishFailed) || !fault.IsCode(err, CodeNodeCompletionObservation) {
+		t.Fatalf("side-effect codes were not preserved: %v", err)
 	}
 }
 
 func TestLeafExecutionErrorExtractsNodeCause(t *testing.T) {
 	nodeErr := errors.New("node failed")
-	wrapper := &LeafCompletionError{NodeErr: nodeErr, TimelineErr: errors.New("timeline failed")}
+	wrapper := newLeafCompletionError(nodeErr, stepTimelineFinishError(errors.New("timeline failed")), nil)
 	if got := LeafExecutionError(wrapper); !errors.Is(got, nodeErr) {
 		t.Fatalf("LeafExecutionError() = %v, want node cause", got)
 	}
@@ -132,7 +174,7 @@ func (screenshotBrowserStub) SnapshotDOM(context.Context) (heal.DOMSnapshot, err
 	return testSnapshot{}, nil
 }
 
-func (screenshotBrowserStub) ObserveElement(context.Context, fingerprint.NodeSpec, []string) (ElementObservation, error) {
+func (screenshotBrowserStub) ObserveElement(context.Context, fingerprint.ElementTargetSpec, []string) (ElementObservation, error) {
 	return ElementObservation{}, nil
 }
 
@@ -172,7 +214,7 @@ func TestCompletionBrowserCopiesScreenshotAndObservesElementThroughPublicLeafRun
 		}
 		observation, err = browser.ObserveElement(
 			context.Background(),
-			fingerprint.NodeSpec{ID: "node"},
+			fingerprint.ElementTargetSpec{ID: "node"},
 			[]string{"role", "missing"},
 		)
 		if err != nil {
@@ -258,7 +300,7 @@ func TestRuntimeParametersAndInterpolationPreserveTypedScopeThroughPublicNodes(t
 	}}
 	step := &StepNode{
 		NodeID: "interpolate",
-		Target: fingerprint.NodeSpec{ID: "input"},
+		Target: fingerprint.ElementTargetSpec{ID: "input"},
 		Action: Action{Kind: ActionInput, Value: "${text}|${params.text}|${number}|${boolean}|${choice}|${scratch}"},
 	}
 	workflow := &WorkflowNode{NodeID: "root", OwnsParameterScope: true, Parameters: values, Children: []Node{probe, step}}
@@ -286,7 +328,7 @@ func TestRuntimeParametersAndInterpolationPreserveTypedScopeThroughPublicNodes(t
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			step := &StepNode{NodeID: "reject non-scalar", Target: fingerprint.NodeSpec{ID: "input"}, Action: Action{Kind: ActionInput, Value: "${" + test.key + "}"}}
+			step := &StepNode{NodeID: "reject non-scalar", Target: fingerprint.ElementTargetSpec{ID: "input"}, Action: Action{Kind: ActionInput, Value: "${" + test.key + "}"}}
 			workflow := &WorkflowNode{NodeID: "root", OwnsParameterScope: true, Parameters: values, Children: []Node{step}}
 			if err := workflow.Run(context.Background(), runtime); err == nil {
 				t.Fatalf("interpolation unexpectedly accepted %q", test.key)
@@ -295,15 +337,16 @@ func TestRuntimeParametersAndInterpolationPreserveTypedScopeThroughPublicNodes(t
 	}
 }
 
-func TestTransientErrorContract(t *testing.T) {
-	if TransientError("driver", nil) != nil {
+func TestTransientDriverFaultContract(t *testing.T) {
+	if transientDriverFault(nil) != nil {
 		t.Fatal("nil error was classified")
 	}
 	cause := errors.New("temporary")
-	err := TransientError("locate", cause)
-	var classified *ClassifiedError
-	if !errors.As(err, &classified) || !errors.Is(err, cause) || classified.Kind != ErrorTransientDriver || classified.Operation != "locate" {
-		t.Fatalf("TransientError() = %#v", err)
+	err := transientDriverFault(cause)
+	kind, hasKind := fault.KindOf(err)
+	code, hasCode := fault.CodeOf(err)
+	if !errors.Is(err, cause) || !hasKind || kind != fault.Unavailable || !hasCode || code != CodeTransientDriver {
+		t.Fatalf("transientDriverFault() = %#v", err)
 	}
 }
 
@@ -333,7 +376,7 @@ func TestNewNodeCompletionChainValidationMatrix(t *testing.T) {
 
 func TestStepTimelineEventBoundaryOutcomeMatrix(t *testing.T) {
 	valid := StepTimelineEvent{
-		Step:     StepExecutionRef{RunID: "run", NodeID: "step", Occurrence: 1},
+		Step:     StepExecutionRef{InstanceID: mustInstanceID("run"), NodeID: "step", Occurrence: 1},
 		Boundary: StepBoundaryStarted, Mark: TimelineMark{Sequence: 1},
 	}
 	tests := []struct {
@@ -410,7 +453,7 @@ func TestCompletionBrowserPropagatesEveryDependencyFailureThroughPublicLeafRun(t
 		configure func(*matrixDriver, *matrixElement)
 	}{
 		{name: "locate", configure: func(driver *matrixDriver, _ *matrixElement) {
-			driver.locate = func(context.Context, fingerprint.NodeSpec) (Element, error) { return nil, sentinel }
+			driver.locate = func(context.Context, fingerprint.ElementTargetSpec) (Element, error) { return nil, sentinel }
 		}},
 		{name: "exists", configure: func(_ *matrixDriver, element *matrixElement) { element.existsErr = sentinel }},
 		{name: "visible", configure: func(_ *matrixDriver, element *matrixElement) { element.visibleErr = sentinel }},
@@ -424,7 +467,7 @@ func TestCompletionBrowserPropagatesEveryDependencyFailureThroughPublicLeafRun(t
 			test.configure(driver, element)
 			runtime := &Runtime{Driver: driver, ReadOnlyBrowser: screenshotBrowserStub{}}
 			runWithCompletionBrowser(t, runtime, func(browser ReadOnlyBrowser) {
-				if _, err := browser.ObserveElement(context.Background(), fingerprint.NodeSpec{ID: "node"}, []string{"role"}); !errors.Is(err, sentinel) {
+				if _, err := browser.ObserveElement(context.Background(), fingerprint.ElementTargetSpec{ID: "node"}, []string{"role"}); !errors.Is(err, sentinel) {
 					t.Fatalf("ObserveElement() error = %v", err)
 				}
 			})

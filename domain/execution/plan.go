@@ -1,15 +1,12 @@
 package execution
 
 import (
-	"errors"
 	"sort"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
-
-// ErrUnsealedPlan identifies a Plan value that was not created by Seal.
-var ErrUnsealedPlan = errors.New("execution plan is unsealed")
 
 type planSeal struct {
 	marker byte
@@ -20,36 +17,36 @@ var sealedPlanToken = &planSeal{marker: 1}
 type StepKind string
 
 const (
-	ActionStep          StepKind = "ACTION"
-	WaitStep            StepKind = "WAIT"
-	RepeatStep          StepKind = "REPEAT"
-	WorkflowReference   StepKind = "WORKFLOW_REF"
-	ValidationStep      StepKind = "VALIDATION"
-	ValidationGroupStep StepKind = "VALIDATION_GROUP"
+	ActionStep            StepKind = "ACTION"
+	WaitStep              StepKind = "WAIT"
+	RepeatStep            StepKind = "REPEAT"
+	FlowFragmentReference StepKind = "WORKFLOW_REF"
+	ValidationStep        StepKind = "VALIDATION"
+	ValidationGroupStep   StepKind = "VALIDATION_GROUP"
 )
 
 type Step struct {
-	ID                string
-	DisplayName       string
-	Kind              StepKind
-	CaptureScreenshot bool
-	Action            string
-	NodeID            string
-	NodeVersionID     string
-	Value             string
-	Values            []string
-	WaitKind          string
-	WaitMS            int
-	RepeatCount       int
-	Optional          bool
-	Children          []Step
-	Reference         *Reference
-	Validation        *Validation
-	ValidationGroup   *ValidationGroup
+	ID                     string
+	DisplayName            string
+	Kind                   StepKind
+	CaptureScreenshot      bool
+	Action                 string
+	ElementTargetID        string
+	ElementTargetVersionID string
+	Value                  string
+	Values                 []string
+	WaitKind               string
+	WaitMS                 int
+	RepeatCount            int
+	Optional               bool
+	Children               []Step
+	Reference              *Reference
+	Validation             *Validation
+	ValidationGroup        *ValidationGroup
 }
 
 type Reference struct {
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	ParameterBindings map[string]parameter.Binding
 }
@@ -94,28 +91,28 @@ type ParameterSnapshot struct {
 }
 
 type WorkflowSnapshot struct {
-	ID            string
-	VersionID     string
-	WorkflowID    string
-	DisplayName   string
-	VersionNumber int
-	Parameters    []Parameter
-	Steps         []Step
+	ID             string
+	VersionID      string
+	FlowFragmentID string
+	DisplayName    string
+	VersionNumber  int
+	Parameters     []Parameter
+	Steps          []Step
 }
 
 type NodeSnapshot struct {
-	NodeID      string
-	VersionID   string
-	DisplayName string
-	PageURL     string
-	Origin      string
-	Selectors   []fingerprint.Selector
-	Fingerprint fingerprint.Fingerprint
+	ElementTargetID string
+	VersionID       string
+	DisplayName     string
+	PageURL         string
+	Origin          string
+	Selectors       []fingerprint.Selector
+	Fingerprint     fingerprint.Fingerprint
 }
 
 type NodeDependencyKey struct {
-	NodeID    string
-	VersionID string
+	ElementTargetID string
+	VersionID       string
 }
 
 type WorkflowReferenceKey struct {
@@ -126,7 +123,7 @@ type WorkflowReferenceKey struct {
 type ReferenceResolution struct {
 	ParentVersionID    string
 	StepID             string
-	WorkflowID         string
+	FlowFragmentID     string
 	WorkflowVersionID  string
 	ResolvedFromLatest bool
 }
@@ -142,36 +139,43 @@ func (p FailurePolicy) IsValid() bool {
 	return p == FailurePolicyStopOnFailure || p == FailurePolicyContinueOnFailure
 }
 
-type WorkflowEntry struct {
-	ExecutionID       string
+type Entry struct {
+	ID                EntryID
 	TestTaskItemID    string
 	SequenceNumber    int
-	WorkflowID        string
+	FlowFragmentID    string
 	WorkflowVersionID string
 	Parameters        ParameterSnapshot
 }
 
-type Draft struct {
-	RunID         string
+type PlanSnapshot struct {
+	InstanceID    InstanceID
 	FailurePolicy FailurePolicy
-	Entries       []WorkflowEntry
+	Entries       []Entry
 	Workflows     []WorkflowSnapshot
 	Nodes         []NodeSnapshot
 	References    []ReferenceResolution
 }
 
 type Plan struct {
-	draft Draft
+	draft PlanSnapshot
 	seal  *planSeal
 }
 
-func Seal(draft Draft) (Plan, error) {
+func Seal(draft PlanSnapshot) (Plan, error) {
 	if err := draft.Validate(); err != nil {
 		return Plan{}, err
 	}
 	canonical := cloneDraft(draft)
+	// The entry identity is the tie-break, so the canonical order does not depend
+	// on Validate having already rejected duplicate sequence numbers. It has, but
+	// an ordering that is only total because of a check made somewhere else is
+	// one relaxed constraint away from being unstable.
 	sort.Slice(canonical.Entries, func(i, j int) bool {
-		return canonical.Entries[i].SequenceNumber < canonical.Entries[j].SequenceNumber
+		if canonical.Entries[i].SequenceNumber != canonical.Entries[j].SequenceNumber {
+			return canonical.Entries[i].SequenceNumber < canonical.Entries[j].SequenceNumber
+		}
+		return canonical.Entries[i].ID.String() < canonical.Entries[j].ID.String()
 	})
 	return Plan{draft: canonical, seal: sealedPlanToken}, nil
 }
@@ -182,19 +186,19 @@ func (p Plan) IsSealed() bool { return p.seal == sealedPlanToken }
 // Validate checks that the plan carries the Seal invariant.
 func (p Plan) Validate() error {
 	if !p.IsSealed() {
-		return ErrUnsealedPlan
+		return mustExecutionFault(fault.FailedPrecondition, CodePlanUnsealed, "execution plan must be sealed")
 	}
 	return nil
 }
 
-func (p Plan) Snapshot() Draft { return cloneDraft(p.draft) }
+func (p Plan) Snapshot() PlanSnapshot { return cloneDraft(p.draft) }
 
-func (p Plan) RunID() string { return p.draft.RunID }
+func (p Plan) InstanceID() InstanceID { return p.draft.InstanceID }
 
 func (p Plan) FailurePolicy() FailurePolicy { return p.draft.FailurePolicy }
 
-func (p Plan) Entries() []WorkflowEntry {
-	entries := append([]WorkflowEntry(nil), p.draft.Entries...)
+func (p Plan) Entries() []Entry {
+	entries := append([]Entry(nil), p.draft.Entries...)
 	for i := range entries {
 		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
 	}
@@ -209,13 +213,13 @@ func (p Plan) References() []ReferenceResolution {
 	return append([]ReferenceResolution(nil), p.draft.References...)
 }
 
-func cloneDraft(draft Draft) Draft {
-	entries := append([]WorkflowEntry(nil), draft.Entries...)
+func cloneDraft(draft PlanSnapshot) PlanSnapshot {
+	entries := append([]Entry(nil), draft.Entries...)
 	for i := range entries {
 		entries[i].Parameters = cloneParameterSnapshot(entries[i].Parameters)
 	}
-	return Draft{
-		RunID: draft.RunID, FailurePolicy: draft.FailurePolicy,
+	return PlanSnapshot{
+		InstanceID: draft.InstanceID, FailurePolicy: draft.FailurePolicy,
 		Entries:   entries,
 		Workflows: cloneWorkflows(draft.Workflows), Nodes: cloneNodes(draft.Nodes),
 		References: append([]ReferenceResolution(nil), draft.References...),
@@ -272,16 +276,9 @@ func cloneNodes(nodes []NodeSnapshot) []NodeSnapshot {
 	for i, snapshot := range nodes {
 		result[i] = snapshot
 		result[i].Selectors = append([]fingerprint.Selector(nil), snapshot.Selectors...)
-		result[i].Fingerprint = cloneFingerprint(snapshot.Fingerprint)
+		result[i].Fingerprint = snapshot.Fingerprint.Clone()
 	}
 	return result
-}
-
-func cloneFingerprint(value fingerprint.Fingerprint) fingerprint.Fingerprint {
-	value.Attributes = cloneMap(value.Attributes)
-	value.Path = append([]string(nil), value.Path...)
-	value.Framework = value.Framework.Clone()
-	return value
 }
 
 func cloneBindings(source map[string]parameter.Binding) map[string]parameter.Binding {
@@ -308,15 +305,4 @@ func cloneParameterValues(source map[string]parameter.Value) map[string]paramete
 func cloneParameterSnapshot(snapshot ParameterSnapshot) ParameterSnapshot {
 	snapshot.Values = cloneParameterValues(snapshot.Values)
 	return snapshot
-}
-
-func cloneMap(source map[string]string) map[string]string {
-	if source == nil {
-		return nil
-	}
-	result := make(map[string]string, len(source))
-	for key, value := range source {
-		result[key] = value
-	}
-	return result
 }

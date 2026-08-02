@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/Capsule7446/healix-core/domain/fault"
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
@@ -39,9 +41,9 @@ const waitPollInterval = 100 * time.Millisecond
 type WaitNode struct {
 	NodeID   string
 	Kind     WaitKind
-	Duration time.Duration        // WaitSleep：等待时长
-	Target   fingerprint.NodeSpec // WaitElement：要等的元素
-	Timeout  time.Duration        // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
+	Duration time.Duration                 // WaitSleep：等待时长
+	Target   fingerprint.ElementTargetSpec // WaitElement：要等的元素
+	Timeout  time.Duration                 // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
 }
 
 func (w *WaitNode) ID() string { return w.NodeID }
@@ -49,23 +51,21 @@ func (w *WaitNode) ID() string { return w.NodeID }
 func (w *WaitNode) Validate() error {
 	switch w.Kind {
 	case "", WaitSleep:
-		if w.Duration < 0 || w.Timeout != 0 {
-			return fmt.Errorf("invalid sleep wait configuration")
+		if w.Duration < 0 {
+			return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "wait.duration", "wait duration cannot be negative"))
 		}
-	case WaitElement:
-		if w.Duration != 0 || w.Timeout < 0 {
-			return fmt.Errorf("invalid element wait configuration")
+		if w.Timeout != 0 {
+			return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "wait.timeout", "sleep wait cannot set a timeout"))
 		}
-	case WaitElementVisible, WaitElementInvisible:
-		if w.Duration != 0 || w.Timeout < 0 {
-			return fmt.Errorf("invalid visibility wait configuration")
+	case WaitElement, WaitElementVisible, WaitElementInvisible, WaitNetworkIdle:
+		if w.Duration != 0 {
+			return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "wait.duration", "condition wait cannot set a duration"))
 		}
-	case WaitNetworkIdle:
-		if w.Duration != 0 || w.Timeout < 0 {
-			return fmt.Errorf("invalid network idle wait configuration")
+		if w.Timeout < 0 {
+			return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "wait.timeout", "wait timeout cannot be negative"))
 		}
 	default:
-		return fmt.Errorf("unknown wait kind %q", w.Kind)
+		return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "wait.kind", "wait kind is not supported"))
 	}
 	return nil
 }
@@ -75,11 +75,14 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		return fmt.Errorf("wait %s: validate: %w", w.NodeID, err)
 	}
 	if err := rt.waitBeforeStep(ctx); err != nil {
-		return fmt.Errorf("wait %s: wait step interval: %w", w.NodeID, err)
+		// waitBeforeStep fails on cancellation or deadline, both of which have
+		// registered codes. The wrapper this replaces left them unclassified and
+		// echoed the node id.
+		return classifyNodeFault(err)
 	}
 	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
 	if err != nil {
-		return fmt.Errorf("wait %s: enter running phase: %w", w.NodeID, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	defer rt.releaseOccurrence(w.NodeID, occurrence)
 	lifecycle, err := rt.beginLeafLifecycle(ctx, w.NodeID, "WAIT", occurrence)
@@ -105,10 +108,10 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	case WaitNetworkIdle:
 		err = w.waitNetworkIdle(ctx, rt)
 	default:
-		err = fmt.Errorf("unknown wait kind %q", w.Kind)
+		err = wrapStepConfigurationInvalidError(fmt.Errorf("unknown wait kind %q", w.Kind), mustViolation(fault.CodeFieldInvalid, "wait.kind", "wait kind is not supported"))
 	}
 
-	rt.observeOperationBestEffort(ctx, OperationObservation{RunID: rt.RunID, NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, ErrorKind: errorKind(err)})
+	rt.observeOperationBestEffort(ctx, OperationObservation{InstanceID: rt.InstanceID, EntryID: rt.EntryID, Occurrence: rt.mustActiveOccurrence(w.NodeID), NodeID: w.NodeID, Operation: string(w.Kind), Attempt: 1, DurationMS: time.Since(started).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 	if err != nil {
 		if emitErr := rt.emitTerminal(ctx, w.NodeID, failurePhase(ctx)); emitErr != nil {
 			return errors.Join(fmt.Errorf("wait %s: %w", w.NodeID, err), emitErr)
@@ -116,7 +119,7 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		return fmt.Errorf("wait %s: %w", w.NodeID, err)
 	}
 	if err := rt.emit(ctx, w.NodeID, PhaseSucceeded); err != nil {
-		return fmt.Errorf("wait %s: enter succeeded phase: %w", w.NodeID, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	return nil
 }
@@ -141,7 +144,7 @@ func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime, requireVisible,
 	return rt.poller().Run(ctx, w.timeout(), func(pollCtx context.Context) (bool, error) {
 		el, err := rt.locator().Locate(pollCtx, w.Target)
 		if err != nil {
-			if errors.Is(err, ErrElementNotFound) && requireInvisible {
+			if fault.IsCode(err, CodeElementNotFound) && requireInvisible {
 				return true, nil
 			}
 			return false, err
@@ -164,7 +167,7 @@ func (w *WaitNode) waitNetworkIdle(ctx context.Context, rt *Runtime) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout())
 	defer cancel()
 	if err := rt.Driver.WaitNetworkIdle(ctx); err != nil {
-		return fmt.Errorf("network not idle within %s: %w", w.timeout(), err)
+		return classifyNodeFault(err)
 	}
 	return nil
 }
@@ -180,7 +183,7 @@ func (r *RepeatNode) ID() string { return r.NodeID }
 
 func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 	if r.Times < 0 {
-		return fmt.Errorf("repeat %s: times cannot be negative", r.NodeID)
+		return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "times", "repeat times cannot be negative"))
 	}
 	for i, child := range r.Children {
 		if child == nil {
@@ -189,7 +192,7 @@ func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 	}
 	occurrence, err := rt.beginOccurrence(ctx, r.NodeID)
 	if err != nil {
-		return fmt.Errorf("repeat %s: enter running phase: %w", r.NodeID, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	defer rt.releaseOccurrence(r.NodeID, occurrence)
 	for i := 0; i < r.Times; i++ {
@@ -203,14 +206,14 @@ func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 		}
 	}
 	if err := rt.emit(ctx, r.NodeID, PhaseSucceeded); err != nil {
-		return fmt.Errorf("repeat %s: enter succeeded phase: %w", r.NodeID, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	return nil
 }
 
 // WorkflowNode 按顺序运行 Children。Application 编译器从锁定的 Workspace
-// 版本快照构造它；它也是 Workflow 相互引用时被引用的不可变执行单元。
-// Workflow 按顺序执行；跨 Workflow 调度由应用层负责。
+// 版本快照构造它；它也是 FlowFragment 相互引用时被引用的不可变执行单元。
+// FlowFragment 按顺序执行；跨 FlowFragment 调度由应用层负责。
 type WorkflowNode struct {
 	NodeID             string
 	Children           []Node
@@ -236,7 +239,7 @@ func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
 	}
 	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
 	if err != nil {
-		return fmt.Errorf("workflow %s: enter running phase: %w", w.NodeID, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	defer rt.releaseOccurrence(w.NodeID, occurrence)
 	for _, c := range w.Children {
@@ -248,7 +251,7 @@ func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
 		}
 	}
 	if err := rt.emit(ctx, w.NodeID, PhaseSucceeded); err != nil {
-		return fmt.Errorf("workflow %s: enter succeeded phase: %w", w.NodeID, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	return nil
 }
@@ -274,12 +277,12 @@ func (w *WorkflowCallNode) ID() string {
 
 func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
 	if w.Target == nil {
-		return errors.New("workflow call target is required")
+		return stepConfigurationInvalidError(mustViolation(fault.CodeFieldRequired, "target", "workflow call target is required"))
 	}
 	id := w.ID()
 	occurrence, err := rt.beginOccurrence(ctx, id)
 	if err != nil {
-		return fmt.Errorf("workflow call %s: enter running phase: %w", id, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	defer rt.releaseOccurrence(id, occurrence)
 	err = w.runTarget(ctx, rt)
@@ -290,27 +293,15 @@ func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
 		return err
 	}
 	if err := rt.emit(ctx, id, PhaseSucceeded); err != nil {
-		return fmt.Errorf("workflow call %s: enter succeeded phase: %w", id, err)
+		return classifyStepPhaseTransitionInvalid(err)
 	}
 	return nil
 }
 
 func (w *WorkflowCallNode) runTarget(ctx context.Context, rt *Runtime) error {
-	resolved := make(map[string]parameter.Value, len(w.Values))
-	for name, value := range w.Values {
-		constraint, exists := w.Constraints[name]
-		if !exists {
-			return fmt.Errorf("workflow %s parameter %s has no schema", w.Target.ID(), name)
-		}
-		if err := constraint.Validate(value); err != nil {
-			return fmt.Errorf("workflow %s parameter %s: %w", w.Target.ID(), name, err)
-		}
-		resolved[name] = value.Clone()
-	}
-	for name := range w.Constraints {
-		if _, exists := resolved[name]; !exists {
-			return fmt.Errorf("workflow %s parameter %s is missing", w.Target.ID(), name)
-		}
+	resolved, err := w.resolveBindings()
+	if err != nil {
+		return err
 	}
 	for name, value := range rt.parameterScope {
 		if strings.HasPrefix(name, "env.") {
@@ -321,6 +312,49 @@ func (w *WorkflowCallNode) runTarget(ctx context.Context, rt *Runtime) error {
 	rt.parameterScope = resolved
 	defer func() { rt.parameterScope = previous }()
 	return w.Target.Run(ctx, rt)
+}
+
+// resolveBindings walks parameter names in sorted order so that, when more
+// than one binding is invalid, which one is reported is a function of the
+// input alone rather than Go's randomized map iteration order. No parameter
+// name or workflow identity reaches public text: every name is caller
+// declared, and the caller's own Values/Constraints maps are what it must
+// inspect to find the gap — the same defect class already closed for
+// domain/parameter's binding resolution.
+func (w *WorkflowCallNode) resolveBindings() (map[string]parameter.Value, error) {
+	names := make([]string, 0, len(w.Values)+len(w.Constraints))
+	seen := make(map[string]struct{}, len(w.Values)+len(w.Constraints))
+	addName := func(name string) {
+		if _, exists := seen[name]; exists {
+			return
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	for name := range w.Values {
+		addName(name)
+	}
+	for name := range w.Constraints {
+		addName(name)
+	}
+	sort.Strings(names)
+	resolved := make(map[string]parameter.Value, len(w.Values))
+	for _, name := range names {
+		value, hasValue := w.Values[name]
+		constraint, hasConstraint := w.Constraints[name]
+		switch {
+		case !hasConstraint:
+			return nil, stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "bindings", "workflow call parameter has no schema"))
+		case !hasValue:
+			return nil, stepConfigurationInvalidError(mustViolation(fault.CodeFieldRequired, "bindings", "workflow call parameter is missing"))
+		default:
+			if err := constraint.Validate(value); err != nil {
+				return nil, wrapStepConfigurationInvalidError(err, mustViolation(fault.CodeFieldInvalid, "bindings", "workflow call parameter value does not satisfy its constraint"))
+			}
+			resolved[name] = value.Clone()
+		}
+	}
+	return resolved, nil
 }
 
 func cloneParameterScope(source map[string]parameter.Value) map[string]parameter.Value {

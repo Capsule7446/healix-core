@@ -8,31 +8,31 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-func compilePlanForTest(plan execution.Plan) (CompiledRun, error) {
+func compilePlanForTest(plan execution.Plan) (CompiledPlan, error) {
 	if err := plan.Validate(); err != nil {
-		return CompiledRun{}, err
+		return CompiledPlan{}, err
 	}
 	return compileDraftSnapshotForTest(plan.Snapshot())
 }
 
-func compileDraftSnapshotForTest(draft execution.Draft) (CompiledRun, error) {
-	snapshot, err := runSnapshotForCompilerTest(draft, map[string]string{})
+func compileDraftSnapshotForTest(draft execution.PlanSnapshot) (CompiledPlan, error) {
+	snapshot, err := instanceSnapshotForCompilerTest(draft, map[string]string{})
 	if err != nil {
-		return CompiledRun{}, err
+		return CompiledPlan{}, err
 	}
 	return CompilePlan(snapshot)
 }
 
-func runSnapshotForCompilerTest(draft execution.Draft, environmentProperties map[string]string) (execution.RunSnapshot, error) {
-	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV1, environmentProperties, nil)
+func instanceSnapshotForCompilerTest(draft execution.PlanSnapshot, environmentProperties map[string]string) (execution.InstanceSnapshot, error) {
+	return instanceSnapshotForCompilerEnvironmentTest(draft, execution.InstanceSnapshotSchemaV1, environmentProperties, nil)
 }
 
-func runSnapshotForCompilerTypedEnvironmentTest(draft execution.Draft, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
-	return runSnapshotForCompilerEnvironmentTest(draft, execution.RunSnapshotSchemaV2, nil, environmentVariables)
+func runSnapshotForCompilerTypedEnvironmentTest(draft execution.PlanSnapshot, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
+	return instanceSnapshotForCompilerEnvironmentTest(draft, execution.InstanceSnapshotSchemaV2, nil, environmentVariables)
 }
 
-func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion execution.RunSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.RunSnapshot, error) {
-	items := make([]execution.TestTaskVersionItemSnapshot, len(draft.Entries))
+func instanceSnapshotForCompilerEnvironmentTest(draft execution.PlanSnapshot, schemaVersion execution.InstanceSnapshotSchema, environmentProperties map[string]string, environmentVariables map[string]parameter.Value) (execution.InstanceSnapshot, error) {
+	items := make([]execution.ExecutionFlowVersionItemSnapshot, len(draft.Entries))
 	invocations := make([]execution.InvocationScopeSnapshot, 0, len(draft.Entries))
 	workflows := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
 	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
@@ -51,10 +51,10 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion 
 		if !exists {
 			return fmt.Errorf("workflow version %s is missing", versionID)
 		}
-		invocation := execution.InvocationScopeSnapshot{Path: path, ParentPath: parentPath, ParentVersionID: parentVersionID, StepID: stepID, WorkflowID: workflow.WorkflowID, WorkflowVersionID: versionID, Values: values}
+		invocation := execution.InvocationScopeSnapshot{Path: mustInvocationPath(path), ParentPath: optionalInvocationPath(parentPath), ParentVersionID: parentVersionID, StepID: stepID, FlowFragmentID: workflow.FlowFragmentID, WorkflowVersionID: versionID, Values: values}
 		invocations = append(invocations, invocation)
 		for _, step := range workflow.Steps {
-			if step.Kind != execution.WorkflowReference || step.Reference == nil {
+			if step.Kind != execution.FlowFragmentReference || step.Reference == nil {
 				continue
 			}
 			resolution, ok := resolutions[execution.WorkflowReferenceKey{ParentVersionID: versionID, StepID: step.ID}]
@@ -88,25 +88,25 @@ func runSnapshotForCompilerEnvironmentTest(draft execution.Draft, schemaVersion 
 		return nil
 	}
 	for index, entry := range draft.Entries {
-		items[index] = execution.TestTaskVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, WorkflowID: entry.WorkflowID, WorkflowVersionID: entry.WorkflowVersionID}
-		if err := addInvocation(entry.ExecutionID, "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
-			return execution.RunSnapshot{}, err
+		items[index] = execution.ExecutionFlowVersionItemSnapshot{ID: entry.TestTaskItemID, TestTaskVersionID: "task-v1", SequenceNumber: entry.SequenceNumber, FlowFragmentID: entry.FlowFragmentID, WorkflowVersionID: entry.WorkflowVersionID}
+		if err := addInvocation(entry.ID.String(), "", "", "", entry.WorkflowVersionID, entry.Parameters.Values, 1); err != nil {
+			return execution.InstanceSnapshot{}, err
 		}
 	}
-	input := execution.RunSnapshotInput{
+	input := execution.InstanceSnapshotInput{
 		SchemaVersion: schemaVersion,
-		RunID:         draft.RunID, TestTaskID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
-		TestTask:        execution.TestTaskSnapshot{ID: "task", CurrentVersionID: "task-v1"},
-		TestTaskVersion: execution.TestTaskVersionSnapshot{ID: "task-v1", TestTaskID: "task", VersionNumber: 1, Items: items},
-		Plan:            draft, Invocations: invocations,
+		InstanceID:    draft.InstanceID, ExecutionFlowID: "task", TestTaskVersionID: "task-v1", TestTaskVersionNumber: 1,
+		ExecutionFlow:        execution.TestTaskSnapshot{ID: "task"},
+		ExecutionFlowVersion: execution.ExecutionFlowVersionSnapshot{ID: "task-v1", ExecutionFlowID: "task", VersionNumber: 1, Items: items},
+		Plan:                 draft, Invocations: invocations,
 		Environment:      execution.EnvironmentSnapshot{ID: "env", Revision: 1, DisplayName: "Environment", BaseURL: "https://example.test", Properties: environmentProperties, Variables: environmentVariables},
 		FailurePolicy:    draft.FailurePolicy,
 		ScreenshotPolicy: execution.ScreenshotPolicySnapshot{Version: execution.ScreenshotPolicyV1},
 		HealerPolicy:     execution.DefaultHealerPolicySnapshot(),
 	}
-	snapshot, err := execution.SealRunSnapshot(input)
+	snapshot, err := execution.SealInstanceSnapshot(input)
 	if err != nil {
-		return execution.RunSnapshot{}, err
+		return execution.InstanceSnapshot{}, err
 	}
 	return snapshot, nil
 }
