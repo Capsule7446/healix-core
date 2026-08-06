@@ -412,6 +412,104 @@ func TestDecideEntryCompletionRefusesRevisionsWithoutARepresentableSuccessor(t *
 	}
 }
 
+// TestDecideEntryCompletionOnlyGuardsTheCounterItAdvances pins the other half
+// of the ceiling rule. A counter that this decision carries through unchanged
+// needs no successor, so a state sitting at the ceiling is not exhausted for
+// that counter and the completion must still be decided.
+//
+// Refusing it would produce exactly the failure this contract exists to
+// prevent: a finished entry left in RUNNING with a lease nobody can release.
+// The cancellation generation is the only counter that can be carried through —
+// the intent revision always advances — so it is the only one that can be at
+// the ceiling and still decidable.
+func TestDecideEntryCompletionOnlyGuardsTheCounterItAdvances(t *testing.T) {
+	cases := []struct {
+		name       string
+		intent     TerminalIntent
+		executed   engine.ExecutionOutcome
+		wantStatus domainexecution.EntryStatus
+	}{
+		{
+			// 裁决一 at the ceiling: the cancel loses to the finished run, so no
+			// generation is spent and none needs to be representable.
+			name:       "cancel intent loses to a finished run",
+			intent:     TerminalIntentCancel,
+			executed:   engine.OutcomeSucceeded,
+			wantStatus: domainexecution.EntrySucceeded,
+		},
+		{
+			name:       "abort intent loses to a finished run",
+			intent:     TerminalIntentAbort,
+			executed:   engine.OutcomeSucceeded,
+			wantStatus: domainexecution.EntrySucceeded,
+		},
+		{
+			name:       "no intent to carry out",
+			intent:     TerminalIntentNone,
+			executed:   engine.OutcomeFailed,
+			wantStatus: domainexecution.EntryFailed,
+		},
+		{
+			name:       "no intent, engine never started",
+			intent:     TerminalIntentNone,
+			executed:   engine.ExecutionNotStarted,
+			wantStatus: domainexecution.EntryFailed,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			state := EntryCompletionState{
+				EntryStatus:            domainexecution.EntryRunning,
+				TerminalIntent:         testCase.intent,
+				TerminalIntentRevision: 7,
+				CancellationGeneration: MaxExpectedEntryCompletionRevision,
+			}
+			decision, err := DecideEntryCompletion(state, engineOutcome(testCase.executed, engine.RecordingDisabled, engine.TimelineDisabled))
+			if err != nil {
+				t.Fatalf("a generation this decision does not advance must not exhaust it: %v", err)
+			}
+			if decision.EntryStatus != testCase.wantStatus {
+				t.Fatalf("entry status = %q, want %q", decision.EntryStatus, testCase.wantStatus)
+			}
+			if decision.NextCancellationGeneration != MaxExpectedEntryCompletionRevision {
+				t.Fatalf("carried-through generation = %d, want %d", decision.NextCancellationGeneration, MaxExpectedEntryCompletionRevision)
+			}
+			if decision.NextIntentRevision != 8 {
+				t.Fatalf("intent revision = %d, want 8", decision.NextIntentRevision)
+			}
+		})
+	}
+}
+
+// TestDecideEntryCompletionRefusesAGenerationItWouldHaveToAdvance is the
+// complement: when the intent is actually carried out the generation does need
+// a successor, and a state at the ceiling has none.
+func TestDecideEntryCompletionRefusesAGenerationItWouldHaveToAdvance(t *testing.T) {
+	for _, testCase := range []struct {
+		intent   TerminalIntent
+		executed engine.ExecutionOutcome
+	}{
+		{intent: TerminalIntentCancel, executed: engine.OutcomeCanceled},
+		{intent: TerminalIntentAbort, executed: engine.OutcomeFailed},
+	} {
+		t.Run(string(testCase.intent), func(t *testing.T) {
+			state := EntryCompletionState{
+				EntryStatus:            domainexecution.EntryRunning,
+				TerminalIntent:         testCase.intent,
+				CancellationGeneration: MaxExpectedEntryCompletionRevision,
+			}
+			decision, err := DecideEntryCompletion(state, engineOutcome(testCase.executed, engine.RecordingDisabled, engine.TimelineDisabled))
+			if !fault.IsCode(err, CodeEntryCompletionRevisionExhausted) {
+				t.Fatalf("want %q, got %v", CodeEntryCompletionRevisionExhausted, err)
+			}
+			if !reflect.DeepEqual(decision, EntryCompletionDecision{}) {
+				t.Fatalf("refused decision must be zero, got %+v", decision)
+			}
+		})
+	}
+}
+
 // TestDecideEntryCompletionLeavesEvidenceQualityOutOfTheTerminalStatus pins the
 // reachable SUCCEEDED + STOP_FAILED pair: a recorder hiccup degrades the
 // evidence, never the run.
