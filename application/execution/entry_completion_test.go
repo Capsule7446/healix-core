@@ -482,6 +482,79 @@ func TestDecideEntryCompletionOnlyGuardsTheCounterItAdvances(t *testing.T) {
 	}
 }
 
+// TestDecideEntryCompletionWritesAtMostTheDeclaredCeiling pins the exact edge
+// of the ceiling rule, in both directions, for both counters.
+//
+// MaxExpectedEntryCompletionRevision documents the largest value core will ever
+// write, so the guard must admit the state one below it — which produces
+// exactly the ceiling — and refuse the state at it, which would produce
+// math.MaxInt64. Off by one in either direction is a real defect: too strict
+// strands a completable entry, too loose lets core write a value its own
+// contract says it never writes.
+func TestDecideEntryCompletionWritesAtMostTheDeclaredCeiling(t *testing.T) {
+	t.Run("intent revision one below the ceiling produces exactly the ceiling", func(t *testing.T) {
+		state := EntryCompletionState{
+			EntryStatus:            domainexecution.EntryRunning,
+			TerminalIntent:         TerminalIntentNone,
+			TerminalIntentRevision: MaxExpectedEntryCompletionRevision - 1,
+		}
+		decision, err := DecideEntryCompletion(state, engineOutcome(engine.OutcomeFailed, engine.RecordingDisabled, engine.TimelineDisabled))
+		if err != nil {
+			t.Fatalf("the last representable successor must still be written: %v", err)
+		}
+		if decision.NextIntentRevision != MaxExpectedEntryCompletionRevision {
+			t.Fatalf("next intent revision = %d, want exactly %d", decision.NextIntentRevision, MaxExpectedEntryCompletionRevision)
+		}
+		if decision.NextIntentRevision == math.MaxInt64 {
+			t.Fatal("core wrote math.MaxInt64, which its own ceiling says it never writes")
+		}
+	})
+
+	t.Run("cancellation generation one below the ceiling produces exactly the ceiling", func(t *testing.T) {
+		state := EntryCompletionState{
+			EntryStatus:            domainexecution.EntryRunning,
+			TerminalIntent:         TerminalIntentCancel,
+			CancellationGeneration: MaxExpectedEntryCompletionRevision - 1,
+		}
+		decision, err := DecideEntryCompletion(state, engineOutcome(engine.OutcomeCanceled, engine.RecordingDisabled, engine.TimelineDisabled))
+		if err != nil {
+			t.Fatalf("the last representable successor must still be written: %v", err)
+		}
+		if decision.NextCancellationGeneration != MaxExpectedEntryCompletionRevision {
+			t.Fatalf("next cancellation generation = %d, want exactly %d", decision.NextCancellationGeneration, MaxExpectedEntryCompletionRevision)
+		}
+		if decision.NextCancellationGeneration == math.MaxInt64 {
+			t.Fatal("core wrote math.MaxInt64, which its own ceiling says it never writes")
+		}
+	})
+
+	// No reachable decision may exceed the ceiling: sweep the whole vocabulary
+	// with both counters one below it, so any future rule that advances a
+	// counter twice, or advances one this sweep does not expect, shows up here.
+	for _, intent := range allTerminalIntents() {
+		for _, executed := range allExecutionOutcomes() {
+			t.Run(fmt.Sprintf("no decision exceeds the ceiling/%s-%s", intent, executed), func(t *testing.T) {
+				state := EntryCompletionState{
+					EntryStatus:            domainexecution.EntryRunning,
+					TerminalIntent:         intent,
+					TerminalIntentRevision: MaxExpectedEntryCompletionRevision - 1,
+					CancellationGeneration: MaxExpectedEntryCompletionRevision - 1,
+				}
+				decision, err := DecideEntryCompletion(state, engineOutcome(executed, engine.RecordingDisabled, engine.TimelineDisabled))
+				if err != nil {
+					t.Fatalf("decide: %v", err)
+				}
+				if decision.NextIntentRevision > MaxExpectedEntryCompletionRevision {
+					t.Fatalf("next intent revision %d exceeds the declared ceiling %d", decision.NextIntentRevision, MaxExpectedEntryCompletionRevision)
+				}
+				if decision.NextCancellationGeneration > MaxExpectedEntryCompletionRevision {
+					t.Fatalf("next cancellation generation %d exceeds the declared ceiling %d", decision.NextCancellationGeneration, MaxExpectedEntryCompletionRevision)
+				}
+			})
+		}
+	}
+}
+
 // TestDecideEntryCompletionRefusesAGenerationItWouldHaveToAdvance is the
 // complement: when the intent is actually carried out the generation does need
 // a successor, and a state at the ceiling has none.
