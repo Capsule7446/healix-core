@@ -26,6 +26,7 @@ var w5wireTagInventory = map[string][]string{
 	"application/scheduling/instance_command_services.go":        {"cancel-instance-request-v1", "abort-instance-request-v1", "reorder-queue-request-v1"},
 	"application/automation/heal_candidate_repository.go":        {"heal-review-v1"},
 	"application/automation/sampling_publication_transaction.go": {"sampling-publication-v1"},
+	"application/execution/entry_completion_transaction.go":      {"complete-entry-request-v1"},
 }
 
 // TestW5DigestWireTagsAreRegistered checks both directions:
