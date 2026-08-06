@@ -412,6 +412,177 @@ func TestDecideEntryCompletionRefusesRevisionsWithoutARepresentableSuccessor(t *
 	}
 }
 
+// TestDecideEntryCompletionOnlyGuardsTheCounterItAdvances pins the other half
+// of the ceiling rule. A counter that this decision carries through unchanged
+// needs no successor, so a state sitting at the ceiling is not exhausted for
+// that counter and the completion must still be decided.
+//
+// Refusing it would produce exactly the failure this contract exists to
+// prevent: a finished entry left in RUNNING with a lease nobody can release.
+// The cancellation generation is the only counter that can be carried through —
+// the intent revision always advances — so it is the only one that can be at
+// the ceiling and still decidable.
+func TestDecideEntryCompletionOnlyGuardsTheCounterItAdvances(t *testing.T) {
+	cases := []struct {
+		name       string
+		intent     TerminalIntent
+		executed   engine.ExecutionOutcome
+		wantStatus domainexecution.EntryStatus
+	}{
+		{
+			// 裁决一 at the ceiling: the cancel loses to the finished run, so no
+			// generation is spent and none needs to be representable.
+			name:       "cancel intent loses to a finished run",
+			intent:     TerminalIntentCancel,
+			executed:   engine.OutcomeSucceeded,
+			wantStatus: domainexecution.EntrySucceeded,
+		},
+		{
+			name:       "abort intent loses to a finished run",
+			intent:     TerminalIntentAbort,
+			executed:   engine.OutcomeSucceeded,
+			wantStatus: domainexecution.EntrySucceeded,
+		},
+		{
+			name:       "no intent to carry out",
+			intent:     TerminalIntentNone,
+			executed:   engine.OutcomeFailed,
+			wantStatus: domainexecution.EntryFailed,
+		},
+		{
+			name:       "no intent, engine never started",
+			intent:     TerminalIntentNone,
+			executed:   engine.ExecutionNotStarted,
+			wantStatus: domainexecution.EntryFailed,
+		},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			state := EntryCompletionState{
+				EntryStatus:            domainexecution.EntryRunning,
+				TerminalIntent:         testCase.intent,
+				TerminalIntentRevision: 7,
+				CancellationGeneration: MaxExpectedEntryCompletionRevision,
+			}
+			decision, err := DecideEntryCompletion(state, engineOutcome(testCase.executed, engine.RecordingDisabled, engine.TimelineDisabled))
+			if err != nil {
+				t.Fatalf("a generation this decision does not advance must not exhaust it: %v", err)
+			}
+			if decision.EntryStatus != testCase.wantStatus {
+				t.Fatalf("entry status = %q, want %q", decision.EntryStatus, testCase.wantStatus)
+			}
+			if decision.NextCancellationGeneration != MaxExpectedEntryCompletionRevision {
+				t.Fatalf("carried-through generation = %d, want %d", decision.NextCancellationGeneration, MaxExpectedEntryCompletionRevision)
+			}
+			if decision.NextIntentRevision != 8 {
+				t.Fatalf("intent revision = %d, want 8", decision.NextIntentRevision)
+			}
+		})
+	}
+}
+
+// TestDecideEntryCompletionWritesAtMostTheDeclaredCeiling pins the exact edge
+// of the ceiling rule, in both directions, for both counters.
+//
+// MaxExpectedEntryCompletionRevision documents the largest value core will ever
+// write, so the guard must admit the state one below it — which produces
+// exactly the ceiling — and refuse the state at it, which would produce
+// math.MaxInt64. Off by one in either direction is a real defect: too strict
+// strands a completable entry, too loose lets core write a value its own
+// contract says it never writes.
+func TestDecideEntryCompletionWritesAtMostTheDeclaredCeiling(t *testing.T) {
+	t.Run("intent revision one below the ceiling produces exactly the ceiling", func(t *testing.T) {
+		state := EntryCompletionState{
+			EntryStatus:            domainexecution.EntryRunning,
+			TerminalIntent:         TerminalIntentNone,
+			TerminalIntentRevision: MaxExpectedEntryCompletionRevision - 1,
+		}
+		decision, err := DecideEntryCompletion(state, engineOutcome(engine.OutcomeFailed, engine.RecordingDisabled, engine.TimelineDisabled))
+		if err != nil {
+			t.Fatalf("the last representable successor must still be written: %v", err)
+		}
+		if decision.NextIntentRevision != MaxExpectedEntryCompletionRevision {
+			t.Fatalf("next intent revision = %d, want exactly %d", decision.NextIntentRevision, MaxExpectedEntryCompletionRevision)
+		}
+		if decision.NextIntentRevision == math.MaxInt64 {
+			t.Fatal("core wrote math.MaxInt64, which its own ceiling says it never writes")
+		}
+	})
+
+	t.Run("cancellation generation one below the ceiling produces exactly the ceiling", func(t *testing.T) {
+		state := EntryCompletionState{
+			EntryStatus:            domainexecution.EntryRunning,
+			TerminalIntent:         TerminalIntentCancel,
+			CancellationGeneration: MaxExpectedEntryCompletionRevision - 1,
+		}
+		decision, err := DecideEntryCompletion(state, engineOutcome(engine.OutcomeCanceled, engine.RecordingDisabled, engine.TimelineDisabled))
+		if err != nil {
+			t.Fatalf("the last representable successor must still be written: %v", err)
+		}
+		if decision.NextCancellationGeneration != MaxExpectedEntryCompletionRevision {
+			t.Fatalf("next cancellation generation = %d, want exactly %d", decision.NextCancellationGeneration, MaxExpectedEntryCompletionRevision)
+		}
+		if decision.NextCancellationGeneration == math.MaxInt64 {
+			t.Fatal("core wrote math.MaxInt64, which its own ceiling says it never writes")
+		}
+	})
+
+	// No reachable decision may exceed the ceiling: sweep the whole vocabulary
+	// with both counters one below it, so any future rule that advances a
+	// counter twice, or advances one this sweep does not expect, shows up here.
+	for _, intent := range allTerminalIntents() {
+		for _, executed := range allExecutionOutcomes() {
+			t.Run(fmt.Sprintf("no decision exceeds the ceiling/%s-%s", intent, executed), func(t *testing.T) {
+				state := EntryCompletionState{
+					EntryStatus:            domainexecution.EntryRunning,
+					TerminalIntent:         intent,
+					TerminalIntentRevision: MaxExpectedEntryCompletionRevision - 1,
+					CancellationGeneration: MaxExpectedEntryCompletionRevision - 1,
+				}
+				decision, err := DecideEntryCompletion(state, engineOutcome(executed, engine.RecordingDisabled, engine.TimelineDisabled))
+				if err != nil {
+					t.Fatalf("decide: %v", err)
+				}
+				if decision.NextIntentRevision > MaxExpectedEntryCompletionRevision {
+					t.Fatalf("next intent revision %d exceeds the declared ceiling %d", decision.NextIntentRevision, MaxExpectedEntryCompletionRevision)
+				}
+				if decision.NextCancellationGeneration > MaxExpectedEntryCompletionRevision {
+					t.Fatalf("next cancellation generation %d exceeds the declared ceiling %d", decision.NextCancellationGeneration, MaxExpectedEntryCompletionRevision)
+				}
+			})
+		}
+	}
+}
+
+// TestDecideEntryCompletionRefusesAGenerationItWouldHaveToAdvance is the
+// complement: when the intent is actually carried out the generation does need
+// a successor, and a state at the ceiling has none.
+func TestDecideEntryCompletionRefusesAGenerationItWouldHaveToAdvance(t *testing.T) {
+	for _, testCase := range []struct {
+		intent   TerminalIntent
+		executed engine.ExecutionOutcome
+	}{
+		{intent: TerminalIntentCancel, executed: engine.OutcomeCanceled},
+		{intent: TerminalIntentAbort, executed: engine.OutcomeFailed},
+	} {
+		t.Run(string(testCase.intent), func(t *testing.T) {
+			state := EntryCompletionState{
+				EntryStatus:            domainexecution.EntryRunning,
+				TerminalIntent:         testCase.intent,
+				CancellationGeneration: MaxExpectedEntryCompletionRevision,
+			}
+			decision, err := DecideEntryCompletion(state, engineOutcome(testCase.executed, engine.RecordingDisabled, engine.TimelineDisabled))
+			if !fault.IsCode(err, CodeEntryCompletionRevisionExhausted) {
+				t.Fatalf("want %q, got %v", CodeEntryCompletionRevisionExhausted, err)
+			}
+			if !reflect.DeepEqual(decision, EntryCompletionDecision{}) {
+				t.Fatalf("refused decision must be zero, got %+v", decision)
+			}
+		})
+	}
+}
+
 // TestDecideEntryCompletionLeavesEvidenceQualityOutOfTheTerminalStatus pins the
 // reachable SUCCEEDED + STOP_FAILED pair: a recorder hiccup degrades the
 // evidence, never the run.
