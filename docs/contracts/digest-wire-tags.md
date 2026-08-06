@@ -15,6 +15,7 @@
 | `application/scheduling/instance_command_services.go:307` | `reorder-queue-request-v1` | 每一条已存的重排幂等记录 | `5ecfde2` 引入 |
 | `application/automation/heal_candidate_repository.go:17` | `heal-review-v1` | 每一条已存的 heal review 记录 | 未变更 |
 | `application/automation/sampling_publication_transaction.go:16` | `sampling-publication-v1` | 每一条已存的 sampling publication 记录 | 未变更 |
+| `application/execution/entry_completion_transaction.go:20` | `complete-entry-request-v1` | 每一条已存的 entry completion 幂等记录 | 本分支新增 |
 
 ## `5ecfde2` 造成的存量失效
 

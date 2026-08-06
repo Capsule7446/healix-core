@@ -30,7 +30,7 @@ func TestEntryAuthorizationFailurePreventsSessionCreation(t *testing.T) {
 	authorizer := &recordingAuthorizer{events: &events, authorizeErr: domainexecution.NewStaleWorkerFenceError()}
 	runner := &entryRunnerFixture{events: &events}
 
-	err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
+	_, err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
 		context.Background(),
 		domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
 		domainexecution.Entry{ID: mustEntryID("entry")},
@@ -58,7 +58,7 @@ func TestEntryAuthorizationOrder(t *testing.T) {
 	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
 
-	err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
+	_, err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
 		context.Background(),
 		domainexecution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
 		domainexecution.Entry{ID: mustEntryID("entry")},
@@ -96,7 +96,7 @@ func TestEntryExecutorMalformedFenceBeforeAuthorizer(t *testing.T) {
 	factory := &sessionFactoryFixture{events: &events}
 	runner := &entryRunnerFixture{events: &events}
 
-	err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
+	_, err := mustEntryExecutorWithAuthorizer(t, authorizer, factory, runner).Execute(
 		context.Background(),
 		domainexecution.WorkerFence{InstanceID: mustInstanceID("run")},
 		domainexecution.Entry{ID: mustEntryID("entry")},
