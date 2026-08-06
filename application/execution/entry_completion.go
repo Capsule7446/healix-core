@@ -31,11 +31,16 @@ const (
 // MaxExpectedEntryCompletionRevision is the largest value core will ever write
 // into NextIntentRevision or NextCancellationGeneration.
 //
-// A state already at or above it has no successor core may produce: the next
+// A counter already at or above it has no successor core may produce: the next
 // value would be math.MaxInt64, and one further completion would wrap to
 // MinInt64 — a value no adapter can compare-and-swap against, which silently
 // turns the host's optimistic-concurrency check into no check at all. The
 // completion is refused instead.
+//
+// The ceiling is checked per counter, and only for a counter the decision
+// actually advances. A cancellation generation carried through unchanged has no
+// successor to be exhausted, so a state sitting at the ceiling is still
+// completable whenever the intent was not carried out.
 const MaxExpectedEntryCompletionRevision int64 = math.MaxInt64 - 1
 
 // mustEntryCompletionViolation builds a field-level reason. Construction can
@@ -249,7 +254,8 @@ type EntryCompletionDecision struct {
 // told apart from a fresh one. NextCancellationGeneration advances only when
 // the intent was actually carried out — that is, when the terminal status is
 // CANCELED or ABORTED — so a generation is never spent on an intent that lost
-// to a finished run.
+// to a finished run, and a generation at MaxExpectedEntryCompletionRevision
+// blocks only the completions that would have had to advance it.
 //
 // Ordering: this decision must be reached, and committed through
 // EntryCompletionTransaction, before scheduling asks DecideAdvance whether the
@@ -266,14 +272,22 @@ func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (E
 	if state.EntryStatus != domainexecution.EntryRunning {
 		return EntryCompletionDecision{}, entryCompletionNotRunningError()
 	}
-	if state.TerminalIntentRevision >= MaxExpectedEntryCompletionRevision ||
-		state.CancellationGeneration >= MaxExpectedEntryCompletionRevision {
+	// The intent revision advances on every completion, so it is always the
+	// decision's own successor that has to be representable.
+	if state.TerminalIntentRevision >= MaxExpectedEntryCompletionRevision {
 		return EntryCompletionDecision{}, entryCompletionRevisionExhaustedError()
 	}
 
 	status := decideTerminalEntryStatus(state.TerminalIntent, outcome.Result.ExecutionOutcome)
 	nextGeneration := state.CancellationGeneration
 	if status == domainexecution.EntryCanceled || status == domainexecution.EntryAborted {
+		// Only a generation this decision actually spends needs a successor. A
+		// generation carried through unchanged has nothing to overflow, and
+		// refusing it would strand a finished entry in RUNNING with a lease
+		// nobody can release — the exact outcome this contract exists to prevent.
+		if state.CancellationGeneration >= MaxExpectedEntryCompletionRevision {
+			return EntryCompletionDecision{}, entryCompletionRevisionExhaustedError()
+		}
 		nextGeneration++
 	}
 	return EntryCompletionDecision{
