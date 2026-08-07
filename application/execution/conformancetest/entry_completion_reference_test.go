@@ -17,6 +17,7 @@ import (
 // staged copy below is immediately visible as a fault-point regression.
 type completionReferenceState struct {
 	entryStatus            domainexecution.EntryStatus
+	terminalCause          execution.TerminalCause
 	terminalIntent         execution.TerminalIntent
 	terminalIntentRevision int64
 	cancellationGeneration int64
@@ -76,6 +77,7 @@ func (f *completionReferenceFixture) Snapshot() conformancetest.CompletionSnapsh
 	defer f.mu.Unlock()
 	return conformancetest.CompletionSnapshot{
 		EntryStatus:            f.state.entryStatus,
+		TerminalCause:          f.state.terminalCause,
 		TerminalIntent:         f.state.terminalIntent,
 		TerminalIntentRevision: f.state.terminalIntentRevision,
 		CancellationGeneration: f.state.cancellationGeneration,
@@ -159,6 +161,7 @@ func (f *completionReferenceFixture) CompleteEntry(_ context.Context, intent exe
 		{conformancetest.CompletionFaultAfterDecision, func() {}},
 		{conformancetest.CompletionFaultAfterEntry, func() {
 			staged.entryStatus = intent.Decision.EntryStatus
+			staged.terminalCause = intent.Decision.TerminalCause
 			staged.terminalIntent = intent.Decision.NextIntent
 			staged.terminalIntentRevision = intent.Decision.NextIntentRevision
 			staged.cancellationGeneration = intent.Decision.NextCancellationGeneration

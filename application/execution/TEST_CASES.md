@@ -39,6 +39,7 @@
 | `RequestAbortIdentityConflictError` | [`application/execution/abort_request_transaction.go`](../../application/execution/abort_request_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NewAbortRequestService` | [`application/execution/abort_request_transaction.go`](../../application/execution/abort_request_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `AbortRequestService.Request` | [`application/execution/abort_request_transaction.go`](../../application/execution/abort_request_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `InterruptedEngineOutcome` | [`application/execution/entry_completion.go`](../../application/execution/entry_completion.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
 ## Test Case Evidence Matrix
 
@@ -159,6 +160,11 @@
 | `TestAbortRequestServiceWithoutATransactionIsUnavailable` | `Abort Request Service Without A Transaction Is Unavailable`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/abort_request_transaction_test.go`](../../application/execution/abort_request_transaction_test.go) · `TestAbortRequestServiceWithoutATransactionIsUnavailable` |
 | `TestAbortRequestServicePropagatesAdapterFailures` | `Abort Request Service Propagates Adapter Failures`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/abort_request_transaction_test.go`](../../application/execution/abort_request_transaction_test.go) · `TestAbortRequestServicePropagatesAdapterFailures` |
 | `TestRequestAbortOutcomeIsComparable` | `Request Abort Outcome Is Comparable`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/abort_request_transaction_test.go`](../../application/execution/abort_request_transaction_test.go) · `TestRequestAbortOutcomeIsComparable` |
+| `TestInterruptedOutcomeIsDistinctFromNotStarted` | `Interrupted Outcome Is Distinct From Not Started`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestInterruptedOutcomeIsDistinctFromNotStarted` |
+| `TestTerminalCauseSeparatesObservationFromResult` | `Terminal Cause Separates Observation From Result`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestTerminalCauseSeparatesObservationFromResult` |
+| `TestTerminalCauseIsIndependentOfTheIntent` | `Terminal Cause Is Independent Of The Intent`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestTerminalCauseIsIndependentOfTheIntent` |
+| `TestSucceededRunIsAlwaysReportedAsCompleted` | `Succeeded Run Is Always Reported As Completed`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestSucceededRunIsAlwaysReportedAsCompleted` |
+| `TestEngineOutcomeStillRejectsWhatTheEngineCannotReport` | `Engine Outcome Still Rejects What The Engine Cannot Report`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestEngineOutcomeStillRejectsWhatTheEngineCannotReport` |
 
 ## Cross-cutting / Conformance Cases
 
