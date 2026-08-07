@@ -248,9 +248,20 @@ type AbortRequestTransaction interface {
 	// It must call ValidateRequestAbortIntentDigest before touching storage,
 	// must write the Decision's Next* fields verbatim without recomputing the
 	// revision, and must return RequestAbortReplayed rather than applying twice
-	// when it finds the receipt already present inside the transaction. It
-	// returns RequestAbortIdentityConflictError when the entry no longer holds
-	// the state the command observed.
+	// when it finds the receipt already present inside the transaction.
+	//
+	// Two refusals are distinct and must not be collapsed, because the caller
+	// reacts differently to each:
+	//
+	//   - A fence that is not the one this worker holds is refused with
+	//     domainexecution.CodeWorkerFenceStale. The worker has lost its claim
+	//     and must stop, not retry.
+	//   - An entry that no longer holds the state the command observed is
+	//     refused with RequestAbortIdentityConflictError. The claim is still
+	//     good; the caller re-reads and rebuilds the command.
+	//
+	// An adapter that returns an unclassified storage error for either leaves
+	// the host unable to tell "give up" from "read again and retry".
 	RequestAbort(ctx context.Context, intent RequestAbortIntent) (RequestAbortOutcome, error)
 }
 

@@ -31,6 +31,7 @@ func allRecordingOutcomes() []engine.RecordingOutcome {
 		engine.RecordingSucceeded,
 		engine.RecordingStartFailed,
 		engine.RecordingStopFailed,
+		engine.RecordingUnobserved,
 	}
 }
 
@@ -40,6 +41,7 @@ func allTimelineOutcomes() []engine.TimelineOutcome {
 		engine.TimelineComplete,
 		engine.TimelineStartFailed,
 		engine.TimelineFinishFailed,
+		engine.TimelineUnobserved,
 	}
 }
 

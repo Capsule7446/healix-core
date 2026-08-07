@@ -165,6 +165,7 @@
 | `TestTerminalCauseIsIndependentOfTheIntent` | `Terminal Cause Is Independent Of The Intent`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestTerminalCauseIsIndependentOfTheIntent` |
 | `TestSucceededRunIsAlwaysReportedAsCompleted` | `Succeeded Run Is Always Reported As Completed`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestSucceededRunIsAlwaysReportedAsCompleted` |
 | `TestEngineOutcomeStillRejectsWhatTheEngineCannotReport` | `Engine Outcome Still Rejects What The Engine Cannot Report`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestEngineOutcomeStillRejectsWhatTheEngineCannotReport` |
+| `TestInterruptedOutcomeSaysUnknownOnEveryAxis` | `Interrupted Outcome Says Unknown On Every Axis`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/execution/recovery_terminal_test.go`](../../application/execution/recovery_terminal_test.go) · `TestInterruptedOutcomeSaysUnknownOnEveryAxis` |
 
 ## Cross-cutting / Conformance Cases
 

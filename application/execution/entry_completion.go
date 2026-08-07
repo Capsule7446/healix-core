@@ -152,8 +152,13 @@ func NotStartedEngineOutcome() EngineOutcome {
 func InterruptedEngineOutcome() EngineOutcome {
 	return EngineOutcome{Result: engine.EntryResult{
 		ExecutionOutcome: engine.ExecutionInterrupted,
-		RecordingOutcome: engine.RecordingDisabled,
-		TimelineOutcome:  engine.TimelineDisabled,
+		// Every axis says the same thing: unknown. Writing DISABLED here would
+		// repeat one level down the exact falsehood this constructor exists to
+		// stop -- an entry whose observer died may well have been recording, and
+		// may have left a partial file the host will later find and be unable to
+		// reconcile with a record claiming recording was switched off.
+		RecordingOutcome: engine.RecordingUnobserved,
+		TimelineOutcome:  engine.TimelineUnobserved,
 	}}
 }
 
@@ -165,12 +170,12 @@ func (outcome EngineOutcome) Validate() error {
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.executionOutcome", "execution outcome is not one the engine reports"))
 	}
 	switch outcome.Result.RecordingOutcome {
-	case engine.RecordingDisabled, engine.RecordingSucceeded, engine.RecordingStartFailed, engine.RecordingStopFailed:
+	case engine.RecordingDisabled, engine.RecordingSucceeded, engine.RecordingStartFailed, engine.RecordingStopFailed, engine.RecordingUnobserved:
 	default:
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.recordingOutcome", "recording outcome is not one the engine reports"))
 	}
 	switch outcome.Result.TimelineOutcome {
-	case engine.TimelineDisabled, engine.TimelineComplete, engine.TimelineStartFailed, engine.TimelineFinishFailed:
+	case engine.TimelineDisabled, engine.TimelineComplete, engine.TimelineStartFailed, engine.TimelineFinishFailed, engine.TimelineUnobserved:
 	default:
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.timelineOutcome", "timeline outcome is not one the engine reports"))
 	}
