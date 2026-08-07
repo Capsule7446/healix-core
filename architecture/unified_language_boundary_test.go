@@ -339,19 +339,49 @@ func forwardedReceiverMethod(function *ast.FuncDecl) (string, bool) {
 	return selector.Sel.Name, true
 }
 
-// A deprecation marker is the other shape of the same promise: it says an old
-// name still works. The plan offers no deprecation window — the replacement is
-// the migration.
+// retiringFiles is the retirement register. A Deprecated marker is allowed
+// only here, and every entry must also appear in
+// docs/contracts/retirement-plan.md.
+//
+// The distinction this register draws is the whole reason the guard below is
+// not a flat ban. Two different things wear the same marker:
+//
+//   - A rename. The new name is in Core, so the old one buys nothing and the
+//     replacement IS the migration. Still forbidden, as it always was.
+//   - An ownership handoff. The capability is leaving Core entirely and its
+//     replacement lives in the host. Core cannot delete it before hosts have
+//     built their own, so a window is not a convenience -- it is the only
+//     order the removal can happen in.
+//
+// wholeFile marks a file whose entire exported surface is retiring, which the
+// companion guard uses to require that nothing there grows unmarked.
+var retiringFiles = map[string]struct {
+	wholeFile bool
+	reason    string
+}{
+	"domain/automation/folders.go":                {true, "folder hierarchy moves to the host"},
+	"application/automation/folder_service.go":    {true, "folder hierarchy moves to the host"},
+	"application/automation/folder_repository.go": {true, "folder hierarchy moves to the host"},
+	"domain/automation/assets.go":                 {false, "the FolderID back-reference retires with the hierarchy"},
+}
+
+// TestNoDeprecationMarkersPromiseAnOldNameStillWorks keeps the original rule
+// for everything outside the register: a marker that says an old name still
+// works is a compatibility facade, and Core does not offer that window.
 func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 	root := repositoryRoot(t)
 	for _, owner := range []string{"domain", "application"} {
 		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
 			relative, _ := filepath.Rel(root, path)
+			key := filepath.ToSlash(relative)
+			if _, retiring := retiringFiles[key]; retiring {
+				return
+			}
 			for _, group := range parsed.Comments {
 				for _, comment := range group.List {
 					if strings.Contains(comment.Text, "Deprecated:") {
-						t.Errorf("%s:%d carries a Deprecated marker; the refactor has no deprecation window, so an old name is either gone or it was never replaced",
-							filepath.ToSlash(relative), fset.Position(comment.Pos()).Line)
+						t.Errorf("%s:%d carries a Deprecated marker outside the retirement register; a rename has no deprecation window, and a capability leaving Core must be registered in retiringFiles and docs/contracts/retirement-plan.md",
+							key, fset.Position(comment.Pos()).Line)
 					}
 				}
 			}
@@ -360,6 +390,103 @@ func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 			t.Fatalf("walk %s: %v", owner, err)
 		}
 	}
+}
+
+// TestRetiringSurfaceDoesNotGrowUnmarked is the half that makes the register
+// safe to have. A file allowed to carry markers would otherwise be a place
+// where new unmarked exports could accumulate, which is how a retirement
+// quietly turns back into a permanent feature.
+func TestRetiringSurfaceDoesNotGrowUnmarked(t *testing.T) {
+	root := repositoryRoot(t)
+	seen := map[string]bool{}
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			key := filepath.ToSlash(relative)
+			entry, retiring := retiringFiles[key]
+			if !retiring {
+				return
+			}
+			seen[key] = true
+			if !entry.wholeFile {
+				return
+			}
+			for _, declaration := range parsed.Decls {
+				for _, exported := range exportedNamesWithDoc(declaration) {
+					if strings.Contains(exported.doc, "Deprecated:") {
+						continue
+					}
+					t.Errorf("%s:%d exports %s from a retiring file without a Deprecated marker; %s, so nothing here may grow unmarked",
+						key, fset.Position(exported.pos).Line, exported.name, entry.reason)
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+	for key := range retiringFiles {
+		if !seen[key] {
+			t.Errorf("retirement register lists %s, which no longer exists; remove the entry once the removal has landed", key)
+		}
+	}
+}
+
+// TestRetirementRegisterMatchesItsPlan keeps the register and the published
+// plan from drifting. The register decides what the compiler tolerates; the
+// plan is what a host reads to learn what it must build before the removal
+// lands. A file in one and not the other means somebody is working from a
+// document that no longer describes the code.
+func TestRetirementRegisterMatchesItsPlan(t *testing.T) {
+	root := repositoryRoot(t)
+	planPath := filepath.Join(root, "docs", "contracts", "retirement-plan.md")
+	lines, err := readLines(planPath)
+	if err != nil {
+		t.Fatalf("read retirement plan: %v", err)
+	}
+	plan := strings.Join(lines, "\n")
+	for key := range retiringFiles {
+		if !strings.Contains(plan, key) {
+			t.Errorf("%s is in the retirement register but not in docs/contracts/retirement-plan.md; a host cannot prepare for a removal it is never told about", key)
+		}
+	}
+}
+
+type exportedName struct {
+	name string
+	doc  string
+	pos  token.Pos
+}
+
+// exportedNamesWithDoc pairs each exported top-level name in a declaration
+// with the doc comment that would carry its marker. A grouped const or var
+// block puts the marker on either the group or the individual spec, and godoc
+// honours both, so both are searched.
+func exportedNamesWithDoc(declaration ast.Decl) []exportedName {
+	var found []exportedName
+	switch typed := declaration.(type) {
+	case *ast.FuncDecl:
+		if typed.Name.IsExported() {
+			found = append(found, exportedName{typed.Name.Name, typed.Doc.Text(), typed.Name.Pos()})
+		}
+	case *ast.GenDecl:
+		groupDoc := typed.Doc.Text()
+		for _, spec := range typed.Specs {
+			switch value := spec.(type) {
+			case *ast.TypeSpec:
+				if value.Name.IsExported() {
+					found = append(found, exportedName{value.Name.Name, groupDoc + value.Doc.Text() + value.Comment.Text(), value.Name.Pos()})
+				}
+			case *ast.ValueSpec:
+				for _, name := range value.Names {
+					if name.IsExported() {
+						found = append(found, exportedName{name.Name, groupDoc + value.Doc.Text() + value.Comment.Text(), name.Pos()})
+					}
+				}
+			}
+		}
+	}
+	return found
 }
 
 // One content type, one deep copy. Sampling and Automation each had their own
