@@ -239,42 +239,9 @@ func TestNoExportedConstAliasKeepsAnOldNameAlive(t *testing.T) {
 		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
 			relative, _ := filepath.Rel(root, path)
 			for _, decl := range parsed.Decls {
-				generic, ok := decl.(*ast.GenDecl)
-				if !ok || generic.Tok != token.CONST {
-					continue
-				}
-				// A const spec with no expression list repeats the previous
-				// one. `const ( New = Existing; Old )` therefore declares two
-				// exported names for one value while only the first spec
-				// carries the identifier, so reading each spec in isolation
-				// would let the second through — the very shape being hunted,
-				// spelled in the one way that costs no characters at all.
-				var inherited []ast.Expr
-				for _, spec := range generic.Specs {
-					valueSpec, ok := spec.(*ast.ValueSpec)
-					if !ok {
-						continue
-					}
-					values := valueSpec.Values
-					if len(values) == 0 {
-						values = inherited
-					} else {
-						inherited = values
-					}
-					for index, name := range valueSpec.Names {
-						if !name.IsExported() || index >= len(values) {
-							continue
-						}
-						alias, ok := values[index].(*ast.Ident)
-						if !ok || !alias.IsExported() {
-							continue
-						}
-						if _, allowed := permitted[name.Name]; allowed {
-							continue
-						}
-						t.Errorf("%s:%d declares the exported constant %s as a second name for %s; the refactor replaces names outright, so a constant alias keeping an old public name reachable is a compatibility facade",
-							filepath.ToSlash(relative), fset.Position(name.Pos()).Line, name.Name, alias.Name)
-					}
+				for _, alias := range constAliasesIn(decl, permitted) {
+					t.Errorf("%s:%d declares the exported constant %s as a second name for %s; the refactor replaces names outright, so a constant alias keeping an old public name reachable is a compatibility facade",
+						filepath.ToSlash(relative), fset.Position(alias.pos).Line, alias.name, alias.target)
 				}
 			}
 		})
@@ -598,6 +565,61 @@ type exportedName struct {
 	name string
 	doc  string
 	pos  token.Pos
+}
+
+// constAlias is one exported constant declared as a second name for another.
+type constAlias struct {
+	name   string
+	target string
+	pos    token.Pos
+}
+
+// constAliasesIn returns the exported constant aliases one declaration makes.
+//
+// It lives outside the test loop so guard_predicate_test.go can drive its whole
+// decision matrix from fixtures. That separation is not cosmetic: while this
+// logic was inline, the only way to show it worked was to mutate real source,
+// run, and revert — which tests the shapes the author thought of and nothing
+// else, and is exactly how the inherited-expression case below went unnoticed.
+//
+// A const spec with no expression list repeats the previous one.
+// `const ( New = Existing; Old )` therefore declares two exported names for one
+// value while only the first spec carries the identifier, so reading each spec
+// in isolation would let the second through — the very shape being hunted,
+// spelled in the one way that costs no characters at all.
+func constAliasesIn(declaration ast.Decl, permitted map[string]string) []constAlias {
+	generic, ok := declaration.(*ast.GenDecl)
+	if !ok || generic.Tok != token.CONST {
+		return nil
+	}
+	var found []constAlias
+	var inherited []ast.Expr
+	for _, spec := range generic.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		values := valueSpec.Values
+		if len(values) == 0 {
+			values = inherited
+		} else {
+			inherited = values
+		}
+		for index, name := range valueSpec.Names {
+			if !name.IsExported() || index >= len(values) {
+				continue
+			}
+			alias, ok := values[index].(*ast.Ident)
+			if !ok || !alias.IsExported() {
+				continue
+			}
+			if _, allowed := permitted[name.Name]; allowed {
+				continue
+			}
+			found = append(found, constAlias{name: name.Name, target: alias.Name, pos: name.Pos()})
+		}
+	}
+	return found
 }
 
 // markedSymbolsIn returns every exported declaration or struct field in the
