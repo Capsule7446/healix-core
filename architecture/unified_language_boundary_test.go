@@ -465,8 +465,9 @@ func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 				}
 				// A marker attached to nothing the walk recognises is still a
 				// marker, and it would otherwise be invisible to the loop above.
-				if strays := countDeprecationMarkers(parsed) - len(marked); strays > 0 {
-					t.Errorf("%s carries %d Deprecated marker(s) not attached to any exported declaration or field", key, strays)
+				for _, stray := range unattachedDeprecationMarkers(parsed) {
+					t.Errorf("%s:%d carries a Deprecated marker attached to no declaration or field; a marker documents something, and one that documents nothing is either misplaced or hiding",
+						key, fset.Position(stray.Pos()).Line)
 				}
 				return
 			}
@@ -650,16 +651,49 @@ func exportedFieldsWithTypeDoc(declaration ast.Decl) []exportedName {
 	return found
 }
 
-// countDeprecationMarkers counts marker comment groups in the file, so a marker
-// attached to nothing can be told apart from one the walk above accounted for.
-func countDeprecationMarkers(parsed *ast.File) int {
-	count := 0
-	for _, group := range parsed.Comments {
-		if strings.Contains(group.Text(), "Deprecated:") {
-			count++
+// unattachedDeprecationMarkers returns the marker comment groups that document
+// no declaration or field.
+//
+// It compares identities rather than counts. An earlier version subtracted the
+// number of marked symbols from the number of marker comments, which assumed
+// the two were one to one — and they are not: a marker on a grouped
+// declaration documents every name in the group, so one comment can produce
+// several marked symbols. The surplus then cancelled a genuine stray out of
+// existence, and the guard passed while an unattached marker sat in the file.
+func unattachedDeprecationMarkers(parsed *ast.File) []*ast.CommentGroup {
+	attached := map[*ast.CommentGroup]bool{}
+	note := func(groups ...*ast.CommentGroup) {
+		for _, group := range groups {
+			if group != nil {
+				attached[group] = true
+			}
 		}
 	}
-	return count
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		switch value := node.(type) {
+		case *ast.GenDecl:
+			note(value.Doc)
+		case *ast.FuncDecl:
+			note(value.Doc)
+		case *ast.TypeSpec:
+			note(value.Doc, value.Comment)
+		case *ast.ValueSpec:
+			note(value.Doc, value.Comment)
+		case *ast.ImportSpec:
+			note(value.Doc, value.Comment)
+		case *ast.Field:
+			note(value.Doc, value.Comment)
+		}
+		return true
+	})
+
+	var strays []*ast.CommentGroup
+	for _, group := range parsed.Comments {
+		if strings.Contains(group.Text(), "Deprecated:") && !attached[group] {
+			strays = append(strays, group)
+		}
+	}
+	return strays
 }
 
 // exportedNamesWithDoc pairs each exported top-level name in a declaration
