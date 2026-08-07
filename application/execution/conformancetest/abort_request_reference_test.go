@@ -29,6 +29,7 @@ type abortReferenceFixture struct {
 	cancellationGeneration int64
 	pendingIntents         int
 	commandReceipts        int
+	idempotencyReceipts    int
 
 	receipts map[string]execution.RequestAbortOutcome
 	fault    conformancetest.AbortFaultPoint
@@ -57,6 +58,7 @@ func (f *abortReferenceFixture) Snapshot() conformancetest.AbortSnapshot {
 		CancellationGeneration: f.cancellationGeneration,
 		PendingIntents:         f.pendingIntents,
 		CommandReceipts:        f.commandReceipts,
+		IdempotencyReceipts:    f.idempotencyReceipts,
 	}
 }
 
@@ -124,6 +126,7 @@ func (f *abortReferenceFixture) RequestAbort(_ context.Context, intent execution
 	f.terminalIntentRevision = intent.Decision.NextIntentRevision
 	f.cancellationGeneration = intent.Decision.NextCancellationGeneration
 	f.pendingIntents, f.commandReceipts = intents, receipts
+	f.idempotencyReceipts++
 	replay := outcome
 	replay.Status = execution.RequestAbortReplayed
 	f.receipts[intent.RequestDigest] = replay

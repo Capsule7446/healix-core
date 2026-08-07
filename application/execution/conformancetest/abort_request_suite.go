@@ -62,6 +62,12 @@ type AbortSnapshot struct {
 	CancellationGeneration int64
 	PendingIntents         int
 	CommandReceipts        int
+	// IdempotencyReceipts is the third write the port declares atomic, and it
+	// needs reading back for two reasons the other two counters cannot cover: a
+	// receipt committed outside the transaction makes a crashed attempt look
+	// applied on retry, and a receipt appended again on every replay grows
+	// without bound while the recorded outcome stays correct.
+	IdempotencyReceipts int
 }
 
 // AbortFixture is one host adapter under test, plus the two things the suite
@@ -286,6 +292,9 @@ func assertAbortRecorded(t *testing.T, snapshot AbortSnapshot, decision executio
 	}
 	if snapshot.CommandReceipts != 1 {
 		t.Fatalf("command receipts = %d, want exactly 1", snapshot.CommandReceipts)
+	}
+	if snapshot.IdempotencyReceipts != 1 {
+		t.Fatalf("idempotency receipts = %d, want exactly 1 however many attempts it took", snapshot.IdempotencyReceipts)
 	}
 }
 
