@@ -1,0 +1,36 @@
+name: Qodana Configuration Upload
+
+on:
+  push:
+    branches: [master, dev]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upload-qodana-config:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Verify Qodana configuration file
+        run: test -f qodana-global-configurations.yaml
+
+      - name: Run Qodana Configuration Uploader
+        env:
+          QODANA_CONFIGURATIONS_TOKEN: ${{ secrets.QODANA_CONFIGURATIONS_TOKEN }}
+        run: |
+          docker run --rm \
+            -v "$(pwd)/qodana-global-configurations.yaml:/workspace/qodana-global-configurations.yaml:ro" \
+            -w /workspace \
+            -e QODANA_CONFIGURATIONS_TOKEN="$QODANA_CONFIGURATIONS_TOKEN" \
+            jetbrains/qodana-configuration-uploader@sha256:f4786ceea616048c3401cf0b0345d2220d22a2ec7b046fd48cbbfc522e6efe30 \
+            --global-configs-file qodana-global-configurations.yaml \
+            --qodana-host https://qodana.cloud
