@@ -1,5 +1,12 @@
 package automation
 
+// 本文件整体退役。文件夹的全部不变量——无环、同级不重名、深度上限、删除前为空——都是通用目录树规则，
+// 把 Folder 换成书签或网盘目录，这段代码一行都不用改。它与 Automation 的核心（版本、发布、引用锁定）没有交集：
+// 没有版本实体、不进发布依赖闭包、不进执行快照。资产上的 FolderID 甚至从未被校验到本树上。
+//
+// 真正的引用完整性（RequireEmpty 用的 occupancy）也是宿主查出来传进来的，domain 只是拿它跟 0 比。
+// 宿主的存储层本就更适合承担这件事。宿主完整实现之前不会删除。
+
 import (
 	"errors"
 	"strings"
@@ -8,6 +15,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 const (
 	CodeFolderNotFound    fault.Code = "AUTOMATION_FOLDER_NOT_FOUND"
 	CodeFolderInvalid     fault.Code = "AUTOMATION_FOLDER_INVALID"
@@ -35,6 +43,7 @@ func folderNotEmptyError(cause error) error {
 	return folderFault(cause, fault.FailedPrecondition, CodeFolderNotEmpty, "automation folder must be empty")
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func FolderNotFoundError() error {
 	faultErr, err := fault.New(fault.NotFound, CodeFolderNotFound, "automation folder was not found")
 	if err != nil {
@@ -43,8 +52,10 @@ func FolderNotFoundError() error {
 	return faultErr
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type FolderKind string
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 const (
 	FolderNode     FolderKind = "NODE"
 	FolderWorkflow FolderKind = "WORKFLOW"
@@ -52,6 +63,7 @@ const (
 	MaxFolderDepth            = 5
 )
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (kind FolderKind) Validate() error {
 	switch kind {
 	case FolderNode, FolderWorkflow, FolderTask:
@@ -61,6 +73,7 @@ func (kind FolderKind) Validate() error {
 	}
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type Folder struct {
 	ID          string
 	Kind        FolderKind
@@ -71,11 +84,14 @@ type Folder struct {
 }
 
 // FolderForest 拥有跨越所有文件夹的不变量。适配器在其事务内重新加载林，因此这些决策是针对持久保存的同一快照做出的。
+//
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type FolderForest struct {
 	byID   map[string]Folder
 	depths map[string]int
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type FolderOccupancy struct {
 	Assets int
 }
@@ -87,6 +103,7 @@ func validateFolderText(value string) error {
 	return nil
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (folder Folder) Validate() error {
 	if err := validateFolderText(folder.ID); err != nil {
 		return folderInvalidError(err)
@@ -109,6 +126,8 @@ func (folder Folder) Validate() error {
 }
 
 // ValidateFolderTree 验证所有层次结构不变量并返回每个真实文件夹的从一开始的深度。空父 ID 表示深度为零的虚拟根，并且故意不保留为文件夹行。
+//
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func ValidateFolderTree(folders []Folder) (map[string]int, error) {
 	forest, err := NewFolderForest(folders)
 	if err != nil {
@@ -117,6 +136,7 @@ func ValidateFolderTree(folders []Folder) (map[string]int, error) {
 	return forest.Depths(), nil
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func NewFolderForest(folders []Folder) (FolderForest, error) {
 	byID := make(map[string]Folder, len(folders))
 	siblings := make(map[string]string, len(folders))
@@ -182,6 +202,7 @@ func NewFolderForest(folders []Folder) (FolderForest, error) {
 	return FolderForest{byID: byID, depths: depths}, nil
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (f FolderForest) Depths() map[string]int {
 	result := make(map[string]int, len(f.depths))
 	for id, depth := range f.depths {
@@ -190,6 +211,7 @@ func (f FolderForest) Depths() map[string]int {
 	return result
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (f FolderForest) RequireEmpty(id string, occupancy FolderOccupancy) error {
 	if err := validateFolderText(id); err != nil {
 		return folderInvalidError(err)

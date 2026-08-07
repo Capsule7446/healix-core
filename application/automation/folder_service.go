@@ -8,12 +8,15 @@ import (
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type FolderService struct{ repository FolderRepository }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func NewFolderService(repository FolderRepository) FolderService {
 	return FolderService{repository: repository}
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (s FolderService) Create(ctx context.Context, folder domain.Folder, expected domain.Revision) (FolderSnapshot, error) {
 	if strings.TrimSpace(folder.ID) == "" {
 		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
@@ -23,6 +26,7 @@ func (s FolderService) Create(ctx context.Context, folder domain.Folder, expecte
 	})
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, parentID string, expected domain.Revision, at int64) (FolderSnapshot, error) {
 	if strings.TrimSpace(id) == "" {
 		return FolderSnapshot{}, fmt.Errorf("folder ID is required")
@@ -39,6 +43,7 @@ func (s FolderService) Move(ctx context.Context, kind domain.FolderKind, id, par
 	})
 }
 
+// Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (s FolderService) Delete(ctx context.Context, kind domain.FolderKind, id string, expected domain.Revision) (FolderSnapshot, error) {
 	if isNilDependency(s.repository) {
 		return FolderSnapshot{}, AutomationConfigurationError()
