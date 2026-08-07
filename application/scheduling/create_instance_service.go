@@ -82,7 +82,7 @@ func encodeParameterDigest(h hash.Hash, value parameter.Value) {
 
 func encodeHealerDigest(h hash.Hash, policy execution.HealerPolicySnapshot) {
 	writeDigestUint64(h, uint64(policy.Version))
-	for _, value := range []float64{policy.ReviewCap, policy.AppliedCap, policy.Weights.Tag, policy.Weights.ID, policy.Weights.RoleName, policy.Weights.Class, policy.Weights.Attrs, policy.Weights.Text, policy.Weights.Index, policy.Weights.Neighbor, policy.Weights.LabelText, policy.Weights.Container} {
+	for _, value := range []float64{policy.ReviewCap, policy.AppliedCap, policy.Weights.Tag, policy.Weights.ID, policy.Weights.RoleName, policy.Weights.Class, policy.Weights.Attrs, policy.Weights.Text, policy.Weights.Index, policy.Weights.Neighbor, policy.Weights.LabelText, policy.Weights.Container, policy.Weights.Framework} {
 		writeDigestUint64(h, math.Float64bits(value))
 	}
 }
