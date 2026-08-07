@@ -13,12 +13,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-const (
-	CodeHealGovernanceSnapshotInvalid fault.Code = "EXECUTION_HEAL_GOVERNANCE_SNAPSHOT_INVALID"
-	CodeHealAcceptedFactInvalid       fault.Code = "EXECUTION_HEAL_ACCEPTED_FACT_INVALID"
-	CodeHealTerminalEffectConflict    fault.Code = "EXECUTION_HEAL_TERMINAL_EFFECT_CONFLICT"
-)
-
 func wrapHealGovernanceFault(cause error, kind fault.Kind, code fault.Code, message string) error {
 	err, constructionErr := fault.Wrap(cause, kind, code, message)
 	if constructionErr != nil {

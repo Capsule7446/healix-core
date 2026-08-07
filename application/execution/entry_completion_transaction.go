@@ -19,30 +19,6 @@ import (
 // second apply. A new shape gets a new tag, never an edit to this one.
 const completeEntryRequestDigestV1 = "complete-entry-request-v1"
 
-const (
-	// CodeCompleteEntryCommandInvalid covers a completion request core cannot
-	// digest: a malformed identity, fence, observed state or engine outcome. The
-	// caller must repair the request, hence INVALID_ARGUMENT.
-	CodeCompleteEntryCommandInvalid fault.Code = "EXECUTION_COMPLETE_ENTRY_COMMAND_INVALID"
-	// CodeCompleteEntryDigestMismatch covers an intent whose digest or decision
-	// does not follow from its own command. It is what stops a host from
-	// substituting a decision core never made.
-	CodeCompleteEntryDigestMismatch fault.Code = "EXECUTION_COMPLETE_ENTRY_DIGEST_MISMATCH"
-	// CodeCompleteEntryUnavailable covers a service with no transaction behind
-	// it. Nothing about the request is wrong, so it is UNAVAILABLE rather than
-	// INVALID_ARGUMENT.
-	CodeCompleteEntryUnavailable fault.Code = "EXECUTION_COMPLETE_ENTRY_UNAVAILABLE"
-	// CodeCompleteEntryAdapterContractViolation covers an adapter that returned
-	// an outcome the port forbids — an unknown status, a different identity, or
-	// a decision it recomputed for itself. That is an implementation defect in
-	// the adapter, not a business failure, hence INTERNAL.
-	CodeCompleteEntryAdapterContractViolation fault.Code = "EXECUTION_COMPLETE_ENTRY_ADAPTER_CONTRACT_VIOLATION"
-	// CodeCompleteEntryIdentityConflict is the code adapters raise when the
-	// entry no longer holds the state the command claimed to observe, so the
-	// compare-and-swap found a different writer had moved first.
-	CodeCompleteEntryIdentityConflict fault.Code = "EXECUTION_COMPLETE_ENTRY_IDENTITY_CONFLICT"
-)
-
 func completeEntryCommandInvalidError(cause error, violation fault.Violation) error {
 	err, constructionErr := fault.Wrap(cause, fault.InvalidArgument, CodeCompleteEntryCommandInvalid, "complete entry command is invalid", fault.WithViolations(violation))
 	if constructionErr != nil {

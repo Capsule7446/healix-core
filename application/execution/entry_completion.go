@@ -9,25 +9,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-const (
-	// CodeEntryCompletionStateInvalid covers a malformed observed state: an
-	// unknown entry status or terminal intent, or a negative revision. The caller
-	// read something the core vocabulary does not contain, so the remediation is
-	// to repair the read, hence INVALID_ARGUMENT.
-	CodeEntryCompletionStateInvalid fault.Code = "EXECUTION_ENTRY_COMPLETION_STATE_INVALID"
-	// CodeEntryCompletionRevisionExhausted covers a state whose successor
-	// revision core would refuse to write. Nothing about the argument is
-	// malformed; the counter simply has no room left, hence OUT_OF_RANGE.
-	CodeEntryCompletionRevisionExhausted fault.Code = "EXECUTION_ENTRY_COMPLETION_REVISION_EXHAUSTED"
-	// CodeEntryCompletionNotRunning covers a well-formed state that is not
-	// RUNNING. Only a running entry can be completed, and the caller must
-	// re-read the entry before retrying, hence FAILED_PRECONDITION.
-	CodeEntryCompletionNotRunning fault.Code = "EXECUTION_ENTRY_COMPLETION_NOT_RUNNING"
-	// CodeEngineOutcomeInvalid covers an engine outcome outside the engine
-	// vocabulary, or a failure code that is blank without being absent.
-	CodeEngineOutcomeInvalid fault.Code = "EXECUTION_ENGINE_OUTCOME_INVALID"
-)
-
 // MaxExpectedEntryCompletionRevision is the largest value core will ever write
 // into NextIntentRevision or NextCancellationGeneration.
 //
