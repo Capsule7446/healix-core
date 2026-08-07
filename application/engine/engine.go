@@ -90,6 +90,14 @@ const (
 	OutcomeFailed       ExecutionOutcome = "FAILED"
 	OutcomeCanceled     ExecutionOutcome = "CANCELED"
 	ExecutionNotStarted ExecutionOutcome = "NOT_STARTED"
+	// ExecutionInterrupted reports that a run was never observed to
+	// completion. It is not NOT_STARTED: that value asserts the engine is
+	// known not to have begun, while this one says the opposite is possible
+	// and unknowable. RunProgram never returns it -- a process that could
+	// return a result did not lose the observation -- so it reaches a decision
+	// only through InterruptedEngineOutcome, which recovery uses to terminate
+	// an entry left RUNNING by a host that died mid-run.
+	ExecutionInterrupted ExecutionOutcome = "INTERRUPTED"
 
 	RecordingDisabled    RecordingOutcome = "DISABLED"
 	RecordingSucceeded   RecordingOutcome = "SUCCEEDED"
