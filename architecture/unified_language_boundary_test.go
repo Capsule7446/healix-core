@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -466,7 +467,7 @@ func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 				// A marker attached to nothing the walk recognises is still a
 				// marker, and it would otherwise be invisible to the loop above.
 				for _, stray := range unattachedDeprecationMarkers(parsed) {
-					t.Errorf("%s:%d carries a Deprecated marker attached to no declaration or field; a marker documents something, and one that documents nothing is either misplaced or hiding",
+					t.Errorf("%s:%d carries a Deprecated marker attached to no retirable declaration or field; a marker either documents a symbol the register governs or it is misplaced",
 						key, fset.Position(stray.Pos()).Line)
 				}
 				return
@@ -551,11 +552,22 @@ func TestRetiringSurfaceDoesNotGrowUnmarked(t *testing.T) {
 	}
 }
 
+// planPathPattern finds the owned-tree Go paths the retirement plan names.
+var planPathPattern = regexp.MustCompile(`(?:domain|application)/[A-Za-z0-9_/.-]+\.go`)
+
 // TestRetirementRegisterMatchesItsPlan keeps the register and the published
-// plan from drifting. The register decides what the compiler tolerates; the
-// plan is what a host reads to learn what it must build before the removal
-// lands. A file in one and not the other means somebody is working from a
-// document that no longer describes the code.
+// plan from drifting, in both directions — the same shape the wire-tag guard
+// uses, and for the same reason.
+//
+// The register decides what the compiler tolerates; the plan is what a host
+// reads to learn what it must build before a removal lands. Each direction
+// fails differently and neither implies the other:
+//
+//   - Registered but undocumented: a host is never told to prepare, and the
+//     removal arrives as a surprise.
+//   - Documented but unregistered: the removal has already happened, or was
+//     abandoned, and a host is still building against a plan for it. This is
+//     the worse of the two, because the document reads as current.
 func TestRetirementRegisterMatchesItsPlan(t *testing.T) {
 	root := repositoryRoot(t)
 	planPath := filepath.Join(root, "docs", "contracts", "retirement-plan.md")
@@ -564,9 +576,20 @@ func TestRetirementRegisterMatchesItsPlan(t *testing.T) {
 		t.Fatalf("read retirement plan: %v", err)
 	}
 	plan := strings.Join(lines, "\n")
+
 	for key := range retiringFiles {
 		if !strings.Contains(plan, key) {
 			t.Errorf("%s is in the retirement register but not in docs/contracts/retirement-plan.md; a host cannot prepare for a removal it is never told about", key)
+		}
+	}
+
+	documented := map[string]bool{}
+	for _, path := range planPathPattern.FindAllString(plan, -1) {
+		documented[path] = true
+	}
+	for path := range documented {
+		if _, registered := retiringFiles[path]; !registered {
+			t.Errorf("docs/contracts/retirement-plan.md still plans the retirement of %s, which the register no longer lists; remove the section once the removal has landed, or the plan keeps describing work a host should not do", path)
 		}
 	}
 }
@@ -679,10 +702,13 @@ func unattachedDeprecationMarkers(parsed *ast.File) []*ast.CommentGroup {
 			note(value.Doc, value.Comment)
 		case *ast.ValueSpec:
 			note(value.Doc, value.Comment)
-		case *ast.ImportSpec:
-			note(value.Doc, value.Comment)
 		case *ast.Field:
 			note(value.Doc, value.Comment)
+			// ImportSpec is deliberately absent. An import is not a retirable
+			// public symbol, so a marker there names nothing the register can
+			// govern: markedSymbolsIn cannot see it either, and treating it as
+			// attached would let it sit in a partly retiring file unchallenged.
+			// Reported as misplaced instead.
 		}
 		return true
 	})
