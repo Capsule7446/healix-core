@@ -107,7 +107,7 @@ func appendHealerPolicyViolations(violations []fault.Violation, v HealerPolicySn
 	if !unit(v.ReviewCap) || !unit(v.AppliedCap) || v.ReviewCap >= v.AppliedCap {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.healerPolicy", "healer policy thresholds are invalid"))
 	}
-	weights := []float64{v.Weights.Tag, v.Weights.ID, v.Weights.RoleName, v.Weights.Class, v.Weights.Attrs, v.Weights.Text, v.Weights.Index, v.Weights.Neighbor, v.Weights.LabelText, v.Weights.Container}
+	weights := []float64{v.Weights.Tag, v.Weights.ID, v.Weights.RoleName, v.Weights.Class, v.Weights.Attrs, v.Weights.Text, v.Weights.Index, v.Weights.Neighbor, v.Weights.LabelText, v.Weights.Container, v.Weights.Framework}
 	total := 0.0
 	for _, x := range weights {
 		if math.IsNaN(x) || math.IsInf(x, 0) || x < 0 {

@@ -53,7 +53,7 @@ flowchart LR
 - 提交内每条验证、分组、修复观察与 selector reset 的 `Occurrence` 必须等于事件的 `Occurrence`，另一轮产生的事实不能搭车进入本次提交。
 - `HealObservation` 的置信度有限且在 `[0,1]`；候选哈希与 `DecisionBand` 的组合一致。
 - 提交 ID 与 `ExpectedRevision` 必须有效；集合和总载荷受界限限制。
-- `CommitResult.Applied` / `WasApplied` 支持幂等提交表达，但不承诺存储实现方式。
+- `StepTransitionCommitResult.WasApplied` 支持幂等提交表达，但不承诺存储实现方式。
 
 ## 状态与流程
 

@@ -39,7 +39,12 @@ func documentationCorpus(t *testing.T, root string) []markdownFile {
 			if err != nil {
 				return err
 			}
-			if d.IsDir() && d.Name() == ".git" {
+			// Every dot-directory here is tooling scratch, not repository
+			// documentation: .git, plus the gitignored .claude/, .codex/, and
+			// .codegraph/ that agents and the indexer write into. One of those
+			// held a vendored copy of another project whose own broken link
+			// failed this guard on a developer machine while CI stayed green.
+			if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
 				return filepath.SkipDir
 			}
 			if d.IsDir() || filepath.Ext(d.Name()) != ".md" {

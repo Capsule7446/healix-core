@@ -4,6 +4,8 @@
 
 - [记录进度](record-progress.md)
 - [提交步骤迁移](commit-step-transition.md)
+- [请求中止](request-abort.md)
+- [恢复期终态语义](recovery-terminal-semantics.md)
 
 ## 所有权边界
 

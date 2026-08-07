@@ -90,16 +90,33 @@ const (
 	OutcomeFailed       ExecutionOutcome = "FAILED"
 	OutcomeCanceled     ExecutionOutcome = "CANCELED"
 	ExecutionNotStarted ExecutionOutcome = "NOT_STARTED"
+	// ExecutionInterrupted reports that a run was never observed to
+	// completion. It is not NOT_STARTED: that value asserts the engine is
+	// known not to have begun, while this one says the opposite is possible
+	// and unknowable. RunProgram never returns it -- a process that could
+	// return a result did not lose the observation -- so it reaches a decision
+	// only through InterruptedEngineOutcome, which recovery uses to terminate
+	// an entry left RUNNING by a host that died mid-run.
+	ExecutionInterrupted ExecutionOutcome = "INTERRUPTED"
 
 	RecordingDisabled    RecordingOutcome = "DISABLED"
 	RecordingSucceeded   RecordingOutcome = "SUCCEEDED"
 	RecordingStartFailed RecordingOutcome = "START_FAILED"
 	RecordingStopFailed  RecordingOutcome = "STOP_FAILED"
+	// RecordingUnobserved reports that whether a recording ran, and how it
+	// ended, is unknown. It is not DISABLED: that value asserts recording was
+	// switched off, while an entry whose observer died may have been recording
+	// and left a partial file behind. RunProgram never returns it; it reaches a
+	// decision only through InterruptedEngineOutcome.
+	RecordingUnobserved RecordingOutcome = "UNOBSERVED"
 
 	TimelineDisabled     TimelineOutcome = "DISABLED"
 	TimelineComplete     TimelineOutcome = "COMPLETE"
 	TimelineStartFailed  TimelineOutcome = "START_FAILED"
 	TimelineFinishFailed TimelineOutcome = "FINISH_FAILED"
+	// TimelineUnobserved is the timeline axis of the same unknown. See
+	// RecordingUnobserved.
+	TimelineUnobserved TimelineOutcome = "UNOBSERVED"
 )
 
 type EntryResult struct {

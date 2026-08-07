@@ -111,6 +111,95 @@ func (s *consumerEntryCompletionStore) CompleteEntry(_ context.Context, intent a
 	return applied, nil
 }
 
+// consumerAbortRequestStore is a host-shaped AbortRequestTransaction. It is the
+// D-17 counterpart of the store above and deliberately touches no entry status:
+// recording a pending abort intent must leave terminating the entry to
+// EntryCompletionTransaction.
+type consumerAbortRequestStore struct {
+	records map[string]appexecution.RequestAbortOutcome
+	applies int
+}
+
+func (s *consumerAbortRequestStore) LookupAbortRequest(_ context.Context, entryID execution.EntryID, requestDigest string) (appexecution.RequestAbortOutcome, bool, error) {
+	recorded, ok := s.records[entryID.String()+"\x00"+requestDigest]
+	return recorded, ok, nil
+}
+
+func (s *consumerAbortRequestStore) RequestAbort(_ context.Context, intent appexecution.RequestAbortIntent) (appexecution.RequestAbortOutcome, error) {
+	if err := appexecution.ValidateRequestAbortIntentDigest(intent); err != nil {
+		return appexecution.RequestAbortOutcome{}, err
+	}
+	s.applies++
+	applied := appexecution.RequestAbortOutcome{Status: appexecution.RequestAbortApplied, EntryID: intent.EntryID, RequestDigest: intent.RequestDigest, Decision: intent.Decision}
+	if s.records == nil {
+		s.records = map[string]appexecution.RequestAbortOutcome{}
+	}
+	replayed := applied
+	replayed.Status = appexecution.RequestAbortReplayed
+	s.records[intent.EntryID.String()+"\x00"+intent.RequestDigest] = replayed
+	return applied, nil
+}
+
+// TestExternalConsumerCanImplementAbortRequestPorts walks the D-17 surface the
+// way a host does: decide, digest, apply, replay — and then feed the recorded
+// intent into the completion that terminates the entry, because the seam
+// between the two contracts is the part a host cannot verify from either side
+// alone.
+func TestExternalConsumerCanImplementAbortRequestPorts(t *testing.T) {
+	store := &consumerAbortRequestStore{}
+	command := appexecution.RequestAbortCommand{
+		EntryID: mustEntryID("3:run4:item"),
+		Fence:   execution.WorkerFence{InstanceID: mustInstanceID("run"), ClaimToken: "claim"},
+		State: appexecution.EntryCompletionState{
+			EntryStatus:            execution.EntryRunning,
+			TerminalIntent:         appexecution.TerminalIntentNone,
+			TerminalIntentRevision: 4,
+			CancellationGeneration: 2,
+		},
+		Request: appexecution.AbortRequest{AbortPendingCommandID: "abort-command"},
+	}
+	if err := command.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := appexecution.RequestAbortDigest(command)
+	if err != nil || digest == "" {
+		t.Fatalf("external abort request digest contract: digest=%q err=%v", digest, err)
+	}
+	decision, err := appexecution.DecideAbortRequest(command.State, command.Request)
+	if err != nil {
+		t.Fatalf("external DecideAbortRequest contract: %v", err)
+	}
+	if decision.NextIntent != appexecution.TerminalIntentAbort || decision.NextIntentRevision != 5 || decision.NextCancellationGeneration != 2 {
+		t.Fatalf("external abort decision = %+v", decision)
+	}
+
+	service := appexecution.NewAbortRequestService(store)
+	applied, err := service.Request(context.Background(), command)
+	if err != nil || applied.Status != appexecution.RequestAbortApplied || applied.Decision != decision {
+		t.Fatalf("external abort apply: outcome=%#v err=%v", applied, err)
+	}
+	replayed, err := service.Request(context.Background(), command)
+	if err != nil || replayed.Status != appexecution.RequestAbortReplayed || store.applies != 1 {
+		t.Fatalf("external abort replay: outcome=%#v applies=%d err=%v", replayed, store.applies, err)
+	}
+
+	// The seam: the pending intent this recorded is what the completion turns
+	// into the terminal status, and the generation is spent exactly once across
+	// the pair.
+	completion, err := appexecution.DecideEntryCompletion(appexecution.EntryCompletionState{
+		EntryStatus:            execution.EntryRunning,
+		TerminalIntent:         decision.NextIntent,
+		TerminalIntentRevision: decision.NextIntentRevision,
+		CancellationGeneration: decision.NextCancellationGeneration,
+	}, appexecution.NotStartedEngineOutcome())
+	if err != nil {
+		t.Fatalf("external completion after abort request: %v", err)
+	}
+	if completion.EntryStatus != execution.EntryAborted || completion.NextCancellationGeneration != command.State.CancellationGeneration+1 {
+		t.Fatalf("external abort seam: completion=%+v", completion)
+	}
+}
+
 func TestExternalConsumerCanImplementEntryCompletionPorts(t *testing.T) {
 	store := &consumerEntryCompletionStore{}
 	command := appexecution.CompleteEntryCommand{

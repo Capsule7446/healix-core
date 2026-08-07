@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -215,19 +216,234 @@ func TestNoExportedTypeAliasKeepsAnOldNameAlive(t *testing.T) {
 	}
 }
 
-// A deprecation marker is the other shape of the same promise: it says an old
-// name still works. The plan offers no deprecation window — the replacement is
-// the migration.
+// TestNoExportedConstAliasKeepsAnOldNameAlive closes the first of two holes the
+// type-alias guard above left open. `const Old Status = New` is the same
+// compatibility facade in a shape typeSpec.Assign cannot see, and the tree
+// carried exactly that: StatusCompleted/StatusFailed aliased StatusEnded and
+// StatusInterrupted, documented as a known leftover rather than caught.
+//
+// The rule is narrow on purpose. Only a const whose value is a bare exported
+// identifier counts -- a second name for one existing value. Computed values,
+// literals, and iota members are ordinary vocabulary.
+func TestNoExportedConstAliasKeepsAnOldNameAlive(t *testing.T) {
+	// A "current version" pointer has the same shape as an old-name alias and
+	// the opposite meaning: it names the newest member so construction sites
+	// follow a schema bump without being edited. AST cannot tell the two
+	// directions apart, so the exceptions are listed rather than inferred, and
+	// adding one is an edit a reviewer sees.
+	permitted := map[string]string{
+		"InstanceSnapshotSchemaCurrent": "names the newest schema, not a retired name",
+	}
+	root := repositoryRoot(t)
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, decl := range parsed.Decls {
+				for _, alias := range constAliasesIn(decl, permitted) {
+					t.Errorf("%s:%d declares the exported constant %s as a second name for %s; the refactor replaces names outright, so a constant alias keeping an old public name reachable is a compatibility facade",
+						filepath.ToSlash(relative), fset.Position(alias.pos).Line, alias.name, alias.target)
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+}
+
+// TestNoExportedMethodAliasKeepsAnOldNameAlive closes the second hole. A method
+// whose entire body forwards to another exported method on the same receiver is
+// a second name for one operation, which is what the two guards above forbid in
+// the type and constant shapes. Session.Complete forwarding to End and
+// Session.Fail forwarding to Interrupt were both in the tree.
+//
+// Only a single-statement body counts. A method that forwards and then does
+// anything else has behaviour of its own and is not an alias.
+func TestNoExportedMethodAliasKeepsAnOldNameAlive(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, decl := range parsed.Decls {
+				function, ok := decl.(*ast.FuncDecl)
+				if !ok || function.Recv == nil || !function.Name.IsExported() {
+					continue
+				}
+				if function.Body == nil || len(function.Body.List) != 1 {
+					continue
+				}
+				forwarded, ok := forwardedReceiverMethod(function)
+				if !ok {
+					continue
+				}
+				t.Errorf("%s:%d declares the exported method %s whose whole body forwards to %s on the same receiver; the refactor replaces names outright, so a forwarding method keeping an old public name reachable is a compatibility facade",
+					filepath.ToSlash(relative), fset.Position(function.Name.Pos()).Line, function.Name.Name, forwarded)
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+}
+
+// forwardedReceiverMethod reports the exported method a single-statement body
+// forwards to on its own receiver, in either the `return r.Other()` or bare
+// `r.Other()` shape.
+//
+// The arguments must be this method's own parameters, in order and unchanged.
+// That requirement is what separates a second name from a specialisation:
+// `return r.Convert(DefaultOptions)` supplies a value of its own and therefore
+// means something `Convert` alone does not, so it is not an alias however short
+// it is.
+//
+// Known limitation: without type information a call on an exported
+// function-typed field is indistinguishable from a method call, so a method
+// forwarding its parameters to such a field would be reported. No such field
+// exists in the tree. Should one appear, the answer is to argue it at the
+// failure — the shape really is a second name for one operation — not to widen
+// the rule.
+func forwardedReceiverMethod(function *ast.FuncDecl) (string, bool) {
+	if len(function.Recv.List) == 0 || len(function.Recv.List[0].Names) == 0 {
+		return "", false
+	}
+	receiver := function.Recv.List[0].Names[0].Name
+
+	var call *ast.CallExpr
+	switch statement := function.Body.List[0].(type) {
+	case *ast.ReturnStmt:
+		if len(statement.Results) != 1 {
+			return "", false
+		}
+		call, _ = statement.Results[0].(*ast.CallExpr)
+	case *ast.ExprStmt:
+		call, _ = statement.X.(*ast.CallExpr)
+	}
+	if call == nil {
+		return "", false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || !selector.Sel.IsExported() {
+		return "", false
+	}
+	target, ok := selector.X.(*ast.Ident)
+	if !ok || target.Name != receiver {
+		return "", false
+	}
+	if !forwardsOwnParameters(function, call) {
+		return "", false
+	}
+	return selector.Sel.Name, true
+}
+
+// forwardsOwnParameters reports whether a call passes exactly this function's
+// parameters, in declaration order and untouched. A literal, a constant, a
+// reordering, or a dropped parameter all mean the call is doing something of
+// its own.
+func forwardsOwnParameters(function *ast.FuncDecl, call *ast.CallExpr) bool {
+	var parameters []string
+	if function.Type.Params != nil {
+		for _, field := range function.Type.Params.List {
+			if len(field.Names) == 0 {
+				// An unnamed parameter cannot be forwarded by name, so the call
+				// cannot be passing it along.
+				return false
+			}
+			for _, name := range field.Names {
+				parameters = append(parameters, name.Name)
+			}
+		}
+	}
+	if len(call.Args) != len(parameters) {
+		return false
+	}
+	for index, argument := range call.Args {
+		identifier, ok := argument.(*ast.Ident)
+		if !ok || identifier.Name != parameters[index] {
+			return false
+		}
+	}
+	return true
+}
+
+// retiringFiles is the retirement register. A Deprecated marker is allowed
+// only here, and every entry must also appear in
+// docs/contracts/retirement-plan.md.
+//
+// The distinction this register draws is the whole reason the guard below is
+// not a flat ban. Two different things wear the same marker:
+//
+//   - A rename. The new name is in Core, so the old one buys nothing and the
+//     replacement IS the migration. Still forbidden, as it always was.
+//   - An ownership handoff. The capability is leaving Core entirely and its
+//     replacement lives in the host. Core cannot delete it before hosts have
+//     built their own, so a window is not a convenience -- it is the only
+//     order the removal can happen in.
+//
+// wholeFile marks a file whose entire exported surface is retiring, which the
+// companion guard uses to require that nothing there grows unmarked.
+//
+// symbols is the opposite case and must be exact. A file that is only partly
+// retiring cannot be waved through wholesale: assets.go holds every automation
+// aggregate, and registering the file rather than the two fields would let a
+// marker appear on anything in it. Struct fields are named Type.Field.
+type retirement struct {
+	wholeFile bool
+	symbols   []string
+	reason    string
+}
+
+var retiringFiles = map[string]retirement{
+	"domain/automation/folders.go":                {wholeFile: true, reason: "folder hierarchy moves to the host"},
+	"application/automation/folder_service.go":    {wholeFile: true, reason: "folder hierarchy moves to the host"},
+	"application/automation/folder_repository.go": {wholeFile: true, reason: "folder hierarchy moves to the host"},
+	"domain/automation/assets.go": {
+		symbols: []string{"ElementTarget.FolderID", "FlowFragment.FolderID"},
+		reason:  "the FolderID back-reference retires with the hierarchy",
+	},
+}
+
+// TestNoDeprecationMarkersPromiseAnOldNameStillWorks keeps the original rule
+// for everything outside the register: a marker that says an old name still
+// works is a compatibility facade, and Core does not offer that window.
 func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 	root := repositoryRoot(t)
 	for _, owner := range []string{"domain", "application"} {
 		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
 			relative, _ := filepath.Rel(root, path)
+			key := filepath.ToSlash(relative)
+			entry, retiring := retiringFiles[key]
+			if retiring && entry.wholeFile {
+				return
+			}
+			if retiring {
+				// A partly retiring file is checked symbol by symbol. Skipping it
+				// wholesale, as an earlier draft did, made the register's reason
+				// text the only thing limiting what could be deprecated there —
+				// and reason text is not a check.
+				allowed := make(map[string]bool, len(entry.symbols))
+				for _, symbol := range entry.symbols {
+					allowed[symbol] = true
+				}
+				marked := markedSymbolsIn(parsed)
+				for _, symbol := range marked {
+					if !allowed[symbol.name] {
+						t.Errorf("%s:%d marks %s as deprecated, which the retirement register does not list for this file; %s covers only %v",
+							key, fset.Position(symbol.pos).Line, symbol.name, key, entry.symbols)
+					}
+				}
+				// A marker attached to nothing the walk recognises is still a
+				// marker, and it would otherwise be invisible to the loop above.
+				for _, stray := range unattachedDeprecationMarkers(parsed) {
+					t.Errorf("%s:%d carries a Deprecated marker attached to no retirable declaration or field; a marker either documents a symbol the register governs or it is misplaced",
+						key, fset.Position(stray.Pos()).Line)
+				}
+				return
+			}
 			for _, group := range parsed.Comments {
 				for _, comment := range group.List {
 					if strings.Contains(comment.Text, "Deprecated:") {
-						t.Errorf("%s:%d carries a Deprecated marker; the refactor has no deprecation window, so an old name is either gone or it was never replaced",
-							filepath.ToSlash(relative), fset.Position(comment.Pos()).Line)
+						t.Errorf("%s:%d carries a Deprecated marker outside the retirement register; a rename has no deprecation window, and a capability leaving Core must be registered in retiringFiles and docs/contracts/retirement-plan.md",
+							key, fset.Position(comment.Pos()).Line)
 					}
 				}
 			}
@@ -236,6 +452,327 @@ func TestNoDeprecationMarkersPromiseAnOldNameStillWorks(t *testing.T) {
 			t.Fatalf("walk %s: %v", owner, err)
 		}
 	}
+}
+
+// TestRetiringSurfaceDoesNotGrowUnmarked is the half that makes the register
+// safe to have. A file allowed to carry markers would otherwise be a place
+// where new unmarked exports could accumulate, which is how a retirement
+// quietly turns back into a permanent feature.
+func TestRetiringSurfaceDoesNotGrowUnmarked(t *testing.T) {
+	root := repositoryRoot(t)
+	seen := map[string]bool{}
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			key := filepath.ToSlash(relative)
+			entry, retiring := retiringFiles[key]
+			if !retiring {
+				return
+			}
+			seen[key] = true
+			if !entry.wholeFile {
+				// The registered symbols must still exist and still carry their
+				// markers. A field renamed away leaves an entry that permits a
+				// name nothing declares, which silently widens nothing today and
+				// blocks nothing tomorrow.
+				marked := map[string]bool{}
+				for _, symbol := range markedSymbolsIn(parsed) {
+					marked[symbol.name] = true
+				}
+				for _, symbol := range entry.symbols {
+					if !marked[symbol] {
+						t.Errorf("%s: the retirement register lists %s, which no longer carries a Deprecated marker; %s", key, symbol, entry.reason)
+					}
+				}
+				return
+			}
+			for _, declaration := range parsed.Decls {
+				for _, exported := range exportedNamesWithDoc(declaration) {
+					if strings.Contains(exported.doc, "Deprecated:") {
+						continue
+					}
+					t.Errorf("%s:%d exports %s from a retiring file without a Deprecated marker; %s, so nothing here may grow unmarked",
+						key, fset.Position(exported.pos).Line, exported.name, entry.reason)
+				}
+				// Struct fields are checked too, so the invariant above is
+				// literally true rather than true of top-level names only. A
+				// field inherits its type's marker, which is the common case
+				// here and produces no noise; what this catches is a field
+				// outliving a type whose marker was later removed.
+				for _, field := range exportedFieldsWithTypeDoc(declaration) {
+					if strings.Contains(field.doc, "Deprecated:") {
+						continue
+					}
+					t.Errorf("%s:%d exports field %s from a retiring file, and neither it nor its type carries a Deprecated marker; %s",
+						key, fset.Position(field.pos).Line, field.name, entry.reason)
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+	for key := range retiringFiles {
+		if !seen[key] {
+			t.Errorf("retirement register lists %s, which no longer exists; remove the entry once the removal has landed", key)
+		}
+	}
+}
+
+// planPathPattern finds the owned-tree Go paths the retirement plan names.
+var planPathPattern = regexp.MustCompile(`(?:domain|application)/[A-Za-z0-9_/.-]+\.go`)
+
+// TestRetirementRegisterMatchesItsPlan keeps the register and the published
+// plan from drifting, in both directions — the same shape the wire-tag guard
+// uses, and for the same reason.
+//
+// The register decides what the compiler tolerates; the plan is what a host
+// reads to learn what it must build before a removal lands. Each direction
+// fails differently and neither implies the other:
+//
+//   - Registered but undocumented: a host is never told to prepare, and the
+//     removal arrives as a surprise.
+//   - Documented but unregistered: the removal has already happened, or was
+//     abandoned, and a host is still building against a plan for it. This is
+//     the worse of the two, because the document reads as current.
+func TestRetirementRegisterMatchesItsPlan(t *testing.T) {
+	root := repositoryRoot(t)
+	planPath := filepath.Join(root, "docs", "contracts", "retirement-plan.md")
+	lines, err := readLines(planPath)
+	if err != nil {
+		t.Fatalf("read retirement plan: %v", err)
+	}
+	plan := strings.Join(lines, "\n")
+
+	for key := range retiringFiles {
+		if !strings.Contains(plan, key) {
+			t.Errorf("%s is in the retirement register but not in docs/contracts/retirement-plan.md; a host cannot prepare for a removal it is never told about", key)
+		}
+	}
+
+	documented := map[string]bool{}
+	for _, path := range planPathPattern.FindAllString(plan, -1) {
+		documented[path] = true
+	}
+	for path := range documented {
+		if _, registered := retiringFiles[path]; !registered {
+			t.Errorf("docs/contracts/retirement-plan.md still plans the retirement of %s, which the register no longer lists; remove the section once the removal has landed, or the plan keeps describing work a host should not do", path)
+		}
+	}
+}
+
+type exportedName struct {
+	name string
+	doc  string
+	pos  token.Pos
+}
+
+// constAlias is one exported constant declared as a second name for another.
+type constAlias struct {
+	name   string
+	target string
+	pos    token.Pos
+}
+
+// constAliasesIn returns the exported constant aliases one declaration makes.
+//
+// It lives outside the test loop so guard_predicate_test.go can drive its whole
+// decision matrix from fixtures. That separation is not cosmetic: while this
+// logic was inline, the only way to show it worked was to mutate real source,
+// run, and revert — which tests the shapes the author thought of and nothing
+// else, and is exactly how the inherited-expression case below went unnoticed.
+//
+// A const spec with no expression list repeats the previous one.
+// `const ( New = Existing; Old )` therefore declares two exported names for one
+// value while only the first spec carries the identifier, so reading each spec
+// in isolation would let the second through — the very shape being hunted,
+// spelled in the one way that costs no characters at all.
+func constAliasesIn(declaration ast.Decl, permitted map[string]string) []constAlias {
+	generic, ok := declaration.(*ast.GenDecl)
+	if !ok || generic.Tok != token.CONST {
+		return nil
+	}
+	var found []constAlias
+	var inherited []ast.Expr
+	for _, spec := range generic.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		values := valueSpec.Values
+		if len(values) == 0 {
+			values = inherited
+		} else {
+			inherited = values
+		}
+		for index, name := range valueSpec.Names {
+			if !name.IsExported() || index >= len(values) {
+				continue
+			}
+			alias, ok := values[index].(*ast.Ident)
+			if !ok || !alias.IsExported() {
+				continue
+			}
+			if _, allowed := permitted[name.Name]; allowed {
+				continue
+			}
+			found = append(found, constAlias{name: name.Name, target: alias.Name, pos: name.Pos()})
+		}
+	}
+	return found
+}
+
+// markedSymbolsIn returns every exported declaration or struct field in the
+// file whose doc comment carries a Deprecated marker, named Type.Field for
+// fields. Fields are walked as well as top-level declarations because a partly
+// retiring file marks fields, and a check that only saw declarations would
+// report every one of them as a stray.
+func markedSymbolsIn(parsed *ast.File) []exportedName {
+	var marked []exportedName
+	for _, declaration := range parsed.Decls {
+		for _, exported := range exportedNamesWithDoc(declaration) {
+			if strings.Contains(exported.doc, "Deprecated:") {
+				marked = append(marked, exported)
+			}
+		}
+		generic, ok := declaration.(*ast.GenDecl)
+		if !ok || generic.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range generic.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok || structType.Fields == nil {
+				continue
+			}
+			for _, field := range structType.Fields.List {
+				doc := field.Doc.Text() + field.Comment.Text()
+				if !strings.Contains(doc, "Deprecated:") {
+					continue
+				}
+				for _, name := range field.Names {
+					if name.IsExported() {
+						marked = append(marked, exportedName{typeSpec.Name.Name + "." + name.Name, doc, name.Pos()})
+					}
+				}
+			}
+		}
+	}
+	return marked
+}
+
+// exportedFieldsWithTypeDoc returns every exported struct field in a
+// declaration, named Type.Field, with the doc that would carry its marker —
+// the field's own, plus its type's, because a field on a deprecated type is
+// deprecated with it and repeating the marker on each one would be noise.
+func exportedFieldsWithTypeDoc(declaration ast.Decl) []exportedName {
+	generic, ok := declaration.(*ast.GenDecl)
+	if !ok || generic.Tok != token.TYPE {
+		return nil
+	}
+	var found []exportedName
+	for _, spec := range generic.Specs {
+		typeSpec, ok := spec.(*ast.TypeSpec)
+		if !ok {
+			continue
+		}
+		structType, ok := typeSpec.Type.(*ast.StructType)
+		if !ok || structType.Fields == nil {
+			continue
+		}
+		inherited := generic.Doc.Text() + typeSpec.Doc.Text() + typeSpec.Comment.Text()
+		for _, field := range structType.Fields.List {
+			doc := inherited + field.Doc.Text() + field.Comment.Text()
+			for _, name := range field.Names {
+				if name.IsExported() {
+					found = append(found, exportedName{typeSpec.Name.Name + "." + name.Name, doc, name.Pos()})
+				}
+			}
+		}
+	}
+	return found
+}
+
+// unattachedDeprecationMarkers returns the marker comment groups that document
+// no declaration or field.
+//
+// It compares identities rather than counts. An earlier version subtracted the
+// number of marked symbols from the number of marker comments, which assumed
+// the two were one to one — and they are not: a marker on a grouped
+// declaration documents every name in the group, so one comment can produce
+// several marked symbols. The surplus then cancelled a genuine stray out of
+// existence, and the guard passed while an unattached marker sat in the file.
+func unattachedDeprecationMarkers(parsed *ast.File) []*ast.CommentGroup {
+	attached := map[*ast.CommentGroup]bool{}
+	note := func(groups ...*ast.CommentGroup) {
+		for _, group := range groups {
+			if group != nil {
+				attached[group] = true
+			}
+		}
+	}
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		switch value := node.(type) {
+		case *ast.GenDecl:
+			note(value.Doc)
+		case *ast.FuncDecl:
+			note(value.Doc)
+		case *ast.TypeSpec:
+			note(value.Doc, value.Comment)
+		case *ast.ValueSpec:
+			note(value.Doc, value.Comment)
+		case *ast.Field:
+			note(value.Doc, value.Comment)
+			// ImportSpec is deliberately absent. An import is not a retirable
+			// public symbol, so a marker there names nothing the register can
+			// govern: markedSymbolsIn cannot see it either, and treating it as
+			// attached would let it sit in a partly retiring file unchallenged.
+			// Reported as misplaced instead.
+		}
+		return true
+	})
+
+	var strays []*ast.CommentGroup
+	for _, group := range parsed.Comments {
+		if strings.Contains(group.Text(), "Deprecated:") && !attached[group] {
+			strays = append(strays, group)
+		}
+	}
+	return strays
+}
+
+// exportedNamesWithDoc pairs each exported top-level name in a declaration
+// with the doc comment that would carry its marker. A grouped const or var
+// block puts the marker on either the group or the individual spec, and godoc
+// honours both, so both are searched.
+func exportedNamesWithDoc(declaration ast.Decl) []exportedName {
+	var found []exportedName
+	switch typed := declaration.(type) {
+	case *ast.FuncDecl:
+		if typed.Name.IsExported() {
+			found = append(found, exportedName{typed.Name.Name, typed.Doc.Text(), typed.Name.Pos()})
+		}
+	case *ast.GenDecl:
+		groupDoc := typed.Doc.Text()
+		for _, spec := range typed.Specs {
+			switch value := spec.(type) {
+			case *ast.TypeSpec:
+				if value.Name.IsExported() {
+					found = append(found, exportedName{value.Name.Name, groupDoc + value.Doc.Text() + value.Comment.Text(), value.Name.Pos()})
+				}
+			case *ast.ValueSpec:
+				for _, name := range value.Names {
+					if name.IsExported() {
+						found = append(found, exportedName{name.Name, groupDoc + value.Doc.Text() + value.Comment.Text(), name.Pos()})
+					}
+				}
+			}
+		}
+	}
+	return found
 }
 
 // One content type, one deep copy. Sampling and Automation each had their own

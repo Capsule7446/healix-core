@@ -363,6 +363,7 @@ func normalizeCreateInstanceCommand(command CreateInstanceCommand) CreateInstanc
 		&command.HealerPolicy.Weights.Attrs, &command.HealerPolicy.Weights.Text,
 		&command.HealerPolicy.Weights.Index, &command.HealerPolicy.Weights.Neighbor,
 		&command.HealerPolicy.Weights.LabelText, &command.HealerPolicy.Weights.Container,
+		&command.HealerPolicy.Weights.Framework,
 	} {
 		normalizeZero(value)
 	}
@@ -397,7 +398,7 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 	if command.ScreenshotPolicy.Version != execution.ScreenshotPolicyV1 || strings.TrimSpace(command.ScreenshotPolicy.Destination) == "" || command.HealerPolicy.Version != execution.HealerPolicyV1 {
 		return errors.New("screenshot and healer policies are invalid")
 	}
-	for _, value := range []float64{command.HealerPolicy.ReviewCap, command.HealerPolicy.AppliedCap, command.HealerPolicy.Weights.Tag, command.HealerPolicy.Weights.ID, command.HealerPolicy.Weights.RoleName, command.HealerPolicy.Weights.Class, command.HealerPolicy.Weights.Attrs, command.HealerPolicy.Weights.Text, command.HealerPolicy.Weights.Index, command.HealerPolicy.Weights.Neighbor, command.HealerPolicy.Weights.LabelText, command.HealerPolicy.Weights.Container} {
+	for _, value := range []float64{command.HealerPolicy.ReviewCap, command.HealerPolicy.AppliedCap, command.HealerPolicy.Weights.Tag, command.HealerPolicy.Weights.ID, command.HealerPolicy.Weights.RoleName, command.HealerPolicy.Weights.Class, command.HealerPolicy.Weights.Attrs, command.HealerPolicy.Weights.Text, command.HealerPolicy.Weights.Index, command.HealerPolicy.Weights.Neighbor, command.HealerPolicy.Weights.LabelText, command.HealerPolicy.Weights.Container, command.HealerPolicy.Weights.Framework} {
 		if math.IsNaN(value) || math.IsInf(value, 0) {
 			return errors.New("healer policy contains a non-finite value")
 		}

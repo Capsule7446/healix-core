@@ -9,25 +9,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-const (
-	// CodeEntryCompletionStateInvalid covers a malformed observed state: an
-	// unknown entry status or terminal intent, or a negative revision. The caller
-	// read something the core vocabulary does not contain, so the remediation is
-	// to repair the read, hence INVALID_ARGUMENT.
-	CodeEntryCompletionStateInvalid fault.Code = "EXECUTION_ENTRY_COMPLETION_STATE_INVALID"
-	// CodeEntryCompletionRevisionExhausted covers a state whose successor
-	// revision core would refuse to write. Nothing about the argument is
-	// malformed; the counter simply has no room left, hence OUT_OF_RANGE.
-	CodeEntryCompletionRevisionExhausted fault.Code = "EXECUTION_ENTRY_COMPLETION_REVISION_EXHAUSTED"
-	// CodeEntryCompletionNotRunning covers a well-formed state that is not
-	// RUNNING. Only a running entry can be completed, and the caller must
-	// re-read the entry before retrying, hence FAILED_PRECONDITION.
-	CodeEntryCompletionNotRunning fault.Code = "EXECUTION_ENTRY_COMPLETION_NOT_RUNNING"
-	// CodeEngineOutcomeInvalid covers an engine outcome outside the engine
-	// vocabulary, or a failure code that is blank without being absent.
-	CodeEngineOutcomeInvalid fault.Code = "EXECUTION_ENGINE_OUTCOME_INVALID"
-)
-
 // MaxExpectedEntryCompletionRevision is the largest value core will ever write
 // into NextIntentRevision or NextCancellationGeneration.
 //
@@ -138,20 +119,44 @@ func NotStartedEngineOutcome() EngineOutcome {
 	}}
 }
 
+// InterruptedEngineOutcome is the outcome of an entry whose run was never
+// observed to completion — the host process died while the engine was running,
+// and recovery found the entry still RUNNING with a claim nobody holds.
+//
+// It exists because NotStartedEngineOutcome was the only construction recovery
+// could reach, and using it there is not merely lossy but false: "not started"
+// asserts the engine is known not to have begun, while an orphan may well have
+// run to completion and taken its result down with the process. Both once
+// terminated as FAILED with nothing to tell them apart afterwards, which for a
+// product sold on its evidence chain makes failure-rate statistics and
+// heal-candidate selection read a crash as a business failure.
+func InterruptedEngineOutcome() EngineOutcome {
+	return EngineOutcome{Result: engine.EntryResult{
+		ExecutionOutcome: engine.ExecutionInterrupted,
+		// Every axis says the same thing: unknown. Writing DISABLED here would
+		// repeat one level down the exact falsehood this constructor exists to
+		// stop -- an entry whose observer died may well have been recording, and
+		// may have left a partial file the host will later find and be unable to
+		// reconcile with a record claiming recording was switched off.
+		RecordingOutcome: engine.RecordingUnobserved,
+		TimelineOutcome:  engine.TimelineUnobserved,
+	}}
+}
+
 // Validate reports whether every field is inside the engine vocabulary.
 func (outcome EngineOutcome) Validate() error {
 	switch outcome.Result.ExecutionOutcome {
-	case engine.OutcomeSucceeded, engine.OutcomeFailed, engine.OutcomeCanceled, engine.ExecutionNotStarted:
+	case engine.OutcomeSucceeded, engine.OutcomeFailed, engine.OutcomeCanceled, engine.ExecutionNotStarted, engine.ExecutionInterrupted:
 	default:
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.executionOutcome", "execution outcome is not one the engine reports"))
 	}
 	switch outcome.Result.RecordingOutcome {
-	case engine.RecordingDisabled, engine.RecordingSucceeded, engine.RecordingStartFailed, engine.RecordingStopFailed:
+	case engine.RecordingDisabled, engine.RecordingSucceeded, engine.RecordingStartFailed, engine.RecordingStopFailed, engine.RecordingUnobserved:
 	default:
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.recordingOutcome", "recording outcome is not one the engine reports"))
 	}
 	switch outcome.Result.TimelineOutcome {
-	case engine.TimelineDisabled, engine.TimelineComplete, engine.TimelineStartFailed, engine.TimelineFinishFailed:
+	case engine.TimelineDisabled, engine.TimelineComplete, engine.TimelineStartFailed, engine.TimelineFinishFailed, engine.TimelineUnobserved:
 	default:
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.timelineOutcome", "timeline outcome is not one the engine reports"))
 	}
@@ -210,8 +215,37 @@ func (state EntryCompletionState) Validate() error {
 // exact values the host must write; the host must never increment or infer
 // either counter itself, which is what
 // ValidateCompleteEntryIntentDigest mechanically enforces.
+// TerminalCause reports how much of a run was observed before its entry
+// reached a terminal status. It is the second of two independent axes, and
+// keeping them apart is the whole of D-18: EntryStatus answers "what did this
+// entry come to", which the terminal intent can decide, while TerminalCause
+// answers "did anyone see it happen", which no intent can change.
+//
+// Without it, an entry that ran and failed its assertions, an entry whose
+// browser could not be created, and an entry whose observer crashed all landed
+// as FAILED with no field able to separate them once persisted.
+type TerminalCause string
+
+const (
+	// TerminalCauseCompleted means the engine ran and reported a result. The
+	// result may be a failure; what makes it completed is that it was observed.
+	TerminalCauseCompleted TerminalCause = "COMPLETED"
+	// TerminalCauseNotStarted means the engine is known never to have begun — a
+	// stale fence, a refused authorization, a browser that could not be created.
+	TerminalCauseNotStarted TerminalCause = "NOT_STARTED"
+	// TerminalCauseInterrupted means the run was never observed to completion.
+	// Recovery terminating an orphan RUNNING entry produces this; whether the
+	// engine actually finished is unknown and unknowable.
+	TerminalCauseInterrupted TerminalCause = "INTERRUPTED"
+)
+
 type EntryCompletionDecision struct {
-	EntryStatus                   domainexecution.EntryStatus
+	EntryStatus domainexecution.EntryStatus
+	// TerminalCause travels with the status rather than being left for the host
+	// to derive from the command, because the host persists this struct verbatim
+	// as the authoritative terminal record. A field it had to recompute is a
+	// field two hosts could compute differently.
+	TerminalCause                 TerminalCause
 	CurrentIntent                 TerminalIntent
 	CurrentIntentRevision         int64
 	CurrentCancellationGeneration int64
@@ -292,6 +326,7 @@ func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (E
 	}
 	return EntryCompletionDecision{
 		EntryStatus:                   status,
+		TerminalCause:                 terminalCauseOf(outcome.Result.ExecutionOutcome),
 		CurrentIntent:                 state.TerminalIntent,
 		CurrentIntentRevision:         state.TerminalIntentRevision,
 		CurrentCancellationGeneration: state.CancellationGeneration,
@@ -299,6 +334,25 @@ func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (E
 		NextIntentRevision:            state.TerminalIntentRevision + 1,
 		NextCancellationGeneration:    nextGeneration,
 	}, nil
+}
+
+// terminalCauseOf reads the observation axis out of the engine outcome. It is
+// total over the validated vocabulary, and deliberately takes no intent: an
+// intent can change which terminal status an unfinished entry reaches, but
+// nothing about an intent changes whether the run was seen.
+func terminalCauseOf(executed engine.ExecutionOutcome) TerminalCause {
+	switch executed {
+	case engine.ExecutionNotStarted:
+		return TerminalCauseNotStarted
+	case engine.ExecutionInterrupted:
+		return TerminalCauseInterrupted
+	default:
+		// SUCCEEDED, FAILED and CANCELED are all reports from a run that
+		// happened. The trailing case is exhaustive over the validated
+		// vocabulary rather than a catch-all: EngineOutcome.Validate has already
+		// refused anything outside it.
+		return TerminalCauseCompleted
+	}
 }
 
 // decideTerminalEntryStatus is total over the validated vocabulary: both

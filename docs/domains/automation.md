@@ -2,7 +2,7 @@
 
 ## 目的与边界
 
-自动化是可持久化自动化资产的权威模型：环境、文件夹、节点及版本、工作流及版本、测试任务及版本，以及采样发布和修复候选审核。它负责身份、版本、生命周期、乐观并发与静态合法性。
+自动化是可持久化自动化资产的权威模型：环境、文件夹（退役中）、节点及版本、工作流及版本、测试任务及版本，以及采样发布和修复候选审核。它负责身份、版本、生命周期、乐观并发与静态合法性。
 
 它**不**负责浏览器执行、调度、元素定位、评分或存储实现。具体持久化、跨仓储事务、浏览器采集/执行、调度队列，以及自动审批策略之外的 UI 与通知都在本领域之外。自动化不调用浏览器适配器，也不定义其行为。
 
@@ -29,7 +29,7 @@ flowchart LR
 | `FlowFragmentStep`（[`assets.go:374`](../../domain/automation/assets.go)） | 步骤模型，见下 |
 | `ResolvedExecutionFlow`（[`test_task_types.go:64`](../../domain/automation/test_task_types.go)） | 已解析的工作流、节点和引用依赖快照，携带 `ExpectedExecutionFlowRevision` |
 | `HealCandidate`（[`healing.go:121-131`](../../domain/automation/healing.go)） | 修复候选的**持久化审核状态**；它不是评分器 |
-| `FolderForest` | 同类资产的目录树，最大深度 5（[`folders.go:52`](../../domain/automation/folders.go)） |
+| `FolderForest` | 同类资产的目录树，最大深度 5（[`folders.go:52`](../../domain/automation/folders.go)）。**整体退役中**：它的不变量全是通用目录树规则，与版本发布和引用锁定无关，移交宿主后删除，见[退役计划](../contracts/retirement-plan.md) |
 
 **`FlowFragmentStep` 是带标签的联合，不是 Go sum type。** 它是单个 struct，用 `Kind StepKind` 判别（六值：`ACTION`、`WAIT`、`REPEAT`、`WORKFLOW_REF`、`VALIDATION`、`VALIDATION_GROUP`，[`assets.go:358-365`](../../domain/automation/assets.go)），可选载荷分别挂在 `Validation`、`ValidationGroup`、`Reference`、`Children` 上。判别联合不得残留其他 Kind 的字段 —— 这条是校验规则，不是类型系统给的保证。注意常量名与取值不同名：`StepFlowFragmentRef` 的值是 `"WORKFLOW_REF"`。
 

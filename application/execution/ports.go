@@ -10,20 +10,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-const (
-	CodeFactCommitterRequired  fault.Code = "EXECUTION_FACT_COMMITTER_REQUIRED"
-	CodeStepRevisionConflict   fault.Code = "EXECUTION_STEP_REVISION_CONFLICT"
-	CodeCommitIdentityConflict fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_IDENTITY_CONFLICT"
-	// CodeStepTransitionCommitPayloadTooLarge covers both the overall payload
-	// budget and any one string exceeding its own byte limit: the remediation is
-	// always to shrink the commit, never to correct a specific field's value.
-	CodeStepTransitionCommitPayloadTooLarge fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_PAYLOAD_TOO_LARGE"
-	// CodeStepTransitionCommitRunMismatch covers a commit fact whose own InstanceID
-	// disagrees with the claimed worker fence's InstanceID. FAILED_PRECONDITION: the
-	// caller must re-read the authoritative claim, not supply a different value.
-	CodeStepTransitionCommitRunMismatch fault.Code = "EXECUTION_STEP_TRANSITION_COMMIT_RUN_MISMATCH"
-)
-
 func stepTransitionCommitPayloadTooLargeError(cause error) error {
 	err, constructionErr := fault.Wrap(cause, fault.OutOfRange, CodeStepTransitionCommitPayloadTooLarge, "step transition commit payload is too large")
 	if constructionErr != nil {

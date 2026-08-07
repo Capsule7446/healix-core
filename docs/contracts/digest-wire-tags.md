@@ -8,7 +8,7 @@
 
 | 文件 | 标签字节 | 依赖方 | 本分支是否变更过 |
 |---|---|---|---|
-| `domain/execution/instance_snapshot.go:662` | `healix.run-snapshot` | 每一份已封存快照的 digest | 未变更 |
+| `domain/execution/instance_snapshot.go:662` | `healix.run-snapshot` | 每一份已封存快照的 digest | 标签未变更，**但载荷在 v0.8.0 变过**（见下） |
 | `application/scheduling/create_instance_service.go:21` | `create-run-request-v1` | 每一条已存的创建幂等记录 | 未变更 |
 | `application/scheduling/instance_command_services.go:305` | `cancel-instance-request-v1` | 每一条已存的取消幂等记录 | `5ecfde2` 引入 |
 | `application/scheduling/instance_command_services.go:306` | `abort-instance-request-v1` | 每一条已存的中止幂等记录 | `5ecfde2` 引入 |
@@ -16,6 +16,7 @@
 | `application/automation/heal_candidate_repository.go:17` | `heal-review-v1` | 每一条已存的 heal review 记录 | 未变更 |
 | `application/automation/sampling_publication_transaction.go:16` | `sampling-publication-v1` | 每一条已存的 sampling publication 记录 | 未变更 |
 | `application/execution/entry_completion_transaction.go:20` | `complete-entry-request-v1` | 每一条已存的 entry completion 幂等记录 | 本分支新增 |
+| `application/execution/abort_request_transaction.go:17` | `request-abort-v1` | 每一条已存的 abort request 幂等记录 | 本分支新增 |
 
 ## `5ecfde2` 造成的存量失效
 
@@ -41,11 +42,32 @@
 **所有**已存快照都会被判为冲突。同理，`create-run-request-v1` 的移动会失效所有
 已存创建幂等记录——这两个的失效方向比前面三条更糟。
 
+## v0.8.0 造成的快照失效（标签没动，载荷动了）
+
+修复器策略新增了第十一个权重维度 `Framework`。它此前只存在于 `heal.Weights`：
+评分器读它，而 `execution.HealerWeightsSnapshot` 与 `automation.HealerWeightsSnapshotV1`
+都不携带它，`encodeHealerDigest` 也不哈希它。后果是**同一份快照 digest 下，
+宿主可以给 `Framework` 设不同的值并得到不同的评分**——冻结策略要买的正是这个
+不会发生，而它一直是部分成立的。
+
+修复要求把第十一个权重纳入哈希，于是 `healix.run-snapshot` 下的载荷变了：
+
+- `HydrateInstanceSnapshot` 对所有 v0.7 及更早的已存快照返回
+  `EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT`
+- 失效范围与"移动 `healix.run-snapshot` 标签"完全相同
+
+**注意这类变更 wire tag 守卫抓不到。** `TestW5DigestWireTagsAreRegistered`
+比对的是标签字节，而标签字节没变。抓住它的是
+`domain/execution/instance_snapshot_test.go` 里那个被钉住的 golden digest，
+以及 `architecture/healer_weight_parity_test.go` 的两个维度对齐守卫。
+
 ## 规则
 
 1. 任何 wire tag 的变更都必须同时提供迁移方案（重算或双读窗口），并在本文件登记。
-2. 不得作为改名的副产品滑进去。
-3. 本清单必须与 `architecture/digest_wire_tag_test.go` 的 inventory 逐条对齐。
+2. **载荷变更同样适用第 1 条**，即使标签字节没动。判据是"已存 digest 还能不能
+   重算命中"，不是"标签有没有改"。
+3. 不得作为改名的副产品滑进去。
+4. 本清单必须与 `architecture/digest_wire_tag_test.go` 的 inventory 逐条对齐。
 
 ## 守卫抓得到什么，抓不到什么
 

@@ -102,9 +102,11 @@ func (s VersionSource) Validate() error {
 }
 
 type ElementTarget struct {
-	ID               string
-	DisplayName      string
-	Properties       Properties
+	ID          string
+	DisplayName string
+	Properties  Properties
+	// Deprecated: 文件夹层级移交宿主，这个反向引用随之退役。它从未被校验到 FolderForest 上，
+	// 也从未进入冻结快照；见 docs/contracts/retirement-plan.md。
 	FolderID         string
 	CurrentVersionID string
 	CreatedAt        int64
@@ -124,7 +126,6 @@ type ElementTargetVersion struct {
 	Source          VersionSource
 	CreatedAt       int64
 	DeletedAt       int64
-	RunUsageCount   int
 }
 
 type ElementTargetAggregate struct {
@@ -230,8 +231,6 @@ type Environment struct {
 	CreatedAt   int64
 	UpdatedAt   int64
 	DeletedAt   int64
-	LastUsedAt  int64
-	RunCount    int
 	Revision    Revision
 }
 
@@ -408,9 +407,11 @@ type FlowFragmentContent struct {
 }
 
 type FlowFragment struct {
-	ID               string
-	DisplayName      string
-	Properties       Properties
+	ID          string
+	DisplayName string
+	Properties  Properties
+	// Deprecated: 文件夹层级移交宿主，这个反向引用随之退役。它从未被校验到 FolderForest 上，
+	// 也从未进入冻结快照；见 docs/contracts/retirement-plan.md。
 	FolderID         string
 	CurrentVersionID string
 	CreatedAt        int64
@@ -426,7 +427,6 @@ type FlowFragmentVersion struct {
 	Definition     FlowFragmentContent
 	CreatedAt      int64
 	DeletedAt      int64
-	RunUsageCount  int
 }
 
 type FlowFragmentAggregate struct {

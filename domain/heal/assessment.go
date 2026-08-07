@@ -29,7 +29,6 @@ const (
 	ReasonTagMismatch    ReasonCode = "tag_mismatch"
 	ReasonFormMismatch   ReasonCode = "form_mismatch"
 	ReasonAmbiguous      ReasonCode = "ambiguous"
-	ReasonBelowCap       ReasonCode = "below_cap"
 )
 
 type ExecutionContext struct{ PageURL, Origin string }

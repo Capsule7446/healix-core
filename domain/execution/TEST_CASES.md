@@ -47,6 +47,7 @@
 | `WorkerFence.Validate` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `StaleWorkerFenceError.Error` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `StaleWorkerFenceError.Is` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `HealerPolicySnapshot.HealPolicy` | [`domain/execution/healer_policy_conversion.go`](../../domain/execution/healer_policy_conversion.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
 ## Test Case Evidence Matrix
 
@@ -158,6 +159,8 @@
 | `TestWorkerFenceInvalidErrorCarriesCode` | `Worker Fence Invalid Error Carries Code`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/worker_fence_fault_test.go`](../../domain/execution/worker_fence_fault_test.go) · `TestWorkerFenceInvalidErrorCarriesCode` |
 | `TestWorkerFenceInvalidIsDistinctFromStale` | `Worker Fence Invalid Is Distinct From Stale`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/worker_fence_fault_test.go`](../../domain/execution/worker_fence_fault_test.go) · `TestWorkerFenceInvalidIsDistinctFromStale` |
 | `TestWorkerFenceValidReturnsNil` | `Worker Fence Valid Returns Nil`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/worker_fence_fault_test.go`](../../domain/execution/worker_fence_fault_test.go) · `TestWorkerFenceValidReturnsNil` |
+| `TestHealPolicyCarriesEveryScoredDimension` | `Heal Policy Carries Every Scored Dimension`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/healer_policy_conversion_test.go`](../../domain/execution/healer_policy_conversion_test.go) · `TestHealPolicyCarriesEveryScoredDimension` |
+| `TestHealPolicyRejectsPolicyTheScorerCannotUse` | `Heal Policy Rejects Policy The Scorer Cannot Use`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/healer_policy_conversion_test.go`](../../domain/execution/healer_policy_conversion_test.go) · `TestHealPolicyRejectsPolicyTheScorerCannotUse` |
 
 ## Cross-cutting / Conformance Cases
 

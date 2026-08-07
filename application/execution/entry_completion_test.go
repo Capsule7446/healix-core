@@ -21,6 +21,7 @@ func allExecutionOutcomes() []engine.ExecutionOutcome {
 		engine.OutcomeFailed,
 		engine.OutcomeCanceled,
 		engine.ExecutionNotStarted,
+		engine.ExecutionInterrupted,
 	}
 }
 
@@ -30,6 +31,7 @@ func allRecordingOutcomes() []engine.RecordingOutcome {
 		engine.RecordingSucceeded,
 		engine.RecordingStartFailed,
 		engine.RecordingStopFailed,
+		engine.RecordingUnobserved,
 	}
 }
 
@@ -39,6 +41,7 @@ func allTimelineOutcomes() []engine.TimelineOutcome {
 		engine.TimelineComplete,
 		engine.TimelineStartFailed,
 		engine.TimelineFinishFailed,
+		engine.TimelineUnobserved,
 	}
 }
 
@@ -87,6 +90,24 @@ var entryCompletionStatusMatrix = map[engine.ExecutionOutcome]map[TerminalIntent
 		TerminalIntentCancel: domainexecution.EntryCanceled,
 		TerminalIntentAbort:  domainexecution.EntryAborted,
 	},
+	engine.ExecutionInterrupted: {
+		// D-18: 未被观测到结束的运行在**状态**轴上与未启动相同——
+		// 七态机里 FAILED 仍是唯一诚实的选项。两者的区别走 TerminalCause 轴。
+		TerminalIntentNone:   domainexecution.EntryFailed,
+		TerminalIntentCancel: domainexecution.EntryCanceled,
+		TerminalIntentAbort:  domainexecution.EntryAborted,
+	},
+}
+
+// entryCompletionCauseMatrix is the D-18 observation axis, written as data for
+// the same reason the status matrix is: an expectation derived by calling the
+// implementation would agree with any implementation.
+var entryCompletionCauseMatrix = map[engine.ExecutionOutcome]TerminalCause{
+	engine.OutcomeSucceeded:     TerminalCauseCompleted,
+	engine.OutcomeFailed:        TerminalCauseCompleted,
+	engine.OutcomeCanceled:      TerminalCauseCompleted,
+	engine.ExecutionNotStarted:  TerminalCauseNotStarted,
+	engine.ExecutionInterrupted: TerminalCauseInterrupted,
 }
 
 // entryCompletionGenerationBump records whether the terminal status means the
@@ -113,8 +134,13 @@ func wantEntryCompletionDecision(t *testing.T, state EntryCompletionState, resul
 	if !ok {
 		t.Fatalf("generation table has no row for terminal status %q", status)
 	}
+	cause, ok := entryCompletionCauseMatrix[result.ExecutionOutcome]
+	if !ok {
+		t.Fatalf("cause matrix has no row for execution outcome %q", result.ExecutionOutcome)
+	}
 	return EntryCompletionDecision{
 		EntryStatus:                   status,
+		TerminalCause:                 cause,
 		CurrentIntent:                 state.TerminalIntent,
 		CurrentIntentRevision:         state.TerminalIntentRevision,
 		CurrentCancellationGeneration: state.CancellationGeneration,
@@ -190,6 +216,9 @@ func TestDecideEntryCompletionCoversEveryOutcomeIntentAndStartingStatus(t *testi
 func TestDecideEntryCompletionMatrixHasNoUnreachableOrMissingCell(t *testing.T) {
 	if len(entryCompletionStatusMatrix) != len(allExecutionOutcomes()) {
 		t.Fatalf("matrix covers %d execution outcomes, vocabulary has %d", len(entryCompletionStatusMatrix), len(allExecutionOutcomes()))
+	}
+	if len(entryCompletionCauseMatrix) != len(allExecutionOutcomes()) {
+		t.Fatalf("cause matrix covers %d execution outcomes, vocabulary has %d", len(entryCompletionCauseMatrix), len(allExecutionOutcomes()))
 	}
 	for _, exec := range allExecutionOutcomes() {
 		byIntent, ok := entryCompletionStatusMatrix[exec]

@@ -72,7 +72,12 @@ func CompletionFaultPoints() []CompletionFaultPoint {
 // their magnitude, because how many rows one completion produces is a host's
 // business but whether a rolled-back attempt left any behind is not.
 type CompletionSnapshot struct {
-	EntryStatus            domainexecution.EntryStatus
+	EntryStatus domainexecution.EntryStatus
+	// TerminalCause is read back for the same reason EntryStatus is: D-18
+	// exists so a crash-interrupted entry stays distinguishable from one that
+	// ran and failed, and a host that decided the cause but never persisted it
+	// would leave both as FAILED with the suite none the wiser.
+	TerminalCause          execution.TerminalCause
 	TerminalIntent         execution.TerminalIntent
 	TerminalIntentRevision int64
 	CancellationGeneration int64
@@ -483,6 +488,9 @@ func assertCompletionCommitted(t *testing.T, before, after CompletionSnapshot, d
 	t.Helper()
 	if after.EntryStatus != decision.EntryStatus {
 		t.Fatalf("entry status = %s, want %s", after.EntryStatus, decision.EntryStatus)
+	}
+	if after.TerminalCause != decision.TerminalCause {
+		t.Fatalf("terminal cause = %s, want %s", after.TerminalCause, decision.TerminalCause)
 	}
 	if after.TerminalIntent != decision.NextIntent {
 		t.Fatalf("terminal intent = %s, want %s", after.TerminalIntent, decision.NextIntent)

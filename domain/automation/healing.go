@@ -110,11 +110,13 @@ const (
 
 type HealApprovalStatus string
 
+// HealApprovalStatus names the decision a review command carries. It is a
+// command input, not a stored lifecycle: a candidate awaiting review is
+// expressed by HealCandidateStatus, so there is no pending or not-required
+// member here for Validate to reject.
 const (
-	HealApprovalNotRequired HealApprovalStatus = "NOT_REQUIRED"
-	HealApprovalPending     HealApprovalStatus = "PENDING"
-	HealApprovalApproved    HealApprovalStatus = "APPROVED"
-	HealApprovalRejected    HealApprovalStatus = "REJECTED"
+	HealApprovalApproved HealApprovalStatus = "APPROVED"
+	HealApprovalRejected HealApprovalStatus = "REJECTED"
 )
 
 // HealCandidateReviewCommand carries stable candidate identity and review metadata.

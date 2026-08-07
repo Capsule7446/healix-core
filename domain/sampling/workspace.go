@@ -6,42 +6,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-type SamplingBrowserStatus string
-
-const (
-	SamplingBrowserClosed SamplingBrowserStatus = "CLOSED"
-	SamplingBrowserOpen   SamplingBrowserStatus = "OPEN"
-)
-
-type SamplingCaptureStatus string
-
-const (
-	SamplingCaptureIdle        SamplingCaptureStatus = "IDLE"
-	SamplingCaptureRecording   SamplingCaptureStatus = "RECORDING"
-	SamplingCapturePaused      SamplingCaptureStatus = "PAUSED"
-	SamplingCaptureEnded       SamplingCaptureStatus = "ENDED"
-	SamplingCaptureInterrupted SamplingCaptureStatus = "INTERRUPTED"
-)
-
-// SamplingLifecycle 属于每个临时工作流程。  CaptureStatus 是控件的工作区投影，而此值在另一个浏览器会话启动后可以区分已结束/中断的草稿。
-type SamplingLifecycle string
-
-const (
-	SamplingLifecycleRecording   SamplingLifecycle = "RECORDING"
-	SamplingLifecyclePaused      SamplingLifecycle = "PAUSED"
-	SamplingLifecycleEnded       SamplingLifecycle = "ENDED"
-	SamplingLifecycleInterrupted SamplingLifecycle = "INTERRUPTED"
-)
-
-type PublicationStatus string
-
-const (
-	PublicationStatusUnpublished PublicationStatus = "UNSAVED"
-	PublicationStatusPublishing  PublicationStatus = "SAVING"
-	PublicationStatusPublished   PublicationStatus = "SAVED"
-	PublicationStatusFailed      PublicationStatus = "FAILED"
-)
-
 type ResolutionMode string
 
 const (
@@ -71,26 +35,20 @@ type UnpublishedElementTarget struct {
 	Fingerprint    fingerprint.Fingerprint
 	StepIDs        []string
 	ResolutionMode ResolutionMode
-	ExistingNodeID string
 	Candidates     []ElementTargetCandidate
 }
 
+// UnpublishedFlowFragment 是内存中的草稿。它不复述会话生命周期：那是 Session.Status 的唯一归属。它也不携带发布状态——发布是一次原子幂等事务，"进行中"在领域侧没有观察点，而其结果是 Publish 的返回值或一个 typed fault，不是草稿上的字段。
 type UnpublishedFlowFragment struct {
-	ID            string
-	SessionID     string
-	DisplayName   string
-	Properties    automation.Properties
-	StartedAt     int64
-	PausedAt      int64
-	EndedAt       int64
-	InterruptedAt int64
-	Lifecycle     SamplingLifecycle
+	ID          string
+	SessionID   string
+	DisplayName string
+	Properties  automation.Properties
+	StartedAt   int64
 	// 验证插入是一个可选的暂停编辑器选择。  它只影响下一次验证捕获；普通操作始终保留根步骤，并且应用程序层清除无效/已删除的分支。
 	ValidationInsertGroupID     string
 	ValidationInsertBranchID    string
 	ValidationCapturedActionIDs []string
-	Status                      PublicationStatus
-	ErrorMessage                string
 	Steps                       []automation.FlowFragmentStep
 	Parameters                  []automation.ParameterDefinition
 	Nodes                       []UnpublishedElementTarget
@@ -151,13 +109,4 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 		workflow.Nodes[index].StepIDs = stepIDsByNode[workflow.Nodes[index].ID]
 	}
 	return nil
-}
-
-type SamplingSessionState struct {
-	BrowserStatus     SamplingBrowserStatus
-	CaptureStatus     SamplingCaptureStatus
-	ValidationArmed   bool
-	BrowserSessionID  string
-	CurrentWorkflowID string
-	Workflows         []UnpublishedFlowFragment
 }

@@ -20,6 +20,7 @@ type HealerWeightsSnapshotV1 struct {
 	Neighbor  float64
 	LabelText float64
 	Container float64
+	Framework float64
 }
 
 type HealerPolicySnapshotV1 struct {
@@ -37,6 +38,7 @@ func DefaultHealerPolicySnapshotV1() HealerPolicySnapshotV1 {
 		Weights: HealerWeightsSnapshotV1{
 			Tag: 0.15, ID: 0.20, RoleName: 0.20, Class: 0.10, Attrs: 0.10,
 			Text: 0.10, Index: 0.05, Neighbor: 0.10, LabelText: 0.15, Container: 0.10,
+			Framework: 0,
 		},
 	}
 }
@@ -62,7 +64,7 @@ func (p HealerPolicySnapshotV1) Validate() error {
 	}
 	weights := []float64{p.Weights.Tag, p.Weights.ID, p.Weights.RoleName, p.Weights.Class,
 		p.Weights.Attrs, p.Weights.Text, p.Weights.Index, p.Weights.Neighbor,
-		p.Weights.LabelText, p.Weights.Container}
+		p.Weights.LabelText, p.Weights.Container, p.Weights.Framework}
 	total := 0.0
 	for _, weight := range weights {
 		if math.IsNaN(weight) || math.IsInf(weight, 0) || weight < 0 {
