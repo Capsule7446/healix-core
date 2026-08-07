@@ -48,6 +48,18 @@
 `engine.ExecutionInterrupted` 只能经由它抵达决策——`RunProgram` 永远不会返回它，
 因为一个还能返回结果的进程并没有丢失观测。
 
+### 辅助观测轴同样说「未知」
+
+`InterruptedEngineOutcome()` 在录制与时间线两条轴上返回新增的
+`RecordingUnobserved` / `TimelineUnobserved`，而不是 `DISABLED`。
+
+理由与执行轴完全相同：`DISABLED` 断言功能被关掉了，而观测者已死的 entry
+很可能正在录制、并留下了一个部分文件——宿主日后找到它，却无法与一条声称
+「录制未启用」的记录对上。孤儿 entry 在**每一条轴**上都只能说未知。
+
+对照：真的从未启动的 entry 确实没有录制，`NotStartedEngineOutcome()` 仍然且应当
+返回 `DISABLED`。
+
 ### 状态轴上未变
 
 `INTERRUPTED` 在状态轴上与 `NOT_STARTED` 相同：`NONE`→`FAILED`、

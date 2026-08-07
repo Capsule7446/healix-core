@@ -226,6 +226,12 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 		}
 	})
 
+	// The next two subtests are deliberately separate. A stale fence and a stale
+	// observed state are both "somebody else moved first", but the caller reacts
+	// oppositely: a lost claim means stop, a moved state means re-read and
+	// rebuild. An adapter that answered both with one code — or with an
+	// unclassified storage error — would leave the host unable to tell them
+	// apart, so each asserts its own code rather than merely "an error".
 	t.Run("stale-fence-writes-nothing", func(t *testing.T) {
 		state := abortRunningState(execution.TerminalIntentNone)
 		fixture := factory(t, state)
@@ -233,11 +239,30 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 		stale := abortCommand(fixture, state, "command-1")
 		stale.Fence.ClaimToken += "-stale"
 
-		if _, err := execution.NewAbortRequestService(fixture).Request(context.Background(), stale); err == nil {
-			t.Fatal("a stale fence was accepted")
+		_, err := execution.NewAbortRequestService(fixture).Request(context.Background(), stale)
+		if !fault.IsCode(err, domainexecution.CodeWorkerFenceStale) {
+			t.Fatalf("stale fence error = %v, want code %s", err, domainexecution.CodeWorkerFenceStale)
 		}
 		if after := fixture.Snapshot(); after != before {
 			t.Fatalf("stale fence changed committed state: %+v -> %+v", before, after)
+		}
+	})
+
+	t.Run("stale-observed-state-conflicts-and-writes-nothing", func(t *testing.T) {
+		state := abortRunningState(execution.TerminalIntentNone)
+		fixture := factory(t, state)
+		before := fixture.Snapshot()
+		// The command is well formed and its fence is current; it simply
+		// observed a revision the entry has already moved past.
+		stale := abortCommand(fixture, state, "command-1")
+		stale.State.TerminalIntentRevision = state.TerminalIntentRevision + 1
+
+		_, err := execution.NewAbortRequestService(fixture).Request(context.Background(), stale)
+		if !fault.IsCode(err, execution.CodeRequestAbortIdentityConflict) {
+			t.Fatalf("stale state error = %v, want code %s", err, execution.CodeRequestAbortIdentityConflict)
+		}
+		if after := fixture.Snapshot(); after != before {
+			t.Fatalf("stale state changed committed state: %+v -> %+v", before, after)
 		}
 	})
 }

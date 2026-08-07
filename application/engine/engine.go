@@ -103,11 +103,20 @@ const (
 	RecordingSucceeded   RecordingOutcome = "SUCCEEDED"
 	RecordingStartFailed RecordingOutcome = "START_FAILED"
 	RecordingStopFailed  RecordingOutcome = "STOP_FAILED"
+	// RecordingUnobserved reports that whether a recording ran, and how it
+	// ended, is unknown. It is not DISABLED: that value asserts recording was
+	// switched off, while an entry whose observer died may have been recording
+	// and left a partial file behind. RunProgram never returns it; it reaches a
+	// decision only through InterruptedEngineOutcome.
+	RecordingUnobserved RecordingOutcome = "UNOBSERVED"
 
 	TimelineDisabled     TimelineOutcome = "DISABLED"
 	TimelineComplete     TimelineOutcome = "COMPLETE"
 	TimelineStartFailed  TimelineOutcome = "START_FAILED"
 	TimelineFinishFailed TimelineOutcome = "FINISH_FAILED"
+	// TimelineUnobserved is the timeline axis of the same unknown. See
+	// RecordingUnobserved.
+	TimelineUnobserved TimelineOutcome = "UNOBSERVED"
 )
 
 type EntryResult struct {

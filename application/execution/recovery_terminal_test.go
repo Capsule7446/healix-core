@@ -27,6 +27,31 @@ func TestInterruptedOutcomeIsDistinctFromNotStarted(t *testing.T) {
 	}
 }
 
+// TestInterruptedOutcomeSaysUnknownOnEveryAxis is the same rule applied one
+// level down, and it is the one the first draft got wrong.
+//
+// Reporting DISABLED for recording or timeline asserts the feature was switched
+// off. An entry whose observer died may well have been recording and left a
+// partial file behind, which the host would later find and be unable to
+// reconcile with a record claiming recording never ran. "Unknown" is the only
+// honest value on every axis, not just the execution one.
+func TestInterruptedOutcomeSaysUnknownOnEveryAxis(t *testing.T) {
+	interrupted := InterruptedEngineOutcome()
+	if interrupted.Result.RecordingOutcome != engine.RecordingUnobserved {
+		t.Errorf("recording outcome = %q, want %q; DISABLED would claim recording was switched off", interrupted.Result.RecordingOutcome, engine.RecordingUnobserved)
+	}
+	if interrupted.Result.TimelineOutcome != engine.TimelineUnobserved {
+		t.Errorf("timeline outcome = %q, want %q", interrupted.Result.TimelineOutcome, engine.TimelineUnobserved)
+	}
+
+	// The contrast is the point: an entry that never started genuinely had no
+	// recording, so DISABLED is true there and must stay.
+	notStarted := NotStartedEngineOutcome()
+	if notStarted.Result.RecordingOutcome != engine.RecordingDisabled || notStarted.Result.TimelineOutcome != engine.TimelineDisabled {
+		t.Fatalf("a run that never began still reports its auxiliary axes as disabled, got %+v", notStarted.Result)
+	}
+}
+
 // TestTerminalCauseSeparatesObservationFromResult is the answer to D-18 §7.2:
 // core takes option (b). The seven-state entry machine is unchanged — FAILED
 // stays the honest terminal status for an entry that neither succeeded nor was
