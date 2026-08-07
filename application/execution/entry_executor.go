@@ -12,21 +12,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-const (
-	// CodeEntryExecutorConfigurationInvalid covers NewEntryExecutor's own
-	// constructor checks: none of these are a caller argument distinct from the
-	// executor's own configuration, so the remediation is always to repair that
-	// configuration before construction, hence FAILED_PRECONDITION.
-	CodeEntryExecutorConfigurationInvalid fault.Code = "EXECUTION_ENTRY_EXECUTOR_CONFIGURATION_INVALID"
-	// CodeSchedulingAdapterUnavailable covers a browser session factory failure:
-	// the host adapter, not the caller, needs to become reachable again.
-	CodeSchedulingAdapterUnavailable fault.Code = "EXECUTION_SCHEDULING_ADAPTER_UNAVAILABLE"
-	// CodeEntryBrowserSessionAdapterContractViolation covers a nil or invalid
-	// session returned by the host factory: the factory itself violated its
-	// contract, which has no caller remediation.
-	CodeEntryBrowserSessionAdapterContractViolation fault.Code = "EXECUTION_ENTRY_BROWSER_SESSION_ADAPTER_CONTRACT_VIOLATION"
-)
-
 func entryExecutorConfigurationInvalidError(cause error) error {
 	err, constructionErr := fault.Wrap(cause, fault.FailedPrecondition, CodeEntryExecutorConfigurationInvalid, "entry executor configuration is invalid")
 	if constructionErr != nil {

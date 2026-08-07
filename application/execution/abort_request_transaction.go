@@ -16,30 +16,6 @@ import (
 // never an edit to this one.
 const requestAbortDigestV1 = "request-abort-v1"
 
-const (
-	// CodeRequestAbortCommandInvalid covers an abort request core cannot digest:
-	// a malformed identity, fence, observed state or request. The caller must
-	// repair the request, hence INVALID_ARGUMENT.
-	CodeRequestAbortCommandInvalid fault.Code = "EXECUTION_REQUEST_ABORT_COMMAND_INVALID"
-	// CodeRequestAbortDigestMismatch covers an intent whose digest or decision
-	// does not follow from its own command. It is what stops a host from
-	// substituting counters core never produced.
-	CodeRequestAbortDigestMismatch fault.Code = "EXECUTION_REQUEST_ABORT_DIGEST_MISMATCH"
-	// CodeRequestAbortUnavailable covers a service with no transaction behind
-	// it. Nothing about the request is wrong, so it is UNAVAILABLE rather than
-	// INVALID_ARGUMENT.
-	CodeRequestAbortUnavailable fault.Code = "EXECUTION_REQUEST_ABORT_UNAVAILABLE"
-	// CodeRequestAbortAdapterContractViolation covers an adapter that returned
-	// an outcome the port forbids — an unknown status, a different identity, or
-	// a decision it recomputed for itself. That is an implementation defect in
-	// the adapter, not a business failure, hence INTERNAL.
-	CodeRequestAbortAdapterContractViolation fault.Code = "EXECUTION_REQUEST_ABORT_ADAPTER_CONTRACT_VIOLATION"
-	// CodeRequestAbortIdentityConflict is the code adapters raise when the entry
-	// no longer holds the state the command claimed to observe, so the
-	// compare-and-swap found a different writer had moved first.
-	CodeRequestAbortIdentityConflict fault.Code = "EXECUTION_REQUEST_ABORT_IDENTITY_CONFLICT"
-)
-
 func requestAbortCommandInvalidError(cause error, violation fault.Violation) error {
 	err, constructionErr := fault.Wrap(cause, fault.InvalidArgument, CodeRequestAbortCommandInvalid, "abort request command is invalid", fault.WithViolations(violation))
 	if constructionErr != nil {

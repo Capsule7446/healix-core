@@ -7,28 +7,6 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-const (
-	// CodeAbortRequestInvalid covers a malformed request: a pending command id
-	// that is absent, blank, or carries surrounding space. The identity reaches
-	// the host's idempotency row verbatim, so a value that cannot be traced back
-	// to a command is repaired by the caller, hence INVALID_ARGUMENT.
-	CodeAbortRequestInvalid fault.Code = "EXECUTION_ABORT_REQUEST_INVALID"
-	// CodeAbortRequestNotRunning covers a well-formed state that is not RUNNING.
-	// Only a running entry can be asked to stop; anything else has already
-	// reached a terminal status or has not started, and the caller must re-read
-	// before retrying, hence FAILED_PRECONDITION.
-	//
-	// It is a separate code from CodeEntryCompletionNotRunning because the
-	// remediation differs: a completion that arrives late is usually a replay to
-	// be looked up, while an abort request against a finished entry is a request
-	// with nothing left to act on.
-	CodeAbortRequestNotRunning fault.Code = "EXECUTION_ABORT_REQUEST_NOT_RUNNING"
-	// CodeAbortRequestAlreadyAborting covers a request against an entry whose
-	// intent is already ABORT. The abort is in flight and there is nothing left
-	// to advance, hence FAILED_PRECONDITION rather than a silent success.
-	CodeAbortRequestAlreadyAborting fault.Code = "EXECUTION_ABORT_REQUEST_ALREADY_ABORTING"
-)
-
 func abortRequestInvalidError(violation fault.Violation) error {
 	err, constructionErr := fault.New(fault.InvalidArgument, CodeAbortRequestInvalid, "abort request is invalid", fault.WithViolations(violation))
 	if constructionErr != nil {
