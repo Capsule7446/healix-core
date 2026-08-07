@@ -23,8 +23,14 @@ flowchart LR
 - **`Candidate`** 是 selector、fingerprint 与 score 的组合。
 - **`Decision.Outcome`**（[`heal.go:15-26`](../../domain/heal/heal.go)）是四值封闭集：`applied`、`below_cap`、`no_candidate`、`safety_rejected`。
 - **`Thresholds`**（[`healer.go:12-16`](../../domain/heal/healer.go)）只有 `AppliedCap` 与 `ReviewCap`。默认值 `0.85 / 0.60`。
-- **`Weights`**（[`scorer.go:17-29`](../../domain/heal/scorer.go)）十一个维度：`Tag`、`ID`、`RoleName`、`Class`、`Attrs`、`Text`、`Index`、`Neighbor`、`LabelText`、`Container`、`Framework`。打分按加权平均归一化（`Σw·sim / Σw`），因此权重只表示**相对**重要性，不要求总和为 1；`LabelText` 与 `Container` 是 Healix 扩展维度。
-- **`Assessment`**（[`assessment.go:12-38`](../../domain/heal/assessment.go)）独立给出 `allow` / `review` / `block`，并附上 `ReasonCode` 列表（八个：`no_candidate`、`origin_mismatch`、`page_mismatch`、`role_mismatch`、`tag_mismatch`、`form_mismatch`、`ambiguous`、`below_cap`）。
+- **`Weights`**（[`scorer.go:17-29`](../../domain/heal/scorer.go)）十一个维度：`Tag`、`ID`、`RoleName`、`Class`、`Attrs`、`Text`、`Index`、`Neighbor`、`LabelText`、`Container`、`Framework`。打分按加权平均归一化（`Σw·sim / Σw`），因此权重只表示**相对**重要性，不要求总和为 1；`LabelText` 与 `Container` 是 Healix 扩展维度；`Framework` 默认为 `0`，即框架感知打分默认关闭。
+
+  这十一个维度必须与两份冻结表示逐字段一致——`execution.HealerWeightsSnapshot` 与
+  `automation.HealerWeightsSnapshotV1`（后者是 ACL，不能 import `domain/heal`，因此只能靠守卫维持同步）。
+  冻结策略通过 [`HealerPolicySnapshot.HealPolicy`](../../domain/execution/healer_policy_conversion.go) 转成 `PolicyV1` 送进评分器；
+  宿主不应自行手工映射，否则 digest 覆盖不到的权重会让两次 digest 相同的运行打出不同的分。
+  对齐由 [`healer_weight_parity_test.go`](../../architecture/healer_weight_parity_test.go) 的两个守卫强制。
+- **`Assessment`**（[`assessment.go:12-38`](../../domain/heal/assessment.go)）独立给出 `allow` / `review` / `block`，并附上 `ReasonCode` 列表（九个：`no_candidate`、`origin_mismatch`、`origin_unknown`、`page_mismatch`、`page_unknown`、`role_mismatch`、`tag_mismatch`、`form_mismatch`、`ambiguous`）。这套词汇只描述**安全门为什么拒绝**；分数落在哪个置信区间是另一回事，由 `evidence.DecisionBand` 表达，因此这里没有 `below_cap`。
 
 ## 不变量
 

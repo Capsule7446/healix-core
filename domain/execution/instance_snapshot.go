@@ -37,7 +37,14 @@ type ScreenshotPolicySnapshot struct {
 	Enabled     bool
 	Destination string
 }
-type HealerWeightsSnapshot struct{ Tag, ID, RoleName, Class, Attrs, Text, Index, Neighbor, LabelText, Container float64 }
+type HealerWeightsSnapshot struct {
+	Tag, ID, RoleName, Class, Attrs, Text, Index, Neighbor, LabelText, Container float64
+	// Framework defaults to 0, so framework-aware scoring stays off unless a
+	// caller asks for it. It is carried, validated and digested like every other
+	// dimension because the scorer reads it: a weight outside the digest would
+	// let two runs with the same snapshot digest score differently.
+	Framework float64
+}
 type HealerPolicySnapshot struct {
 	Version               int
 	ReviewCap, AppliedCap float64
@@ -45,7 +52,7 @@ type HealerPolicySnapshot struct {
 }
 
 func DefaultHealerPolicySnapshot() HealerPolicySnapshot {
-	return HealerPolicySnapshot{Version: HealerPolicyV1, ReviewCap: .6, AppliedCap: .85, Weights: HealerWeightsSnapshot{Tag: .15, ID: .2, RoleName: .2, Class: .1, Attrs: .1, Text: .1, Index: .05, Neighbor: .1, LabelText: .15, Container: .1}}
+	return HealerPolicySnapshot{Version: HealerPolicyV1, ReviewCap: .6, AppliedCap: .85, Weights: HealerWeightsSnapshot{Tag: .15, ID: .2, RoleName: .2, Class: .1, Attrs: .1, Text: .1, Index: .05, Neighbor: .1, LabelText: .15, Container: .1, Framework: 0}}
 }
 
 type TestTaskSnapshot struct {
@@ -210,7 +217,7 @@ func cloneInvocations(source []InvocationScopeSnapshot) []InvocationScopeSnapsho
 }
 
 func normalizeHealerZeros(policy *HealerPolicySnapshot) {
-	values := []*float64{&policy.ReviewCap, &policy.AppliedCap, &policy.Weights.Tag, &policy.Weights.ID, &policy.Weights.RoleName, &policy.Weights.Class, &policy.Weights.Attrs, &policy.Weights.Text, &policy.Weights.Index, &policy.Weights.Neighbor, &policy.Weights.LabelText, &policy.Weights.Container}
+	values := []*float64{&policy.ReviewCap, &policy.AppliedCap, &policy.Weights.Tag, &policy.Weights.ID, &policy.Weights.RoleName, &policy.Weights.Class, &policy.Weights.Attrs, &policy.Weights.Text, &policy.Weights.Index, &policy.Weights.Neighbor, &policy.Weights.LabelText, &policy.Weights.Container, &policy.Weights.Framework}
 	for _, value := range values {
 		if *value == 0 {
 			*value = 0
@@ -695,7 +702,7 @@ func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
 	e.u64(uint64(v.HealerPolicy.Version))
 	e.u64(math.Float64bits(v.HealerPolicy.ReviewCap))
 	e.u64(math.Float64bits(v.HealerPolicy.AppliedCap))
-	for _, x := range []float64{v.HealerPolicy.Weights.Tag, v.HealerPolicy.Weights.ID, v.HealerPolicy.Weights.RoleName, v.HealerPolicy.Weights.Class, v.HealerPolicy.Weights.Attrs, v.HealerPolicy.Weights.Text, v.HealerPolicy.Weights.Index, v.HealerPolicy.Weights.Neighbor, v.HealerPolicy.Weights.LabelText, v.HealerPolicy.Weights.Container} {
+	for _, x := range []float64{v.HealerPolicy.Weights.Tag, v.HealerPolicy.Weights.ID, v.HealerPolicy.Weights.RoleName, v.HealerPolicy.Weights.Class, v.HealerPolicy.Weights.Attrs, v.HealerPolicy.Weights.Text, v.HealerPolicy.Weights.Index, v.HealerPolicy.Weights.Neighbor, v.HealerPolicy.Weights.LabelText, v.HealerPolicy.Weights.Container, v.HealerPolicy.Weights.Framework} {
 		e.u64(math.Float64bits(x))
 	}
 }

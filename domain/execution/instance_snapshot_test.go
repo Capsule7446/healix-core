@@ -107,13 +107,24 @@ func validInstanceSnapshotInput(t *testing.T) InstanceSnapshotInput {
 	}
 }
 
+// The pinned digest is a storage format. It changed once, in v0.8.0, when the
+// healer policy gained its Framework weight: the scorer read that dimension
+// while no snapshot carried it, so it was the one input a host could vary
+// between two runs that sealed to the same digest. Closing that hole meant
+// hashing an eleventh weight, which re-bases every stored snapshot -- the same
+// blast radius as moving the healix.run-snapshot tag, and invisible to the
+// wire-tag guard because the tag itself did not move.
+//
+// Rebaselining this constant is therefore a migration decision, not a test
+// fix. A future change that lands here without one is the thing this pin
+// exists to stop.
 func TestInstanceSnapshotV1DigestAndTypedHydrationRemainCompatible(t *testing.T) {
 	input := validInstanceSnapshotInput(t)
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const legacyDigest = "sha256:47b58c11e5f5c2fe7b5a8bb764ee01b1f5f04970926a7dee3f3d2ba67cfb93a3"
+	const legacyDigest = "sha256:3f3ae05334d007b4946e2573573c9de26e577671c8415f3ded5a86a584ebe077"
 	if sealed.Digest() != legacyDigest {
 		t.Fatalf("V1 digest changed: got %q", sealed.Digest())
 	}
