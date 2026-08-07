@@ -320,8 +320,20 @@ func TestNoExportedMethodAliasKeepsAnOldNameAlive(t *testing.T) {
 
 // forwardedReceiverMethod reports the exported method a single-statement body
 // forwards to on its own receiver, in either the `return r.Other()` or bare
-// `r.Other()` shape. Forwarding to a field, a package function, or an embedded
-// value is not an alias of this method's own name and does not match.
+// `r.Other()` shape.
+//
+// The arguments must be this method's own parameters, in order and unchanged.
+// That requirement is what separates a second name from a specialisation:
+// `return r.Convert(DefaultOptions)` supplies a value of its own and therefore
+// means something `Convert` alone does not, so it is not an alias however short
+// it is.
+//
+// Known limitation: without type information a call on an exported
+// function-typed field is indistinguishable from a method call, so a method
+// forwarding its parameters to such a field would be reported. No such field
+// exists in the tree. Should one appear, the answer is to argue it at the
+// failure — the shape really is a second name for one operation — not to widen
+// the rule.
 func forwardedReceiverMethod(function *ast.FuncDecl) (string, bool) {
 	if len(function.Recv.List) == 0 || len(function.Recv.List[0].Names) == 0 {
 		return "", false
@@ -349,7 +361,40 @@ func forwardedReceiverMethod(function *ast.FuncDecl) (string, bool) {
 	if !ok || target.Name != receiver {
 		return "", false
 	}
+	if !forwardsOwnParameters(function, call) {
+		return "", false
+	}
 	return selector.Sel.Name, true
+}
+
+// forwardsOwnParameters reports whether a call passes exactly this function's
+// parameters, in declaration order and untouched. A literal, a constant, a
+// reordering, or a dropped parameter all mean the call is doing something of
+// its own.
+func forwardsOwnParameters(function *ast.FuncDecl, call *ast.CallExpr) bool {
+	var parameters []string
+	if function.Type.Params != nil {
+		for _, field := range function.Type.Params.List {
+			if len(field.Names) == 0 {
+				// An unnamed parameter cannot be forwarded by name, so the call
+				// cannot be passing it along.
+				return false
+			}
+			for _, name := range field.Names {
+				parameters = append(parameters, name.Name)
+			}
+		}
+	}
+	if len(call.Args) != len(parameters) {
+		return false
+	}
+	for index, argument := range call.Args {
+		identifier, ok := argument.(*ast.Ident)
+		if !ok || identifier.Name != parameters[index] {
+			return false
+		}
+	}
+	return true
 }
 
 // retiringFiles is the retirement register. A Deprecated marker is allowed
@@ -480,6 +525,18 @@ func TestRetiringSurfaceDoesNotGrowUnmarked(t *testing.T) {
 					t.Errorf("%s:%d exports %s from a retiring file without a Deprecated marker; %s, so nothing here may grow unmarked",
 						key, fset.Position(exported.pos).Line, exported.name, entry.reason)
 				}
+				// Struct fields are checked too, so the invariant above is
+				// literally true rather than true of top-level names only. A
+				// field inherits its type's marker, which is the common case
+				// here and produces no noise; what this catches is a field
+				// outliving a type whose marker was later removed.
+				for _, field := range exportedFieldsWithTypeDoc(declaration) {
+					if strings.Contains(field.doc, "Deprecated:") {
+						continue
+					}
+					t.Errorf("%s:%d exports field %s from a retiring file, and neither it nor its type carries a Deprecated marker; %s",
+						key, fset.Position(field.pos).Line, field.name, entry.reason)
+				}
 			}
 		})
 		if err != nil {
@@ -559,6 +616,38 @@ func markedSymbolsIn(parsed *ast.File) []exportedName {
 		}
 	}
 	return marked
+}
+
+// exportedFieldsWithTypeDoc returns every exported struct field in a
+// declaration, named Type.Field, with the doc that would carry its marker —
+// the field's own, plus its type's, because a field on a deprecated type is
+// deprecated with it and repeating the marker on each one would be noise.
+func exportedFieldsWithTypeDoc(declaration ast.Decl) []exportedName {
+	generic, ok := declaration.(*ast.GenDecl)
+	if !ok || generic.Tok != token.TYPE {
+		return nil
+	}
+	var found []exportedName
+	for _, spec := range generic.Specs {
+		typeSpec, ok := spec.(*ast.TypeSpec)
+		if !ok {
+			continue
+		}
+		structType, ok := typeSpec.Type.(*ast.StructType)
+		if !ok || structType.Fields == nil {
+			continue
+		}
+		inherited := generic.Doc.Text() + typeSpec.Doc.Text() + typeSpec.Comment.Text()
+		for _, field := range structType.Fields.List {
+			doc := inherited + field.Doc.Text() + field.Comment.Text()
+			for _, name := range field.Names {
+				if name.IsExported() {
+					found = append(found, exportedName{typeSpec.Name.Name + "." + name.Name, doc, name.Pos()})
+				}
+			}
+		}
+	}
+	return found
 }
 
 // countDeprecationMarkers counts marker comment groups in the file, so a marker
