@@ -169,7 +169,7 @@ func TestHealPublicRulesAndErrorBoundaries(t *testing.T) {
 			value.ExpectedCandidateRevision = 0
 			return value
 		}(), approval: HealApprovalApproved},
-		{name: "unsupported approval", command: validCommand, approval: HealApprovalPending},
+		{name: "unsupported approval", command: validCommand, approval: HealApprovalStatus("PENDING")},
 	}
 	for _, test := range commands {
 		t.Run(test.name, func(t *testing.T) {

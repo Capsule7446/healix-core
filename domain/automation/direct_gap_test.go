@@ -46,22 +46,6 @@ func TestNormalizePoliciesAndFailurePolicyDirect(t *testing.T) {
 	}
 
 	for _, tt := range []struct {
-		name string
-		in   ScreenshotPolicy
-		want ScreenshotPolicy
-	}{
-		{"zero", ScreenshotPolicy{}, ScreenshotPolicy{}},
-		{"trim destination", ScreenshotPolicy{Enabled: true, Destination: "  artifacts/截图  "}, ScreenshotPolicy{Enabled: true, Destination: "artifacts/截图"}},
-		{"explicit disabled", ScreenshotPolicy{Enabled: false, Destination: ""}, ScreenshotPolicy{Enabled: false, Destination: ""}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := NormalizeScreenshotPolicy(tt.in); !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("got %#v want %#v", got, tt.want)
-			}
-		})
-	}
-
-	for _, tt := range []struct {
 		policy FailurePolicy
 		valid  bool
 	}{{FailurePolicyStopOnFailure, true}, {FailurePolicyContinueOnFailure, true}, {FailurePolicy(""), false}, {FailurePolicy("STOP"), false}} {

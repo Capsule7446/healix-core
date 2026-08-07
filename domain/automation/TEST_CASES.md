@@ -56,9 +56,6 @@
 | `Revision.Next` | [`domain/automation/revision.go`](../../domain/automation/revision.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublication.Clone` | [`domain/automation/sampling_publication.go`](../../domain/automation/sampling_publication.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublication.Validate` | [`domain/automation/sampling_publication.go`](../../domain/automation/sampling_publication.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewScreenshotPolicy` | [`domain/automation/screenshot_policy.go`](../../domain/automation/screenshot_policy.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NormalizeScreenshotPolicy` | [`domain/automation/screenshot_policy.go`](../../domain/automation/screenshot_policy.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ScreenshotPolicy.Validate` | [`domain/automation/screenshot_policy.go`](../../domain/automation/screenshot_policy.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ValidationIssues.Error` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `TestTask.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `TestTaskVersion.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -90,7 +87,6 @@
 | `TestNewFolderForestValidation` | `New Folder Forest Validation`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/folders_policy_test.go`](../../domain/automation/folders_policy_test.go) · `TestNewFolderForestValidation` |
 | `TestFolderForestRequireEmpty` | `Folder Forest Require Empty`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/folders_policy_test.go`](../../domain/automation/folders_policy_test.go) · `TestFolderForestRequireEmpty` |
 | `TestHealerPolicyValidationMatrix` | `Healer Policy Validation Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/folders_policy_test.go`](../../domain/automation/folders_policy_test.go) · `TestHealerPolicyValidationMatrix` |
-| `TestScreenshotPolicyNormalizationAndValidation` | `Screenshot Policy Normalization And Validation`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/folders_policy_test.go`](../../domain/automation/folders_policy_test.go) · `TestScreenshotPolicyNormalizationAndValidation` |
 | `TestFolderFaultContractsRejectHostileInputs` | `Folder Fault Contracts Reject Hostile Inputs`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/folders_policy_test.go`](../../domain/automation/folders_policy_test.go) · `TestFolderFaultContractsRejectHostileInputs` |
 | `TestHealCandidateReviewTransitions` | `Heal Candidate Review Transitions`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/healing_candidate_test.go`](../../domain/automation/healing_candidate_test.go) · `TestHealCandidateReviewTransitions` |
 | `TestHealCandidateRejectsInvalidIdentityAndTransitions` | `Heal Candidate Rejects Invalid Identity And Transitions`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/healing_candidate_test.go`](../../domain/automation/healing_candidate_test.go) · `TestHealCandidateRejectsInvalidIdentityAndTransitions` |

@@ -215,6 +215,130 @@ func TestNoExportedTypeAliasKeepsAnOldNameAlive(t *testing.T) {
 	}
 }
 
+// TestNoExportedConstAliasKeepsAnOldNameAlive closes the first of two holes the
+// type-alias guard above left open. `const Old Status = New` is the same
+// compatibility facade in a shape typeSpec.Assign cannot see, and the tree
+// carried exactly that: StatusCompleted/StatusFailed aliased StatusEnded and
+// StatusInterrupted, documented as a known leftover rather than caught.
+//
+// The rule is narrow on purpose. Only a const whose value is a bare exported
+// identifier counts -- a second name for one existing value. Computed values,
+// literals, and iota members are ordinary vocabulary.
+func TestNoExportedConstAliasKeepsAnOldNameAlive(t *testing.T) {
+	// A "current version" pointer has the same shape as an old-name alias and
+	// the opposite meaning: it names the newest member so construction sites
+	// follow a schema bump without being edited. AST cannot tell the two
+	// directions apart, so the exceptions are listed rather than inferred, and
+	// adding one is an edit a reviewer sees.
+	permitted := map[string]string{
+		"InstanceSnapshotSchemaCurrent": "names the newest schema, not a retired name",
+	}
+	root := repositoryRoot(t)
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, decl := range parsed.Decls {
+				generic, ok := decl.(*ast.GenDecl)
+				if !ok || generic.Tok != token.CONST {
+					continue
+				}
+				for _, spec := range generic.Specs {
+					valueSpec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for index, name := range valueSpec.Names {
+						if !name.IsExported() || index >= len(valueSpec.Values) {
+							continue
+						}
+						alias, ok := valueSpec.Values[index].(*ast.Ident)
+						if !ok || !alias.IsExported() {
+							continue
+						}
+						if _, allowed := permitted[name.Name]; allowed {
+							continue
+						}
+						t.Errorf("%s:%d declares the exported constant %s as a second name for %s; the refactor replaces names outright, so a constant alias keeping an old public name reachable is a compatibility facade",
+							filepath.ToSlash(relative), fset.Position(name.Pos()).Line, name.Name, alias.Name)
+					}
+				}
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+}
+
+// TestNoExportedMethodAliasKeepsAnOldNameAlive closes the second hole. A method
+// whose entire body forwards to another exported method on the same receiver is
+// a second name for one operation, which is what the two guards above forbid in
+// the type and constant shapes. Session.Complete forwarding to End and
+// Session.Fail forwarding to Interrupt were both in the tree.
+//
+// Only a single-statement body counts. A method that forwards and then does
+// anything else has behaviour of its own and is not an alias.
+func TestNoExportedMethodAliasKeepsAnOldNameAlive(t *testing.T) {
+	root := repositoryRoot(t)
+	for _, owner := range []string{"domain", "application"} {
+		err := walkProductionGo(filepath.Join(root, owner), func(path string, parsed *ast.File, fset *token.FileSet) {
+			relative, _ := filepath.Rel(root, path)
+			for _, decl := range parsed.Decls {
+				function, ok := decl.(*ast.FuncDecl)
+				if !ok || function.Recv == nil || !function.Name.IsExported() {
+					continue
+				}
+				if function.Body == nil || len(function.Body.List) != 1 {
+					continue
+				}
+				forwarded, ok := forwardedReceiverMethod(function)
+				if !ok {
+					continue
+				}
+				t.Errorf("%s:%d declares the exported method %s whose whole body forwards to %s on the same receiver; the refactor replaces names outright, so a forwarding method keeping an old public name reachable is a compatibility facade",
+					filepath.ToSlash(relative), fset.Position(function.Name.Pos()).Line, function.Name.Name, forwarded)
+			}
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", owner, err)
+		}
+	}
+}
+
+// forwardedReceiverMethod reports the exported method a single-statement body
+// forwards to on its own receiver, in either the `return r.Other()` or bare
+// `r.Other()` shape. Forwarding to a field, a package function, or an embedded
+// value is not an alias of this method's own name and does not match.
+func forwardedReceiverMethod(function *ast.FuncDecl) (string, bool) {
+	if len(function.Recv.List) == 0 || len(function.Recv.List[0].Names) == 0 {
+		return "", false
+	}
+	receiver := function.Recv.List[0].Names[0].Name
+
+	var call *ast.CallExpr
+	switch statement := function.Body.List[0].(type) {
+	case *ast.ReturnStmt:
+		if len(statement.Results) != 1 {
+			return "", false
+		}
+		call, _ = statement.Results[0].(*ast.CallExpr)
+	case *ast.ExprStmt:
+		call, _ = statement.X.(*ast.CallExpr)
+	}
+	if call == nil {
+		return "", false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || !selector.Sel.IsExported() {
+		return "", false
+	}
+	target, ok := selector.X.(*ast.Ident)
+	if !ok || target.Name != receiver {
+		return "", false
+	}
+	return selector.Sel.Name, true
+}
+
 // A deprecation marker is the other shape of the same promise: it says an old
 // name still works. The plan offers no deprecation window — the replacement is
 // the migration.

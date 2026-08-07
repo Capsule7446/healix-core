@@ -213,16 +213,3 @@ func TestHealerPolicyValidationMatrix(t *testing.T) {
 		})
 	}
 }
-
-func TestScreenshotPolicyNormalizationAndValidation(t *testing.T) {
-	policy := NewScreenshotPolicy(true, "  artifacts/run  ")
-	if policy.Destination != "artifacts/run" || policy.Validate() != nil {
-		t.Fatalf("NewScreenshotPolicy() = %+v", policy)
-	}
-	if err := NewScreenshotPolicy(true, " \t ").Validate(); err == nil {
-		t.Fatal("enabled policy without destination accepted")
-	}
-	if err := (ScreenshotPolicy{Destination: " ignored "}).Validate(); err != nil {
-		t.Fatalf("disabled policy rejected: %v", err)
-	}
-}

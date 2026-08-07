@@ -51,8 +51,3 @@ func (f StepFact) Validate() error {
 	}
 	return nil
 }
-
-type CommitResult struct {
-	CommitID string
-	Applied  bool
-}
