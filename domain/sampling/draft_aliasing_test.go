@@ -23,7 +23,6 @@ func aliasingFixture() UnpublishedFlowFragment {
 		ID:          "fragment-1",
 		SessionID:   "session-1",
 		DisplayName: "Fragment",
-		Lifecycle:   SamplingLifecycleRecording,
 		Steps: []automation.FlowFragmentStep{
 			{ID: "step-1", DisplayName: "Submit", Kind: automation.StepAction, ElementTargetID: "node-1"},
 		},

@@ -116,7 +116,6 @@ type Event struct {
 	NodeID     string
 	Occurrence int
 	Phase      Phase
-	Payload    map[string]any
 }
 
 // OperationObservation is an optional, framework-neutral execution fact.

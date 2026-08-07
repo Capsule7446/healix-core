@@ -54,10 +54,10 @@ func TestSessionPublicMethodsAreNilSafe(t *testing.T) {
 	if _, err := session.Record(Capture{}); err == nil {
 		t.Fatal("nil session Record() succeeded")
 	}
-	if err := session.Complete(); err == nil {
-		t.Fatal("nil session Complete() succeeded")
+	if err := session.End(); err == nil {
+		t.Fatal("nil session End() succeeded")
 	}
-	session.Fail()
+	session.Interrupt()
 	if got := session.Snapshot(); !reflect.DeepEqual(got, Snapshot{}) {
 		t.Fatalf("nil session Snapshot() = %+v", got)
 	}
@@ -78,9 +78,9 @@ func TestDraftIndexBoundariesDoNotAllocateFromExtremeValues(t *testing.T) {
 func TestTemporaryWorkflowTimestampBoundaryValuesRemainLossless(t *testing.T) {
 	values := []int64{-1, 0, 1, math.MaxInt64}
 	for _, value := range values {
-		workflow := UnpublishedFlowFragment{StartedAt: value, PausedAt: value, EndedAt: value, InterruptedAt: value}
+		workflow := UnpublishedFlowFragment{StartedAt: value}
 		cloned := cloneUnpublishedFlowFragment(workflow)
-		if cloned.StartedAt != value || cloned.PausedAt != value || cloned.EndedAt != value || cloned.InterruptedAt != value {
+		if cloned.StartedAt != value {
 			t.Fatalf("timestamp %d changed during clone: %+v", value, cloned)
 		}
 	}

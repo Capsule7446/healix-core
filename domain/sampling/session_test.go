@@ -77,7 +77,7 @@ func TestSessionRejectsCaptureAfterCompletion(t *testing.T) {
 	if err := session.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := session.Complete(); err != nil {
+	if err := session.End(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := session.Record(validCapture("capture", "key", "")); err == nil {

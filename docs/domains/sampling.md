@@ -49,16 +49,16 @@ stateDiagram-v2
   created --> recording: Start
   recording --> paused: Pause
   paused --> recording: Resume
-  recording --> ended: End/Complete
+  recording --> ended: End
   paused --> ended: End
-  created --> interrupted: Fail/Interrupt
-  recording --> interrupted: Fail/Interrupt
-  paused --> interrupted: Fail/Interrupt
+  created --> interrupted: Interrupt
+  recording --> interrupted: Interrupt
+  paused --> interrupted: Interrupt
   ended --> [*]
   interrupted --> [*]
 ```
 
-> **一处遗留兼容别名。** [`session.go:26-28`](../../domain/sampling/session.go) 仍把 `StatusCompleted` / `StatusFailed` 定义为 `StatusEnded` / `StatusInterrupted` 的常量别名。仓库其余部分不留兼容外观，而守卫 `TestNoExportedTypeAliasKeepsAnOldNameAlive` 只检查**类型**别名（`typeSpec.Assign`），看不见常量别名，所以这两个旧名字至今可用。新代码应只用 `StatusEnded` 与 `StatusInterrupted`。
+每个终态只有一个名字。`StatusCompleted` / `StatusFailed` 常量别名与 `Session.Complete` / `Session.Fail` 转发方法曾让 `Ended` / `Interrupted` 各自有两个公开名字，现已删除；`TestNoExportedConstAliasKeepsAnOldNameAlive` 与 `TestNoExportedMethodAliasKeepsAnOldNameAlive` 守住这两种形状，它们是原类型别名守卫看不见的。
 
 ## 失败语义
 

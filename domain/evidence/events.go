@@ -59,5 +59,4 @@ type StepPhaseEvent struct {
 	Occurrence         int
 	HierarchyPath      string
 	Timestamp          int64
-	ErrorMessage       string
 }

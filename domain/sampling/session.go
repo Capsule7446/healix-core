@@ -24,10 +24,6 @@ const (
 	StatusEnded  Status = "ended"
 	// StatusInterrupted 表示受控浏览器意外消失。捕获的工件仍然可用，但会话无法恢复。
 	StatusInterrupted Status = "interrupted"
-
-	// StatusCompleted 和 StatusFailed 是终端生命周期状态的兼容性别名。新呼叫者应该更喜欢 StatusEnded 和 StatusInterrupted。
-	StatusCompleted Status = StatusEnded
-	StatusFailed    Status = StatusInterrupted
 )
 
 type ActionKind string
@@ -301,10 +297,6 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	return result, nil
 }
 
-func (s *Session) Complete() error {
-	return s.End()
-}
-
 // Pause 暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
 func (s *Session) Pause() error {
 	if s == nil {
@@ -338,10 +330,6 @@ func (s *Session) End() error {
 	}
 	s.status = StatusEnded
 	return nil
-}
-
-func (s *Session) Fail() {
-	s.Interrupt()
 }
 
 func (s *Session) Interrupt() {

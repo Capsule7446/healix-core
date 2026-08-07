@@ -105,19 +105,12 @@ func TestSessionPauseResumePreservesIdentityAndSequence(t *testing.T) {
 	}
 }
 
-func TestSessionInterruptAndFailAreTerminalAndIdempotent(t *testing.T) {
+func TestSessionInterruptIsTerminalAndIdempotent(t *testing.T) {
 	for _, initial := range []Status{StatusCreated, StatusRecording, StatusPaused} {
 		t.Run("interrupt/"+string(initial), func(t *testing.T) {
 			session := &Session{status: initial}
 			session.Interrupt()
 			session.Interrupt()
-			if session.status != StatusInterrupted {
-				t.Fatalf("status = %q, want %q", session.status, StatusInterrupted)
-			}
-		})
-		t.Run("fail/"+string(initial), func(t *testing.T) {
-			session := &Session{status: initial}
-			session.Fail()
 			if session.status != StatusInterrupted {
 				t.Fatalf("status = %q, want %q", session.status, StatusInterrupted)
 			}
@@ -132,7 +125,6 @@ func TestSessionInterruptAndFailAreTerminalAndIdempotent(t *testing.T) {
 	}
 	var nilSession *Session
 	nilSession.Interrupt()
-	nilSession.Fail()
 }
 
 func TestSessionRecordActionContractMatrix(t *testing.T) {

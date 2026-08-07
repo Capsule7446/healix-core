@@ -124,7 +124,6 @@ type ElementTargetVersion struct {
 	Source          VersionSource
 	CreatedAt       int64
 	DeletedAt       int64
-	RunUsageCount   int
 }
 
 type ElementTargetAggregate struct {
@@ -230,8 +229,6 @@ type Environment struct {
 	CreatedAt   int64
 	UpdatedAt   int64
 	DeletedAt   int64
-	LastUsedAt  int64
-	RunCount    int
 	Revision    Revision
 }
 
@@ -426,7 +423,6 @@ type FlowFragmentVersion struct {
 	Definition     FlowFragmentContent
 	CreatedAt      int64
 	DeletedAt      int64
-	RunUsageCount  int
 }
 
 type FlowFragmentAggregate struct {

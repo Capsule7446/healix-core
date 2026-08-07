@@ -20,11 +20,9 @@
 | `Session.ID` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.Start` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.Record` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Session.Complete` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.Pause` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.Resume` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.End` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Session.Fail` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.Interrupt` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Session.Snapshot` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NewUUID` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -53,7 +51,7 @@
 | `TestNewSessionRejectsMissingBusinessIdentity` | `New Session Rejects Missing Business Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestNewSessionRejectsMissingBusinessIdentity` |
 | `TestSessionLifecycleTransitionMatrix` | `Session Lifecycle Transition Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionLifecycleTransitionMatrix` |
 | `TestSessionPauseResumePreservesIdentityAndSequence` | `Session Pause Resume Preserves Identity And Sequence`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionPauseResumePreservesIdentityAndSequence` |
-| `TestSessionInterruptAndFailAreTerminalAndIdempotent` | `Session Interrupt And Fail Are Terminal And Idempotent`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionInterruptAndFailAreTerminalAndIdempotent` |
+| `TestSessionInterruptIsTerminalAndIdempotent` | `Session Interrupt Is Terminal And Idempotent`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionInterruptIsTerminalAndIdempotent` |
 | `TestSessionRecordActionContractMatrix` | `Session Record Action Contract Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionRecordActionContractMatrix` |
 | `TestSessionCaptureIDMakesRetriesIdempotentAcrossPayloadChanges` | `Session Capture IDMakes Retries Idempotent Across Payload Changes`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionCaptureIDMakesRetriesIdempotentAcrossPayloadChanges` |
 | `TestSessionRejectsInvalidNewAndUpdatedNodeSpecifications` | `Session Rejects Invalid New And Updated Node Specifications`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/session_matrix_test.go`](../../domain/sampling/session_matrix_test.go) · `TestSessionRejectsInvalidNewAndUpdatedNodeSpecifications` |
