@@ -8,20 +8,22 @@ import (
 	domain "github.com/Capsule7446/healix-core/domain/automation"
 )
 
+// ExecutionFlowService 编排执行流程的创建和版本发布。
 type ExecutionFlowService struct{ repository ExecutionFlowRepository }
 
+// NewExecutionFlowService 构造执行流程服务；仓储为 nil 时由具体操作返回配置错误。
 func NewExecutionFlowService(repository ExecutionFlowRepository) ExecutionFlowService {
 	return ExecutionFlowService{repository: repository}
 }
 
+// Create 校验并创建执行流程，再通过仓储持久化；领域错误保持原错误码。
 func (s ExecutionFlowService) Create(ctx context.Context, task domain.ExecutionFlow, initial domain.ExecutionFlowVersion) (domain.ExecutionFlowAggregate, error) {
 	if isNilDependency(s.repository) {
 		return domain.ExecutionFlowAggregate{}, AutomationConfigurationError()
 	}
 	aggregate, err := domain.NewExecutionFlow(task, initial)
 	if err != nil {
-		// The domain constructor already returns a registered code; wrapping it
-		// here would bury that code under an unclassified layer.
+		// 领域构造器已返回注册错误码，此处保持原错误，避免丢失分类。
 		return domain.ExecutionFlowAggregate{}, err
 	}
 	result, err := s.repository.Create(ctx, aggregate)
@@ -31,6 +33,7 @@ func (s ExecutionFlowService) Create(ctx context.Context, task domain.ExecutionF
 	return result, nil
 }
 
+// PublishVersion 读取执行流程并按期望修订发布版本，通过 CAS 保存；修订冲突或仓储失败时返回错误。
 func (s ExecutionFlowService) PublishVersion(
 	ctx context.Context,
 	taskID string,
