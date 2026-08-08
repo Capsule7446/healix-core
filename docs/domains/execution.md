@@ -28,16 +28,16 @@ flowchart LR
 
 ### 环境快照有两种形状，当前只用一种
 
-`EnvironmentSnapshot`（[`instance_snapshot.go:29-34`](../../domain/execution/instance_snapshot.go)）同时声明了 `Properties map[string]string` 和 `Variables map[string]parameter.Value`，两者互斥，由快照的 schema 版本决定：
+`EnvironmentSnapshot`（[`instance_snapshot.go`](../../domain/execution/instance_snapshot.go)）同时声明了 `Properties map[string]string` 和 `Variables map[string]parameter.Value`，两者互斥，由快照的 schema 版本决定：
 
 | schema | 环境载荷 | 校验 |
 |---|---|---|
 | `InstanceSnapshotSchemaV1` | `Properties`（纯字符串） | 出现任何 `Variables` 即非法 |
 | `InstanceSnapshotSchemaV2`（`…SchemaCurrent`） | `Variables`（类型化） | 出现任何 `Properties` 即非法 |
 
-这道互斥由 [`environment_snapshot_validation.go:50-70`](../../domain/execution/environment_snapshot_validation.go) 强制，digest 编码也按同一分支走（[`instance_snapshot.go:686-690`](../../domain/execution/instance_snapshot.go)）。当前版本 `InstanceSnapshotSchemaCurrent = V2`（[`instance_snapshot.go:23`](../../domain/execution/instance_snapshot.go)），而创建构建器只填 `Variables`（[`create_instance_builder.go:75`](../../application/scheduling/create_instance_builder.go)）。
+这道互斥由 [`environment_snapshot_validation.go`](../../domain/execution/environment_snapshot_validation.go) 强制，digest 编码也按同一分支走（[`instance_snapshot.go`](../../domain/execution/instance_snapshot.go)）。当前版本 `InstanceSnapshotSchemaCurrent = V2`（[`instance_snapshot.go`](../../domain/execution/instance_snapshot.go)），而创建构建器只填 `Variables`（[`create_instance_builder.go`](../../application/scheduling/create_instance_builder.go)）。
 
-因此 **`env.` 命名空间里的值是类型化 `parameter.Value`，不是字符串**：引擎在 [`compiler.go:188-189`](../../application/engine/compiler.go) 上从 `environment.Variables` 逐项拼出 `env.<name>` 注入根作用域，同名冲突直接让编译失败。V1 快照可携带 `Properties`，V2 快照必须使用 `Variables`；创建服务默认构造 V2。
+因此 **`env.` 命名空间里的值是类型化 `parameter.Value`，不是字符串**：引擎在 [`compiler.go`](../../application/engine/compiler.go) 上从 `environment.Variables` 逐项拼出 `env.<name>` 注入根作用域，同名冲突直接让编译失败。V1 快照可携带 `Properties`，V2 快照必须使用 `Variables`；创建服务默认构造 V2。
 
 Core 没有 `CredentialReference`、`CredentialResolver` 或 `CredentialService` 子系统；敏感值保护属于宿主的存储、授权与日志责任。
 
@@ -53,20 +53,20 @@ Core 没有 `CredentialReference`、`CredentialResolver` 或 `CredentialService`
 
 ## 状态与流程
 
-执行实例与顶层执行项状态由调度命令服务推进。顶层执行项的合法迁移由 [`EntryStatus.CanTransitionTo`](../../domain/execution/status.go)（`status.go:32-39`）穷举，只有两行：
+执行实例与顶层执行项状态由调度命令服务推进。顶层执行项的合法迁移由 [`EntryStatus.CanTransitionTo`](../../domain/execution/status.go)（`status.go`）穷举，只有两行：
 
 | 起点 | 允许到达 |
 |---|---|
 | `PENDING` | `RUNNING`、`FAILED`、`CANCELED`、`SKIPPED` |
 | `RUNNING` | `SUCCEEDED`、`FAILED`、`CANCELED`、`ABORTED` |
 
-其余组合一律以 `EXECUTION_STATUS_TRANSITION_INVALID`（`FAILED_PRECONDITION`）拒绝。两处不对称值得单独记住：**`SKIPPED` 只能从 `PENDING` 到达，`ABORTED` 只能从 `RUNNING` 到达**；终态没有出边。`IsTerminalEntryStatus`（[`status.go:23-30`](../../domain/execution/status.go)）把 `SUCCEEDED`、`FAILED`、`CANCELED`、`ABORTED`、`SKIPPED` 判为终态，`PENDING` 与 `RUNNING` 不是。
+其余组合一律以 `EXECUTION_STATUS_TRANSITION_INVALID`（`FAILED_PRECONDITION`）拒绝。两处不对称值得单独记住：**`SKIPPED` 只能从 `PENDING` 到达，`ABORTED` 只能从 `RUNNING` 到达**；终态没有出边。`IsTerminalEntryStatus`（[`status.go`](../../domain/execution/status.go)）把 `SUCCEEDED`、`FAILED`、`CANCELED`、`ABORTED`、`SKIPPED` 判为终态，`PENDING` 与 `RUNNING` 不是。
 
-这个状态机由生产调用落实。[`DecideAdvance`](../../application/scheduling/decision.go) 发出的两个迁移 —— 下一个待运行项的 `PENDING → RUNNING`（`decision.go:101-106`）、后继项的 `PENDING → SKIPPED`（`decision.go:195-196`）—— 都先经 `ValidateEntryStatusTransition`，并由 [`entry_status_enforcement_test.go`](../../architecture/entry_status_enforcement_test.go) · `TestEntryStatusMachineHasProductionCallers` 守住调用关系。
+这个状态机由生产调用落实。[`DecideAdvance`](../../application/scheduling/decision.go) 发出的两个迁移 —— 下一个待运行项的 `PENDING → RUNNING`（`decision.go`）、后继项的 `PENDING → SKIPPED`（`decision.go`）—— 都先经 `ValidateEntryStatusTransition`，并由 [`entry_status_enforcement_test.go`](../../architecture/entry_status_enforcement_test.go) · `TestEntryStatusMachineHasProductionCallers` 守住调用关系。
 
 **`RUNNING → 终态` 一侧尚无对应的纯决策函数。** `DecideAdvance` 只看得到状态、看不到执行结果，终态写入目前由宿主适配器在事务里完成 —— 这是当前设计的真实缺口，不是文档省略。
 
-显式中止由 `AbortInstanceService` 要求宿主事务原子提交权威的 `execution.Aborted` 并失效工作器栅栏，提交成功后才发送取消信号；信号失败保留已提交结果并以 `EXECUTION_INSTANCE_SIGNAL_RETRYABLE` 返回（[`instance_command_services.go:88`](../../application/scheduling/instance_command_services.go)）。普通执行上下文取消仍映射为 `CANCELED`，是独立于显式中止的操作。
+显式中止由 `AbortInstanceService` 要求宿主事务原子提交权威的 `execution.Aborted` 并失效工作器栅栏，提交成功后才发送取消信号；信号失败保留已提交结果并以 `EXECUTION_INSTANCE_SIGNAL_RETRYABLE` 返回（[`instance_command_services.go`](../../application/scheduling/instance_command_services.go)）。普通执行上下文取消仍映射为 `CANCELED`，是独立于显式中止的操作。
 
 ## 失败语义
 

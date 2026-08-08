@@ -13,27 +13,18 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// FaultPoint 标识步骤转换事务中用于验证原子回滚的故障注入位置。
 type FaultPoint string
 
 const (
-	// FaultAfterTerminalFacts 在终态事实写入后注入故障。
 	FaultAfterTerminalFacts FaultPoint = "AFTER_TERMINAL_FACTS"
-	// FaultAfterAcceptedFacts 在已接受自愈事实写入后注入故障。
 	FaultAfterAcceptedFacts FaultPoint = "AFTER_ACCEPTED_FACTS"
-	// FaultAfterGovernance 在治理状态写入后注入故障。
-	FaultAfterGovernance FaultPoint = "AFTER_GOVERNANCE"
-	// FaultAfterEffect 在终态效果写入后注入故障。
-	FaultAfterEffect FaultPoint = "AFTER_EFFECT"
-	// FaultAfterAsset 在资产发布或审核写入后注入故障。
-	FaultAfterAsset FaultPoint = "AFTER_ASSET"
-	// FaultAfterOutbox 在 outbox 记录写入后注入故障。
-	FaultAfterOutbox FaultPoint = "AFTER_OUTBOX"
-	// FaultBeforeReplayResult 在返回重放结果前注入故障。
+	FaultAfterGovernance    FaultPoint = "AFTER_GOVERNANCE"
+	FaultAfterEffect        FaultPoint = "AFTER_EFFECT"
+	FaultAfterAsset         FaultPoint = "AFTER_ASSET"
+	FaultAfterOutbox        FaultPoint = "AFTER_OUTBOX"
 	FaultBeforeReplayResult FaultPoint = "BEFORE_REPLAY_RESULT"
 )
 
-// Snapshot 保存步骤转换、治理、效果、资产和重放结果的宿主状态快照。
 type Snapshot struct {
 	StepRevision       evidence.StepRevision
 	TerminalFacts      int
@@ -47,23 +38,16 @@ type Snapshot struct {
 	ReplayResults      int
 }
 
-// Fixture 定义步骤转换 conformance 测试所需的事务、状态读取和故障控制端口。
 type Fixture interface {
 	execution.StepTransitionTransaction
-	// Fence 返回此夹具接受的工作线程权威。
 	Fence() domainexecution.WorkerFence
-	// Snapshot 返回当前宿主状态快照。
 	Snapshot() Snapshot
-	// SetFault 在指定事务阶段注入故障。
 	SetFault(FaultPoint)
-	// ClearFault 清除当前故障注入。
 	ClearFault()
 }
 
-// Factory 创建给定决策区间和已有合格运行次数的步骤转换测试夹具。
 type Factory func(t *testing.T, band evidence.DecisionBand, priorQualifyingRuns int) Fixture
 
-// Run 运行步骤转换的 stale fence/修订、权威重放、阈值效果、回滚和并发 CAS conformance 场景。
 func Run(t *testing.T, factory Factory) {
 	t.Helper()
 	t.Run("stale-fence-and-revision-write-nothing", func(t *testing.T) {
@@ -191,7 +175,9 @@ func Run(t *testing.T, factory Factory) {
 	})
 }
 
-// mustInstanceID 构造测试用 InstanceID；输入来自本文件中的字面量，失败表示测试夹具缺陷。
+// mustInstanceID is safe here because every value handed to commit is a
+// literal written a few lines above it. A malformed one is a defect in this
+// file, not something a Host running the suite can provoke.
 func mustInstanceID(value string) domainexecution.InstanceID {
 	id, err := domainexecution.NewInstanceID(value)
 	if err != nil {
@@ -200,7 +186,6 @@ func mustInstanceID(value string) domainexecution.InstanceID {
 	return id
 }
 
-// mustEntryID 构造测试用 EntryID；失败表示测试夹具缺陷。
 func mustEntryID(value string) domainexecution.EntryID {
 	id, err := domainexecution.NewEntryID(value)
 	if err != nil {
@@ -209,7 +194,6 @@ func mustEntryID(value string) domainexecution.EntryID {
 	return id
 }
 
-// mustStepExecutionID 构造测试用 StepExecutionID；失败表示测试夹具缺陷。
 func mustStepExecutionID(value string) domainexecution.StepExecutionID {
 	id, err := domainexecution.NewStepExecutionID(value)
 	if err != nil {
@@ -218,7 +202,6 @@ func mustStepExecutionID(value string) domainexecution.StepExecutionID {
 	return id
 }
 
-// commit 构造包含步骤事件和自愈观测的测试提交。
 func commit(id string, revision evidence.StepRevision, instanceID string, band evidence.DecisionBand) evidence.StepTransitionCommit {
 	return evidence.StepTransitionCommit{
 		CommitID:         id,

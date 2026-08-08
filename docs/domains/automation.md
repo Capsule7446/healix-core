@@ -25,13 +25,13 @@ flowchart LR
 |---|---|
 | `Revision` | 持久化聚合的**非零**乐观并发版本 |
 | [`ElementTargetAggregate`](../../domain/automation/assets.go) / [`FlowFragmentAggregate`](../../domain/automation/assets.go) / [`ExecutionFlowAggregate`](../../domain/automation/test_task_types.go) | 根对象、当前版本与版本集合的组合 |
-| `VersionSource`（[`assets.go:82-88`](../../domain/automation/assets.go)） | `MANUAL`、`SAMPLING`、`AUTO_HEAL` 三值 |
-| `FlowFragmentStep`（[`assets.go:374`](../../domain/automation/assets.go)） | 步骤模型，见下 |
-| `ResolvedExecutionFlow`（[`test_task_types.go:64`](../../domain/automation/test_task_types.go)） | 已解析的工作流、节点和引用依赖快照，携带 `ExpectedExecutionFlowRevision` |
-| `HealCandidate`（[`healing.go:121-131`](../../domain/automation/healing.go)） | 修复候选的**持久化审核状态**；它不是评分器 |
-| `FolderForest` | 同类资产的目录树，最大深度 5（[`folders.go:52`](../../domain/automation/folders.go)）。其移交范围和宿主接管条件见[退役契约](../contracts/retirement-plan.md)。 |
+| `VersionSource`（[`assets.go`](../../domain/automation/assets.go)） | `MANUAL`、`SAMPLING`、`AUTO_HEAL` 三值 |
+| `FlowFragmentStep`（[`assets.go`](../../domain/automation/assets.go)） | 步骤模型，见下 |
+| `ResolvedExecutionFlow`（[`test_task_types.go`](../../domain/automation/test_task_types.go)） | 已解析的工作流、节点和引用依赖快照，携带 `ExpectedExecutionFlowRevision` |
+| `HealCandidate`（[`healing.go`](../../domain/automation/healing.go)） | 修复候选的**持久化审核状态**；它不是评分器 |
+| `FolderForest` | 同类资产的目录树，最大深度 5（[`folders.go`](../../domain/automation/folders.go)）。其移交范围和宿主接管条件见[退役契约](../contracts/retirement-plan.md)。 |
 
-**`FlowFragmentStep` 是带标签的联合，不是 Go sum type。** 它是单个 struct，用 `Kind StepKind` 判别（六值：`ACTION`、`WAIT`、`REPEAT`、`WORKFLOW_REF`、`VALIDATION`、`VALIDATION_GROUP`，[`assets.go:358-365`](../../domain/automation/assets.go)），可选载荷分别挂在 `Validation`、`ValidationGroup`、`Reference`、`Children` 上。判别联合不得残留其他 Kind 的字段 —— 这条是校验规则，不是类型系统给的保证。注意常量名与取值不同名：`StepFlowFragmentRef` 的值是 `"WORKFLOW_REF"`。
+**`FlowFragmentStep` 是带标签的联合，不是 Go sum type。** 它是单个 struct，用 `Kind StepKind` 判别（六值：`ACTION`、`WAIT`、`REPEAT`、`WORKFLOW_REF`、`VALIDATION`、`VALIDATION_GROUP`，[`assets.go`](../../domain/automation/assets.go)），可选载荷分别挂在 `Validation`、`ValidationGroup`、`Reference`、`Children` 上。判别联合不得残留其他 Kind 的字段 —— 这条是校验规则，不是类型系统给的保证。注意常量名与取值不同名：`StepFlowFragmentRef` 的值是 `"WORKFLOW_REF"`。
 
 ## 不变量
 
@@ -39,7 +39,7 @@ flowchart LR
 - 已删除聚合不可修改；时间不得倒退；每次成功变更 `Revision` 只增加一次，溢出失败。
 - 当前版本解析包含软删除版本；无 Current 时全部版本必须已删除。
 - 工作流步骤 ID、参数名唯一；树深和规模有界。
-- 环境变量是 `EnvironmentVariables = map[string]parameter.Value`（[`assets.go:22`](../../domain/automation/assets.go)），原生支持五种参数值；键名和值必须合法。**不存在独立的凭据子系统。**
+- 环境变量是 `EnvironmentVariables = map[string]parameter.Value`（[`assets.go`](../../domain/automation/assets.go)），原生支持五种参数值；键名和值必须合法。**不存在独立的凭据子系统。**
 - 测试任务的顺序、固定/最新版策略、类型化参数、环境属性、节点依赖和引用环必须一致；**`latest` 只在调度创建执行实例时解析并冻结**，不在发布时。
 - API 返回副本，发布/生命周期操作不修改调用方已有值。
 

@@ -7,15 +7,15 @@
 
 | 文件 | 标签字节 | 依赖方 | 当前状态 |
 |---|---|---|---|
-| `domain/execution/instance_snapshot.go:662` | `healix.run-snapshot` | 每一份已封存快照的 digest | 当前标签 |
-| `application/scheduling/create_instance_service.go:21` | `create-run-request-v1` | 每一条已存的创建幂等记录 | 当前标签 |
-| `application/scheduling/instance_command_services.go:305` | `cancel-instance-request-v1` | 每一条已存的取消幂等记录 | 当前标签 |
-| `application/scheduling/instance_command_services.go:306` | `abort-instance-request-v1` | 每一条已存的中止幂等记录 | 当前标签 |
-| `application/scheduling/instance_command_services.go:307` | `reorder-queue-request-v1` | 每一条已存的重排幂等记录 | 当前标签 |
-| `application/automation/heal_candidate_repository.go:17` | `heal-review-v1` | 每一条已存的 heal review 记录 | 当前标签 |
-| `application/automation/sampling_publication_transaction.go:16` | `sampling-publication-v1` | 每一条已存的 sampling publication 记录 | 当前标签 |
-| `application/execution/entry_completion_transaction.go:20` | `complete-entry-request-v1` | 每一条已存的 entry completion 幂等记录 | 当前标签 |
-| `application/execution/abort_request_transaction.go:17` | `request-abort-v1` | 每一条已存的 abort request 幂等记录 | 当前标签 |
+| `domain/execution/instance_snapshot.go` | `healix.run-snapshot` | 每一份已封存快照的 digest | 当前标签 |
+| `application/scheduling/create_instance_service.go` | `create-run-request-v1` | 每一条已存的创建幂等记录 | 当前标签 |
+| `application/scheduling/instance_command_services.go` | `cancel-instance-request-v1` | 每一条已存的取消幂等记录 | 当前标签 |
+| `application/scheduling/instance_command_services.go` | `abort-instance-request-v1` | 每一条已存的中止幂等记录 | 当前标签 |
+| `application/scheduling/instance_command_services.go` | `reorder-queue-request-v1` | 每一条已存的重排幂等记录 | 当前标签 |
+| `application/automation/heal_candidate_repository.go` | `heal-review-v1` | 每一条已存的 heal review 记录 | 当前标签 |
+| `application/automation/sampling_publication_transaction.go` | `sampling-publication-v1` | 每一条已存的 sampling publication 记录 | 当前标签 |
+| `application/execution/entry_completion_transaction.go` | `complete-entry-request-v1` | 每一条已存的 entry completion 幂等记录 | 当前标签 |
+| `application/execution/abort_request_transaction.go` | `request-abort-v1` | 每一条已存的 abort request 幂等记录 | 当前标签 |
 
 ## 当前摘要兼容边界
 

@@ -23,11 +23,11 @@ flowchart LR
 
 `UnpublishedFlowFragment` / `UnpublishedElementTarget`（[`workspace.go`](../../domain/sampling/workspace.go)）是**独立的**可编辑发布准备模型，支持临时资产与重写。它们不是 `Session` 或 `Session Snapshot` 的别名 —— 临时工作区不是会话快照，也不替代会话生命周期。
 
-`CaptureID` 是重试幂等键，`IdentityKey` 是同一录制中的节点身份。`MatchProfile` 组合 selectors、fingerprint、origin；`ResolutionMode` 是四值封闭集 `UNDECIDED` / `CREATE` / `MERGE` / `REUSE`（[`workspace.go:48-51`](../../domain/sampling/workspace.go)），没有第五个取值。
+`CaptureID` 是重试幂等键，`IdentityKey` 是同一录制中的节点身份。`MatchProfile` 组合 selectors、fingerprint、origin；`ResolutionMode` 是四值封闭集 `UNDECIDED` / `CREATE` / `MERGE` / `REUSE`（[`workspace.go`](../../domain/sampling/workspace.go)），没有第五个取值。
 
 ## 不变量
 
-- 新会话要求 workflowID 与合法 startURL；UUID 使用 v7（[`session.go:396`](../../domain/sampling/session.go) 写入版本位 `0x70`）。
+- 新会话要求 workflowID 与合法 startURL；UUID 使用 v7（[`session.go`](../../domain/sampling/session.go) 写入版本位 `0x70`）。
 - 仅 `recording` 可 Record；Pause/Resume/End/Interrupt 遵守状态矩阵，终态不可恢复；Interrupt/Fail 幂等。
 - 同一 `CaptureID` 的重试返回原结果，即使载荷变化；新动作序号单调。
 - `IdentityKey` 稳定复用 NodeUUID；`ElementTargetSpec` 新建与更新均校验。

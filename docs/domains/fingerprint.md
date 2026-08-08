@@ -35,18 +35,18 @@ classDiagram
 
 ## 聚合与值对象
 
-- **`Selector`**（[`fingerprint.go:16-22`](../../domain/fingerprint/fingerprint.go)）：`Type` 取自封闭集 `role` / `testid` / `css` / `xpath` / `text`，加上 `Value` 与 `Priority`。
-- **`Fingerprint`**（[`fingerprint.go:69-85`](../../domain/fingerprint/fingerprint.go)）：`Tag`、`Attributes`、`Text`、`ARIA`、祖先 `Path`、`SiblingIndex`、`Neighbors`、`LabelText`、`FormID` 与 `Framework`。**刻意不记录视口边界框** —— 页面布局、视口尺寸和缩放在录制与回放之间无法保证一致，位置信号只会引入噪音。
-- **`ElementTargetSpec`**（[`fingerprint.go:136-146`](../../domain/fingerprint/fingerprint.go)）：在 selector 与 fingerprint 之上加 `UUID`、`ID`、`PageURL`、`Origin`、`Role`。
-- **`PageObservation`** 是探测输入，**`FrameworkDetector`** 是外部探测算法端口（[`detection.go:14-28`](../../domain/fingerprint/detection.go)）。
+- **`Selector`**（[`fingerprint.go`](../../domain/fingerprint/fingerprint.go)）：`Type` 取自封闭集 `role` / `testid` / `css` / `xpath` / `text`，加上 `Value` 与 `Priority`。
+- **`Fingerprint`**（[`fingerprint.go`](../../domain/fingerprint/fingerprint.go)）：`Tag`、`Attributes`、`Text`、`ARIA`、祖先 `Path`、`SiblingIndex`、`Neighbors`、`LabelText`、`FormID` 与 `Framework`。**刻意不记录视口边界框** —— 页面布局、视口尺寸和缩放在录制与回放之间无法保证一致，位置信号只会引入噪音。
+- **`ElementTargetSpec`**（[`fingerprint.go`](../../domain/fingerprint/fingerprint.go)）：在 selector 与 fingerprint 之上加 `UUID`、`ID`、`PageURL`、`Origin`、`Role`。
+- **`PageObservation`** 是探测输入，**`FrameworkDetector`** 是外部探测算法端口（[`detection.go`](../../domain/fingerprint/detection.go)）。
 
-`Fingerprint.Clone`（[`fingerprint.go:98`](../../domain/fingerprint/fingerprint.go)）是该类型当前唯一的深拷贝契约。所有调用方都通过拥有类型的拷贝获得独立值，新增引用类型字段也由同一入口统一处理；[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestFingerprintHasExactlyOneDeepCopy` 强制这一边界。
+`Fingerprint.Clone`（[`fingerprint.go`](../../domain/fingerprint/fingerprint.go)）是该类型当前唯一的深拷贝契约。所有调用方都通过拥有类型的拷贝获得独立值，新增引用类型字段也由同一入口统一处理；[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestFingerprintHasExactlyOneDeepCopy` 强制这一边界。
 
 ## 不变量
 
 - Selector 的 `Type` 必须受支持，`Value` 非空，`Priority` 合法。
 - Fingerprint 的关键身份与集合字段必须合法（`Tag` 非空、`Attributes` 非 nil、`SiblingIndex` 非负），框架栈需逐项验证。
-- `ElementTargetSpec` 要求业务 ID、合法 URL/origin、至少一个合法 selector 与合法 fingerprint；`UUID` 可选，但一旦提供必须格式有效（[`fingerprint.go:152-154`](../../domain/fingerprint/fingerprint.go)）。
+- `ElementTargetSpec` 要求业务 ID、合法 URL/origin、至少一个合法 selector 与合法 fingerprint；`UUID` 可选，但一旦提供必须格式有效（[`fingerprint.go`](../../domain/fingerprint/fingerprint.go)）。
 - `FrameworkInfo` 的 kind、confidence、evidence 合法；栈规范化时合并重复项并稳定排序。
 - `Clone`/`Sort` 返回新切片，不把内部集合交给调用者修改。
 
@@ -72,12 +72,12 @@ sequenceDiagram
 
 两条本领域特有的边界：
 
-- **Detector 错误不原样外传。** 宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED` 上（[`detection.go:47`](../../domain/fingerprint/detection.go)），经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。已被分类过的 detector 错误直接透传（[`detection.go:44-46`](../../domain/fingerprint/detection.go)）。
+- **Detector 错误不原样外传。** 宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED` 上（[`detection.go`](../../domain/fingerprint/detection.go)），经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。已被分类过的 detector 错误直接透传（[`detection.go`](../../domain/fingerprint/detection.go)）。
 - **被拒的 selector 值、UUID、framework/evidence 取值一律不进公共文本** —— 闭集之外的取值按定义就是任意调用方输入。
 
 ## 并发、安全与资源
 
-模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone`（[`framework.go:113`](../../domain/fingerprint/framework.go)）是浅值复制（元素只含 string/float64，因此没有别名残留），`Fingerprint` 的 map/path 深拷贝由 `Fingerprint.Clone` 负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正的注入安全由 Driver 适配器负责。
+模型是普通值；map/slice 需要调用者遵守所有权，`FrameworkStack.Clone`（[`framework.go`](../../domain/fingerprint/framework.go)）是浅值复制（元素只含 string/float64，因此没有别名残留），`Fingerprint` 的 map/path 深拷贝由 `Fingerprint.Clone` 负责。检测接受 context 取消。URL/origin 验证减少跨站身份混淆，但 selector 内容不会在此执行，真正的注入安全由 Driver 适配器负责。
 
 **本领域没有任何输入数量上限** —— selector、attribute、path 条数均不受限，包内唯一的上界是 violation 封套的 `fault.MaxViolations`，那是输出上界不是输入上界。对计划聚合输入设限的是执行侧的 `Seal`。
 

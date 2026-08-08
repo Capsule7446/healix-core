@@ -11,54 +11,34 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// FaultPoint 标识采样发布事务中用于验证回滚的故障注入位置。
 type FaultPoint string
 
 const (
-	// FaultAfterNodes 在节点物化后注入故障。
-	FaultAfterNodes FaultPoint = "AFTER_NODES"
-	// FaultAfterWorkflow 在流程片段物化后注入故障。
+	FaultAfterNodes    FaultPoint = "AFTER_NODES"
 	FaultAfterWorkflow FaultPoint = "AFTER_WORKFLOW"
-	// FaultAfterMappings 在映射写入后注入故障。
 	FaultAfterMappings FaultPoint = "AFTER_MAPPINGS"
-	// FaultAfterAudit 在审计记录写入后注入故障。
-	FaultAfterAudit FaultPoint = "AFTER_AUDIT"
-	// FaultAfterOutbox 在 outbox 写入后注入故障。
-	FaultAfterOutbox FaultPoint = "AFTER_OUTBOX"
-	// FaultBeforeReplay 在重放返回前注入故障。
-	FaultBeforeReplay FaultPoint = "BEFORE_REPLAY"
+	FaultAfterAudit    FaultPoint = "AFTER_AUDIT"
+	FaultAfterOutbox   FaultPoint = "AFTER_OUTBOX"
+	FaultBeforeReplay  FaultPoint = "BEFORE_REPLAY"
 )
 
-// Snapshot 是 conformance fixture 保存的宿主状态快照不透明值。
 type Snapshot any
 
-// Fixture 定义采样发布事务 conformance 测试所需的适配器、状态控制和断言端口。
 type Fixture interface {
 	application.SamplingPublicationTransaction
-	// Intent 返回待提交的采样发布意图。
 	Intent() application.PublishSamplingIntent
-	// Snapshot 返回当前宿主状态快照。
 	Snapshot() Snapshot
-	// SetFault 在指定事务阶段注入故障。
 	SetFault(FaultPoint)
-	// ClearFault 清除当前故障注入。
 	ClearFault()
-	// MakeRevisionStale 使指定节点的期望修订过期。
 	MakeRevisionStale(nodeID string)
-	// MakeCurrentVersionStale 使指定节点的期望当前版本过期。
 	MakeCurrentVersionStale(nodeID string)
-	// CompetingIntents 返回具有不同身份、用于并发竞争的两个发布意图。
 	CompetingIntents() (application.PublishSamplingIntent, application.PublishSamplingIntent)
-	// AssertApplied 断言意图已完整物化到宿主状态。
 	AssertApplied(application.PublishSamplingIntent) error
-	// AssertOnlyApplied 断言胜者已应用且竞争失败者未改变状态。
 	AssertOnlyApplied(application.PublishSamplingIntent, application.PublishSamplingIntent) error
 }
 
-// Factory 创建一个用于采样发布 conformance 测试的 fixture。
 type Factory func(t *testing.T) Fixture
 
-// Run 运行采样发布的应用、重放、错误分类、回滚、CAS 和并发幂等 conformance 场景。
 func Run(t *testing.T, factory Factory) {
 	t.Helper()
 	t.Run("applied-replay-and-identity-conflict", func(t *testing.T) {
@@ -285,7 +265,6 @@ func Run(t *testing.T, factory Factory) {
 	})
 }
 
-// Result 从领域发布内容构造事务结果中应返回的节点映射和流程版本身份。
 func Result(publication domain.SamplingPublication) domain.SamplingPublicationResult {
 	mappings := make([]domain.SamplingNodeMapping, len(publication.Nodes))
 	for index, node := range publication.Nodes {
