@@ -15,50 +15,65 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// InstanceSnapshotSchema 标识实例快照的编码和环境变量模式版本。
 type InstanceSnapshotSchema int
 
 const (
-	InstanceSnapshotSchemaV1      InstanceSnapshotSchema = 1
-	InstanceSnapshotSchemaV2      InstanceSnapshotSchema = 2
-	InstanceSnapshotSchemaCurrent                        = InstanceSnapshotSchemaV2
-	ScreenshotPolicyV1                                   = 1
-	HealerPolicyV1                                       = 1
-	MaxSnapshotStringBytes                               = 64 * 1024
+	// InstanceSnapshotSchemaV1 表示使用字符串属性的快照模式。
+	InstanceSnapshotSchemaV1 InstanceSnapshotSchema = 1
+	// InstanceSnapshotSchemaV2 表示使用类型化变量的快照模式。
+	InstanceSnapshotSchemaV2 InstanceSnapshotSchema = 2
+	// InstanceSnapshotSchemaCurrent 表示当前写入的实例快照模式。
+	InstanceSnapshotSchemaCurrent = InstanceSnapshotSchemaV2
+	// ScreenshotPolicyV1 表示截图策略快照版本一。
+	ScreenshotPolicyV1 = 1
+	// HealerPolicyV1 表示自愈策略快照版本一。
+	HealerPolicyV1 = 1
+	// MaxSnapshotStringBytes 限制快照中单个字符串的字节数。
+	MaxSnapshotStringBytes = 64 * 1024
 )
 
+// EnvironmentSnapshot 保存环境身份、修订号以及按模式区分的属性或变量。
 type EnvironmentSnapshot struct {
 	ID, DisplayName, BaseURL string
 	Revision                 uint64
 	Properties               map[string]string
 	Variables                map[string]parameter.Value
 }
+
+// ScreenshotPolicySnapshot 保存截图策略版本、启用状态和目标位置。
 type ScreenshotPolicySnapshot struct {
 	Version     int
 	Enabled     bool
 	Destination string
 }
+
+// HealerWeightsSnapshot 保存评分器使用的各维度权重。
 type HealerWeightsSnapshot struct {
 	Tag, ID, RoleName, Class, Attrs, Text, Index, Neighbor, LabelText, Container float64
-	// Framework defaults to 0, so framework-aware scoring stays off unless a
-	// caller asks for it. It is carried, validated and digested like every other
-	// dimension because the scorer reads it: a weight outside the digest would
-	// let two runs with the same snapshot digest score differently.
+	// Framework 默认值为 0，因此除非调用方启用，否则不会使用框架维度；它与其他维度一样
+	// 被携带、校验并写入摘要，确保评分所需权重都受快照身份保护。
 	Framework float64
 }
+
+// HealerPolicySnapshot 保存自愈策略版本、审核/应用阈值和评分权重。
 type HealerPolicySnapshot struct {
 	Version               int
 	ReviewCap, AppliedCap float64
 	Weights               HealerWeightsSnapshot
 }
 
+// DefaultHealerPolicySnapshot 返回版本一的默认自愈策略快照。
 func DefaultHealerPolicySnapshot() HealerPolicySnapshot {
 	return HealerPolicySnapshot{Version: HealerPolicyV1, ReviewCap: .6, AppliedCap: .85, Weights: HealerWeightsSnapshot{Tag: .15, ID: .2, RoleName: .2, Class: .1, Attrs: .1, Text: .1, Index: .05, Neighbor: .1, LabelText: .15, Container: .1, Framework: 0}}
 }
 
+// TestTaskSnapshot 保存测试任务身份快照。
 type TestTaskSnapshot struct {
 	ID string
 }
 
+// ExecutionFlowVersionItemSnapshot 保存测试任务版本中一个有序入口项的身份映射。
 type ExecutionFlowVersionItemSnapshot struct {
 	ID                string
 	TestTaskVersionID string
@@ -67,6 +82,7 @@ type ExecutionFlowVersionItemSnapshot struct {
 	WorkflowVersionID string
 }
 
+// ExecutionFlowVersionSnapshot 保存测试任务版本及其入口项快照。
 type ExecutionFlowVersionSnapshot struct {
 	ID              string
 	ExecutionFlowID string
@@ -74,11 +90,13 @@ type ExecutionFlowVersionSnapshot struct {
 	Items           []ExecutionFlowVersionItemSnapshot
 }
 
+// InvocationEdgeKey 以父调用路径和步骤 ID 标识工作流引用边。
 type InvocationEdgeKey struct {
 	ParentPath InvocationPath
 	StepID     string
 }
 
+// InvocationScopeSnapshot 保存一次工作流调用作用域及其解析后的参数值和绑定。
 type InvocationScopeSnapshot struct {
 	Path               InvocationPath
 	ParentPath         InvocationPath
@@ -91,6 +109,7 @@ type InvocationScopeSnapshot struct {
 	Bindings           map[string]parameter.Binding
 }
 
+// InstanceSnapshotInput 汇总封存实例快照所需的计划、调用作用域、环境和策略数据。
 type InstanceSnapshotInput struct {
 	SchemaVersion                      InstanceSnapshotSchema
 	InstanceID                         InstanceID
@@ -106,21 +125,39 @@ type InstanceSnapshotInput struct {
 	HealerPolicy                       HealerPolicySnapshot
 }
 
+// InstanceSnapshot 保存深复制后的输入和其规范编码摘要；内部输入不可直接修改。
 type InstanceSnapshot struct {
 	input  InstanceSnapshotInput
 	digest string
 }
 
-func (s InstanceSnapshot) Digest() string                        { return s.digest }
+// Digest 返回快照的 sha256 摘要。
+func (s InstanceSnapshot) Digest() string { return s.digest }
+
+// SchemaVersion 返回快照模式版本。
 func (s InstanceSnapshot) SchemaVersion() InstanceSnapshotSchema { return s.input.SchemaVersion }
-func (s InstanceSnapshot) InstanceID() InstanceID                { return s.input.InstanceID }
-func (s InstanceSnapshot) ExecutionFlowID() string               { return s.input.ExecutionFlowID }
-func (s InstanceSnapshot) TestTaskVersionID() string             { return s.input.TestTaskVersionID }
-func (s InstanceSnapshot) Input() InstanceSnapshotInput          { return cloneSnapshotInput(s.input) }
-func (s InstanceSnapshot) Plan() PlanSnapshot                    { return cloneDraft(s.input.Plan) }
+
+// InstanceID 返回快照所属实例 ID。
+func (s InstanceSnapshot) InstanceID() InstanceID { return s.input.InstanceID }
+
+// ExecutionFlowID 返回快照所属执行流 ID。
+func (s InstanceSnapshot) ExecutionFlowID() string { return s.input.ExecutionFlowID }
+
+// TestTaskVersionID 返回快照所属测试任务版本 ID。
+func (s InstanceSnapshot) TestTaskVersionID() string { return s.input.TestTaskVersionID }
+
+// Input 返回实例快照输入的深拷贝，调用方可安全修改结果。
+func (s InstanceSnapshot) Input() InstanceSnapshotInput { return cloneSnapshotInput(s.input) }
+
+// Plan 返回计划快照的深拷贝。
+func (s InstanceSnapshot) Plan() PlanSnapshot { return cloneDraft(s.input.Plan) }
+
+// Invocations 返回调用作用域快照的深拷贝切片。
 func (s InstanceSnapshot) Invocations() []InvocationScopeSnapshot {
 	return cloneInvocations(s.input.Invocations)
 }
+
+// Invocation 按调用路径查找作用域并返回其深拷贝；未找到时返回 false。
 func (s InstanceSnapshot) Invocation(path InvocationPath) (InvocationScopeSnapshot, bool) {
 	for _, invocation := range s.input.Invocations {
 		if invocation.Path == path {
@@ -129,6 +166,8 @@ func (s InstanceSnapshot) Invocation(path InvocationPath) (InvocationScopeSnapsh
 	}
 	return InvocationScopeSnapshot{}, false
 }
+
+// Environment 返回环境快照的深拷贝；V1 属性会转换为文本变量视图。
 func (s InstanceSnapshot) Environment() EnvironmentSnapshot {
 	result := cloneEnvironment(s.input.Environment)
 	if s.input.SchemaVersion == InstanceSnapshotSchemaV1 {
@@ -140,11 +179,8 @@ func (s InstanceSnapshot) Environment() EnvironmentSnapshot {
 	return result
 }
 
-// SealInstanceSnapshot classifies its own validation failure at this exported
-// boundary: an uncoded shape defect becomes
-// EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID, while a failure already
-// classified by the execution plan, a workflow's step-shape envelope, or the
-// environment/screenshot/healer envelope passes through unchanged.
+// SealInstanceSnapshot 深复制、规范排序并校验输入后生成带摘要的快照；未分类形状错误在
+// 导出边界归入 EXECUTION_CREATE_INSTANCE_SNAPSHOT_INVALID，已有领域错误保持原分类。
 func SealInstanceSnapshot(input InstanceSnapshotInput) (InstanceSnapshot, error) {
 	sealed, err := sealInstanceSnapshotShape(input)
 	if err != nil {
@@ -153,6 +189,7 @@ func SealInstanceSnapshot(input InstanceSnapshotInput) (InstanceSnapshot, error)
 	return sealed, nil
 }
 
+// sealInstanceSnapshotShape 执行资源预检、输入复制、调用排序、策略归一化、结构校验和摘要编码。
 func sealInstanceSnapshotShape(input InstanceSnapshotInput) (InstanceSnapshot, error) {
 	if err := preflightInstanceSnapshot(input); err != nil {
 		return InstanceSnapshot{}, err
@@ -171,10 +208,7 @@ func sealInstanceSnapshotShape(input InstanceSnapshotInput) (InstanceSnapshot, e
 	return InstanceSnapshot{input: input, digest: "sha256:" + hex.EncodeToString(digester.Sum(nil))}, nil
 }
 
-// HydrateInstanceSnapshot reuses EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT — the
-// code application/scheduling already publishes for the same remediation
-// (re-read the authoritative instance before retrying) — rather than minting
-// a second code for the same meaning.
+// HydrateInstanceSnapshot 重新封存输入并将摘要与持久化摘要比较；不一致时返回快照冲突错误。
 func HydrateInstanceSnapshot(input InstanceSnapshotInput, storedDigest string) (InstanceSnapshot, error) {
 	sealed, err := SealInstanceSnapshot(input)
 	if err != nil {
@@ -186,6 +220,7 @@ func HydrateInstanceSnapshot(input InstanceSnapshotInput, storedDigest string) (
 	return sealed, nil
 }
 
+// cloneSnapshotInput 深复制计划、调用作用域、环境和版本入口切片，隔离快照所有权。
 func cloneSnapshotInput(v InstanceSnapshotInput) InstanceSnapshotInput {
 	v.Plan = cloneDraft(v.Plan)
 	v.Invocations = cloneInvocations(v.Invocations)
@@ -193,6 +228,8 @@ func cloneSnapshotInput(v InstanceSnapshotInput) InstanceSnapshotInput {
 	v.ExecutionFlowVersion.Items = append([]ExecutionFlowVersionItemSnapshot(nil), v.ExecutionFlowVersion.Items...)
 	return v
 }
+
+// cloneEnvironment 深复制属性、变量映射及变量值。
 func cloneEnvironment(v EnvironmentSnapshot) EnvironmentSnapshot {
 	properties := make(map[string]string, len(v.Properties))
 	for name, value := range v.Properties {
@@ -206,6 +243,8 @@ func cloneEnvironment(v EnvironmentSnapshot) EnvironmentSnapshot {
 	v.Variables = variables
 	return v
 }
+
+// cloneInvocations 深复制调用作用域切片及每个作用域的参数值和绑定映射。
 func cloneInvocations(source []InvocationScopeSnapshot) []InvocationScopeSnapshot {
 	result := make([]InvocationScopeSnapshot, len(source))
 	for index, invocation := range source {
@@ -216,6 +255,7 @@ func cloneInvocations(source []InvocationScopeSnapshot) []InvocationScopeSnapsho
 	return result
 }
 
+// normalizeHealerZeros 将零浮点值规范化为正零，确保摘要编码不区分正负零。
 func normalizeHealerZeros(policy *HealerPolicySnapshot) {
 	values := []*float64{&policy.ReviewCap, &policy.AppliedCap, &policy.Weights.Tag, &policy.Weights.ID, &policy.Weights.RoleName, &policy.Weights.Class, &policy.Weights.Attrs, &policy.Weights.Text, &policy.Weights.Index, &policy.Weights.Neighbor, &policy.Weights.LabelText, &policy.Weights.Container, &policy.Weights.Framework}
 	for _, value := range values {
@@ -225,9 +265,13 @@ func normalizeHealerZeros(policy *HealerPolicySnapshot) {
 	}
 }
 
+// maxSnapshotElements 限制快照资源预检中可遍历的集合元素总数。
 const maxSnapshotElements = 100000
+
+// maxSnapshotDepth 限制快照资源预检的递归深度。
 const maxSnapshotDepth = 64
 
+// preflightInstanceSnapshot 在完整校验前限制计划、字符串、元素数量和递归深度资源。
 func preflightInstanceSnapshot(input InstanceSnapshotInput) error {
 	if err := validateAggregateInputBounds(input.Plan); err != nil {
 		return fmt.Errorf("instance snapshot plan bounds: %w", err)
@@ -236,6 +280,8 @@ func preflightInstanceSnapshot(input InstanceSnapshotInput) error {
 	remainingElements := maxSnapshotElements
 	return consumeSnapshotResources(reflect.ValueOf(input), &remainingBytes, &remainingElements, 0)
 }
+
+// consumeSnapshotResources 递归计算快照反射值占用的字符串字节、集合元素和深度预算。
 func consumeSnapshotResources(value reflect.Value, bytes, elements *int, depth int) error {
 	if depth > maxSnapshotDepth {
 		return errors.New("instance snapshot exceeds resource depth limit")
@@ -318,6 +364,8 @@ func consumeSnapshotResources(value reflect.Value, bytes, elements *int, depth i
 	}
 	return nil
 }
+
+// consumeStrings 消耗字符串数量和字节预算，并拒绝超过单值或剩余总量上限的值。
 func consumeStrings(values []string, bytes, elements *int) error {
 	if err := consumeElements(len(values), elements); err != nil {
 		return err
@@ -330,6 +378,8 @@ func consumeStrings(values []string, bytes, elements *int) error {
 	}
 	return nil
 }
+
+// consumeElements 从剩余元素预算中扣除 count，超出或负数时返回错误。
 func consumeElements(count int, remaining *int) error {
 	if count < 0 || count > *remaining {
 		return errors.New("instance snapshot aggregate elements exceed limit")
@@ -338,10 +388,12 @@ func consumeElements(count int, remaining *int) error {
 	return nil
 }
 
+// validString 判断字符串是否满足必填条件（如要求）及快照字节长度上限。
 func validString(v string, required bool) bool {
 	return (!required || strings.TrimSpace(v) != "") && len(v) <= MaxSnapshotStringBytes
 }
 
+// validateTestTaskVersionItemEntries 校验测试任务版本入口项与执行入口的数量、顺序和身份映射。
 func validateTestTaskVersionItemEntries(versionID string, items []ExecutionFlowVersionItemSnapshot, entries []Entry) error {
 	itemsByID := make(map[string]ExecutionFlowVersionItemSnapshot, len(items))
 	for index, item := range items {
@@ -373,11 +425,13 @@ func validateTestTaskVersionItemEntries(versionID string, items []ExecutionFlowV
 	return nil
 }
 
+// referenceEdgeKey 以父工作流版本和步骤 ID 索引引用步骤边。
 type referenceEdgeKey struct {
 	ParentVersionID string
 	StepID          string
 }
 
+// snapshotValidationIndexes 保存快照校验阶段对计划入口、工作流和引用边的索引。
 type snapshotValidationIndexes struct {
 	workflows         map[string]WorkflowSnapshot
 	entriesByID       map[EntryID]Entry
@@ -387,6 +441,7 @@ type snapshotValidationIndexes struct {
 	stepsByWorkflowID map[string][]Step
 }
 
+// buildSnapshotValidationIndexes 构建并校验计划入口、工作流和引用解析边的唯一索引。
 func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexes, error) {
 	indexes := snapshotValidationIndexes{
 		workflows:         make(map[string]WorkflowSnapshot, len(plan.Workflows)),
@@ -428,6 +483,7 @@ func buildSnapshotValidationIndexes(plan PlanSnapshot) (snapshotValidationIndexe
 	return indexes, nil
 }
 
+// validateSnapshot 校验实例快照模式、身份图、计划、调用作用域、策略和环境的一致性。
 func validateSnapshot(v InstanceSnapshotInput) error {
 	if v.SchemaVersion != InstanceSnapshotSchemaV1 && v.SchemaVersion != InstanceSnapshotSchemaV2 {
 		return fmt.Errorf("unsupported instance snapshot schema %d", v.SchemaVersion)
@@ -498,10 +554,8 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 			if invocation.ParentVersionID != "" || invocation.StepID != "" {
 				return errors.New("root invocation cannot identify a reference edge")
 			}
-			// An entry and the root call site inside it are different things that
-			// happen to be spelled alike. The lookup goes through the derivation
-			// rather than through a conversion, so nothing here has to claim that a
-			// path and an entry id are the same value.
+			// 入口与其中的根调用位置是不同概念，即使它们的字符串表示可能相同；此处通过
+			// RootInvocationPath 派生关系查找，不把调用路径与入口 ID 视为同一值。
 			entry, exists := indexes.entriesByRootPath[invocation.Path]
 			if !exists || entry.FlowFragmentID != invocation.FlowFragmentID || entry.WorkflowVersionID != invocation.WorkflowVersionID || !equalValues(entry.Parameters.Values, invocation.Values) {
 				return errors.New("root invocation and execution entry scope diverge")
@@ -592,6 +646,7 @@ func validateSnapshot(v InstanceSnapshotInput) error {
 	return nil
 }
 
+// equalBindings 比较两个参数绑定映射的键集合、绑定种类及字面量或父参数内容。
 func equalBindings(left, right map[string]parameter.Binding) bool {
 	if len(left) != len(right) {
 		return false
@@ -617,6 +672,7 @@ func equalBindings(left, right map[string]parameter.Binding) bool {
 	return true
 }
 
+// workflowReferenceSteps 递归收集步骤树和校验分支中的工作流引用步骤。
 func workflowReferenceSteps(steps []Step) []Step {
 	var result []Step
 	for _, step := range steps {
@@ -633,6 +689,7 @@ func workflowReferenceSteps(steps []Step) []Step {
 	return result
 }
 
+// equalValues 比较两个参数值映射的键集合和值内容。
 func equalValues(left, right map[string]parameter.Value) bool {
 	if len(left) != len(right) {
 		return false
@@ -646,15 +703,23 @@ func equalValues(left, right map[string]parameter.Value) bool {
 	return true
 }
 
+// canonicalEncoder 以稳定的长度前缀和大端整数向哈希写入规范快照表示。
 type canonicalEncoder struct{ writer hash.Hash }
 
+// raw 写入原始字节；哈希实现的写入错误被刻意忽略，因为标准哈希写入不会失败。
 func (e *canonicalEncoder) raw(value []byte) { _, _ = e.writer.Write(value) }
+
+// u64 以大端序写入无符号整数。
 func (e *canonicalEncoder) u64(v uint64) {
 	var b [8]byte
 	binary.BigEndian.PutUint64(b[:], v)
 	e.raw(b[:])
 }
+
+// str 写入带字节长度前缀的字符串。
 func (e *canonicalEncoder) str(v string) { e.u64(uint64(len(v))); e.raw([]byte(v)) }
+
+// boolean 以单字节写入布尔值。
 func (e *canonicalEncoder) boolean(v bool) {
 	if v {
 		e.raw([]byte{1})
@@ -662,10 +727,10 @@ func (e *canonicalEncoder) boolean(v bool) {
 		e.raw([]byte{0})
 	}
 }
+
+// encodeSnapshot 按固定字段顺序写入实例快照及其策略、环境和计划数据。
+// healix.run-snapshot 是线协议标签，不是 Go 名称；摘要契约要求其字节保持稳定。
 func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
-	// A wire tag, not a Go name. Every stored snapshot was digested with these
-	// exact bytes, so renaming the type must not touch them: the plan schedules
-	// a new snapshot encoding as its own deliberate step with its own migration.
 	e.str("healix.run-snapshot")
 	e.u64(uint64(v.SchemaVersion))
 	e.str(v.InstanceID.String())
@@ -706,18 +771,16 @@ func encodeSnapshot(e *canonicalEncoder, v InstanceSnapshotInput) {
 		e.u64(math.Float64bits(x))
 	}
 }
+
+// encodeCanonical 递归编码反射值，针对执行坐标和参数值使用稳定的领域表示。
 func encodeCanonical(e *canonicalEncoder, value reflect.Value) {
 	if value.Kind() == reflect.Interface {
 		value = value.Elem()
 	}
 	if value.CanInterface() {
 		switch typed := value.Interface().(type) {
-		// Execution coordinates encode as the bare identity string they replaced.
-		// The snapshot digest is a persisted contract, and the generic struct arm
-		// below writes a field count ahead of the fields, so letting these fall
-		// through would give every stored snapshot a new digest the moment a plain
-		// string field became a value object. That is a storage migration, not a
-		// rename, and nothing the snapshot means actually changed.
+		// 执行坐标按其规范身份字符串编码，而不是按值对象的结构体字段编码；快照摘要是持久化
+		// 契约，坐标的领域表示必须保持稳定。
 		case InstanceID:
 			e.str(typed.String())
 			return
@@ -795,6 +858,7 @@ func encodeCanonical(e *canonicalEncoder, value reflect.Value) {
 	}
 }
 
+// sortedKeys 按字典序返回映射键，保证规范编码和校验顺序确定。
 func sortedKeys[V any](m map[string]V) []string {
 	k := make([]string, 0, len(m))
 	for x := range m {
@@ -803,6 +867,8 @@ func sortedKeys[V any](m map[string]V) []string {
 	sort.Strings(k)
 	return k
 }
+
+// encodeStrings 按排序键编码字符串映射。
 func encodeStrings(e *canonicalEncoder, m map[string]string) {
 	e.u64(uint64(len(m)))
 	for _, k := range sortedKeys(m) {
@@ -810,6 +876,8 @@ func encodeStrings(e *canonicalEncoder, m map[string]string) {
 		e.str(m[k])
 	}
 }
+
+// encodeParameterValues 按排序键编码类型化参数值映射。
 func encodeParameterValues(e *canonicalEncoder, values map[string]parameter.Value) {
 	e.u64(uint64(len(values)))
 	for _, name := range sortedKeys(values) {
@@ -817,6 +885,8 @@ func encodeParameterValues(e *canonicalEncoder, values map[string]parameter.Valu
 		encodeValue(e, values[name])
 	}
 }
+
+// encodeValue 按参数类型编码参数值及其有序多选项。
 func encodeValue(e *canonicalEncoder, v parameter.Value) {
 	e.str(string(v.Type()))
 	switch v.Type() {
