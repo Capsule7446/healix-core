@@ -63,7 +63,7 @@ sequenceDiagram
 
 ## 不变量
 
-- 身份校验发生在 Runtime 创建和 Driver、Recorder、Facts 等端口可见阶段；错配返回 `EXECUTION_IDENTITY_MISMATCH` 与 `ExecutionNotStarted`，缺失 `AuthorityVerifier` 返回 `EXECUTION_AUTHORITY_VERIFIER_REQUIRED`。
+- 身份校验发生在 Runtime 创建和 Driver、Recorder、Facts 等端口可见之前；错配返回 `EXECUTION_IDENTITY_MISMATCH` 与 `ExecutionNotStarted`，缺失 `AuthorityVerifier` 返回 `EXECUTION_AUTHORITY_VERIFIER_REQUIRED`。
 - 每次调用根据 `CompiledEntry` 私有 Program 创建新的运行时和 Scratchpad；运行变量来自编译后的不可变调用作用域与 Environment 数据。
 - 录制器 Start 失败时不执行 root；成功后始终尝试 分离的 Stop。
 - 录制器 Start 建立本次运行唯一的相对时间轴零点。

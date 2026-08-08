@@ -53,13 +53,14 @@ sequenceDiagram
 
 ## 失败语义
 
-遵循[统一 fault 封套](../architecture/system-overview.md#错误契约)。本领域拥有 `INTERPOLATION_*` 前缀下的 3 个 code（[`variables.go`](../../domain/interpolation/variables.go)），全部不携带 violation：
+遵循[统一 fault 封套](../architecture/system-overview.md#错误契约)。本领域拥有 `INTERPOLATION_*` 前缀下的 4 个 code（[`variables.go`](../../domain/interpolation/variables.go)），全部不携带 violation：
 
 | Code | Kind | 触发条件 |
 |---|---|---|
 | `INTERPOLATION_RESOLVER_REQUIRED` | `FAILED_PRECONDITION` | 模板含 `${` 但 Resolver 为 nil（[`variables.go`](../../domain/interpolation/variables.go)） |
 | `INTERPOLATION_EXPRESSION_INVALID` | `INVALID_ARGUMENT` | 表达式未闭合，或名称为空/含非法字符（[`variables.go`](../../domain/interpolation/variables.go)） |
 | `INTERPOLATION_VARIABLE_UNDEFINED` | `NOT_FOUND` | Resolver 报告变量不存在（[`variables.go`](../../domain/interpolation/variables.go)） |
+| `INTERPOLATION_EXPANSION_TOO_LARGE` | `RESOURCE_EXHAUSTED` | 展开结果超过 `MaxExpansionBytes`（1 MiB）上限（[`variables.go`](../../domain/interpolation/variables.go)） |
 
 一处顺序上的细节：**nil-Resolver 的检查早于语法校验**，而且它的门槛只是字面量 `${` 是否出现。因此 `Expand("${broken", nil)` 返回的是 `INTERPOLATION_RESOLVER_REQUIRED` 而不是 `INTERPOLATION_EXPRESSION_INVALID`。
 
