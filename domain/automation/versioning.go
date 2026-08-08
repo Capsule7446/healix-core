@@ -9,10 +9,9 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// ValidateLoadedHistory 验证细节/水合作用形状。列表查询故意允许省略版本，因此不调用它。
-// It returns a single-violation AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID
-// envelope: the short-circuit is deterministic (the walk is over the versions
-// slice in order, never a map), and no version identity reaches public text.
+// ValidateLoadedHistory 校验从持久化加载的元素目标历史形状；列表查询允许省略版本，因此不调用该方法。
+// 失败返回单一违规的 AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID 信封，遍历按版本切片顺序执行，
+// 且不会把版本身份写入公共文本。
 func (a ElementTargetAggregate) ValidateLoadedHistory() error {
 	if a.ElementTarget.CurrentVersionID == "" {
 		if a.Current.ID != "" {
@@ -52,8 +51,7 @@ func (a ElementTargetAggregate) ValidateLoadedHistory() error {
 	return nil
 }
 
-// ValidateLoadedHistory mirrors ElementTargetAggregate.ValidateLoadedHistory
-// for the flow fragment aggregate family.
+// ValidateLoadedHistory 对流程片段聚合执行与元素目标相同的持久化历史校验。
 func (a FlowFragmentAggregate) ValidateLoadedHistory() error {
 	if a.FlowFragment.CurrentVersionID == "" {
 		if a.Current.ID != "" {
@@ -93,11 +91,13 @@ func (a FlowFragmentAggregate) ValidateLoadedHistory() error {
 	return nil
 }
 
+// versionIdentity 保存版本身份校验所需的 ID 和版本号。
 type versionIdentity struct {
 	id     string
 	number int
 }
 
+// nodeVersionIdentities 提取元素目标版本的身份序列。
 func nodeVersionIdentities(versions []ElementTargetVersion) []versionIdentity {
 	result := make([]versionIdentity, len(versions))
 	for i, version := range versions {
@@ -106,6 +106,7 @@ func nodeVersionIdentities(versions []ElementTargetVersion) []versionIdentity {
 	return result
 }
 
+// workflowVersionIdentities 提取流程片段版本的身份序列。
 func workflowVersionIdentities(versions []FlowFragmentVersion) []versionIdentity {
 	result := make([]versionIdentity, len(versions))
 	for i, version := range versions {
@@ -114,9 +115,7 @@ func workflowVersionIdentities(versions []FlowFragmentVersion) []versionIdentity
 	return result
 }
 
-// validateVersionIdentity reports the first identity problem found by walking
-// the versions slice in order — never a map — so the result is a function of
-// the input alone. No version id reaches public text.
+// validateVersionIdentity 按版本切片顺序返回首个身份问题；结果不依赖映射迭代顺序，版本 ID 不写入公共文本。
 func validateVersionIdentity(versions []versionIdentity) (fault.Violation, bool) {
 	seenIDs := map[string]bool{}
 	seenNumbers := map[int]bool{}
@@ -150,14 +149,12 @@ func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string
 	next := cloneNodeAggregate(a)
 	nextRevision, err := a.ElementTarget.Revision.Next()
 	if err != nil {
-		// Revision.Next already returns AUTOMATION_REVISION_EXHAUSTED. The wrapper
-		// this replaces welded the aggregate id into fresh public text on top of an
-		// already-classified fault.
+		// Revision.Next 已返回 AUTOMATION_REVISION_EXHAUSTED，此处保持原错误码和私有原因。
 		return ElementTargetAggregate{}, err
 	}
 	versionNumber, err := nextNodeVersion(a)
 	if err != nil {
-		// NextVersionNumber already returns AUTOMATION_VERSION_NUMBER_EXHAUSTED.
+		// NextVersionNumber 已返回 AUTOMATION_VERSION_NUMBER_EXHAUSTED，此处保持原错误码。
 		return ElementTargetAggregate{}, err
 	}
 	version := ElementTargetVersion{ID: versionID, ElementTargetID: a.ElementTarget.ID, VersionNumber: versionNumber,
@@ -169,7 +166,7 @@ func (a ElementTargetAggregate) PublishVersion(versionID, pageURL, origin string
 	next.Current = cloneNodeVersion(version)
 	next.Versions = append(next.Versions, cloneNodeVersion(version))
 	if err := next.Validate(); err != nil {
-		// Validate already returns AUTOMATION_ELEMENT_TARGET_INVALID.
+		// Validate 已返回 AUTOMATION_ELEMENT_TARGET_INVALID，此处保持原错误码。
 		return ElementTargetAggregate{}, err
 	}
 	return next, nil
@@ -187,7 +184,7 @@ func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowF
 	}
 	versionNumber, err := nextWorkflowVersion(a)
 	if err != nil {
-		// NextVersionNumber already returns AUTOMATION_VERSION_NUMBER_EXHAUSTED.
+		// NextVersionNumber 已返回 AUTOMATION_VERSION_NUMBER_EXHAUSTED，此处保持原错误码。
 		return FlowFragmentAggregate{}, err
 	}
 	version := FlowFragmentVersion{ID: versionID, FlowFragmentID: a.FlowFragment.ID,
@@ -198,18 +195,14 @@ func (a FlowFragmentAggregate) PublishVersion(versionID string, definition FlowF
 	next.Current = cloneWorkflowVersion(version)
 	next.Versions = append(next.Versions, cloneWorkflowVersion(version))
 	if err := next.Validate(); err != nil {
-		// Validate already returns AUTOMATION_FLOW_FRAGMENT_INVALID.
+		// Validate 已返回 AUTOMATION_FLOW_FRAGMENT_INVALID，此处保持原错误码。
 		return FlowFragmentAggregate{}, err
 	}
 	return next, nil
 }
 
-// validateNodePublicationBase reports the shared publication preconditions.
-// A content failure from a.Validate() and a timing failure from
-// validateTransitionTime already carry their own registered code and pass
-// through unwrapped; only the pointer-consistency and identity checks that are
-// specific to publication mint their own AUTOMATION_ELEMENT_TARGET_HISTORY_INVALID
-// violation.
+// validateNodePublicationBase 校验元素目标发布的共享前置条件。
+// 内容和时间错误保持各自注册错误码；仅发布专属的当前指针一致性和新身份校验生成历史错误违规。
 func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at int64) error {
 	if err := a.Validate(); err != nil {
 		return err
@@ -226,8 +219,7 @@ func validateNodePublicationBase(a ElementTargetAggregate, versionID string, at 
 	return validateNewVersionIdentity(versionID, at, a.Current.ID, nodeVersionIDs(a.Versions), elementTargetHistoryInvalidError)
 }
 
-// validateWorkflowPublicationBase mirrors validateNodePublicationBase for the
-// flow fragment aggregate family.
+// validateWorkflowPublicationBase 对流程片段聚合执行与元素目标相同的发布前置校验。
 func validateWorkflowPublicationBase(a FlowFragmentAggregate, versionID string, at int64) error {
 	if err := a.Validate(); err != nil {
 		return err
@@ -244,8 +236,7 @@ func validateWorkflowPublicationBase(a FlowFragmentAggregate, versionID string, 
 	return validateNewVersionIdentity(versionID, at, a.Current.ID, workflowVersionIDs(a.Versions), flowFragmentHistoryInvalidError)
 }
 
-// validateNewVersionIdentity is shared by both aggregate families; wrap builds
-// the family-specific history envelope around the single violation found.
+// validateNewVersionIdentity 校验新版本身份、发布时间和历史唯一性；wrap 负责构造对应聚合的历史错误信封。
 func validateNewVersionIdentity(versionID string, at int64, currentID string, existing []string, wrap func(...fault.Violation) error) error {
 	if strings.TrimSpace(versionID) == "" {
 		return wrap(mustViolation(fault.CodeFieldRequired, "versionId", "new version id is required"))
@@ -264,6 +255,7 @@ func validateNewVersionIdentity(versionID string, at int64, currentID string, ex
 	return nil
 }
 
+// nextNodeVersion 根据元素目标历史计算下一个版本号。
 func nextNodeVersion(a ElementTargetAggregate) (int, error) {
 	metas := make([]VersionMeta, 0, len(a.Versions)+1)
 	seenCurrent := false
@@ -277,6 +269,7 @@ func nextNodeVersion(a ElementTargetAggregate) (int, error) {
 	return NextVersionNumber(metas)
 }
 
+// nextWorkflowVersion 根据流程片段历史计算下一个版本号。
 func nextWorkflowVersion(a FlowFragmentAggregate) (int, error) {
 	metas := make([]VersionMeta, 0, len(a.Versions)+1)
 	seenCurrent := false
@@ -290,6 +283,7 @@ func nextWorkflowVersion(a FlowFragmentAggregate) (int, error) {
 	return NextVersionNumber(metas)
 }
 
+// nodeVersionIDs 提取元素目标版本 ID 列表。
 func nodeVersionIDs(versions []ElementTargetVersion) []string {
 	result := make([]string, len(versions))
 	for index, version := range versions {
@@ -298,6 +292,7 @@ func nodeVersionIDs(versions []ElementTargetVersion) []string {
 	return result
 }
 
+// workflowVersionIDs 提取流程片段版本 ID 列表。
 func workflowVersionIDs(versions []FlowFragmentVersion) []string {
 	result := make([]string, len(versions))
 	for index, version := range versions {
@@ -306,10 +301,12 @@ func workflowVersionIDs(versions []FlowFragmentVersion) []string {
 	return result
 }
 
+// Clone 返回元素目标聚合的深复制，不与原聚合共享映射、切片或指纹引用。
 func (a ElementTargetAggregate) Clone() ElementTargetAggregate {
 	return cloneNodeAggregate(a)
 }
 
+// cloneNodeAggregate 返回元素目标聚合的独立副本。
 func cloneNodeAggregate(input ElementTargetAggregate) ElementTargetAggregate {
 	result := input
 	result.ElementTarget.Properties = input.ElementTarget.Properties.Clone()
@@ -321,6 +318,7 @@ func cloneNodeAggregate(input ElementTargetAggregate) ElementTargetAggregate {
 	return result
 }
 
+// cloneNodeVersion 返回元素目标版本及其选择器、指纹的独立副本。
 func cloneNodeVersion(input ElementTargetVersion) ElementTargetVersion {
 	result := input
 	result.Selectors = append([]fingerprint.Selector(nil), input.Selectors...)
@@ -328,6 +326,7 @@ func cloneNodeVersion(input ElementTargetVersion) ElementTargetVersion {
 	return result
 }
 
+// cloneWorkflowAggregate 返回流程片段聚合的独立副本。
 func cloneWorkflowAggregate(input FlowFragmentAggregate) FlowFragmentAggregate {
 	result := input
 	result.FlowFragment.Properties = input.FlowFragment.Properties.Clone()
@@ -339,22 +338,21 @@ func cloneWorkflowAggregate(input FlowFragmentAggregate) FlowFragmentAggregate {
 	return result
 }
 
+// cloneWorkflowVersion 返回流程片段版本及其定义的独立副本。
 func cloneWorkflowVersion(input FlowFragmentVersion) FlowFragmentVersion {
 	result := input
 	result.Definition = cloneWorkflowDefinition(input.Definition)
 	return result
 }
 
+// cloneWorkflowDefinition 返回流程片段定义及其步骤、参数的独立副本。
 func cloneWorkflowDefinition(input FlowFragmentContent) FlowFragmentContent {
 	return FlowFragmentContent{Steps: CloneFlowFragmentSteps(input.Steps),
 		Parameters: CloneParameterDefinitions(input.Parameters)}
 }
 
-// CloneParameterDefinitions is the one deep copy of parameter definition
-// content. Sampling and the publication mapper both used a bare append, which
-// copies the slice but leaves every Options slice shared with the source. In
-// the mapper that meant a published, immutable FlowFragmentVersion shared an
-// array with the still-editable draft it came from.
+// CloneParameterDefinitions 深复制参数定义内容，包括每个 Options 切片和默认值。
+// 返回结果不与输入共享可变引用，发布后的不可变版本不会受编辑器切片修改影响。
 func CloneParameterDefinitions(input []ParameterDefinition) []ParameterDefinition {
 	if input == nil {
 		return nil
@@ -369,12 +367,8 @@ func CloneParameterDefinitions(input []ParameterDefinition) []ParameterDefinitio
 	return result
 }
 
-// CloneFlowFragmentSteps is the one deep copy of flow fragment step content.
-//
-// Sampling held a second implementation of this for unpublished drafts. The two
-// drifted: that one never copied Validation.Assertion.ExpectedValues, so a cloned
-// draft shared the slice with its source and editing the copy silently edited the
-// original. Content shape belongs to whoever owns the type, so the copy does too.
+// CloneFlowFragmentSteps 深复制流程片段步骤内容，包括子步骤、引用绑定、断言期望值和验证组分支。
+// 返回结果不与输入共享可变切片，调用方可独立编辑副本。
 func CloneFlowFragmentSteps(input []FlowFragmentStep) []FlowFragmentStep {
 	if input == nil {
 		return nil
