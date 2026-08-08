@@ -8,9 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// RewriteUnpublishedElementTargetReferences validates the mapping set as an
-// aggregate in slice order. Temporary and formal element target identities are the
-// caller's own and never reach public text.
+// RewriteUnpublishedElementTargetReferences 校验映射集合并递归重写步骤引用，失败时不返回部分结果；目标身份不写入公开错误文本。
 func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentStep, mappings []automation.SamplingNodeMapping) ([]automation.FlowFragmentStep, error) {
 	mappingByTemporaryID := make(map[string]automation.SamplingNodeMapping, len(mappings))
 	var violations []fault.Violation
@@ -29,9 +27,6 @@ func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentSt
 		}
 		mappingByTemporaryID[mapping.TemporaryElementTargetID] = mapping
 	}
-	// The reference walk joins the mapping-set violations, so one malformed
-	// mapping and one unmapped reference come back together rather than as two
-	// consecutive rejections.
 	violations = appendUnmappedReferenceViolations(violations, steps, mappingByTemporaryID)
 	if len(violations) != 0 {
 		return nil, publicationMappingInvalidError(violations)
@@ -46,12 +41,7 @@ func RewriteUnpublishedElementTargetReferences(steps []automation.FlowFragmentSt
 	return rewritten, nil
 }
 
-// appendUnmappedReferenceViolations walks the whole tree before anything is
-// rewritten. Reporting the first unmapped reference and stopping meant a
-// workspace with several of them took one publish attempt per bad reference;
-// validating first also keeps the rewrite from producing a half-transformed tree
-// it then has to throw away. Walk order is the tree's own depth-first order, so
-// the report — and the prefix kept at the cap — is a function of the input.
+// appendUnmappedReferenceViolations 深度优先遍历步骤树，聚合未映射临时目标引用且不暴露调用方身份。
 func appendUnmappedReferenceViolations(violations []fault.Violation, steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping) []fault.Violation {
 	for _, step := range steps {
 		if len(violations) >= fault.MaxViolations {
@@ -59,8 +49,6 @@ func appendUnmappedReferenceViolations(violations []fault.Violation, steps []aut
 		}
 		if step.ElementTargetID != "" {
 			if _, exists := mappings[step.ElementTargetID]; !exists {
-				// The step id and the temporary element target id are both caller
-				// identities, so neither may appear in the public violation.
 				violations = append(violations, mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that has no mapping"))
 			}
 		}
@@ -74,7 +62,7 @@ func appendUnmappedReferenceViolations(violations []fault.Violation, steps []aut
 	return violations
 }
 
-// rewriteSamplingSteps runs only after validation, so every reference resolves.
+// rewriteSamplingSteps 深拷贝并递归替换步骤及验证分支中的元素目标引用。
 func rewriteSamplingSteps(steps []automation.FlowFragmentStep, mappings map[string]automation.SamplingNodeMapping, used map[string]struct{}) []automation.FlowFragmentStep {
 	rewritten := automation.CloneFlowFragmentSteps(steps)
 	for index := range rewritten {

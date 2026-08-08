@@ -2,14 +2,14 @@ package sampling
 
 import "github.com/Capsule7446/healix-core/domain/fingerprint"
 
-// MatchProfile 是框架中立的身份信号，用于将捕获的元素与现有基线进行比较。它故意不包含工作空间聚合或持久性问题。
+// MatchProfile 包含用于比较采样元素与基线的选择器、指纹和来源信号。
 type MatchProfile struct {
 	Selectors   []fingerprint.Selector
 	Fingerprint fingerprint.Fingerprint
 	Origin      string
 }
 
-// Match 匹配测量选择器重叠和稳定的指纹一致性。权重是域策略：调用者仅将其聚合映射到配置文件中。
+// Match 计算采样配置与基线配置的相似度及唯一选择器重叠数。
 func Match(sampled, baseline MatchProfile) (similarity float64, selectorOverlap int) {
 	selectorOverlap = overlap(sampled.Selectors, baseline.Selectors)
 	union := uniqueSelectorCount(sampled.Selectors) + uniqueSelectorCount(baseline.Selectors) - selectorOverlap
@@ -31,6 +31,7 @@ func Match(sampled, baseline MatchProfile) (similarity float64, selectorOverlap 
 	return similarity, selectorOverlap
 }
 
+// uniqueSelectorCount 返回选择器类型和值组合的去重数量。
 func uniqueSelectorCount(selectors []fingerprint.Selector) int {
 	values := make(map[string]struct{}, len(selectors))
 	for _, selector := range selectors {
@@ -39,6 +40,7 @@ func uniqueSelectorCount(selectors []fingerprint.Selector) int {
 	return len(values)
 }
 
+// overlap 返回两个选择器集合的唯一交集数量。
 func overlap(left, right []fingerprint.Selector) int {
 	values := make(map[string]struct{}, len(left))
 	for _, selector := range left {
