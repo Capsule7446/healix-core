@@ -6,7 +6,7 @@
 
 十个领域包归入两个有界上下文与一个共享内核：自动化（`automation`、`sampling`）、执行（`execution`、`node`、`heal`、`evidence`）和共享内核（`fault`、`fingerprint`、`interpolation`、`parameter`）。共享内核**不是**第三个有界上下文，它没有自己的业务语言，只提供两个上下文都要用的值语义。
 
-映射写在 [`dependencies_test.go`](../../architecture/dependencies_test.go) 的 `domainContext`（第 371-382 行），并由 [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestBoundedContextIsolation` 强制：任一 `domain/*` 包 import 另一个 `domain/*` 包时，除非双方之一属于 `shared`，否则两者的上下文必须相同。地图里漏登记一个包同样是失败 —— 未知包不会被默认放行。
+映射写在 [`dependencies_test.go`](../../architecture/dependencies_test.go) 的 `domainContext`，并由 [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestBoundedContextIsolation` 强制：任一 `domain/*` 包 import 另一个 `domain/*` 包时，除非双方之一属于 `shared`，否则两者的上下文必须相同。地图里漏登记一个包同样是失败 —— 未知包不会被默认放行。
 
 ```mermaid
 flowchart TB

@@ -36,7 +36,7 @@ flowchart LR
 
 ## 十个领域包
 
-上下文归属由 [`dependencies_test.go`](../../architecture/dependencies_test.go) 的 `domainContext`（第 371-382 行）判定，不是文档约定。「错误码」列给出该包对外公开的 fault 前缀及注册表中的行数。
+上下文归属由 [`dependencies_test.go`](../../architecture/dependencies_test.go) 的 `domainContext` 判定，不是文档约定。「错误码」列给出该包对外公开的 fault 前缀及注册表中的行数。
 
 | 包 | 上下文 | 职责 | 错误码 |
 |---|---|---|---|
