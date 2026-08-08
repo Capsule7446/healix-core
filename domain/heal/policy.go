@@ -21,6 +21,7 @@ func DefaultPolicyV1() PolicyV1 {
 	}
 }
 
+// Validate 校验策略版本、阈值和评分权重。
 func (p PolicyV1) Validate() error {
 	if p.Version != PolicyVersionV1 {
 		return fmt.Errorf("heal: unsupported policy version %d", p.Version)

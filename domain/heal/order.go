@@ -8,7 +8,8 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// CandidateLess 定义完整的候选顺序。分数仍然是语义排名信号；其余字段仅是确定性仲裁密钥，并不表明一个得分相同的候选者比另一个候选者更有可能是正确的。
+// candidateLess 定义完整的候选顺序。分数是语义排名信号，其余字段仅用于确定性仲裁，
+// 不表示得分相同的候选中某个更可能正确。
 func candidateLess(left, right Candidate) bool {
 	if left.Score != right.Score {
 		return left.Score > right.Score
@@ -25,6 +26,7 @@ func candidateLess(left, right Candidate) bool {
 	return fingerprintCanonicalKey(left.Fingerprint) < fingerprintCanonicalKey(right.Fingerprint)
 }
 
+// sameCandidate 判断两个候选的分数、选择器和规范指纹键是否完全一致。
 func sameCandidate(left, right Candidate) bool {
 	return left.Score == right.Score &&
 		left.Selector.Type == right.Selector.Type &&
@@ -33,7 +35,7 @@ func sameCandidate(left, right Candidate) bool {
 		fingerprintCanonicalKey(left.Fingerprint) == fingerprintCanonicalKey(right.Fingerprint)
 }
 
-// FingerprintCanonicalKey 使用显式长度前缀和排序的映射键序列化每个指纹字段。它故意独立于 Go 的映射迭代顺序和基础设施 JSON 编码器。
+// fingerprintCanonicalKey 使用显式长度前缀和排序键序列化指纹字段，独立于 Go 映射遍历顺序和 JSON 编码器。
 func fingerprintCanonicalKey(value fingerprint.Fingerprint) string {
 	var out strings.Builder
 	writeCanonicalString(&out, value.Tag)
@@ -63,12 +65,14 @@ func fingerprintCanonicalKey(value fingerprint.Fingerprint) string {
 	return out.String()
 }
 
+// writeCanonicalString 将字符串及其字节长度写入规范键构建器。
 func writeCanonicalString(out *strings.Builder, value string) {
 	writeCanonicalInt(out, len(value))
 	out.WriteByte(':')
 	out.WriteString(value)
 }
 
+// writeCanonicalInt 将整数及分隔符写入规范键构建器。
 func writeCanonicalInt(out *strings.Builder, value int) {
 	out.WriteString(strconv.Itoa(value))
 	out.WriteByte(';')
