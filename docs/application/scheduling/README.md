@@ -12,7 +12,7 @@
 ## 所有权边界
 
 - 创建执行实例是唯一的 `latest` 冻结点；运行和重试必须使用持久化快照，不能再次查询 `current`/`latest`。
-- 环境以带类型的 `Variables map[string]parameter.Value` 复制进快照（V1 快照另保留字符串 `Properties`），并在执行引擎绑定时成为只读 `env.` 参数；不存在凭据或密钥解析路径。
+- 环境以带类型的 `Variables map[string]parameter.Value` 复制进快照，并在执行引擎绑定时成为只读 `env.` 参数；不存在凭据或密钥解析路径。
 - 顶层执行项参数和嵌套调用参数使用 `domain/parameter` 的带类型值与绑定。创建时完成必填项、类型、选项和绑定校验，不能静默转换为字符串。
 - 调度模块拥有队列、领取执行权、栅栏令牌与执行实例状态；`DecideAdvance` 在选出下一个 entry 时同时产出 Pending→Running 转移，停止级联时产出 Pending→Skipped，且两类转移都先过 `execution.ValidateEntryStatusTransition`；不打开浏览器、不运行节点、不写执行证据。
 - `CreateInstanceStore` 的事务必须原子保存命令幂等记录、执行实例、快照与顶层执行项身份；同一命令 ID 的不同请求摘要属于冲突。

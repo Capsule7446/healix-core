@@ -1,10 +1,10 @@
-# domain/execution Test Case Matrix
+# domain/execution 测试用例矩阵
 
 ## 范围与口径
 
 本表记录 `domain/execution` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
 
-## Public API / Use-case Inventory
+## 公开 API 与领域入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
@@ -13,33 +13,19 @@
 | `Plan.IsSealed` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Plan.Validate` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Plan.Snapshot` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Plan.RunID` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `Plan.InstanceID` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 返回封存计划的执行实例身份；计划快照由 `Snapshot` 深复制。 |
 | `Plan.FailurePolicy` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Plan.Entries` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Plan.Workflows` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Plan.Nodes` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Plan.References` | [`domain/execution/plan.go`](../../domain/execution/plan.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidateRunStatusTransition` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewRun` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `HydrateRun` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidateRun` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Run.Transition` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ValidateInstanceStatusTransition` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 校验执行实例从 `QUEUED`/`RUNNING` 到合法终态的迁移。 |
+| `NewInstance` / `HydrateInstance` / `ValidateInstance` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 创建、恢复和校验执行实例；身份封印或生命周期不一致时返回分类错误。 |
+| `Instance.Transition` | [`domain/execution/instance.go`](../../domain/execution/instance.go) | 以单调时间推进实例状态，并保留快照摘要封印。 |
 | `DefaultHealerPolicySnapshot` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.Digest` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.SchemaVersion` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.RunID` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.TestTaskID` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.TestTaskVersionID` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.Input` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.Plan` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.Invocations` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.Invocation` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSnapshot.Environment` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `SealRunSnapshot` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `HydrateRunSnapshot` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidateExecutionStatusTransition` | [`domain/execution/status.go`](../../domain/execution/status.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `IsTerminalExecutionStatus` | [`domain/execution/status.go`](../../domain/execution/status.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ExecutionStatus.CanTransitionTo` | [`domain/execution/status.go`](../../domain/execution/status.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `InstanceSnapshot` 访问器 | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | `Digest`、`SchemaVersion`、`InstanceID`、`ExecutionFlowID`、`TestTaskVersionID`、`Input`、`Plan`、`Invocations`、`Invocation`、`Environment` 均返回隔离副本或值。 |
+| `SealInstanceSnapshot` / `HydrateInstanceSnapshot` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 校验并封存完整快照；恢复时重新验证摘要和输入。 |
+| `ValidateEntryStatusTransition` / `IsTerminalEntryStatus` / `EntryStatus.CanTransitionTo` | [`domain/execution/status.go`](../../domain/execution/status.go) | 维护顶层执行项状态机，不与实例状态机混用。 |
 | `Parameter.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Draft.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `WorkflowSnapshot.Validate` | [`domain/execution/step_shape.go`](../../domain/execution/step_shape.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -49,7 +35,7 @@
 | `StaleWorkerFenceError.Is` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `HealerPolicySnapshot.HealPolicy` | [`domain/execution/healer_policy_conversion.go`](../../domain/execution/healer_policy_conversion.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
@@ -162,7 +148,7 @@
 | `TestHealPolicyCarriesEveryScoredDimension` | `Heal Policy Carries Every Scored Dimension`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/healer_policy_conversion_test.go`](../../domain/execution/healer_policy_conversion_test.go) · `TestHealPolicyCarriesEveryScoredDimension` |
 | `TestHealPolicyRejectsPolicyTheScorerCannotUse` | `Heal Policy Rejects Policy The Scorer Cannot Use`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/healer_policy_conversion_test.go`](../../domain/execution/healer_policy_conversion_test.go) · `TestHealPolicyRejectsPolicyTheScorerCannotUse` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
 
@@ -171,4 +157,3 @@
 1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
 2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
 3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
-

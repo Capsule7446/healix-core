@@ -8,7 +8,7 @@
 
 - `execution.InstanceSnapshot`：不可变执行实例快照，包含已封存并通过验证的 Plan、按调用路径冻结的 invocation 参数值与绑定解析结果，以及冻结的 Environment 变量。
 
-编译不能只接收 `snapshot.Plan()`。Plan 提供 entries 及 workflow/node/reference snapshots，但完整快照还承载每次调用冻结的参数值和 `parameter.Binding` 解析结果；编译器必须把这些值放入对应调用作用域，并将 Environment `Properties` 以 `env.` 前缀注入根调用作用域。旧的公开 plan-only 编译 API 不存在。
+编译不能只接收 `snapshot.Plan()`。Plan 提供 entries 及 workflow/node/reference snapshots，但完整快照还承载每次调用冻结的参数值和 `parameter.Binding` 解析结果；编译器必须把这些值放入对应调用作用域，并将 Environment `Variables` 以 `env.` 前缀注入根调用作用域。公开入口只有 `CompilePlan`。
 
 ## 输出
 
@@ -56,7 +56,7 @@ sequenceDiagram
       C->>Compiler: compileWorkflow(version, invocationPath)
       Compiler->>S: 读取冻结的调用参数与绑定结果
       Compiler->>Compiler: 编译 steps/references/validations/waits
-      Compiler->>Compiler: 根作用域注入 env.Properties
+      Compiler->>Compiler: 根作用域注入 env.Variables
       Compiler-->>C: Program + metadata + runtime node identities
     end
     C-->>Caller: CompiledPlan / error
@@ -75,7 +75,7 @@ flowchart TD
     E -- 否 --> F{循环/深度/重复 step ID?}
     F -- 是 --> E3[reject graph]
     F -- 否 --> G[编译 node/spec/validation/wait 与调用参数]
-    G --> H[向根作用域注入 env.Properties]
+    G --> H[向根作用域注入 env.Variables]
     H --> I{全部完成?}
     I -- 否 --> D
     I -- 是 --> J[返回 CompiledPlan]

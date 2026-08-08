@@ -26,7 +26,7 @@ API 清单。
 | Heal | 自愈 | 确定性重定位与治理概念。 |
 | Evidence | 执行证据 | 可持久化的进度、观察与终态事实。 |
 | Fault | 业务错误 | `domain/fault` 定义的稳定错误码契约；不是 Go 语言层面的 `error` 一词。 |
-| Instance | 执行实例 | 一次完整执行的身份、快照与状态。代码中曾称 `Run`，现已全面改名为 `Instance`。 |
+| Instance | 执行实例 | 一次完整执行的身份、快照与状态；代码统一使用 `execution.Instance`。 |
 | Entry | 顶层执行项 | 执行计划中按序运行的顶层工作流执行项。 |
 | Plan | 执行计划 | 已封存的执行输入与依赖快照。 |
 | Program | 执行程序 | 为单次顶层执行项临时编译的节点树。 |
@@ -44,7 +44,7 @@ API 清单。
 
 | 代码符号                                | 中文正式称呼       | 所属领域          | 模型角色   | 定义                                                       |
 |-------------------------------------|--------------|---------------|--------|----------------------------------------------------------|
-| `automation.Environment`            | 环境           | Automation    | 普通可变资产  | 保存受修订号控制的普通 `Properties`；创建执行实例时将当前状态深复制为 `execution.EnvironmentSnapshot`，而非解析 Environment 版本。Core 没有独立凭据/secret 模型。 |
+| `automation.Environment`            | 环境           | Automation    | 普通可变资产  | 保存受修订号控制的类型化 `Variables` 与基础 URL；创建执行实例时将当前状态深复制为 `execution.EnvironmentSnapshot`，而非解析 Environment 版本。Core 没有独立凭据/secret 模型。 |
 | `automation.Folder`                 | 文件夹          | Automation    | 普通可变层级实体 | 受修订号控制、用于组织 Automation 资产的树形目录节点；没有不可变发布版本。 |
 | `automation.ElementTarget`          | 节点资产         | Automation    | 聚合根实体  | 可编辑并可发布不可变版本供引用的节点定义资产。 |
 | `automation.ElementTargetVersion`   | 节点版本         | Automation    | 版本实体   | 节点资产在特定版本上的不可变定义。                                        |
@@ -62,7 +62,7 @@ API 清单。
 | `execution.WorkflowSnapshot`        | 工作流快照        | Execution     | 依赖快照   | 执行计划锁定的工作流定义。                                     |
 | `execution.NodeSnapshot`            | 节点快照         | Execution     | 依赖快照   | 执行计划锁定的节点定义。                                         |
 | `execution.Instance`                | 执行实例         | Execution     | 状态实体   | 一份执行的整体身份与状态；创建时解析所有 `latest` 并冻结执行实例快照。 |
-| `execution.InstanceSnapshot`        | 执行实例快照         | Execution     | 已封存值快照 | 冻结测试任务、具体版本、环境 `Properties`、策略和完整调用作用域；运行时不再解析 `current`/`latest`。 |
+| `execution.InstanceSnapshot`        | 执行实例快照         | Execution     | 已封存值快照 | 冻结测试任务、具体版本、环境类型化 `Variables`、策略和完整调用作用域；运行时不再解析 `current`/`latest`。 |
 | `execution.InstanceID` / `EntryID`  | 执行实例身份 / 顶层执行项身份 | Execution | 封闭值对象 | 执行坐标是构造函数校验过的封闭类型，不是裸 `string`；由 [`TestExecutionCoordinatesAreDistinctTypesNotStrings`](../architecture/unified_language_boundary_test.go) 执行检查。 |
 | `execution.InvocationScopeSnapshot` | 调用作用域快照      | Execution     | 依赖快照   | 按调用路径隔离一次顶层或嵌套工作流调用的类型化值与绑定。 |
 | `parameter.Value`                   | 参数值          | Parameter     | 封闭值对象 | 保留 TEXT、NUMBER、BOOLEAN、SINGLE_SELECT、MULTI_SELECT 类型，不降级为字符串。 |
@@ -98,7 +98,7 @@ API 清单。
 | 执行实例与顶层执行项                      | 执行实例（`execution.Instance`）表示整份计划的运行；顶层执行项表示执行实例中某个 `execution.Entry` 的执行及其状态。两者各有独立状态机（`InstanceStatus` / `EntryStatus`）。 |
 | Progress 与 Evidence                      | Progress 是 Evidence 领域接收的一类非终态事实；Evidence 是定义全部可持久化执行事实、观察和提交协议的领域。                              |
 | Plan 与调度                                 | 执行计划是领域值快照；调度是构造执行计划、决定顶层执行项顺序并处理领取执行权的应用编排模块，不是领域对象。                                  |
-| Environment 与 secret/credential             | Environment 是受修订号控制的普通可变 `Properties` 资产；创建执行实例时克隆当前状态为 `EnvironmentSnapshot`，不存在 Environment 发布版本，也不存在 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret store。 |
+| Environment 与 secret/credential             | Environment 是受修订号控制的普通可变 `Variables` 资产；创建执行实例时克隆当前状态为 `EnvironmentSnapshot`，不存在 Environment 发布版本，也不存在 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret store。 |
 | `latest` 与具体版本                           | `latest` 只是创作策略；创建执行实例时从一致目录视图解析并冻结 `ElementTarget`、`FlowFragment`、`ExecutionFlow` 的具体发布版本，运行时不重新解析。 |
 | 顶层执行项与嵌套工作流浏览器             | `EntryExecutor` 为每个顶层执行项创建并关闭一个全新的宿主所有 `BrowserSession`；该顶层执行项内的嵌套工作流共享同一会话。 |
 | HealObservation 与晋升                 | 观察是事实输入；晋升是栅栏校验提交结果，不是观察字段或独立生命周期。 |
@@ -121,7 +121,7 @@ flowchart LR
 这条链路表达的是**跨上下文转换**，不是对象改名：
 
 1. Automation 保存“要执行什么”；测试任务版本（`ExecutionFlowVersion`）由显式手工创作创建。
-2. Scheduling 在创建执行实例的一致目录/事务视图中解析所有 `latest`、Environment `Properties`、类型化值与绑定以及调用作用域。
+2. Scheduling 在创建执行实例的一致目录/事务视图中解析所有 `latest`、Environment `Variables`、类型化值与绑定以及调用作用域。
 3. Execution 封存不可变 `InstanceSnapshot`；运行期间不再查询 `current`/`latest`。
 4. Engine 为每个顶层执行项临时编译 `Program` 并创建 `node.Runtime`。`EntryExecutor` 调用宿主的 `BrowserSessionFactory.Create`，将一个全新的宿主所有 `BrowserSession` 交给宿主的 `EntryRunner` 连接至 Engine 执行，并在顶层执行项结束后同步关闭会话；嵌套工作流共享该 `node.Runtime` 和 `BrowserSession`，但每条调用路径拥有根据绑定派生的独立类型化参数作用域。
 5. 运行时向 Evidence 提交进度、观察和终态事实；`HealObservation` 本身不执行晋升，晋升由栅栏校验提交结果表达。

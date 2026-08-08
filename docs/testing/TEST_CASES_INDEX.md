@@ -1,4 +1,4 @@
-# Test Case Matrix Index
+# 测试用例矩阵索引
 
 本索引汇总每个拥有生产代码的一级 domain/application 包的 testcase 矩阵。每个矩阵同时记录公开入口清单和全部顶层 Go `Test…` 函数的可执行证据。表驱动测试的子案例在对应函数源码中维护。
 

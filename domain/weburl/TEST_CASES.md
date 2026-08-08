@@ -1,4 +1,4 @@
-# domain/weburl Test Case Matrix
+# domain/weburl 测试用例矩阵
 
 ## 范围与口径
 
@@ -8,7 +8,7 @@
 
 `Check` 返回封闭的 `Rejection` 词表而非 `error`：每个有界上下文用自己的 fault code、字段名和安全文案报告失败，共享内核不替它们决定这些。
 
-## Public API / Use-case Inventory
+## 公开 API 与领域入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
@@ -16,14 +16,14 @@
 | `Check` | [`domain/weburl/weburl.go`](../../domain/weburl/weburl.go) | 全表主入口。 |
 | `Accept` | [`domain/weburl/weburl.go`](../../domain/weburl/weburl.go) | `TestCheckMatrix` 每行同时断言 `Accept` 与 `Check` 一致。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestCheckMatrix` | 31 个用例分五组：接受组（https/http、大写 scheme、显式端口、IPv4、IPv6、query+fragment、国际化域名、结尾斜杠）；控制字符组（NUL/CR/LF/TAB/DEL，以及一个同时含控制字符和非法 scheme 的 URL）；非绝对组（空串、相对路径、协议相对、裸主机、纯空白）；scheme 组（`javascript:`/`data:`/`file:`/`ftp:`/`about:`/`chrome:`）；userinfo 组（`user@`、`user:pass@`、空 userinfo、`trusted.test@evil.test`）；空 host 组（`https:///path`、`https://`）。 | 每个用例的 `Rejection` 必须与该行声明完全一致，`Accept` 与之不得分歧。判定顺序是契约的一部分：控制字符先于一切——含 CR 的值在被解析之前就能拆分下游请求；userinfo 先于 host——`trusted.test@evil.test` 的 host 合法，问题在于它读起来像 trusted.test。 | [`domain/weburl/weburl_test.go`](../../domain/weburl/weburl_test.go) · `TestCheckMatrix` |
 | `TestRejectionsCarryNoCallerInput` | `https://user:hunter2@evil.test/?token=s3cr3t`。 | 返回的 `Rejection` 不含 `hunter2`、`s3cr3t`、`evil.test` 或整条 URL——封闭词表是各上下文可以直接把它放进私有 cause 而无需复审的原因。 | [`domain/weburl/weburl_test.go`](../../domain/weburl/weburl_test.go) · `TestRejectionsCarryNoCallerInput` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 各调用方如何把 `Rejection` 映射到自己的 fault code 与字段，属于该调用方的契约，证据在其所属矩阵：`domain/execution`（sealed navigation URL）、`domain/automation`（environment base URL）、`domain/sampling`（session start URL）、`domain/node`（运行期 navigate）。`FuzzCheckNeverPanicsAndIsTotal` 是模糊测试目标，不作为具名用例列行。
 

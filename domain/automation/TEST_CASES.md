@@ -1,22 +1,22 @@
-# domain/automation Test Case Matrix
+# domain/automation 测试用例矩阵
 
 ## 范围与口径
 
 本表记录 `domain/automation` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
 
-## Public API / Use-case Inventory
+## 公开 API 与领域入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
 | `Properties.Clone` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Properties.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `VersionSource.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ElementTargetAggregate.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 校验节点资产聚合、当前版本和身份一致性。 |
 | `Environment.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ParameterDefinition.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ParameterDefinition.ValidateValue` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `WorkflowVersion.ValidateFor` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowAggregate.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `FlowFragmentAggregate.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 校验工作流资产聚合、当前版本和步骤定义。 |
 | `WorkflowVersionPolicy.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FolderKind.Validate` | [`domain/automation/folders.go`](../../domain/automation/folders.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Folder.Validate` | [`domain/automation/folders.go`](../../domain/automation/folders.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -42,39 +42,28 @@
 | `Environment.UpdateMetadata` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Environment.Delete` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Environment.Restore` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewNode` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.UpdateMetadata` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.Delete` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.Restore` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewWorkflow` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowAggregate.UpdateMetadata` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowAggregate.Delete` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowAggregate.Restore` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTaskAggregate.PublishVersion` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewTestTask` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `NewElementTarget` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 构造节点资产聚合并校验首版。 |
+| `ElementTargetAggregate.UpdateMetadata` / `Delete` / `Restore` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 通过时间戳和 Revision 变更节点资产生命周期。 |
+| `NewFlowFragment` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 构造工作流资产聚合并校验首版。 |
+| `FlowFragmentAggregate.UpdateMetadata` / `Delete` / `Restore` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 通过时间戳和 Revision 变更工作流资产生命周期。 |
+| `ExecutionFlowAggregate.PublishVersion` / `NewExecutionFlow` | [`domain/automation/lifecycle.go`](../../domain/automation/lifecycle.go) | 发布测试任务版本并校验失败策略、条目顺序和依赖。 |
 | `Revision.ValidatePersisted` | [`domain/automation/revision.go`](../../domain/automation/revision.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Revision.Next` | [`domain/automation/revision.go`](../../domain/automation/revision.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublication.Clone` | [`domain/automation/sampling_publication.go`](../../domain/automation/sampling_publication.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublication.Validate` | [`domain/automation/sampling_publication.go`](../../domain/automation/sampling_publication.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidationIssues.Error` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTask.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTaskVersion.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTaskAggregate.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ExecutionFlow.Validate` / `ExecutionFlowVersion.Validate` / `ExecutionFlowAggregate.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 校验测试任务身份、版本和当前指针。 |
 | `ResolveParameterValues` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTaskVersionPlan.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ResolvedExecutionFlow.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 校验已解析的工作流、节点、引用和参数作用域。 |
 | `EnvironmentKeys` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NodeDependencyIdentity` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FailurePolicy.IsValid` | [`domain/automation/test_task_types.go`](../../domain/automation/test_task_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.ValidateLoadedHistory` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowAggregate.ValidateLoadedHistory` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.PublishVersion` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowAggregate.PublishVersion` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeAggregate.Clone` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ElementTargetAggregate.ValidateLoadedHistory` / `PublishVersion` / `Clone` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 校验版本历史并深复制可变字段。 |
+| `FlowFragmentAggregate.ValidateLoadedHistory` / `PublishVersion` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 校验工作流版本历史、步骤定义和发布版本。 |
 | `ValidationAssertion.Normalized` | [`domain/automation/workflow_validation.go`](../../domain/automation/workflow_validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ValidationAssertion.Validate` | [`domain/automation/workflow_validation.go`](../../domain/automation/workflow_validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ValidationWait.Validate` | [`domain/automation/workflow_validation.go`](../../domain/automation/workflow_validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
@@ -209,7 +198,7 @@
 | `TestReusePublicationValidatesTheSelectedVersionContent` | `Reuse Publication Validates The Selected Version Content`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/sampling_publication_reuse_test.go`](../../domain/automation/sampling_publication_reuse_test.go) · `TestReusePublicationValidatesTheSelectedVersionContent` |
 | `TestReusePublicationAcceptsAHistoricalSelection` | `Reuse Publication Accepts AHistorical Selection`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/sampling_publication_reuse_test.go`](../../domain/automation/sampling_publication_reuse_test.go) · `TestReusePublicationAcceptsAHistoricalSelection` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
 
@@ -218,4 +207,3 @@
 1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
 2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
 3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
-

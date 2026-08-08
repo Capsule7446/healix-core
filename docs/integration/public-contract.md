@@ -2,7 +2,7 @@
 
 ## 稳定入口
 
-公共消费者应以 Go 包导出的类型与函数为准：`application/scheduling` 的 `CreateInstanceService.CreateInstance`、纯决策与协调器；`application/execution` 中限定于工作器作用域的执行端口和服务；`application/engine` 的编译和运行。执行实例创建服务通过 `BuildInstanceSnapshot` 封存 `execution.InstanceSnapshot`，其中包含 `execution.Plan`、环境身份/修订号/基础 URL、克隆后的 `EnvironmentSnapshot`（带类型的 `Variables map[string]parameter.Value`，V1 快照另带字符串 `Properties`）及其他冻结执行输入；运行时只读地在 `env.` 下暴露这些属性，Core 不提供凭据子系统。
+公共消费者应以 Go 包导出的类型与函数为准：`application/scheduling` 的 `CreateInstanceService.CreateInstance`、纯决策与协调器；`application/execution` 中限定于工作器作用域的执行端口和服务；`application/engine` 的编译和运行。执行实例创建服务通过 `BuildInstanceSnapshot` 封存 `execution.InstanceSnapshot`，其中包含 `execution.Plan`、环境身份/修订号/基础 URL、类型化 `Variables map[string]parameter.Value` 及其他冻结执行输入；运行时只读地在 `env.` 下暴露这些变量，Core 不提供凭据子系统。
 
 ## 调用链
 

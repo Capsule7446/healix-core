@@ -1,49 +1,25 @@
-# application/scheduling Test Case Matrix
+# application/scheduling 测试用例矩阵
 
 ## 范围与口径
 
 本表记录 `application/scheduling` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
 
-## Public API / Use-case Inventory
+## 公开 API 与用例入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
 | `NewCoordinator` | [`application/scheduling/coordinator.go`](../../application/scheduling/coordinator.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Coordinator.ProcessNext` | [`application/scheduling/coordinator.go`](../../application/scheduling/coordinator.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `BuildRunSnapshot` | [`application/scheduling/create_instance_builder.go`](../../application/scheduling/create_instance_builder.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunRequestDigest` | [`application/scheduling/create_instance_service.go`](../../application/scheduling/create_instance_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewCreateRunService` | [`application/scheduling/create_instance_service.go`](../../application/scheduling/create_instance_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CreateRunService.CreateRun` | [`application/scheduling/create_instance_service.go`](../../application/scheduling/create_instance_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `BuildInstanceSnapshot` | [`application/scheduling/create_instance_builder.go`](../../application/scheduling/create_instance_builder.go) | 将解析后的目录视图、类型化参数和调用作用域封存为 `execution.InstanceSnapshot`，并拒绝解析结果漂移。 |
+| `CreateInstanceRequestDigest` | [`application/scheduling/create_instance_service.go`](../../application/scheduling/create_instance_service.go) | 对创建命令做规范化摘要；字段和类型变化必须改变摘要。 |
+| `NewCreateInstanceService` / `CreateInstanceService.CreateInstance` | [`application/scheduling/create_instance_service.go`](../../application/scheduling/create_instance_service.go) | 在事务中处理回放、解析、快照构建和原子插入；适配器结果必须与核心意图一致。 |
 | `DecideAdvance` | [`application/scheduling/decision.go`](../../application/scheduling/decision.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CommandConflictError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CommandConflictError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunIdentityConflictError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunIdentityConflictError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunRevisionConflictError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunRevisionConflictError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunStatusConflictError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunStatusConflictError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `QueueRevisionConflictError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `QueueRevisionConflictError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `QueueMembershipConflictError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `QueueMembershipConflictError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunAdapterContractError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunAdapterContractError.Unwrap` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunAdapterContractError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSignalRetryableError.Error` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSignalRetryableError.Unwrap` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunSignalRetryableError.Is` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewCancelRunService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CancelRunService.CancelRun` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewAbortRunService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `AbortRunService.AbortRun` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewReorderQueueService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ReorderQueueService.ReorderQueue` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CancelRunRequestDigest` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `AbortRunRequestDigest` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `CancelInstanceService` / `AbortInstanceService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 以命令身份、当前状态和工作器栅栏执行取消/中止；中止提交终态后再发送取消信号。 |
+| `ReorderQueueService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在队列范围和修订号约束下重排执行实例。 |
+| `CancelInstanceRequestDigest` / `AbortInstanceRequestDigest` / `ReorderQueueRequestDigest` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 为命令重放和冲突校验生成稳定摘要。 |
 | `ReorderQueueRequestDigest` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
@@ -158,7 +134,7 @@
 | `TestInstanceCommandsRejectUnrepresentableExpectedRevision` | cancel/abort/reorder 三个入口 × `0`、`1`、`MaxExpectedRevision`、`MaxInt64`、`-1`、`MinInt64`。 | 越界值以各命令自己的 INVALID 码拒绝且 store 调用数为 0；界内值必须放行到 store——结果校验用 `ExpectedRevision+1`，`MaxInt64` 会回绕成 `MinInt64`，把并发校验变成无条件的适配器契约违规。 | [`application/scheduling/revision_bounds_test.go`](../../application/scheduling/revision_bounds_test.go) · `TestInstanceCommandsRejectUnrepresentableExpectedRevision` |
 | `TestMaxExpectedRevisionSuccessorIsRepresentable` | 常量 `MaxExpectedRevision` 本身。 | `MaxExpectedRevision+1` 仍为正——把「为什么是 MaxInt64-1 而不是 MaxInt64」钉成断言，防止后续调整悄悄重开回绕。 | [`application/scheduling/revision_bounds_test.go`](../../application/scheduling/revision_bounds_test.go) · `TestMaxExpectedRevisionSuccessorIsRepresentable` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
 
@@ -167,4 +143,3 @@
 1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
 2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
 3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
-

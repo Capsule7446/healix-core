@@ -1,4 +1,4 @@
-# domain/fault Test Case Matrix
+# domain/fault 测试用例矩阵
 
 ## 范围与口径
 
@@ -12,7 +12,7 @@
 2. **分类稳定**：`Code`/`Kind` 是宿主分支依据，必须能穿透 `fmt.Errorf` 包装与 `errors.Join`，且不得被二次包装改写。
 3. **所有权独立**：构造与读取都深拷贝 `params`/`violations`，调用方持有的切片与内核持有的互不别名。
 
-## Public API / Use-case Inventory
+## 公开 API 与领域入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
@@ -29,7 +29,7 @@
 | `MaxViolations` | [`domain/fault/fault.go`](../../domain/fault/fault.go) | `TestOverCapViolationsTruncateInsteadOfFailingConstruction` 覆盖截断而非失败的语义。 |
 | `CodeFieldRequired` / `CodeFieldInvalid` / `CodeFieldDuplicate` / `CodeFieldMismatch` | [`domain/fault/violation_codes.go`](../../domain/fault/violation_codes.go) | 封闭 reason 词表；「不得作为顶层 Error 的 code」由 [`architecture/fault_contract_guard_test.go`](../../architecture/fault_contract_guard_test.go) 强制。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
@@ -58,7 +58,7 @@
 | `TestConstructRejectsAFailingOption` | 一个返回 error 的 `Option`。 | 该 error 原样透出。`Option` 已导出而 `faultOptions` 未导出，因此只有本包能构造失败 option——这正是包外无法覆盖此分支的原因。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestConstructRejectsAFailingOption` |
 | `TestConstructRejectsUnusableParams` | 经 `New` 与 `Wrap` 两条路径传入零值 `Param`。 | 两者都拒绝；`Wrap` 不因为多了 cause 就放宽校验。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestConstructRejectsUnusableParams` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 错误码注册表与实现的一致性不在本表，由 [`architecture/fault_contract_guard_test.go`](../../architecture/fault_contract_guard_test.go) 强制：(Kind, Code) 配对、跨上下文前缀所有权、未注册码、未导出码常量、导出哨兵 error、以及 violation reason code 不得作为顶层 `Error` 的 code。外部消费者视角的兼容性证据见 [`contract/fault_public_api_test.go`](../../contract/fault_public_api_test.go)。
 

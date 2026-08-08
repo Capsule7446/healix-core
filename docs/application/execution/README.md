@@ -13,7 +13,7 @@
 - 执行引擎负责通过 `engine.CompilePlan` 把已冻结的 `execution.InstanceSnapshot` 编译为带私有 Program 与身份封印的 `CompiledEntry`，再由 `engine.RunProgram` 运行；宿主组合层将该能力接入 `EntryRunner`。`EntryExecutor` 只拥有所提供顶层执行项的浏览器会话生命周期，不拥有快照编译、队列、领取执行权、执行实例状态或执行证据持久化。
 - `EntryExecutor` 每次 `Execute` 调用一次浏览器创建并同步关闭会话；同一顶层执行项内的嵌套工作流按 `EntryRunner` 契约共享该浏览器。
 - 授权有两个端口且互不覆盖：`EntryAuthorizer` 在浏览器创建前只看得到 `WorkerFence` 与 `Entry`，`engine.ExecutionAuthorityVerifier` 在运行中看得到含 `SnapshotDigest` 的完整四元组。前者严格弱于后者，Core 不强制两者背后是同一个决策。
-- 环境快照仅包含普通 `Properties map[string]string`，运行时注入 `env.` 作用域；Core 不解析凭据或密钥。
+- 环境快照包含当前 schema 的类型化 `Variables map[string]parameter.Value`，运行时注入 `env.` 作用域；Core 不解析凭据或密钥。
 - 带类型的参数值和绑定在创建执行实例时校验并冻结，执行模块不执行字符串化降级或运行时回源。
 - 执行证据模块拥有执行事实；自动化模块拥有 `NodeVersion` 的发布。`OriginalSelectorResets` 是 `StepTransitionCommit` 的提交输入；晋升由事务内的 `HealGovernancePlanner` 规划，并且只能通过 `StepTransitionCommitResult.Promotions` 返回，调用方不得提供晋升结果。
 

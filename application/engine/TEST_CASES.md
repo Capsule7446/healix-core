@@ -1,20 +1,19 @@
-# application/engine Test Case Matrix
+# application/engine 测试用例矩阵
 
 ## 范围与口径
 
 本表记录 `application/engine` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
 
-## Public API / Use-case Inventory
+## 公开 API 与用例入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
-| `CompiledRun.Entry` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `CompileRunSnapshot` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunCoordinator.Run` | [`application/engine/coordinator.go`](../../application/engine/coordinator.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunCompiledEntry` | [`application/engine/engine.go`](../../application/engine/engine.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RunCompiledEntryWithResult` | [`application/engine/engine.go`](../../application/engine/engine.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `CompilePlan` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 从完整的不可变 `execution.InstanceSnapshot` 编译 `CompiledPlan`；未封存快照返回 `EXECUTION_PLAN_UNSEALED`。 |
+| `CompiledPlan.Entries` / `CompiledPlan.Entry` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 以执行顺序返回调用方拥有的副本；按 `EntryID` 查找时不暴露私有索引或 `node.Program`。 |
+| `RunProgram` | [`application/engine/engine.go`](../../application/engine/engine.go) | 校验 `InstanceID`、快照摘要、`EntryID` 与领取令牌，再通过 `ExecutionAuthorityVerifier` 验证权威，之后才访问运行端口。 |
+| `Config` / `ExecutionAuthority` / `EntryResult` | [`application/engine/engine.go`](../../application/engine/engine.go) | 组合运行端口、执行权威和执行/录制/时间线结果；`ExecutionInterrupted` 等未知结果只由恢复流程使用。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
@@ -78,7 +77,7 @@
 | `TestRunProgramReturnsNoErrorOnSuccess` | 根节点成功返回。 | 无 error 且 outcome 为 SUCCEEDED——钉住 nil 分支，防止分类器凭空造出 fault。 | [`application/engine/unclassified_failure_test.go`](../../application/engine/unclassified_failure_test.go) · `TestRunProgramReturnsNoErrorOnSuccess` |
 | `TestRunProgramKeepsCancellationDistinguishable` | 根节点返回 `context.Canceled` 与 `context.DeadlineExceeded`。 | `errors.Is` 仍成立且 outcome 为 CANCELED——朴素的分类器会把取消变成 INTERNAL 操作失败，宿主随后重试一件操作员刻意停掉的事。 | [`application/engine/unclassified_failure_test.go`](../../application/engine/unclassified_failure_test.go) · `TestRunProgramKeepsCancellationDistinguishable` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
 
@@ -87,4 +86,3 @@
 1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
 2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
 3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
-

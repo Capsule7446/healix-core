@@ -1,10 +1,10 @@
-# application/automation Test Case Matrix
+# application/automation 测试用例矩阵
 
 ## 范围与口径
 
 本表记录 `application/automation` 的公开业务入口和全部顶层 Go testcase。Go 测试源码是唯一可执行事实；表驱动测试的全部子案例由其对应的测试函数统一引用。
 
-## Public API / Use-case Inventory
+## 公开 API 与用例入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
@@ -45,17 +45,10 @@
 | `ValidatePublishSamplingIntentDigest` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublicationRequestDigest` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublicationService.Publish` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewTestTaskService` | [`application/automation/test_task_service.go`](../../application/automation/test_task_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTaskService.Create` | [`application/automation/test_task_service.go`](../../application/automation/test_task_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TestTaskService.PublishVersion` | [`application/automation/test_task_service.go`](../../application/automation/test_task_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewWorkflowService` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowService.Create` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowService.Update` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowService.PublishVersion` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowService.Delete` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowService.Restore` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `NewExecutionFlowService` / `ExecutionFlowService.Create` / `ExecutionFlowService.PublishVersion` | [`application/automation/test_task_service.go`](../../application/automation/test_task_service.go) | 管理测试任务聚合及其手工发布版本；仓储失败不得产生部分写入。 |
+| `NewFlowFragmentService` / `FlowFragmentService.Create` / `Update` / `PublishVersion` / `Delete` / `Restore` | [`application/automation/workflow_service.go`](../../application/automation/workflow_service.go) | 以 Revision CAS 管理工作流资产生命周期和不可变版本发布。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
 | Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
@@ -149,7 +142,7 @@
 | `TestPublicationDigestSeparatesParameterTypes` | Text 与 SingleSelect，取值同为 `north`。 | digest 不同——类型标签本身进入摘要。 | [`application/automation/sampling_publication_digest_test.go`](../../application/automation/sampling_publication_digest_test.go) · `TestPublicationDigestSeparatesParameterTypes` |
 | `TestPublicationDigestIsStableForEveryParameterType` | 四种类型各重复摘要 20 次。 | 恒定；分离性测试的另一半，防止编码器哈希了 map 或指针。 | [`application/automation/sampling_publication_digest_test.go`](../../application/automation/sampling_publication_digest_test.go) · `TestPublicationDigestIsStableForEveryParameterType` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 同包及其子目录中名称含 `Conformance`、`Transaction`、`Race`、`Rollback`、`Replay`、`Concurrent` 或 `Fence` 的测试，属于跨入口契约；它们已在上方矩阵逐行列出。application 包的 `conformancetest/` 证据也归属此表。
 
@@ -158,4 +151,3 @@
 1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
 2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
 3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
-
