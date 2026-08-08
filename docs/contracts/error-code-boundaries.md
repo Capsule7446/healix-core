@@ -32,4 +32,4 @@
 - [`contract/fault_public_api_test.go`](../../contract/fault_public_api_test.go)：外部包可见的错误面。
 - 各上下文 `fault_codes.go` 和对应 TEST_CASES 矩阵：构造点、参数安全和错误链语义。
 
-错误码只能新增或墓碑化，不能改名、复用或改变既有含义。持久化映射和数据库迁移属于宿主；Core 只提供当前 `Kind + Code` 契约。
+错误码只能新增或墓碑化，既有错误码的名称和含义保持不变，禁止复用。持久化映射和数据库结构变更属于宿主；Core 只提供当前 `Kind + Code` 契约。

@@ -63,7 +63,7 @@ sequenceDiagram
 
 一处顺序上的细节：**nil-Resolver 的检查早于语法校验**，而且它的门槛只是字面量 `${` 是否出现。因此 `Expand("${broken", nil)` 返回的是 `INTERPOLATION_RESOLVER_REQUIRED` 而不是 `INTERPOLATION_EXPRESSION_INVALID`。
 
-源表达式与变量名一律不进公共文本。`Resolver` 接口本身不返回 error，因此外部读取错误必须在构造 Resolver 之前处理，或折叠进「未找到」语义；领域不伪造适配器错误。
+源表达式与变量名一律不进公共文本。`Resolver` 接口本身不返回 error，因此外部读取错误必须在构造 Resolver 的阶段处理，或折叠进「未找到」语义；领域不伪造适配器错误。
 
 ## 并发、安全与资源
 

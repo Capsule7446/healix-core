@@ -60,7 +60,7 @@ flowchart BT
 | 执行事实 | `application/execution` 与 `domain/node` | `FactCommitter`、`ProgressWriter`、`ExecutionSink` | 幂等、修订检查、终态事务原子性 |
 | 参数值 | `domain/parameter` 共享内核 | `Value`、`Binding` | 保持类型、复制隔离并在边界校验 |
 | 执行实例创建与读取 | `application/scheduling` | `CreateInstanceStore`、`CreateInstanceTx`、`ClaimSource` | 原子冻结不可变快照；快照随 `Claim` 一并交出，Core 没有单独的执行实例读端口 |
-| 顶层执行项进入授权 | `application/execution` | `EntryAuthorizer` | 在浏览器会话建立**之前**判定该工作器是否仍持有该顶层执行项的权限 |
+| 顶层执行项进入授权 | `application/execution` | `EntryAuthorizer` | 在浏览器会话建立阶段判定该工作器是否仍持有该顶层执行项的权限 |
 
 ## 原子性与并发要求
 
@@ -91,9 +91,9 @@ flowchart BT
 | 禁止符号或形状 | 当前契约 | 守卫 |
 |---|---|---|
 | `domain/workspace` 包 | Core 不包含该领域包 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestWorkspacePackageIsRemoved` |
-| `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | 不属于当前 API；执行只能使用 `CompilePlan` 与 `RunProgram` | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |
-| `RunSnapshot`、`CreateRunCommand`/`CreateRunService`、`AbortRunService`、`RunReader` | 当前使用 `InstanceSnapshot`、`CreateInstanceCommand`/`CreateInstanceService`、`AbortInstanceService`，快照随 `Claim` 交出 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · 命名边界测试 |
-| 保留旧公开名的导出类型别名 | 不允许；直接使用当前类型名 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoExportedTypeAliasKeepsAnOldNameAlive` |
-| 承诺旧名字仍可用的弃用标记 | 不允许；整体能力移交只能登记在退役契约中 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoDeprecationMarkersPromiseAnOldNameStillWorks` |
+| `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | 禁止出现在公开执行 API；执行入口固定为 `CompilePlan` 与 `RunProgram` | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |
+| `RunSnapshot`、`CreateRunCommand`/`CreateRunService`、`AbortRunService`、`RunReader` | 执行模型使用 `InstanceSnapshot`、`CreateInstanceCommand`/`CreateInstanceService`、`AbortInstanceService`，快照随 `Claim` 交出 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · 命名边界测试 |
+| 公开类型兼容别名 | 不允许；直接使用当前类型名 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoExportedTypeAliasKeepsAnOldNameAlive` |
+| 以弃用标记承诺兼容行为 | 不允许；能力移交只能登记在退役契约中 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoDeprecationMarkersPromiseAnOldNameStillWorks` |
 
 `RootVersionID`、`CompileExecution`、封存的 Plan/Draft 主模型和凭据服务同样已从当前执行契约移除。

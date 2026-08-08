@@ -46,7 +46,7 @@ flowchart TD
 2. `EntryAuthorizer.AuthorizeEntry` —— 同样原样返回授权者的 fault。
 3. `BrowserSessionFactory.Create` —— 到这一步才创建宿主资源。
 
-**授权必须排在建会话之前。** `engine.RunProgram` 自己那道身份校验跑在宿主的 `EntryRunner` 里，而要走到 `EntryRunner`，浏览器已经开出来了。因此 `NewEntryExecutor` 的第一个参数就是 `EntryAuthorizer`，缺它构造直接失败（[`entry_executor.go:109-112`](../../application/execution/entry_executor.go)）。
+**授权必须先于会话创建。** `engine.RunProgram` 的身份校验位于宿主的 `EntryRunner`，该阶段浏览器会话已经创建。因此 `NewEntryExecutor` 的第一个参数就是 `EntryAuthorizer`，缺它构造直接失败（[`entry_executor.go:109-112`](../../application/execution/entry_executor.go)）。
 
 会话建成后，这一个全新的、宿主所有的 `BrowserSession` 交给宿主的 `EntryRunner` 连接至引擎执行，并在该顶层执行项结束后同步关闭。**该顶层执行项内递归展开的工作流复用同一 `BrowserSession` 和 `node.Runtime`**，并使用分层参数作用域。`Program` 和 `Runtime` 都不属于持久化执行实例。
 

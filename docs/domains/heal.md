@@ -62,11 +62,11 @@ sequenceDiagram
 
 ## 失败语义
 
-**本领域刻意不拥有 fault code 家族。** `domain/heal` 不 import `domain/fault`，所有失败都是普通 `fmt.Errorf`。这不是待办事项，理由与可达性证据记在[错误码注册表](../contracts/error-code-registry.md)的「Contexts that deliberately own no code family」一节：自愈的导出面只被 `domain/node` 调用，分类因此发生在 `domain/node` 的 `EXECUTION_*` 边界上；再加一个 `HEAL_*` 家族等于给同一个失败两个 code，并把自愈内部词表推进已发布契约。
+**本领域刻意不拥有 fault code 家族。** `domain/heal` 不 import `domain/fault`，所有失败都是普通 `fmt.Errorf`。这不是待办事项，理由与可达性证据记在[错误码注册表](../contracts/error-code-registry.md)的「不单独拥有错误码家族的上下文」一节：自愈的导出面只被 `domain/node` 调用，分类因此发生在 `domain/node` 的 `EXECUTION_*` 边界上；再加一个 `HEAL_*` 家族等于给同一个失败两个 code，并把自愈内部词表推进已发布契约。
 
 支撑这个决定的两个条件都是承重的：
 
-- **`domain/node` 必须在自己的边界上分类。** 四个调用点 —— [`step.go:210`](../../domain/node/step.go) 与 `:216`、[`validation.go:339`](../../domain/node/validation.go) 与 `:353` —— 全部经过 `classifyNodeFault`，它对已带 code 的 cause 原样透传，否则落到一个 `EXECUTION_*` code 上。这四处曾是 `fmt.Errorf("invalid heal decision: %w", err)` 这类无 code 包装，会让自愈失败以零分类跨过公共边界。
+- **`domain/node` 必须在自己的边界上分类。** 四个调用点 —— [`step.go:210`](../../domain/node/step.go) 与 `:216`、[`validation.go:339`](../../domain/node/validation.go) 与 `:353` —— 全部经过 `classifyNodeFault`：已带 code 的 cause 原样透传，其余失败映射到 `EXECUTION_*` code，任何自愈失败都不会以零分类跨过公共边界。
 - **自愈文本必须不含观测值。** 本领域不回显任何 selector、页面 URL、origin 或 fingerprint 值。它唯一格式化的动态值是 `policy.MinimumMargin`（[`assessment.go:46`](../../domain/heal/assessment.go)），那是调用方自己传入的配置浮点数，不是页面内容或用户输入。
 
 Nil snapshot、快照读取错误、非法配置、无效候选、非法 `Decision`、URL/上下文不一致或安全策略无效会返回错误或阻断评估。**「没有候选」和「低于阈值」是合法 Outcome，不是错误** —— 它们经 `Decision` 正常返回。

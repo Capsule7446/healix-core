@@ -28,7 +28,7 @@ flowchart LR
 
 ### 环境快照有两种形状，当前只用一种
 
-`EnvironmentSnapshot`（[`instance_snapshot.go:29-34`](../../domain/execution/instance_snapshot.go)）同时声明了 `Properties map[string]string` 和 `Variables map[string]parameter.Value`，但两者互斥，由快照的 schema 版本决定：
+`EnvironmentSnapshot`（[`instance_snapshot.go:29-34`](../../domain/execution/instance_snapshot.go)）同时声明了 `Properties map[string]string` 和 `Variables map[string]parameter.Value`，两者互斥，由快照的 schema 版本决定：
 
 | schema | 环境载荷 | 校验 |
 |---|---|---|
@@ -74,7 +74,7 @@ Core 没有 `CredentialReference`、`CredentialResolver` 或 `CredentialService`
 
 失败包括非法状态迁移、未知枚举、身份重复/缺失、引用环或孤儿解析、版本解析失败、依赖归属错误、参数缺失/类型不兼容、危险导航 URL、过期栅栏，以及任一资源预算超限。**创建执行实例任一步失败都不得暴露部分冻结快照。**
 
-栅栏有两个语义不同的 code：`EXECUTION_WORKER_FENCE_INVALID`（`INVALID_ARGUMENT`）说栅栏本身格式不对，`EXECUTION_WORKER_FENCE_STALE`（`CONFLICT`）说格式良好的栅栏已不再持有权限。两者的补救动作不同，因此不合并；栅栏原始值和 claim token 都不进公共文本。
+栅栏有两个语义不同的 code：`EXECUTION_WORKER_FENCE_INVALID`（`INVALID_ARGUMENT`）表示栅栏格式不对，`EXECUTION_WORKER_FENCE_STALE`（`CONFLICT`）表示格式良好的栅栏当前没有执行权。两者的补救动作不同，因此不合并；栅栏原始值和 claim token 都不进公共文本。
 
 ## 并发、安全与资源
 

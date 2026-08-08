@@ -24,7 +24,7 @@ flowchart LR
 | 类型 | 角色 |
 |---|---|
 | `Revision` | 持久化聚合的**非零**乐观并发版本 |
-| [`ElementTargetAggregate`](../../domain/automation/assets.go) / [`FlowFragmentAggregate`](../../domain/automation/assets.go) / [`ExecutionFlowAggregate`](../../domain/automation/test_task_types.go) | 根对象、当前版本与历史版本的组合 |
+| [`ElementTargetAggregate`](../../domain/automation/assets.go) / [`FlowFragmentAggregate`](../../domain/automation/assets.go) / [`ExecutionFlowAggregate`](../../domain/automation/test_task_types.go) | 根对象、当前版本与版本集合的组合 |
 | `VersionSource`（[`assets.go:82-88`](../../domain/automation/assets.go)） | `MANUAL`、`SAMPLING`、`AUTO_HEAL` 三值 |
 | `FlowFragmentStep`（[`assets.go:374`](../../domain/automation/assets.go)） | 步骤模型，见下 |
 | `ResolvedExecutionFlow`（[`test_task_types.go:64`](../../domain/automation/test_task_types.go)） | 已解析的工作流、节点和引用依赖快照，携带 `ExpectedExecutionFlowRevision` |
@@ -35,9 +35,9 @@ flowchart LR
 
 ## 不变量
 
-- 聚合根、Current 与版本的所有者/ID/版本号一致；发布追加历史且深拷贝可变字段。
+- 聚合根、Current 与版本的所有者/ID/版本号一致；发布追加版本并深拷贝可变字段。
 - 已删除聚合不可修改；时间不得倒退；每次成功变更 `Revision` 只增加一次，溢出失败。
-- 当前版本解析包含软删除历史；无 Current 时全部版本必须已删除。
+- 当前版本解析包含软删除版本；无 Current 时全部版本必须已删除。
 - 工作流步骤 ID、参数名唯一；树深和规模有界。
 - 环境变量是 `EnvironmentVariables = map[string]parameter.Value`（[`assets.go:22`](../../domain/automation/assets.go)），原生支持五种参数值；键名和值必须合法。**不存在独立的凭据子系统。**
 - 测试任务的顺序、固定/最新版策略、类型化参数、环境属性、节点依赖和引用环必须一致；**`latest` 只在调度创建执行实例时解析并冻结**，不在发布时。

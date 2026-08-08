@@ -1,4 +1,4 @@
-# 摘要 Wire Tag 清单
+# 摘要字段标签清单
 
 本文件登记所有持久化摘要域分隔标签（wire tag）。这些字节是存储格式的一部分：
 更改一个标签或其载荷编码都会使已存摘要无法命中；摘要仍是合法字符串，普通测试无法自动发现该兼容性破坏。
@@ -8,12 +8,12 @@
 | 文件 | 标签字节 | 依赖方 | 当前状态 |
 |---|---|---|---|
 | `domain/execution/instance_snapshot.go:662` | `healix.run-snapshot` | 每一份已封存快照的 digest | 当前标签 |
-| `application/scheduling/create_instance_service.go:21` | `create-run-request-v1` | 每一条已存的创建幂等记录 | 未变更 |
+| `application/scheduling/create_instance_service.go:21` | `create-run-request-v1` | 每一条已存的创建幂等记录 | 当前标签 |
 | `application/scheduling/instance_command_services.go:305` | `cancel-instance-request-v1` | 每一条已存的取消幂等记录 | 当前标签 |
 | `application/scheduling/instance_command_services.go:306` | `abort-instance-request-v1` | 每一条已存的中止幂等记录 | 当前标签 |
 | `application/scheduling/instance_command_services.go:307` | `reorder-queue-request-v1` | 每一条已存的重排幂等记录 | 当前标签 |
-| `application/automation/heal_candidate_repository.go:17` | `heal-review-v1` | 每一条已存的 heal review 记录 | 未变更 |
-| `application/automation/sampling_publication_transaction.go:16` | `sampling-publication-v1` | 每一条已存的 sampling publication 记录 | 未变更 |
+| `application/automation/heal_candidate_repository.go:17` | `heal-review-v1` | 每一条已存的 heal review 记录 | 当前标签 |
+| `application/automation/sampling_publication_transaction.go:16` | `sampling-publication-v1` | 每一条已存的 sampling publication 记录 | 当前标签 |
 | `application/execution/entry_completion_transaction.go:20` | `complete-entry-request-v1` | 每一条已存的 entry completion 幂等记录 | 当前标签 |
 | `application/execution/abort_request_transaction.go:17` | `request-abort-v1` | 每一条已存的 abort request 幂等记录 | 当前标签 |
 
@@ -27,10 +27,10 @@
 
 ## 规则
 
-1. 任何 wire tag 的变更都必须同时提供迁移方案（重算或双读窗口），并在本文件登记。
+1. 任何 wire tag 的变更都必须同时提供兼容处理（重算或双读窗口），并在本文件登记。
 2. **载荷变更同样适用第 1 条**，即使标签字节没动。判据是"已存 digest 还能不能
    重算命中"，不是"标签有没有改"。
-3. 不得作为改名的副产品滑进去。
+3. 不得因符号命名调整而改变摘要字段。
 4. 本清单必须与 `architecture/digest_wire_tag_test.go` 的 inventory 逐条对齐。
 
 ## 守卫覆盖范围

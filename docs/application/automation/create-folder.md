@@ -8,7 +8,7 @@
 - 输出：`FolderSnapshot`
 - 领域转换：把 `folder` 追加到已加载 `snapshot.Folders` 的副本上，再用 `domain.NewFolderForest` 重新校验整片森林——重复身份与同级重名返回 `AUTOMATION_FOLDER_TREE_INVALID`，字段本身不合法返回 `AUTOMATION_FOLDER_INVALID`。
 - 端口：`FolderRepository.Load` / `Save`；读取失败包装为 `load folder forest`，写入失败包装为 `persist %s folder forest`。
-- 独有的前置校验：`folder.ID` 为空时在 `Load` 之前就返回未分类的校验错误。CAS 用的 `kind` 取自 `folder.Kind`，不是单独的参数。下一个 Revision 由应用层的 `expected.Next()` 算出，不是领域推进的。
+- 独有的前置校验：`folder.ID` 为空时在调用 `Load` 前返回未分类的校验错误。CAS 使用 `folder.Kind`，下一个 Revision 由应用层的 `expected.Next()` 计算，领域只负责状态规则。
 
 ## 源码
 

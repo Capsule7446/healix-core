@@ -35,7 +35,7 @@
 | `Metadata` | `map[string]StepMetadata` | runtime step identity 到工作区步骤元数据的映射 |
 | `RuntimeNodes` | `map[string]RuntimeNodeIdentity` | runtime ElementTargetSpec identity 到稳定 ElementTarget/version identity 的映射 |
 
-`node.Program` 与 `(InstanceID, SnapshotDigest, EntryID)` 私有身份封印不导出；调用方只能把 `CompiledEntry` 交给 `RunProgram`，不能提取或替换 Program。
+`node.Program` 与 `(InstanceID, SnapshotDigest, EntryID)` 私有身份封印不导出；调用方只能把 `CompiledEntry` 交给 `RunProgram`，不能提取或改写 Program。
 
 `StepMetadata.InvocationPath` 由编译器填成该步骤所属的调用域：`compiler.go` 三处 `StepMetadata{...}` 字面量（workflow、step、validation group member）都赋 `scopePath`。**调用步骤自身留在发起它的作用域里，被调用的 workflow 及其子步骤才进入新作用域** —— 弄反会把调用方的证据记到被调方名下。因此同一 workflow 被多次调用产生的元数据可直接按 `InvocationPath` 区分，不必再去解析 runtime step key。[`compiler_invocation_path_test.go`](../../../application/engine/compiler_invocation_path_test.go) · `TestCompilePlanStampsEveryStepMetadataWithItsCallSite` 用同一子流程的两次并列调用钉住这一点。
 

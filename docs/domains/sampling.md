@@ -37,7 +37,7 @@ flowchart LR
 
 ### 未发布资产不得携带正式身份
 
-`UnpublishedElementTarget` 上唯一的引用字段是 [`ExistingNodeID`](../../domain/sampling/workspace.go) —— 它指向**已经**发布出去的 ElementTarget，不是这份草稿自己的身份。Version、VersionNumber、Revision、CurrentVersionID 这类正式身份只能由自动化在发布成功之后分配；草稿先带上它，就可能在任何东西发布它之前被执行或被引用。
+`UnpublishedElementTarget` 上唯一的引用字段是 [`ExistingNodeID`](../../domain/sampling/workspace.go) —— 它指向已发布的 ElementTarget，不是这份草稿自己的身份。Version、VersionNumber、Revision、CurrentVersionID 这类正式身份由自动化在发布成功后分配；草稿携带这些正式身份会导致执行或引用越过发布边界。
 
 [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestUnpublishedSamplingAssetsCarryNoFormalIdentity` 对两个类型的字段名同时做两道检查：禁用子串（`Version`/`VersionNumber`/`Revision`/`CurrentVersionID`/`ElementTargetVersionID`）和禁用前缀（`Saved`/`Published`/`Promoted`/`Formal`）。`ExistingNodeID` 只表示对已发布 ElementTarget 的引用，不表示草稿拥有正式身份；新增字段必须保持这一语义。
 

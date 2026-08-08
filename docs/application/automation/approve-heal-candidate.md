@@ -10,7 +10,7 @@
 
 ## 构造与端口
 
-`NewHealReviewService` 返回 `(HealReviewService, error)`，按固定顺序注入并检查七个端口：`HealReviewSource`（`LoadCandidate` / `LoadStreak`）、`NodeRepository`、`HealReviewTransaction`（`LookupHealReview` / `CommitHealReview`）、`ReviewerAuthorizer`、`ReviewClock`、`CandidateVerifier`、`HealReviewIdentityProvider`。顺序是刻意的而不是排版：早先用 map 遍历，两个依赖同时缺失时同一次调用在不同运行里会报出不同的那一个。
+`NewHealReviewService` 返回 `(HealReviewService, error)`，按固定顺序注入并检查七个端口：`HealReviewSource`（`LoadCandidate` / `LoadStreak`）、`NodeRepository`、`HealReviewTransaction`（`LookupHealReview` / `CommitHealReview`）、`ReviewerAuthorizer`、`ReviewClock`、`CandidateVerifier`、`HealReviewIdentityProvider`。固定顺序保证多个依赖同时缺失时错误结果确定。
 
 构造失败返回的是未分类的 `"%s is required"`，**不是** `AUTOMATION_CONFIGURATION_INVALID`——这一条与本目录其他用例不同。
 

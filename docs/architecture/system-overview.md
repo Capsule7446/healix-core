@@ -69,14 +69,14 @@ flowchart LR
 - 单个封套最多携带 `fault.MaxViolations` = 32 条 violation（[`fault.go:50`](../../domain/fault/fault.go)）；超出后保留确定性前缀并丢弃其余，**消费方不得把 violation 条数当作完整清单**。
 - 公共文本不含身份 ID、被拒的枚举取值、selector、页面内容、URL 或 cause。闭集之外的取值按定义就是任意调用方输入，同样不回显。宿主注入的适配器错误只作为私有 cause 挂在 fault 上，经 `Unwrap` 可达。
 
-`domain/heal` 是唯一刻意不拥有 code 家族的领域：它的导出面只被 `domain/node` 调用，分类因此发生在 `domain/node` 的 `EXECUTION_*` 边界上，再加一个 `HEAL_*` 家族等于给同一个失败两个 code。理由与其可达性证据记在注册表的「Contexts that deliberately own no code family」一节。
+`domain/heal` 是唯一刻意不拥有 code 家族的领域：它的导出面只被 `domain/node` 调用，分类因此发生在 `domain/node` 的 `EXECUTION_*` 边界上，再加一个 `HEAL_*` 家族等于给同一个失败两个 code。理由与其可达性证据记在注册表的「不单独拥有错误码家族的上下文」一节。
 
 ## 关键不变式
 
 - 调度在创建执行实例的事务中解析并冻结 `latest`，把 Environment 的当前状态克隆为 `execution.EnvironmentSnapshot`，并生成包含策略、类型化参数和已发布 Node/Workflow/TestTask 具体版本依赖闭包的不可变 `execution.InstanceSnapshot`。
 - 调度以执行实例的顶层执行项顺序和失败策略为唯一依据，一次最多推进一个顶层执行项。
 - 执行引擎从当前顶层执行项生成临时 `node.Program`，并为每个顶层执行项创建新的 `node.Runtime`；嵌套 workflow 共享该运行时。
-- `EntryExecutor` 在创建浏览器会话**之前**完成授权：先 `WorkerFence.Validate`，再 `EntryAuthorizer.AuthorizeEntry`，通过后才 `BrowserSessionFactory.Create`（[`entry_executor.go:136-146`](../../application/execution/entry_executor.go)）。`engine.RunProgram` 内部那道校验来得太晚 —— 它跑在宿主的 `EntryRunner` 里，届时浏览器已经开出来了。
+- `EntryExecutor` 在创建浏览器会话阶段完成授权：先 `WorkerFence.Validate`，再 `EntryAuthorizer.AuthorizeEntry`，通过后才 `BrowserSessionFactory.Create`（[`entry_executor.go:136-146`](../../application/execution/entry_executor.go)）。`engine.RunProgram` 的校验位于宿主 `EntryRunner`，执行该校验时浏览器会话已经创建。
 - `application/engine` 的 `ExecutionOutcome` 用 `OutcomeSucceeded` / `OutcomeFailed` / `OutcomeCanceled` / `ExecutionNotStarted` 表达一次运行的结果（[`engine.go:86-89`](../../application/engine/engine.go)）；它与 `domain/execution` 的 `EntryStatus` 是两组独立状态值，不应互相替换。
 - 参数使用 `parameter.Value`/`Binding` 保持 TEXT、NUMBER、BOOLEAN、SINGLE_SELECT、MULTI_SELECT 五种封闭类型。
 - 显式中止由 `AbortInstanceService` 要求宿主事务原子提交权威的 `execution.Aborted` 并失效工作器栅栏，随后发送取消信号；信号失败保留已提交结果并以 `EXECUTION_INSTANCE_SIGNAL_RETRYABLE` 返回（[`instance_command_services.go:88`](../../application/scheduling/instance_command_services.go)）。普通执行上下文取消仍映射为 `CANCELED`，是不同操作。

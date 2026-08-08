@@ -79,7 +79,7 @@ sequenceDiagram
 
 三条本领域特有的边界：
 
-- **载荷超限单独用 `EVIDENCE_COMMIT_FACT_LIMIT_EXCEEDED`（`OUT_OF_RANGE`）**，因为补救动作是「拆分该 commit」而非「修正某个字段」。它在所有其他 commit 规则**之前**检查（[`commits.go:43-45`](../../domain/evidence/commits.go)），因为它同时限定了后续 violation 遍历的规模 —— 否则一个超大 commit 会被完整走完才因为太大而被拒。
+- **载荷超限单独用 `EVIDENCE_COMMIT_FACT_LIMIT_EXCEEDED`（`OUT_OF_RANGE`）**，因为补救动作是「拆分该 commit」而非「修正某个字段」。它在其他 commit 规则前检查（[`commits.go:43-45`](../../domain/evidence/commits.go)），同时限定后续 violation 遍历规模，超大 commit 不会被完整遍历后才拒绝。
 - **封套顺序只由输入决定。** 分组拓扑检查会先消耗各分组声明的成员，再报告剩余成员；剩余部分按源切片顺序遍历，而非遍历 map —— 后者会让同一份 commit 在不同运行中被以不同错误拒绝。
 - **一切身份与观察值都不进公共文本。** commit / execution / step / validation / heal / group / ElementTarget 的 ID 均为调用方所有；`expected` 与 `actual` 是被观测的页面内容，正是本领域最不能外泄的东西。
 
