@@ -10,34 +10,54 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
+// HealReviewFaultPoint 标识审核事务中用于验证原子回滚的故障注入位置。
 type HealReviewFaultPoint string
 
 const (
+	// HealFaultAfterCandidate 在候选写入后注入故障。
 	HealFaultAfterCandidate HealReviewFaultPoint = "AFTER_CANDIDATE"
-	HealFaultAfterNode      HealReviewFaultPoint = "AFTER_NODE"
-	HealFaultAfterStreak    HealReviewFaultPoint = "AFTER_STREAK"
-	HealFaultAfterAudit     HealReviewFaultPoint = "AFTER_AUDIT"
-	HealFaultAfterOutbox    HealReviewFaultPoint = "AFTER_OUTBOX"
-	HealFaultBeforeReplay   HealReviewFaultPoint = "BEFORE_REPLAY"
+	// HealFaultAfterNode 在节点写入后注入故障。
+	HealFaultAfterNode HealReviewFaultPoint = "AFTER_NODE"
+	// HealFaultAfterStreak 在 streak 写入后注入故障。
+	HealFaultAfterStreak HealReviewFaultPoint = "AFTER_STREAK"
+	// HealFaultAfterAudit 在审计记录写入后注入故障。
+	HealFaultAfterAudit HealReviewFaultPoint = "AFTER_AUDIT"
+	// HealFaultAfterOutbox 在 outbox 写入后注入故障。
+	HealFaultAfterOutbox HealReviewFaultPoint = "AFTER_OUTBOX"
+	// HealFaultBeforeReplay 在重放返回前注入故障。
+	HealFaultBeforeReplay HealReviewFaultPoint = "BEFORE_REPLAY"
 )
 
+// HealReviewSnapshot 是审核 conformance fixture 保存的宿主状态快照不透明值。
 type HealReviewSnapshot any
 
+// HealReviewFixture 定义审核事务 conformance 测试所需的适配器、状态控制和断言端口。
 type HealReviewFixture interface {
 	application.HealReviewTransaction
+	// Intent 返回待提交的审核意图。
 	Intent() application.HealReviewIntent
+	// CompetingIntents 返回用于并发竞争的两个审核意图。
 	CompetingIntents() (application.HealReviewIntent, application.HealReviewIntent)
+	// Snapshot 返回当前宿主状态快照。
 	Snapshot() HealReviewSnapshot
+	// SetHealFault 在指定事务阶段注入故障。
 	SetHealFault(HealReviewFaultPoint)
+	// MakeCandidateStale 使候选权威状态过期。
 	MakeCandidateStale()
+	// MakeNodeStale 使节点权威状态过期。
 	MakeNodeStale()
+	// MakeCurrentBaseStale 使节点当前基线版本过期。
 	MakeCurrentBaseStale()
+	// MakeStreakStale 使拒绝 streak 权威状态过期。
 	MakeStreakStale()
+	// AssertApplied 断言审核意图已完整物化到宿主状态。
 	AssertApplied(application.HealReviewIntent) error
 }
 
+// HealReviewFactory 创建一个用于审核 conformance 测试的 fixture。
 type HealReviewFactory func(*testing.T) HealReviewFixture
 
+// RunHealReview 运行审核的应用、重放、身份校验、CAS、回滚和并发竞争 conformance 场景。
 func RunHealReview(t *testing.T, factory HealReviewFactory) {
 	t.Helper()
 	t.Run("apply-replay-digest-and-identity", func(t *testing.T) {
@@ -154,11 +174,13 @@ func RunHealReview(t *testing.T, factory HealReviewFactory) {
 	})
 }
 
+// healResult 保存并发审核调用的结果和错误。
 type healResult struct {
 	outcome application.HealReviewOutcome
 	err     error
 }
 
+// concurrentHeal 并发提交多个审核意图，并收集全部结果；超时则使测试失败。
 func concurrentHeal(t *testing.T, tx application.HealReviewTransaction, intents ...application.HealReviewIntent) []healResult {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -184,9 +206,13 @@ func concurrentHeal(t *testing.T, tx application.HealReviewTransaction, intents 
 	}
 	return out
 }
+
+// healOutcome 按审核意图构造期望的事务结果。
 func healOutcome(i application.HealReviewIntent, status application.HealReviewStatus) application.HealReviewOutcome {
 	return application.HealReviewOutcome{Status: status, CommandID: i.CommandID, RequestDigest: i.RequestDigest, Result: application.HealReviewResult{Decision: i.Decision, Candidate: i.NextCandidate, ElementTarget: i.NextNode, Streak: i.NextStreak}}
 }
+
+// mustHealDigest 计算审核意图摘要，摘要生成失败时立即终止测试。
 func mustHealDigest(t *testing.T, i application.HealReviewIntent) string {
 	t.Helper()
 	d, e := application.HealReviewRequestDigest(i)

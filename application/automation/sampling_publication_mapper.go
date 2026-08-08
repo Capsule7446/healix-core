@@ -8,26 +8,18 @@ import (
 	"github.com/Capsule7446/healix-core/domain/sampling"
 )
 
-// CodeSamplingPublicationAuthorityInvalid is the boundary code for every
-// caller-supplied shape failure in MapSamplingPublication and mapSamplingNode:
-// missing or duplicate node authority, an authority/temporary-node mismatch, an
-// undecided or unsupported resolution mode, and a merge/reuse authority that
-// does not match the current aggregate. It is distinct from
-// AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID (the publication's own content
-// shape, classified in domain/automation) and from
-// SAMPLING_PUBLICATION_MAPPING_INVALID (the element-target reference rewrite).
+// CodeSamplingPublicationAuthorityInvalid 是 MapSamplingPublication 和 mapSamplingNode 中所有调用方
+// 形状错误的边界错误码，涵盖节点权威缺失或重复、权威与临时节点不匹配、解析模式未决或不受支持，
+// 以及与当前聚合不一致的合并/复用权威。它区别于 AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID
+// （由 domain/automation 分类的发布内容形状错误）和 SAMPLING_PUBLICATION_MAPPING_INVALID（元素目标
+// 引用重写错误）。
 const CodeSamplingPublicationAuthorityInvalid fault.Code = "SAMPLING_PUBLICATION_AUTHORITY_INVALID"
 
-// classifySamplingPublicationAuthority is the single exported-boundary
-// classifier for MapSamplingPublication. The checks inside mapSamplingPublication
-// and mapSamplingNode stay ordinary Go errors — the contract permits that for
-// internal invariants — and travel to this boundary as a private cause; their
-// %q-formatted identities (temporary/formal element target ids, resolution
-// modes) never surface because a fault's public Error() text is its code and
-// safe message only, never its cause. An already-classified failure (the
-// element-target reference rewrite and the flow fragment/publication validation
-// below already return their own domain codes) passes through unchanged rather
-// than being buried under a second code.
+// classifySamplingPublicationAuthority 是 MapSamplingPublication 的唯一导出边界分类器。
+// mapSamplingPublication 和 mapSamplingNode 内部校验保持普通 Go 错误；契约允许内部不变量以私有
+// cause 形式传到此边界。它们用 %q 格式化的身份（临时/正式元素目标 ID、解析模式）不会对外暴露，
+// 因为 fault 的公共 Error() 文本仅包含错误码和安全消息，不包含 cause。已分类的错误（元素目标
+// 引用重写及下方流程片段/发布验证已返回各自领域错误码）保持原样，不再包裹第二个错误码。
 func classifySamplingPublicationAuthority(cause error) error {
 	if cause == nil {
 		return nil
@@ -47,6 +39,7 @@ func classifySamplingPublicationAuthority(cause error) error {
 	return err
 }
 
+// SamplingNodeAuthority 保存临时节点映射到正式元素目标及其版本所需的权威快照和 CAS 修订。
 type SamplingNodeAuthority struct {
 	TemporaryElementTargetID string
 	ElementTargetID          string
@@ -56,6 +49,7 @@ type SamplingNodeAuthority struct {
 	ExpectedCurrentVersionID string
 }
 
+// SamplingPublicationRequest 携带采样工作区、发布身份、时间和每个节点的权威信息。
 type SamplingPublicationRequest struct {
 	FlowFragmentID    string
 	WorkflowVersionID string
@@ -64,10 +58,8 @@ type SamplingPublicationRequest struct {
 	Nodes             []SamplingNodeAuthority
 }
 
-// MapSamplingPublication is the single exported boundary that turns a sampling
-// workspace and its publication authority into a domain SamplingPublication.
-// Every error crossing it is classified exactly once by
-// classifySamplingPublicationAuthority.
+// MapSamplingPublication 将采样工作区及其发布权威转换为领域 SamplingPublication；所有跨越该
+// 边界的错误都由 classifySamplingPublicationAuthority 恰好分类一次。
 func MapSamplingPublication(request SamplingPublicationRequest) (domainautomation.SamplingPublication, error) {
 	publication, err := mapSamplingPublication(request)
 	if err != nil {
@@ -76,6 +68,7 @@ func MapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	return publication, nil
 }
 
+// mapSamplingPublication 校验发布身份和节点权威，重写工作区引用并构造领域发布聚合。
 func mapSamplingPublication(request SamplingPublicationRequest) (domainautomation.SamplingPublication, error) {
 	if request.PublishedAt <= 0 || request.FlowFragmentID == "" || request.WorkflowVersionID == "" {
 		return domainautomation.SamplingPublication{}, fmt.Errorf("sampling publication requires workflow identity and publication time")
@@ -120,9 +113,8 @@ func mapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	}
 	steps, err := sampling.RewriteUnpublishedElementTargetReferences(request.Workspace.Steps, mappings)
 	if err != nil {
-		// The rewrite already returns SAMPLING_PUBLICATION_MAPPING_INVALID with its
-		// own ordered violations. Wrapping it in an unclassified error would put an
-		// uncoded layer on the outside of a coded fault at the public boundary.
+		// 重写函数已返回带有有序违规明细的 SAMPLING_PUBLICATION_MAPPING_INVALID；此处不包裹，
+		// 避免在公共边界的已编码错误外层再增加未分类层。
 		return domainautomation.SamplingPublication{}, err
 	}
 	workflow, err := domainautomation.NewFlowFragment(
@@ -130,11 +122,9 @@ func mapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 		domainautomation.FlowFragmentVersion{ID: request.WorkflowVersionID, Definition: domainautomation.FlowFragmentContent{Steps: steps, Parameters: domainautomation.CloneParameterDefinitions(request.Workspace.Parameters)}, CreatedAt: request.PublishedAt},
 	)
 	if err != nil {
-		// domainautomation.NewFlowFragment's own errors are classified at its own
-		// package boundary (a parallel migration); this boundary neither adds an
-		// uncoded layer on top nor buries a code that is already there — it passes
-		// through unclassified or classified alike, and the outer
-		// classifySamplingPublicationAuthority call resolves whichever it is.
+		// domainautomation.NewFlowFragment 在自身包边界分类错误；此处既不在其外层添加未分类层，
+		// 也不掩盖已有错误码，而是原样交给外层 classifySamplingPublicationAuthority 处理，
+		// 无论原错误已分类与否。
 		return domainautomation.SamplingPublication{}, err
 	}
 	result := domainautomation.SamplingPublication{Nodes: publications, FlowFragment: workflow}
@@ -144,6 +134,7 @@ func mapSamplingPublication(request SamplingPublicationRequest) (domainautomatio
 	return result, nil
 }
 
+// referenceableElementTargetVersion 在聚合历史中查找指定的未删除元素目标版本。
 func referenceableElementTargetVersion(aggregate domainautomation.ElementTargetAggregate, versionID string) (domainautomation.ElementTargetVersion, bool) {
 	for _, version := range aggregate.Versions {
 		if version.ID == versionID && version.DeletedAt == 0 {
@@ -153,6 +144,7 @@ func referenceableElementTargetVersion(aggregate domainautomation.ElementTargetA
 	return domainautomation.ElementTargetVersion{}, false
 }
 
+// mapSamplingNode 按解析模式将临时节点与创建、合并或复用的正式聚合映射，并保留权威修订。
 func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority SamplingNodeAuthority, at int64) (domainautomation.SamplingElementTargetPublication, error) {
 	mode := temporary.ResolutionMode
 	publication := domainautomation.SamplingElementTargetPublication{TemporaryElementTargetID: temporary.ID, ResolutionMode: string(mode)}
@@ -166,10 +158,8 @@ func mapSamplingNode(temporary sampling.UnpublishedElementTarget, authority Samp
 			domainautomation.ElementTargetVersion{ID: authority.ElementTargetVersionID, PageURL: temporary.PageURL, Origin: temporary.Origin, Selectors: temporary.Selectors, Fingerprint: temporary.Fingerprint, Source: domainautomation.SourceSampling, CreatedAt: at},
 		)
 		if err != nil {
-			// No %q identity in this wrap: if domain/automation's NewElementTarget is
-			// later classified by a parallel migration, an outer fmt-wrapper that still
-			// echoed the temporary id would leak it even after the boundary classifier
-			// passes an already-classified cause through unchanged.
+			// 此处包装不包含 %q 身份，使 domain/automation.NewElementTarget 返回已分类 cause 时，
+			// 边界原样传递错误也不会泄露临时 ID。
 			return domainautomation.SamplingElementTargetPublication{}, fmt.Errorf("build sampled node: %w", err)
 		}
 		publication.Aggregate, publication.PublishVersion = aggregate, true
