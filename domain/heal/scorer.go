@@ -9,11 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Weights 是启发式节点距离的权重系数（包含标准维度与
-// LabelText/Container 两个 Healix 自己扩展的维度）。Healenium 自身的权重
-// 未公开（由 ML 学得）；这里给出的是有文档记录的确定性初始值，在被真正
-// 信任之前，必须用真实回归集调参。score() 按加权平均归一化
-// （Σw_i·sim_i / Σw_i），所以这些权重只表示彼此的相对重要性，不要求总和为 1。
+// Weights 是启发式节点距离的非负权重系数；评分按启用信号计算加权平均，权重总和无需为 1。
 type Weights struct {
 	Tag       float64
 	ID        float64
@@ -72,12 +68,14 @@ func (w Weights) Validate() error {
 	return nil
 }
 
+// dimension 保存一个评分维度的权重、相似度和是否适用状态。
 type dimension struct {
 	weight     float64
 	similarity float64
 	applicable bool
 }
 
+// preparedTargetScorer 保存针对目标指纹预计算的评分输入和总权重。
 type preparedTargetScorer struct {
 	weights       Weights
 	target        fingerprint.Fingerprint
@@ -88,6 +86,7 @@ type preparedTargetScorer struct {
 	totalWeight   float64
 }
 
+// prepareTargetScorer 预计算目标指纹的启用维度、属性集合和文本 rune，供多个候选复用。
 func prepareTargetScorer(weights Weights, target fingerprint.Fingerprint) preparedTargetScorer {
 	prepared := preparedTargetScorer{weights: weights, target: target}
 	if target.Tag != "" {
@@ -132,6 +131,7 @@ func prepareTargetScorer(weights Weights, target fingerprint.Fingerprint) prepar
 	return prepared
 }
 
+// score 使用预计算目标对候选指纹计算归一化加权相似度。
 func (s preparedTargetScorer) score(candidate fingerprint.Fingerprint) float64 {
 	if s.totalWeight == 0 {
 		return 0
@@ -171,6 +171,7 @@ func (s preparedTargetScorer) score(candidate fingerprint.Fingerprint) float64 {
 	return sum / s.totalWeight
 }
 
+// simKeyAttributes 计算目标启用属性键中与候选值相等的比例。
 func (s preparedTargetScorer) simKeyAttributes(candidate map[string]string) float64 {
 	matched := 0
 	for _, key := range s.keyAttributes {
@@ -181,15 +182,13 @@ func (s preparedTargetScorer) simKeyAttributes(candidate map[string]string) floa
 	return float64(matched) / float64(len(s.keyAttributes))
 }
 
-// score 计算 score(candidate) = Σ w_i·sim_i / Σ w_i，但只在
-// target 确实带有对应信号的维度上做加权平均的重新归一化（例如 target 本身
-// 就没有 "id" 属性时会排除该维度）。如果不这样处理，一个本来就没有
-// id/class/testid 的元素，即使匹配到它的精确克隆，也永远达不到
-// applied_cap——因为缺失的维度会被当作彻底不匹配计分，而不是被排除在外。
+// score 计算 score(candidate) = Σ w_i·sim_i / Σ w_i，并仅纳入目标实际提供信号的维度，
+// 使缺失的目标属性不会被当作不匹配而降低精确克隆的分数。
 func score(w Weights, target, candidate fingerprint.Fingerprint) float64 {
 	return prepareTargetScorer(w, target).score(candidate)
 }
 
+// hasKeyAttrs 判断属性映射是否包含至少一个有值的评分键。
 func hasKeyAttrs(attrs map[string]string) bool {
 	for _, k := range keyAttrsFor(attrs) {
 		if attrs[k] != "" {
@@ -199,10 +198,12 @@ func hasKeyAttrs(attrs map[string]string) bool {
 	return false
 }
 
+// hasNeighborSignal 判断邻接节点结构是否提供至少一个信号。
 func hasNeighborSignal(n fingerprint.Neighbors) bool {
 	return n.Prev != "" || n.Next != "" || n.ParentTag != ""
 }
 
+// simEqualNonEmpty 对非空且相等的字符串返回 1，其余情况返回 0。
 func simEqualNonEmpty(a, b string) float64 {
 	if a == "" {
 		return 0
@@ -213,6 +214,7 @@ func simEqualNonEmpty(a, b string) float64 {
 	return 0
 }
 
+// simRoleName 比较 ARIA role 和 name 的完整组合相似度。
 func simRoleName(a, b fingerprint.ARIA) float64 {
 	if a.Role == "" && a.Name == "" {
 		return 0
@@ -223,6 +225,7 @@ func simRoleName(a, b fingerprint.ARIA) float64 {
 	return 0
 }
 
+// classSet 将空白分隔的 class 字符串转换为去重集合。
 func classSet(class string) map[string]struct{} {
 	fields := strings.Fields(class)
 	set := make(map[string]struct{}, len(fields))
@@ -250,14 +253,10 @@ func simJaccard(a, b map[string]struct{}) float64 {
 	return float64(inter) / float64(union)
 }
 
-// keyAttrs 是 Playwright/Healenium 视为稳定身份信号的固定属性，id/class 之外
-// 的部分（id/class 单独计分）。data-testid 只是最常见的一个约定，实际项目里
-// 还有 data-qa/data-cy/data-test 等各测试框架自己的写法，因此不满足于固定
-// 清单——keyAttrsFor 会再把 target 上出现的所有 data-* 属性动态并进来。
+// keyAttrs 是 id/class 之外用于稳定身份评分的固定属性键。
 var keyAttrs = []string{"data-testid", "name", "type", "aria-label", "placeholder", "href"}
 
-// keyAttrsFor 返回本次比较要检查的 key 集合：固定清单，加上 target 自己
-// 带有的、固定清单里没覆盖到的任意 data-* 属性。
+// keyAttrsFor 返回固定属性键，并追加目标中出现的其他 data-* 属性。
 func keyAttrsFor(target map[string]string) []string {
 	keys := append([]string(nil), keyAttrs...)
 	for k := range target {
@@ -268,7 +267,7 @@ func keyAttrsFor(target map[string]string) []string {
 	return keys
 }
 
-// simKeyAttrs 是 target 上存在的 keyAttrsFor 中，candidate 也一致匹配的比例。
+// simKeyAttrs 计算目标存在且候选值一致的评分键比例。
 func simKeyAttrs(target, candidate map[string]string) float64 {
 	considered, matched := 0, 0
 	for _, k := range keyAttrsFor(target) {
@@ -287,8 +286,7 @@ func simKeyAttrs(target, candidate map[string]string) float64 {
 	return float64(matched) / float64(considered)
 }
 
-// simText 是 1 减去归一化的 Levenshtein 距离；两段文本都为空（无信号）时
-// 返回 0。
+// simText 返回 1 减归一化 Levenshtein 距离；两段文本都为空时返回 0。
 func simText(a, b string) float64 {
 	if a == "" && b == "" {
 		return 0
@@ -308,6 +306,7 @@ func simText(a, b string) float64 {
 	return sim
 }
 
+// simTextPrepared 使用预分解的目标 rune 计算与候选文本的归一化相似度。
 func simTextPrepared(target string, targetRunes []rune, candidate string) float64 {
 	if target == "" && candidate == "" {
 		return 0
@@ -328,10 +327,12 @@ func simTextPrepared(target string, targetRunes []rune, candidate string) float6
 	return sim
 }
 
+// levenshtein 计算两个字符串按 Unicode rune 的编辑距离。
 func levenshtein(a, b string) int {
 	return levenshteinRunes([]rune(a), []rune(b))
 }
 
+// levenshteinRunes 使用双行动态规划缓冲区计算两个 rune 切片的编辑距离。
 func levenshteinRunes(ra, rb []rune) int {
 	n, m := len(ra), len(rb)
 	prev := make([]int, m+1)
@@ -356,6 +357,7 @@ func levenshteinRunes(ra, rb []rune) int {
 	return prev[m]
 }
 
+// min3 返回三个整数中的最小值。
 func min3(a, b, c int) int {
 	m := a
 	if b < m {
