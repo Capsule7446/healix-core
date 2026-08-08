@@ -10,11 +10,13 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
+// FlowFragmentStepContainer 标识未发布流程片段中步骤的目标容器。
 type FlowFragmentStepContainer struct {
 	ParentStepID string
 	BranchID     string
 }
 
+// InsertUnpublishedFlowFragmentStep 在指定容器的索引处插入步骤，并返回校验后的深拷贝。
 func InsertUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, container FlowFragmentStepContainer, index int, step automation.FlowFragmentStep) (UnpublishedFlowFragment, error) {
 	next := cloneUnpublishedFlowFragment(workflow)
 	steps, err := locateFlowFragmentStepContainer(&next, container)
@@ -28,6 +30,7 @@ func InsertUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, contain
 	return finalizeUnpublishedFlowFragment(next)
 }
 
+// UpdateUnpublishedFlowFragmentStep 按步骤 ID 更新未发布流程片段中的步骤，并返回校验后的深拷贝。
 func UpdateUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, step automation.FlowFragmentStep) (UnpublishedFlowFragment, error) {
 	if strings.TrimSpace(step.ID) == "" {
 		return UnpublishedFlowFragment{}, draftInvalidError([]fault.Violation{
@@ -48,6 +51,7 @@ func UpdateUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, step au
 	return finalizeUnpublishedFlowFragment(next)
 }
 
+// DeleteUnpublishedFlowFragmentStep 递归删除指定步骤及其引用，并返回校验后的深拷贝。
 func DeleteUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID string) (UnpublishedFlowFragment, error) {
 	next := cloneUnpublishedFlowFragment(workflow)
 	deleted := false
@@ -82,6 +86,7 @@ func DeleteUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID 
 	return finalizeUnpublishedFlowFragment(next)
 }
 
+// MoveUnpublishedFlowFragmentStep 将步骤从原容器移动到目标容器的指定索引。
 func MoveUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID string, destination FlowFragmentStepContainer, index int) (UnpublishedFlowFragment, error) {
 	var moved automation.FlowFragmentStep
 	found := false
@@ -101,6 +106,7 @@ func MoveUnpublishedFlowFragmentStep(workflow UnpublishedFlowFragment, stepID st
 	return InsertUnpublishedFlowFragmentStep(without, destination, index, moved)
 }
 
+// ReorderUnpublishedFlowFragmentSteps 按 orderedIDs 重排容器步骤，并要求其为精确排列。
 func ReorderUnpublishedFlowFragmentSteps(workflow UnpublishedFlowFragment, container FlowFragmentStepContainer, orderedIDs []string) (UnpublishedFlowFragment, error) {
 	next := cloneUnpublishedFlowFragment(workflow)
 	steps, err := locateFlowFragmentStepContainer(&next, container)
@@ -136,6 +142,7 @@ func ReorderUnpublishedFlowFragmentSteps(workflow UnpublishedFlowFragment, conta
 	return finalizeUnpublishedFlowFragment(next)
 }
 
+// DeleteUnpublishedElementTarget 删除未被步骤引用的元素目标，并返回校验后的深拷贝。
 func DeleteUnpublishedElementTarget(workflow UnpublishedFlowFragment, nodeID string) (UnpublishedFlowFragment, error) {
 	next := cloneUnpublishedFlowFragment(workflow)
 	for _, node := range next.Nodes {
@@ -151,6 +158,7 @@ func DeleteUnpublishedElementTarget(workflow UnpublishedFlowFragment, nodeID str
 	return finalizeUnpublishedFlowFragment(next)
 }
 
+// locateFlowFragmentStepContainer 定位根、重复步骤子级或验证分支的步骤切片。
 func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, container FlowFragmentStepContainer) (*[]automation.FlowFragmentStep, error) {
 	if container.ParentStepID == "" {
 		if container.BranchID != "" {
@@ -187,10 +195,6 @@ func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, containe
 	if result != nil {
 		return result, nil
 	}
-	// A parent that exists but cannot hold the requested container is a different
-	// failure from a parent that is absent, and it has a different fix: pass a
-	// container the parent's kind actually supports, rather than create the step.
-	// Reporting both as not-found sent the caller after a step that was there.
 	if parentFound {
 		return nil, draftInvalidError([]fault.Violation{
 			mustViolation(fault.CodeFieldMismatch, "container", "the parent step cannot hold the requested container"),
@@ -199,6 +203,7 @@ func locateFlowFragmentStepContainer(workflow *UnpublishedFlowFragment, containe
 	return nil, draftStepNotFoundError()
 }
 
+// walkSamplingSteps 以深度优先顺序递归访问步骤及其子级和验证分支。
 func walkSamplingSteps(steps []automation.FlowFragmentStep, visit func(*automation.FlowFragmentStep)) {
 	for index := range steps {
 		step := &steps[index]
@@ -212,6 +217,7 @@ func walkSamplingSteps(steps []automation.FlowFragmentStep, visit func(*automati
 	}
 }
 
+// finalizeUnpublishedFlowFragment 校验流程片段身份并重建元素目标引用。
 func finalizeUnpublishedFlowFragment(workflow UnpublishedFlowFragment) (UnpublishedFlowFragment, error) {
 	if err := validateUnpublishedFlowFragmentIdentity(workflow); err != nil {
 		return UnpublishedFlowFragment{}, err
@@ -222,10 +228,7 @@ func finalizeUnpublishedFlowFragment(workflow UnpublishedFlowFragment) (Unpublis
 	return workflow, nil
 }
 
-// validateUnpublishedFlowFragmentIdentity aggregates identity failures in slice
-// order. Step paths are unindexed because walkSamplingSteps descends into children
-// and validation branches without carrying a path, and inventing a visit ordinal
-// would hand the caller a number it cannot index by.
+// validateUnpublishedFlowFragmentIdentity 按遍历顺序聚合流程片段的身份错误。
 func validateUnpublishedFlowFragmentIdentity(workflow UnpublishedFlowFragment) error {
 	var violations []fault.Violation
 	if strings.TrimSpace(workflow.ID) == "" {
@@ -242,11 +245,6 @@ func validateUnpublishedFlowFragmentIdentity(workflow UnpublishedFlowFragment) e
 		elementTargetIDs[node.ID] = struct{}{}
 	}
 	stepIDs := map[string]struct{}{}
-	// The walk keeps going after the first bad step. Stopping at one meant a draft
-	// with two blank step ids reported a single failure, so the caller fixed it and
-	// immediately hit the next — the report has to be complete to be actionable.
-	// The cap is the only reason to stop early, and the walk order is the tree's
-	// own depth-first order, so the kept prefix is a function of the input.
 	walkSamplingSteps(workflow.Steps, func(step *automation.FlowFragmentStep) {
 		if len(violations) >= fault.MaxViolations {
 			return
@@ -267,6 +265,7 @@ func validateUnpublishedFlowFragmentIdentity(workflow UnpublishedFlowFragment) e
 	return nil
 }
 
+// cloneUnpublishedFlowFragment 深拷贝流程片段及其嵌套切片，保持输入所有权不变。
 func cloneUnpublishedFlowFragment(workflow UnpublishedFlowFragment) UnpublishedFlowFragment {
 	cloned := workflow
 	cloned.Properties = workflow.Properties.Clone()
