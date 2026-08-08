@@ -28,7 +28,7 @@ jobs:
           QODANA_CONFIGURATIONS_TOKEN: ${{ secrets.QODANA_CONFIGURATIONS_TOKEN }}
         run: |
           docker run --rm \
-            -v "$(pwd)/qodana-global-configurations.yaml:/workspace/qodana-global-configurations.yaml:ro" \
+            -v "$(pwd):/workspace:ro" \
             -w /workspace \
             -e QODANA_CONFIGURATIONS_TOKEN="$QODANA_CONFIGURATIONS_TOKEN" \
             jetbrains/qodana-configuration-uploader@sha256:f4786ceea616048c3401cf0b0345d2220d22a2ec7b046fd48cbbfc522e6efe30 \
