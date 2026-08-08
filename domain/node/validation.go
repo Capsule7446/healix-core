@@ -17,7 +17,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/interpolation"
 )
 
-// ValidationAssertion 是一个与框架无关的验证语句的执行端表示。  工作区将其持久值对象映射到物化边界，使工作区资产独立于执行上下文。
+// ValidationAssertion 表示框架无关的验证断言及其比较参数。
 type ValidationAssertion struct {
 	Kind           string
 	Expected       string
@@ -26,7 +26,7 @@ type ValidationAssertion struct {
 	IgnoreCase     bool
 }
 
-// ValidationObservation 是一个仅附加执行事实。它仅包含框架中立的断言数据；基础设施将其映射到具体的 StepExecution 并保留事件时间线位置。 Final 是故意明确的：即使最后的记录与之前的轮询相同，它也会被保留。
+// ValidationObservation 记录一次验证轮询或终态结果，供基础设施映射到执行事实时间线。
 type ValidationObservation struct {
 	NodeID            string
 	GroupID           string
@@ -42,11 +42,13 @@ type ValidationObservation struct {
 	Final             bool
 }
 
+// ValidationMemberIdentity 标识验证组中预期存在的分支成员。
 type ValidationMemberIdentity struct {
 	BranchID string
 	NodeID   string
 }
 
+// ValidationGroupTerminalObservation 记录验证组终态、获胜分支和预期成员身份。
 type ValidationGroupTerminalObservation struct {
 	GroupID         string
 	TerminalReason  string
@@ -55,11 +57,13 @@ type ValidationGroupTerminalObservation struct {
 	ObservedAtMS    int64
 }
 
-// ValidationStateReader 是元素的可选功能。  现有的仅操作驱动程序保持源代码兼容；具有验证功能的驱动程序提供一种标准 DOM/ARIA 投影，而不会将框架类泄漏到域中。
+// ValidationStateReader 提供元素的值、状态和选项集合读取能力。
 type ValidationStateReader interface {
+	// ValidationState 返回元素当前的框架无关状态快照。
 	ValidationState(context.Context) (ValidationState, error)
 }
 
+// ValidationState 保存元素的值以及常见交互状态的读取结果。
 type ValidationState struct {
 	Value          string
 	Enabled        bool
@@ -71,8 +75,10 @@ type ValidationState struct {
 	SelectedValues []string
 }
 
+// validationPollInterval 定义验证轮询器使用的默认轮询间隔。
 const validationPollInterval = 200 * time.Millisecond
 
+// ValidationNode 表示对单个元素执行断言并等待其稳定满足的节点。
 type ValidationNode struct {
 	NodeID string
 	// 对于独立验证，GroupID 和 BranchID 为空。它们是执行身份，而不是持久的表达式模型，并让证据适配器将成员观察结果附加到其组 StepExecution。
@@ -84,8 +90,10 @@ type ValidationNode struct {
 	Stability time.Duration
 }
 
+// ID 返回验证节点的执行标识。
 func (v *ValidationNode) ID() string { return v.NodeID }
 
+// Run 执行一次验证节点生命周期，并在成功前等待断言持续稳定。
 func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return classifyNodeFault(err)
@@ -115,6 +123,7 @@ func (v *ValidationNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	return nil
 }
 
+// waitStable 轮询断言直到其满足稳定窗口或达到最大等待时间，并记录终态证据。
 func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	maxWait := v.MaxWait
 	if maxWait <= 0 {
@@ -162,21 +171,17 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, lastActualValues, reason, true); err != nil {
 			return err
 		}
-		// The observed value does not belong in error text at all. Masking it by
-		// field name only covered password/file/token/secret/api_key patterns, so any
-		// other business field — a confirmation number, arbitrary page text — was
-		// echoed in full. The value already reaches the caller through the evidence
-		// record above, which applies the masking policy on the channel built for it.
 		return fmt.Errorf("assertion was not continuously satisfied within %s: %w", maxWait, pollErr)
 	}
 	return nil
 }
 
-// 评估恰好执行一轮读取/检查。  ValidationGroupNode 在派生分支结果之前为每个成员调用此方法，保留“同一轮 AND”不变量。
+// evaluate 执行一轮验证读取并返回是否满足、实际值和错误。
 func (v *ValidationNode) evaluate(ctx context.Context, rt *Runtime) (bool, string, error) {
 	return v.evaluateCollect(ctx, rt, nil)
 }
 
+// evaluateCollect 执行一轮验证读取，并在集合断言中复制实际值到 actualValues。
 func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actualValues *[]string) (bool, string, error) {
 	assertion, err := v.resolvedAssertion(rt)
 	if err != nil {
@@ -286,16 +291,12 @@ func (v *ValidationNode) evaluateCollect(ctx context.Context, rt *Runtime, actua
 	}
 }
 
-// unsupportedAssertionKindError classifies every "this assertion.Kind cannot be
-// evaluated" leaf failure under one code, distinguished from every other step
-// configuration failure by its violation field path. assertion.Kind is treated
-// as caller input and never echoed publicly; the concrete value stays on the
-// private cause.
+// unsupportedAssertionKindError 将不支持的断言类型归类为断言配置错误。
 func unsupportedAssertionKindError(cause error) error {
 	return wrapStepConfigurationInvalidError(cause, mustViolation(fault.CodeFieldInvalid, "assertion.kind", "assertion kind is not supported"))
 }
 
-// solvedAssertion 仅扩展持久断言合约允许的值。属性名称故意是静态的：允许在 DOM 属性名称中进行插值使得验证形状数据依赖，并且在工作区验证期间被拒绝。
+// resolvedAssertion 展开断言中的运行时变量，并深拷贝期望值集合。
 func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, error) {
 	resolved := v.Assertion
 	resolved.ExpectedValues = append([]string(nil), v.Assertion.ExpectedValues...)
@@ -315,11 +316,8 @@ func (v *ValidationNode) resolvedAssertion(rt *Runtime) (ValidationAssertion, er
 	return resolved, nil
 }
 
-// locate 应用与操作步骤相同的确定性修复决策。对于 not_exists 断言，适用的已治愈候选者是该元素仍然存在的证据，并且必须阻止误报；只有真正的 no_candidate 结果才会被视为缺席。
+// locate 按当前选择器定位元素，并在允许时执行修复、记录决定和安装选择器覆盖层。
 func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool, error) {
-	// Resolved against the overlay for the same reason as the step path: after
-	// an earlier heal it is the installed selector, not the compiled one, whose
-	// failure is being recovered from and staged as evidence.
 	target := rt.effectiveSpec(v.Target)
 	el, err := rt.locator().Locate(ctx, target)
 	if err == nil {
@@ -392,6 +390,7 @@ func (v *ValidationNode) locate(ctx context.Context, rt *Runtime) (Element, bool
 	return el, false, nil
 }
 
+// compareText 按文本断言类型比较实际文本，并在需要时规范化空白。
 func compareText(assertion ValidationAssertion, actual string) (bool, string, error) {
 	if assertion.Kind == "text_matches" {
 		re, err := regexp.Compile(assertion.Expected)
@@ -403,6 +402,7 @@ func compareText(assertion ValidationAssertion, actual string) (bool, string, er
 	return compareScalar(assertion, actual, true)
 }
 
+// compareScalar 比较单个字符串值，可选择规范化空白并忽略大小写。
 func compareScalar(assertion ValidationAssertion, actual string, normalizeWhitespace bool) (bool, string, error) {
 	expected := assertion.Expected
 	if normalizeWhitespace {
@@ -427,6 +427,7 @@ func compareScalar(assertion ValidationAssertion, actual string, normalizeWhites
 	}
 }
 
+// compareSet 比较期望集合与实际集合，并复制输入后排序以避免修改调用方数据。
 func compareSet(assertion ValidationAssertion, actual []string) (bool, string, error) {
 	expected := append([]string(nil), assertion.ExpectedValues...)
 	actual = append([]string(nil), actual...)
@@ -456,7 +457,10 @@ func compareSet(assertion ValidationAssertion, actual []string) (bool, string, e
 	return true, strings.Join(actual, ", "), nil
 }
 
+// normalizeValidationText 将连续空白折叠为单个 ASCII 空格。
 func normalizeValidationText(value string) string { return strings.Join(strings.Fields(value), " ") }
+
+// firstValue 返回切片首项；空切片返回空字符串。
 func firstValue(values []string) string {
 	if len(values) == 0 {
 		return ""
@@ -464,11 +468,13 @@ func firstValue(values []string) string {
 	return values[0]
 }
 
+// ValidationBranch 描述验证组中的一个分支及其按同一轮求与的成员节点。
 type ValidationBranch struct {
 	ID    string
 	Nodes []*ValidationNode
 }
 
+// ValidationGroupNode 表示包含多个候选验证分支的验证组节点。
 type ValidationGroupNode struct {
 	NodeID    string
 	Branches  []ValidationBranch
@@ -476,8 +482,10 @@ type ValidationGroupNode struct {
 	Stability time.Duration
 }
 
+// ID 返回验证组节点的执行标识。
 func (g *ValidationGroupNode) ID() string { return g.NodeID }
 
+// Run 执行验证组生命周期，并在任一分支稳定满足后完成。
 func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	for branchIndex, branch := range g.Branches {
 		if branch.ID == "" {
@@ -517,6 +525,7 @@ func (g *ValidationGroupNode) Run(ctx context.Context, rt *Runtime) (runErr erro
 	return nil
 }
 
+// waitStable 并行轮询所有分支，等待至少一个分支在稳定窗口内满足。
 func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) error {
 	maxWait, stability := g.MaxWait, g.Stability
 	if maxWait <= 0 {
@@ -588,6 +597,7 @@ func (g *ValidationGroupNode) waitStable(parent context.Context, rt *Runtime) er
 	return nil
 }
 
+// validationObservationState 保存单个验证成员最近一次观测的结果。
 type validationObservationState struct {
 	passed       bool
 	actual       string
@@ -595,24 +605,29 @@ type validationObservationState struct {
 	reason       string
 }
 
+// validationObservationStatesEqual 判断两次观测的判定、值和原因是否完全一致。
 func validationObservationStatesEqual(left, right validationObservationState) bool {
 	return left.passed == right.passed && left.actual == right.actual && left.reason == right.reason && slices.Equal(left.actualValues, right.actualValues)
 }
 
+// validationObservationKey 标识验证组、分支和成员节点的组合。
 type validationObservationKey struct {
 	groupID  string
 	branchID string
 	nodeID   string
 }
 
+// validationObservationRecorder 保存最近观测并负责写入验证事实。
 type validationObservationRecorder struct {
 	last map[validationObservationKey]validationObservationState
 }
 
+// newValidationObservationRecorder 创建按节点身份去重的验证观测记录器。
 func newValidationObservationRecorder() *validationObservationRecorder {
 	return &validationObservationRecorder{last: make(map[validationObservationKey]validationObservationState)}
 }
 
+// record 记录一次验证观测；非终态且内容未变化的观测会被去重。
 func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime, validation *ValidationNode,
 	passed bool, actual string, actualValues []string, reason string, final bool) error {
 	if rt.Facts == nil {
@@ -649,6 +664,7 @@ func (r *validationObservationRecorder) record(ctx context.Context, rt *Runtime,
 	})
 }
 
+// recordGroupFinal 为验证组的每个成员记录终态处置，并写入组终态事实。
 func (r *validationObservationRecorder) recordGroupFinal(ctx context.Context, rt *Runtime, group *ValidationGroupNode, last map[validationObservationKey]validationObservationState, terminalReason, winningBranchID string) error {
 	members := make([]ValidationMemberIdentity, 0)
 	seen := make(map[ValidationMemberIdentity]struct{})
@@ -691,6 +707,7 @@ func (r *validationObservationRecorder) recordGroupFinal(ctx context.Context, rt
 	})
 }
 
+// recordWithDisposition 记录带分支处置结果的终态验证观测。
 func (r *validationObservationRecorder) recordWithDisposition(ctx context.Context, rt *Runtime, validation *ValidationNode, passed bool, actual string, actualValues []string, reason, disposition string) error {
 	if rt.Facts == nil {
 		return nil
@@ -722,6 +739,7 @@ func (r *validationObservationRecorder) recordWithDisposition(ctx context.Contex
 	})
 }
 
+// branchDisposition 根据终态原因和成员观测计算分支处置标签。
 func branchDisposition(groupID string, branch ValidationBranch, last map[validationObservationKey]validationObservationState, terminalReason, winningBranchID string) string {
 	if branch.ID == winningBranchID {
 		return "won"
@@ -742,6 +760,7 @@ func branchDisposition(groupID string, branch ValidationBranch, last map[validat
 	return "not_observed"
 }
 
+// validationTerminalReason 将轮询错误归类为取消、超时或系统错误。
 func validationTerminalReason(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "canceled"
@@ -755,6 +774,7 @@ func validationTerminalReason(err error) string {
 	return "system_error"
 }
 
+// validationEvidenceIsSensitive 判断验证目标或断言是否可能包含敏感值。
 func validationEvidenceIsSensitive(target fingerprint.ElementTargetSpec, assertion ValidationAssertion) bool {
 	if !strings.HasPrefix(assertion.Kind, "value_") && !strings.HasPrefix(assertion.Kind, "selected_set_") && assertion.Kind != "attribute_equals" && assertion.Kind != "attribute_contains" {
 		return false
@@ -769,6 +789,7 @@ func validationEvidenceIsSensitive(target fingerprint.ElementTargetSpec, asserti
 	return false
 }
 
+// validationReason 返回轮询观测使用的标准判定原因。
 func validationReason(passed bool) string {
 	if passed {
 		return "satisfied"
@@ -776,6 +797,7 @@ func validationReason(passed bool) string {
 	return "normal_unsatisfied"
 }
 
+// transitionValidation 校验并发出验证节点阶段转换，然后更新本地执行状态。
 func transitionValidation(ctx context.Context, rt *Runtime, execution *StepExecution, nodeID string, next Phase) error {
 	if err := execution.CanTransition(next); err != nil {
 		return err
@@ -793,6 +815,7 @@ func transitionValidation(ctx context.Context, rt *Runtime, execution *StepExecu
 	return execution.Transition(next)
 }
 
+// validationFail 将验证失败转换到失败阶段，并保留原始错误。
 func validationFail(ctx context.Context, rt *Runtime, execution *StepExecution, nodeID string, cause error) error {
 	phase := failurePhase(ctx)
 	if err := execution.CanTransition(phase); err != nil {
