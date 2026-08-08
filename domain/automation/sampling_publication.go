@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// SamplingElementTargetPublication 描述采样节点发布所需的临时身份、解析策略和聚合权限。
 type SamplingElementTargetPublication struct {
 	TemporaryElementTargetID string
 	ResolutionMode           string
@@ -15,11 +16,13 @@ type SamplingElementTargetPublication struct {
 	PublishVersion           bool
 }
 
+// SamplingPublication 保存采样得到的元素目标发布集合和流程片段聚合。
 type SamplingPublication struct {
 	Nodes        []SamplingElementTargetPublication
 	FlowFragment FlowFragmentAggregate
 }
 
+// SamplingNodeMapping 记录临时元素目标到正式目标及版本的映射。
 type SamplingNodeMapping struct {
 	TemporaryElementTargetID string
 	ElementTargetID          string
@@ -27,6 +30,7 @@ type SamplingNodeMapping struct {
 	ResolutionMode           string
 }
 
+// SamplingPublicationResult 返回发布后的流程片段版本和节点映射。
 type SamplingPublicationResult struct {
 	FlowFragmentID    string
 	WorkflowVersionID string
@@ -34,6 +38,7 @@ type SamplingPublicationResult struct {
 	Nodes             []SamplingNodeMapping
 }
 
+// Clone 返回采样发布内容的深复制，不与原聚合或节点切片共享引用。
 func (p SamplingPublication) Clone() SamplingPublication {
 	cloned := SamplingPublication{FlowFragment: cloneWorkflowAggregate(p.FlowFragment)}
 	cloned.Nodes = make([]SamplingElementTargetPublication, len(p.Nodes))
@@ -44,6 +49,7 @@ func (p SamplingPublication) Clone() SamplingPublication {
 	return cloned
 }
 
+// containsReferenceableElementTargetVersion 判断版本是否存在、未删除且可被引用。
 func containsReferenceableElementTargetVersion(aggregate ElementTargetAggregate, versionID string) bool {
 	if aggregate.Current.ID == versionID && aggregate.Current.DeletedAt == 0 {
 		return true
@@ -56,28 +62,22 @@ func containsReferenceableElementTargetVersion(aggregate ElementTargetAggregate,
 	return false
 }
 
-// Validate classifies at this single exported boundary. The checks below stay
-// ordinary Go errors and travel on as a private cause; identities never reach
-// public text.
+// Validate 在唯一导出边界归类发布内容校验错误；内部普通错误作为私有原因传递，身份值不会写入公共文本。
 func (p SamplingPublication) Validate() error {
 	return classifySamplingPublicationContent(p.validateContent())
 }
 
+// validateContent 校验流程片段、节点内容、解析策略及其并发权限。
 func (p SamplingPublication) validateContent() error {
 	if err := p.FlowFragment.Validate(); err != nil {
-		// FlowFragmentAggregate.Validate already returns
-		// AUTOMATION_FLOW_FRAGMENT_INVALID; wrapping it here would bury that code
-		// under an unclassified layer.
+		// FlowFragmentAggregate.Validate 已返回 AUTOMATION_FLOW_FRAGMENT_INVALID，此处保持原错误码。
 		return err
 	}
 	seen := make(map[string]struct{}, len(p.Nodes))
 	formalNodes := make(map[string]struct{}, len(p.Nodes))
 	formalVersions := make(map[string]struct{}, len(p.Nodes))
 	decisions := make(map[string]struct{}, len(p.Nodes))
-	// Failures address a node by its 0-based position in the slice the caller
-	// passed. Temporary and formal element target identities, selected version
-	// identities, and the resolution mode are all caller data and stay out of the
-	// message; the caller can index its own input.
+	// 违规使用调用方切片中的从零开始节点位置定位。临时/正式元素目标身份、选定版本身份和解析模式均为调用方数据，不写入错误文本。
 	for index, node := range p.Nodes {
 		if strings.TrimSpace(node.TemporaryElementTargetID) == "" {
 			return fmt.Errorf("sampled node %d temporary id is required", index)
@@ -91,19 +91,10 @@ func (p SamplingPublication) validateContent() error {
 			return fmt.Errorf("duplicate sampled node at %d", index)
 		}
 		seen[node.TemporaryElementTargetID] = struct{}{}
-		// Every mode validates its content. REUSE used to skip this entirely, which
-		// assumed the aggregate had already been checked by whoever loaded it —
-		// true on the mapper path, false on this one, because Publish accepts a
-		// caller-built SamplingPublication. A REUSE node could carry a version with
-		// no selectors, a zero version number and an unknown source straight into
-		// the idempotency digest and the transaction.
-		//
-		// REUSE needs the selected-version form rather than the aggregate form: its
-		// projection deliberately holds the chosen historical version as Current
-		// while ElementTarget.CurrentVersionID still points at the live version for
-		// the compare-and-swap, so the aggregate rule that those two agree can never
-		// hold here. The authority checks below cover the pointer; this covers the
-		// content.
+		// CREATE、MERGE 和 REUSE 均校验内容，避免无选择器、零版本号或未知来源进入幂等摘要和事务。
+		// REUSE 使用选定版本形式：Current 保存历史版本，
+		// ElementTarget.CurrentVersionID 仍保存用于比较交换的实时指针，因此聚合的当前指针一致性规则不适用；
+		// 下方权限检查覆盖指针，这里覆盖选择器、版本号和来源等内容。
 		validateNode := node.Aggregate.Validate
 		if node.ResolutionMode == "REUSE" {
 			validateNode = func() error {
@@ -111,9 +102,7 @@ func (p SamplingPublication) validateContent() error {
 			}
 		}
 		if err := validateNode(); err != nil {
-			// ElementTargetAggregate.Validate already returns
-			// AUTOMATION_ELEMENT_TARGET_INVALID; wrapping it here would bury that
-			// code under an unclassified layer.
+			// ElementTargetAggregate.Validate 已返回 AUTOMATION_ELEMENT_TARGET_INVALID，此处保持原错误码。
 			return err
 		}
 		if strings.TrimSpace(node.Aggregate.ElementTarget.ID) == "" || node.Aggregate.Current.ElementTargetID != node.Aggregate.ElementTarget.ID || node.Aggregate.Current.DeletedAt != 0 {
@@ -130,8 +119,7 @@ func (p SamplingPublication) validateContent() error {
 		case "MERGE":
 			expectedNextRevision, err := node.ExpectedRevision.Next()
 			if err != nil {
-				// Revision.Next already returns AUTOMATION_REVISION_EXHAUSTED; wrapping
-				// it here would bury that code under an unclassified layer.
+				// Revision.Next 已返回 AUTOMATION_REVISION_EXHAUSTED，此处保持原错误码。
 				return err
 			}
 			if node.ExpectedRevision == 0 || node.ExpectedCurrentVersionID == "" || !node.PublishVersion || node.Aggregate.ElementTarget.Revision != expectedNextRevision {
@@ -163,9 +151,8 @@ func (p SamplingPublication) validateContent() error {
 		for _, step := range steps {
 			if step.ElementTargetID != "" {
 				if _, exists := decisions[step.ElementTargetID+"\x00"+step.ElementTargetVersionID]; !exists {
-					// The step display name is author-written text and the two ids are
-					// caller data. The recursive walk carries no flat index, so the
-					// message stays positionless rather than echoing any of the three.
+					// 步骤显示名和两个身份 ID 均为调用方数据；递归遍历没有扁平索引，
+					// 因此错误文本不回显这些值，也不使用位置编号。
 					return errors.New("a sampled workflow step has no matching node decision")
 				}
 			}

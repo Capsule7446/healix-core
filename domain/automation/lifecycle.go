@@ -7,8 +7,10 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// CodeDeletedAggregate 表示已删除自动化聚合错误。
 const CodeDeletedAggregate fault.Code = "AUTOMATION_AGGREGATE_DELETED"
 
+// DeletedAggregateError 构造已删除聚合的前置条件错误。
 func DeletedAggregateError() error {
 	err, constructionErr := fault.New(
 		fault.FailedPrecondition,
@@ -21,11 +23,8 @@ func DeletedAggregateError() error {
 	return err
 }
 
-// validateTransitionTime is the shared cross-aggregate check for every
-// automation aggregate's lifecycle and publication transitions: it returns
-// AUTOMATION_AGGREGATE_TRANSITION_INVALID directly so every caller — across
-// environment, element target, flow fragment, and execution flow — passes the
-// result through unwrapped instead of restating it.
+// validateTransitionTime 校验生命周期转换时间为正且不早于聚合更新时间。
+// 环境、元素目标、流程片段和执行流程共用此检查，并直接返回 AUTOMATION_AGGREGATE_TRANSITION_INVALID。
 func validateTransitionTime(at, updatedAt int64) error {
 	if at <= 0 {
 		return aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "at", "transition time must be positive"))
@@ -36,6 +35,7 @@ func validateTransitionTime(at, updatedAt int64) error {
 	return nil
 }
 
+// NewEnvironment 初始化环境修订和变量副本，并校验创建时间与环境内容。
 func NewEnvironment(value Environment) (Environment, error) {
 	value.Revision = 1
 	if value.CreatedAt <= 0 || value.UpdatedAt != value.CreatedAt {
@@ -48,6 +48,7 @@ func NewEnvironment(value Environment) (Environment, error) {
 	return value, nil
 }
 
+// UpdateMetadata 返回应用元数据和变量后的环境副本，不修改接收值；删除聚合或修订耗尽时返回错误。
 func (e Environment) UpdateMetadata(displayName, baseURL string, variables EnvironmentVariables, at int64) (Environment, error) {
 	if e.DeletedAt != 0 {
 		return Environment{}, DeletedAggregateError()
@@ -71,10 +72,15 @@ func (e Environment) UpdateMetadata(displayName, baseURL string, variables Envir
 	return next, nil
 }
 
+// Delete 返回标记为已删除的环境副本，并递增修订。
 func (e Environment) Delete(at int64) (Environment, error) { return setEnvironmentDeleted(e, true, at) }
+
+// Restore 返回清除删除标记的环境副本，并递增修订。
 func (e Environment) Restore(at int64) (Environment, error) {
 	return setEnvironmentDeleted(e, false, at)
 }
+
+// setEnvironmentDeleted 返回应用删除状态后的环境副本，并校验时间和修订。
 func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, error) {
 	if (e.DeletedAt != 0) == deleted {
 		return Environment{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "deletedAt", "environment lifecycle transition is a no-op"))
@@ -100,6 +106,7 @@ func setEnvironmentDeleted(e Environment, deleted bool, at int64) (Environment, 
 	return next, nil
 }
 
+// NewElementTarget 初始化元素目标聚合及其第一个版本，并复制引用字段。
 func NewElementTarget(node ElementTarget, initial ElementTargetVersion) (ElementTargetAggregate, error) {
 	node.Revision = 1
 	node.CurrentVersionID = initial.ID
@@ -116,6 +123,7 @@ func NewElementTarget(node ElementTarget, initial ElementTargetVersion) (Element
 	return a, nil
 }
 
+// UpdateMetadata 返回应用元素目标元数据后的聚合副本，不修改接收值。
 func (a ElementTargetAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (ElementTargetAggregate, error) {
 	if a.ElementTarget.DeletedAt != 0 {
 		return ElementTargetAggregate{}, DeletedAggregateError()
@@ -138,12 +146,18 @@ func (a ElementTargetAggregate) UpdateMetadata(displayName, folderID string, pro
 	}
 	return n, nil
 }
+
+// Delete 返回标记为已删除的元素目标聚合副本。
 func (a ElementTargetAggregate) Delete(at int64) (ElementTargetAggregate, error) {
 	return a.setDeleted(true, at)
 }
+
+// Restore 返回清除删除标记的元素目标聚合副本。
 func (a ElementTargetAggregate) Restore(at int64) (ElementTargetAggregate, error) {
 	return a.setDeleted(false, at)
 }
+
+// setDeleted 返回应用删除状态后的元素目标聚合副本，并校验时间和修订。
 func (a ElementTargetAggregate) setDeleted(deleted bool, at int64) (ElementTargetAggregate, error) {
 	if (a.ElementTarget.DeletedAt != 0) == deleted {
 		return ElementTargetAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "deletedAt", "element target lifecycle transition is a no-op"))
@@ -168,6 +182,7 @@ func (a ElementTargetAggregate) setDeleted(deleted bool, at int64) (ElementTarge
 	return n, nil
 }
 
+// NewFlowFragment 初始化流程片段聚合及其第一个版本，并复制引用字段。
 func NewFlowFragment(workflow FlowFragment, initial FlowFragmentVersion) (FlowFragmentAggregate, error) {
 	workflow.Revision = 1
 	workflow.CurrentVersionID = initial.ID
@@ -182,6 +197,8 @@ func NewFlowFragment(workflow FlowFragment, initial FlowFragmentVersion) (FlowFr
 	}
 	return a, nil
 }
+
+// UpdateMetadata 返回应用流程片段元数据后的聚合副本，不修改接收值。
 func (a FlowFragmentAggregate) UpdateMetadata(displayName, folderID string, properties Properties, at int64) (FlowFragmentAggregate, error) {
 	if a.FlowFragment.DeletedAt != 0 {
 		return FlowFragmentAggregate{}, DeletedAggregateError()
@@ -204,12 +221,18 @@ func (a FlowFragmentAggregate) UpdateMetadata(displayName, folderID string, prop
 	}
 	return n, nil
 }
+
+// Delete 返回标记为已删除的流程片段聚合副本。
 func (a FlowFragmentAggregate) Delete(at int64) (FlowFragmentAggregate, error) {
 	return a.setDeleted(true, at)
 }
+
+// Restore 返回清除删除标记的流程片段聚合副本。
 func (a FlowFragmentAggregate) Restore(at int64) (FlowFragmentAggregate, error) {
 	return a.setDeleted(false, at)
 }
+
+// setDeleted 返回应用删除状态后的流程片段聚合副本，并校验时间和修订。
 func (a FlowFragmentAggregate) setDeleted(deleted bool, at int64) (FlowFragmentAggregate, error) {
 	if (a.FlowFragment.DeletedAt != 0) == deleted {
 		return FlowFragmentAggregate{}, aggregateTransitionInvalidError(mustViolation(fault.CodeFieldInvalid, "deletedAt", "flow fragment lifecycle transition is a no-op"))
@@ -234,6 +257,7 @@ func (a FlowFragmentAggregate) setDeleted(deleted bool, at int64) (FlowFragmentA
 	return n, nil
 }
 
+// PublishVersion 校验并发布执行流程新版本，保持来源身份、单调时间和修订一致。
 func (a ExecutionFlowAggregate) PublishVersion(publication ExecutionFlowVersionPublication) (ExecutionFlowAggregate, error) {
 	if err := a.Validate(); err != nil {
 		return ExecutionFlowAggregate{}, err
@@ -279,6 +303,7 @@ func (a ExecutionFlowAggregate) PublishVersion(publication ExecutionFlowVersionP
 	return next, nil
 }
 
+// NewExecutionFlow 初始化执行流程聚合及其第一个版本。
 func NewExecutionFlow(task ExecutionFlow, initial ExecutionFlowVersion) (ExecutionFlowAggregate, error) {
 	task.Revision = 1
 	task.CurrentVersionID = initial.ID
@@ -295,6 +320,7 @@ func NewExecutionFlow(task ExecutionFlow, initial ExecutionFlowVersion) (Executi
 	return aggregate, nil
 }
 
+// cloneTestTaskAggregate 返回执行流程聚合的独立副本。
 func cloneTestTaskAggregate(aggregate ExecutionFlowAggregate) ExecutionFlowAggregate {
 	cloned := aggregate
 	cloned.Current = cloneTestTaskVersion(aggregate.Current)
@@ -305,6 +331,7 @@ func cloneTestTaskAggregate(aggregate ExecutionFlowAggregate) ExecutionFlowAggre
 	return cloned
 }
 
+// cloneTestTaskVersion 返回执行流程版本及其条目的独立副本。
 func cloneTestTaskVersion(version ExecutionFlowVersion) ExecutionFlowVersion {
 	cloned := version
 	cloned.RequiredEnvironmentKeys = append([]string(nil), version.RequiredEnvironmentKeys...)
@@ -316,6 +343,7 @@ func cloneTestTaskVersion(version ExecutionFlowVersion) ExecutionFlowVersion {
 	return cloned
 }
 
+// cloneParameterBindings 返回参数绑定映射的独立副本；nil 输入保持 nil。
 func cloneParameterBindings(values map[string]parameter.Binding) map[string]parameter.Binding {
 	if values == nil {
 		return nil
@@ -327,6 +355,7 @@ func cloneParameterBindings(values map[string]parameter.Binding) map[string]para
 	return cloned
 }
 
+// cloneParameterValues 返回参数值映射的独立副本；nil 输入保持 nil。
 func cloneParameterValues(values map[string]parameter.Value) map[string]parameter.Value {
 	if values == nil {
 		return nil

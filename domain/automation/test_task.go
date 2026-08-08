@@ -12,9 +12,8 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-// Validate reports every field failure through one aggregate envelope. Field
-// paths are logical and locale-neutral, and item indexes are 0-based so they
-// address the slice the caller passed.
+// Validate 校验执行流程的每个字段，并通过一个聚合错误按字段顺序返回所有违规。
+// 字段路径保持逻辑且与语言环境无关，项目索引从零开始对应调用方传入的切片。
 func (t ExecutionFlow) Validate() error {
 	var violations []fault.Violation
 	if strings.TrimSpace(t.ID) == "" {
@@ -38,9 +37,8 @@ func (t ExecutionFlow) Validate() error {
 	return nil
 }
 
-// Validate reports every field failure through one aggregate envelope. Sub
-// validation failures degrade into violations of this version rather than
-// nesting another fault, and no identity, key or enum value reaches public text.
+// Validate 校验执行流程版本的每个字段，并将子校验失败降级为该版本的违规而不嵌套错误。
+// 身份、键和值域枚举不会写入公共文本。
 func (v ExecutionFlowVersion) Validate() error {
 	var violations []fault.Violation
 	if strings.TrimSpace(v.ID) == "" {
@@ -113,18 +111,14 @@ func (v ExecutionFlowVersion) Validate() error {
 	return nil
 }
 
-// Validate checks the history itself — ordering, uniqueness, and the source
-// chain. A version's own shape failure propagates unwrapped under its own code
-// rather than nesting inside this envelope. Version indexes are 0-based and
-// address the slice the caller passed; no version identity reaches public text.
+// Validate 校验版本历史的顺序、唯一性和来源链。
+// 单个版本的形状错误保持自身错误码并直接返回，不嵌套到历史信封；版本索引从零开始，版本身份不写入公共文本。
 func (a ExecutionFlowAggregate) Validate() error {
 	if err := a.Task.Validate(); err != nil {
 		return err
 	}
-	// A version's own shape failure propagates unwrapped under its own code, so
-	// this pass runs to completion BEFORE any history violation is accumulated.
-	// Interleaving the two meant an already-built history violation list could be
-	// silently discarded when a later version's envelope returned mid-loop.
+	// 单个版本的形状错误保持自身错误码并直接返回；先完成所有版本形状校验，再收集历史违规。
+	// 这样可避免在后续版本返回错误时丢弃已经构建的历史违规列表。
 	for _, version := range a.Versions {
 		if err := version.Validate(); err != nil {
 			return err
@@ -183,21 +177,16 @@ func (a ExecutionFlowAggregate) Validate() error {
 	return nil
 }
 
-// ResolveParameterValues reports every failure through one dependency envelope
-// with ordered violations. It is exported and host-callable, so it cannot return
-// bare errors; parameter names are caller data (and supplied map keys are user
-// input outright), so names live only on the private cause. Definition-side
-// failures follow the definitions slice order; unknown supplied keys are sorted
-// before reporting, because ranging the map made which key was reported — and
-// therefore the error — a function of Go's randomised iteration order.
+// ResolveParameterValues 解析参数值并通过一个依赖错误信封按顺序返回所有违规。
+// 该函数可由宿主调用，不能返回未分类错误；参数名和输入映射键属于调用方数据，仅保留在私有原因中。
+// 定义侧失败遵循定义切片顺序，未知键先排序后报告，确保结果不依赖映射迭代顺序。
 func ResolveParameterValues(definitions []ParameterDefinition, supplied map[string]parameter.Value) (map[string]parameter.Value, error) {
 	var violations []fault.Violation
 	var details []string
 	byName := make(map[string]ParameterDefinition, len(definitions))
 	for index, definition := range definitions {
 		field := fmt.Sprintf("parameters.definitions.%d", index)
-		// The definition's own failure degrades into this envelope rather than
-		// nesting; its text may carry names and option values.
+		// 定义自身的失败降级为当前依赖信封而不嵌套；名称和选项值仅保留在私有详情中。
 		if err := definition.Validate(); err != nil {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field, "parameter definition is invalid"))
 			details = append(details, fmt.Sprintf("definition %d (%s): %v", index, definition.Name, err))
@@ -253,6 +242,7 @@ func ResolveParameterValues(definitions []ParameterDefinition, supplied map[stri
 	return resolved, nil
 }
 
+// validateReferenceBindings 校验流程片段引用的父子参数绑定及其类型一致性。
 func validateReferenceBindings(parent, child []ParameterDefinition, bindings map[string]parameter.Binding) error {
 	parents := map[string]ParameterDefinition{}
 	for _, definition := range parent {
@@ -284,8 +274,7 @@ func validateReferenceBindings(parent, child []ParameterDefinition, bindings map
 			return fmt.Errorf("parameter %q parent reference type mismatch", definition.Name)
 		}
 	}
-	// Sorted, not map order: the automation twin of the execution binding walk.
-	// Two unknown bindings used to name whichever one iteration reached first.
+	// 按绑定名称排序后报告未知键，使结果不依赖映射迭代顺序。
 	unknown := make([]string, 0, len(bindings))
 	for name := range bindings {
 		found := false
@@ -306,6 +295,7 @@ func validateReferenceBindings(parent, child []ParameterDefinition, bindings map
 	return nil
 }
 
+// Validate 校验已解析执行流程的版本、依赖快照、参数绑定和引用图。
 func (p ResolvedExecutionFlow) Validate() error {
 	if err := p.Task.Validate(); err != nil {
 		return err
@@ -385,8 +375,7 @@ func (p ResolvedExecutionFlow) Validate() error {
 		for _, dependency := range p.Workflows {
 			if dependency.FlowFragment.ID == item.FlowFragmentID && (item.VersionPolicy == FlowFragmentVersionLatest && dependency.ResolvedFromLatest || item.VersionPolicy == FlowFragmentVersionFixed && dependency.Version.ID == item.WorkflowVersionID) {
 				if _, err := ResolveParameterValues(dependency.Version.Definition.Parameters, item.Parameters); err != nil {
-					// A PARAMETER_* fault is more precise than anything this envelope
-					// could say, so it travels on unchanged rather than being replaced.
+					// PARAMETER_* 错误比当前信封更精确，因此保持原码直接返回，不改写。
 					if _, classified := fault.CodeOf(err); classified {
 						return err
 					}
@@ -401,6 +390,7 @@ func (p ResolvedExecutionFlow) Validate() error {
 	return p.validateDependencyGraph(nodes)
 }
 
+// validateDependencyGraph 校验工作流引用图及节点、工作流和解析结果的完整使用关系。
 func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) error {
 	byVersion := map[string]FlowFragmentDependencySnapshot{}
 	for _, dependency := range p.Workflows {
@@ -543,6 +533,7 @@ func (p ResolvedExecutionFlow) validateDependencyGraph(nodes map[string]bool) er
 	return nil
 }
 
+// EnvironmentKeys 从插值表达式中提取 env. 前缀变量名并按字典序返回。
 func EnvironmentKeys(values ...string) ([]string, error) {
 	set := map[string]bool{}
 	for _, value := range values {
@@ -564,6 +555,7 @@ func EnvironmentKeys(values ...string) ([]string, error) {
 	return result, nil
 }
 
+// ElementTargetDependencyIdentity 以稳定分隔符拼接节点和版本身份作为依赖键。
 func ElementTargetDependencyIdentity(nodeID, versionID string) string {
 	return nodeID + "\x00" + versionID
 }
