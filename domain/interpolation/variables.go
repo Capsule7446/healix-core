@@ -7,29 +7,27 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
+// Resolver 提供变量名到字符串值的解析端口。
 type Resolver interface {
+	// Variable 按名称查找变量值；不存在时返回 false。
 	Variable(name string) (string, bool)
 }
 
 const (
-	CodeResolverRequired  fault.Code = "INTERPOLATION_RESOLVER_REQUIRED"
+	// CodeResolverRequired 表示展开包含变量表达式但未提供解析器。
+	CodeResolverRequired fault.Code = "INTERPOLATION_RESOLVER_REQUIRED"
+	// CodeExpressionInvalid 表示变量表达式语法无效。
 	CodeExpressionInvalid fault.Code = "INTERPOLATION_EXPRESSION_INVALID"
+	// CodeVariableUndefined 表示引用的变量未定义。
 	CodeVariableUndefined fault.Code = "INTERPOLATION_VARIABLE_UNDEFINED"
+	// CodeExpansionTooLarge 表示展开结果超过大小上限。
 	CodeExpansionTooLarge fault.Code = "INTERPOLATION_EXPANSION_TOO_LARGE"
 )
 
-// MaxExpansionBytes bounds one Expand result.
-//
-// Interpolation is the one place in Core where a small input legitimately
-// produces a larger output, and the multiplier is attacker-chosen: a template
-// is N occurrences of ${x} and a variable is M bytes, so the result is N*M
-// while neither input on its own looks unusual. A 64 KiB template against a
-// 64 KiB value reaches exactly 1 GiB. Nothing upstream can catch that — the
-// individual sizes are fine and only their product is not — so the ceiling
-// has to live here, and it has to be enforced before the bytes are written
-// rather than after, or the refusal costs the same memory as the attack.
+// MaxExpansionBytes 限制一次 Expand 的结果字节数，并在写入前执行检查。
 const MaxExpansionBytes = 1 << 20
 
+// interpolationFault 构造插值领域错误；构造失败表示程序契约错误并触发 panic。
 func interpolationFault(kind fault.Kind, code fault.Code, message string) error {
 	err, constructionErr := fault.New(kind, code, message)
 	if constructionErr != nil {
@@ -38,6 +36,7 @@ func interpolationFault(kind fault.Kind, code fault.Code, message string) error 
 	return err
 }
 
+// Expand 解析并替换变量表达式，限制结果大小且不在公开错误中回显输入内容。
 func Expand(value string, resolver Resolver) (string, error) {
 	if !strings.Contains(value, "${") {
 		return value, nil
@@ -46,10 +45,8 @@ func Expand(value string, resolver Resolver) (string, error) {
 		return "", interpolationFault(fault.FailedPrecondition, CodeResolverRequired, "variable resolver is required")
 	}
 	var out strings.Builder
-	// Track what is left of the budget rather than what has been written. The
-	// natural spelling — written+len(chunk) > MaxExpansionBytes — can overflow
-	// int on adversarial sizes and wrap negative, which reads as "still under
-	// budget" and admits exactly the write the check exists to stop.
+	// 跟踪剩余预算而不是已写入长度，避免 written+len(chunk) 在极端输入下发生整数溢出，
+	// 使检查错误地放行本应拒绝的写入。
 	remaining := MaxExpansionBytes
 	write := func(chunk string) bool {
 		if len(chunk) > remaining {
@@ -87,14 +84,12 @@ func Expand(value string, resolver Resolver) (string, error) {
 	}
 }
 
-// expansionTooLargeFault keeps the template, the variable name, and the
-// resolved value out of the public text. All three are caller input and the
-// last one is the most likely to carry a token or a URL.
+// expansionTooLargeFault 构造展开超限错误，不把模板、变量名或解析值写入公开文本。
 func expansionTooLargeFault() error {
 	return interpolationFault(fault.ResourceExhausted, CodeExpansionTooLarge, "expanded value exceeds the size limit")
 }
 
-// Names 解析与 Expand 相同的语法，但不解析值。
+// Names 解析与 Expand 相同的变量语法，但不解析变量值。
 func Names(value string) ([]string, error) {
 	if !strings.Contains(value, "${") {
 		return nil, nil
@@ -119,6 +114,7 @@ func Names(value string) ([]string, error) {
 	}
 }
 
+// validateName 校验变量名的非空、无空白和无嵌套表达式约束。
 func validateName(name, expression string) error {
 	if name == "" || strings.TrimSpace(name) != name || strings.ContainsAny(name, "\t\r\n {}$") {
 		return interpolationFault(fault.InvalidArgument, CodeExpressionInvalid, "variable expression is invalid")
