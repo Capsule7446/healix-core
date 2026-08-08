@@ -10,19 +10,18 @@ import (
 )
 
 const (
-	CodeTimelineConfigurationInvalid   fault.Code = "EXECUTION_TIMELINE_CONFIGURATION_INVALID"
+	// CodeTimelineConfigurationInvalid 表示步骤时间线配置缺少录制器或其他必需条件。
+	CodeTimelineConfigurationInvalid fault.Code = "EXECUTION_TIMELINE_CONFIGURATION_INVALID"
+	// CodeCompletionConfigurationInvalid 表示完成处理链缺少只读浏览器配置。
 	CodeCompletionConfigurationInvalid fault.Code = "EXECUTION_COMPLETION_CONFIGURATION_INVALID"
-	// CodeRuntimeConfigurationInvalid covers the coordinator's own constructor
-	// checks on Config/Program: none of these are a caller argument the coordinator
-	// can re-validate differently, so the remediation is always to repair the
-	// runtime configuration before starting, hence FAILED_PRECONDITION.
+	// CodeRuntimeConfigurationInvalid 表示协调器对 Config 或 Program 的运行时配置校验失败，属于启动前
+	// 必须满足的前置条件。
 	CodeRuntimeConfigurationInvalid fault.Code = "EXECUTION_RUNTIME_CONFIGURATION_INVALID"
-	// CodeSchedulingAdapterUnavailable covers a recorder start/stop failure: the
-	// host adapter, not the caller-supplied configuration, is unavailable, so the
-	// remediation is retry rather than correcting an argument.
+	// CodeSchedulingAdapterUnavailable 表示录制器启动或停止失败，宿主调度适配器当前不可用。
 	CodeSchedulingAdapterUnavailable fault.Code = "EXECUTION_SCHEDULING_ADAPTER_UNAVAILABLE"
 )
 
+// timelineConfigurationError 构造步骤时间线配置无效的前置条件错误。
 func timelineConfigurationError() error {
 	err, constructionErr := fault.New(fault.FailedPrecondition, CodeTimelineConfigurationInvalid, "execution timeline configuration is invalid")
 	if constructionErr != nil {
@@ -31,6 +30,7 @@ func timelineConfigurationError() error {
 	return err
 }
 
+// completionConfigurationError 构造完成处理配置无效的前置条件错误。
 func completionConfigurationError() error {
 	err, constructionErr := fault.New(fault.FailedPrecondition, CodeCompletionConfigurationInvalid, "execution completion configuration is invalid")
 	if constructionErr != nil {
@@ -39,9 +39,8 @@ func completionConfigurationError() error {
 	return err
 }
 
-// runtimeConfigurationInvalidError classifies a coordinator constructor check.
-// The detail (which field, or why) stays private on cause; the public message
-// is always the fixed registry text.
+// runtimeConfigurationInvalidError 将协调器运行时配置校验失败分类为固定的前置条件错误；具体字段和
+// 原因保留在私有 cause 中，公共消息始终使用注册表固定文本。
 func runtimeConfigurationInvalidError(cause error) error {
 	err, constructionErr := fault.Wrap(cause, fault.FailedPrecondition, CodeRuntimeConfigurationInvalid, "execution runtime configuration is invalid")
 	if constructionErr != nil {
@@ -50,9 +49,8 @@ func runtimeConfigurationInvalidError(cause error) error {
 	return err
 }
 
-// classifySchedulingAdapterFailure gives a bare recorder start/stop failure its
-// registered code, and lets an already-classified failure through unchanged so
-// this boundary never buries a code the adapter already produced.
+// classifySchedulingAdapterFailure 为未分类的录制器启动/停止失败补上注册错误码，并让适配器已分类的
+// 错误原样通过，避免在边界掩盖已有错误码。
 func classifySchedulingAdapterFailure(cause error) error {
 	if cause == nil {
 		return nil
@@ -67,6 +65,7 @@ func classifySchedulingAdapterFailure(cause error) error {
 	return err
 }
 
+// runProgram 启动录制和步骤时间线，运行节点程序，并在退出时停止录制并汇总结果状态。
 func runProgram(ctx context.Context, program node.Program, cfg Config) (result EntryResult, runErr error) {
 	result = EntryResult{ExecutionOutcome: ExecutionNotStarted, RecordingOutcome: RecordingDisabled, TimelineOutcome: TimelineDisabled}
 	if ctx == nil {
@@ -120,6 +119,7 @@ func runProgram(ctx context.Context, program node.Program, cfg Config) (result E
 	return result, runErr
 }
 
+// validateConfig 校验运行实例身份、执行端口、时间线、完成处理和自愈相关配置。
 func validateConfig(program node.Program, cfg Config) error {
 	if cfg.InstanceID.Validate() != nil {
 		return runtimeConfigurationInvalidError(errors.New("instance ID is required"))
@@ -130,10 +130,7 @@ func validateConfig(program node.Program, cfg Config) error {
 	if cfg.Driver == nil {
 		return runtimeConfigurationInvalidError(errors.New("driver is required"))
 	}
-	// Healing without a location port is not a degraded mode, it is a silent
-	// one: every heal would be refused for a reason the host cannot see, and
-	// "healing stopped working" invites turning the safety check off. Reject
-	// the combination up front instead.
+	// 启用自愈时必须提供页面定位端口，以便安全检查确认实时页面位置。
 	if cfg.Healer != nil && cfg.PageLocator == nil {
 		return runtimeConfigurationInvalidError(errors.New("page locator is required when healing is enabled"))
 	}
@@ -152,6 +149,7 @@ func validateConfig(program node.Program, cfg Config) error {
 	return nil
 }
 
+// executionOutcome 将节点运行错误映射为成功、取消或失败结果。
 func executionOutcome(err error) ExecutionOutcome {
 	if err == nil {
 		return OutcomeSucceeded
@@ -162,6 +160,7 @@ func executionOutcome(err error) ExecutionOutcome {
 	return OutcomeFailed
 }
 
+// newRuntime 将执行配置和可选录制时间线组装为节点运行时，并初始化独立 scratchpad。
 func newRuntime(program node.Program, cfg Config, timeline node.RecordingTimeline) *node.Runtime {
 	return &node.Runtime{
 		InstanceID:         cfg.InstanceID,

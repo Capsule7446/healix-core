@@ -32,12 +32,14 @@ type RuntimeNodeIdentity struct {
 	ElementTargetVersionID string
 }
 
+// compiledExecutionIdentity 保存编译条目绑定的执行实例、快照摘要和入口身份。
 type compiledExecutionIdentity struct {
 	instanceID     execution.InstanceID
 	snapshotDigest string
 	entryID        execution.EntryID
 }
 
+// CompiledEntry 保存一个已编译执行入口及其不可变快照身份、运行时元数据和内部程序。
 type CompiledEntry struct {
 	InstanceID        execution.InstanceID
 	SnapshotDigest    string
@@ -52,13 +54,13 @@ type CompiledEntry struct {
 	identity          compiledExecutionIdentity
 }
 
+// CompiledPlan 保存按执行顺序排列的编译入口及其私有 ID 索引。
 type CompiledPlan struct {
 	entries []CompiledEntry
 	byID    map[execution.EntryID]int
 }
 
-// Entries returns the compiled entries in execution order. The returned slice
-// and each entry's exported maps are owned by the caller.
+// Entries 返回按执行顺序排列的编译入口；返回切片及每个入口的导出映射均归调用方所有。
 func (r CompiledPlan) Entries() []CompiledEntry {
 	entries := make([]CompiledEntry, len(r.entries))
 	for index, entry := range r.entries {
@@ -67,8 +69,7 @@ func (r CompiledPlan) Entries() []CompiledEntry {
 	return entries
 }
 
-// Entry returns the compiled entry identified by entryID without exposing
-// the run's private lookup index.
+// Entry 返回由 entryID 标识的编译入口，不暴露运行时私有索引；入口不存在或身份校验失败时返回 false。
 func (r CompiledPlan) Entry(entryID execution.EntryID) (CompiledEntry, bool) {
 	index, ok := r.byID[entryID]
 	if !ok || index < 0 || index >= len(r.entries) {
@@ -81,6 +82,7 @@ func (r CompiledPlan) Entry(entryID execution.EntryID) (CompiledEntry, bool) {
 	return cloneCompiledEntry(entry), true
 }
 
+// hasIdentity 校验编译入口的入口 ID、实例 ID 和快照摘要与私有绑定身份一致。
 func (entry CompiledEntry) hasIdentity(entryID execution.EntryID) bool {
 	return entryID.Validate() == nil &&
 		entry.InstanceID.Validate() == nil && entry.InstanceID == entry.identity.instanceID &&
@@ -88,6 +90,7 @@ func (entry CompiledEntry) hasIdentity(entryID execution.EntryID) bool {
 		entry.EntryID == entryID && entry.EntryID == entry.identity.entryID
 }
 
+// cloneCompiledEntry 复制编译入口的导出映射，保留内部程序和身份绑定不变。
 func cloneCompiledEntry(entry CompiledEntry) CompiledEntry {
 	metadataSource := entry.Metadata
 	entry.Metadata = make(map[string]StepMetadata, len(metadataSource))
@@ -102,9 +105,7 @@ func cloneCompiledEntry(entry CompiledEntry) CompiledEntry {
 	return entry
 }
 
-// planUnsealedError reuses the code domain/execution already publishes for this
-// exact condition, rather than minting a second one for the same meaning. The
-// message must stay identical to that row, which the registry guard enforces.
+// planUnsealedError 返回 domain/execution 为计划未封存状态注册的错误码和固定消息。
 func planUnsealedError() error {
 	err, constructionErr := fault.New(fault.FailedPrecondition, execution.CodePlanUnsealed, "execution plan must be sealed")
 	if constructionErr != nil {
@@ -113,8 +114,7 @@ func planUnsealedError() error {
 	return err
 }
 
-// CompilePlan compiles solely from the immutable run snapshot payload. Every
-// returned entry is bound to the snapshot's Run, digest, and Execution ID.
+// CompilePlan 仅根据不可变执行实例快照负载编译计划；每个返回入口都绑定快照中的运行、摘要和执行 ID。
 func CompilePlan(snapshot execution.InstanceSnapshot) (CompiledPlan, error) {
 	if snapshot.Digest() == "" {
 		return CompiledPlan{}, planUnsealedError()
@@ -122,6 +122,7 @@ func CompilePlan(snapshot execution.InstanceSnapshot) (CompiledPlan, error) {
 	return compileSnapshotDraft(snapshot.Plan(), snapshot)
 }
 
+// compileSnapshotDraft 校验快照中的工作流、引用、节点和调用范围，并构造入口索引与运行时程序。
 func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.InstanceSnapshot) (CompiledPlan, error) {
 	versions := make(map[string]execution.WorkflowSnapshot, len(draft.Workflows))
 	resolutions := make(map[execution.WorkflowReferenceKey]execution.ReferenceResolution, len(draft.References))
@@ -172,8 +173,7 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 		rootPath := encodeRuntimeComponent(entryID.String())
 		root, err := compiler.compileWorkflow(entry.WorkflowVersionID, rootPath, execution.RootInvocationPath(entryID), 1)
 		if err != nil {
-			// The inner failure is already a classified fault. This wrapper both hid
-			// that classification and welded the execution id into public text.
+			// 内层失败已是分类错误；此处保持原错误，避免掩盖分类并将执行 ID 拼入公共文本。
 			return CompiledPlan{}, err
 		}
 		root.OwnsParameterScope = true
@@ -188,11 +188,7 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 		for name, value := range environment.Variables {
 			key := "env." + name
 			if _, collision := root.Parameters[key]; collision {
-				// No execution id or parameter name in the message: neither is a code
-				// this batch owns (EXECUTION_CREATE_INSTANCE_PLAN_INVALID belongs to a
-				// parallel domain/execution migration), so this stays an uncoded error
-				// with the identities dropped rather than echoed. The integrator should
-				// route this through that code once it lands.
+				// 不在消息中带执行 ID 或参数名；该碰撞属于未分类输入错误，公共文本不回显身份。
 				return CompiledPlan{}, errors.New("compile execution: environment parameter collides with workflow scope")
 			}
 			root.Parameters[key] = value.Clone()
@@ -211,6 +207,7 @@ func compileSnapshotDraft(draft execution.PlanSnapshot, snapshot execution.Insta
 	return result, nil
 }
 
+// executionCompiler 持有快照依赖和编译期间累积的节点规格、元数据与运行时映射。
 type executionCompiler struct {
 	versions      map[string]execution.WorkflowSnapshot
 	resolutions   map[execution.WorkflowReferenceKey]execution.ReferenceResolution
@@ -222,6 +219,7 @@ type executionCompiler struct {
 	compiledNodes *int
 }
 
+// compileWorkflow 将指定工作流版本展开为运行时工作流节点，并递归处理引用深度。
 func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, scopePath execution.InvocationPath, depth int) (*node.WorkflowNode, error) {
 	if depth > execution.MaxWorkflowReferenceDepth {
 		return nil, fmt.Errorf("compile depth exceeds maximum %d", execution.MaxWorkflowReferenceDepth)
@@ -240,6 +238,7 @@ func (c *executionCompiler) compileWorkflow(versionID, invocationPath string, sc
 	return &node.WorkflowNode{NodeID: workflowRuntimeID, Children: children}, nil
 }
 
+// compileSteps 将工作流步骤编译为运行时节点，维护层级路径、调用路径和展开数量上限。
 func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string, scopePath execution.InvocationPath, steps []execution.Step, hierarchy string, depth int) ([]node.Node, error) {
 	result := make([]node.Node, 0, len(steps))
 	for _, step := range steps {
@@ -291,6 +290,7 @@ func (c *executionCompiler) compileSteps(parentVersionID, invocationPath string,
 	return result, nil
 }
 
+// compileValidation 将验证步骤及其断言、等待和稳定性配置编译为验证节点。
 func (c *executionCompiler) compileValidation(runtimeID string, step execution.Step,
 	groupID, branchID string, inherited *execution.Validation) (*node.ValidationNode, error) {
 	if step.Validation == nil {
@@ -312,6 +312,7 @@ func (c *executionCompiler) compileValidation(runtimeID string, step execution.S
 		Stability: time.Duration(wait.StabilityMS) * time.Millisecond}, nil
 }
 
+// compileValidationGroup 将验证分组及其分支成员编译为验证组节点，并继承组级等待配置。
 func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, path string,
 	step execution.Step, scopePath execution.InvocationPath) (*node.ValidationGroupNode, error) {
 	if step.ValidationGroup == nil {
@@ -345,6 +346,7 @@ func (c *executionCompiler) compileValidationGroup(invocationPath, runtimeID, pa
 		Stability: time.Duration(group.StabilityMS) * time.Millisecond}, nil
 }
 
+// compileWait 将等待步骤转换为睡眠、元素、可见性或网络空闲等待节点。
 func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (node.Node, error) {
 	duration, err := millisecondsDuration(int64(step.WaitMS))
 	if err != nil {
@@ -380,6 +382,7 @@ func (c *executionCompiler) compileWait(runtimeID string, step execution.Step) (
 	}
 }
 
+// compileWorkflowCall 解析锁定的工作流版本和具体调用范围，并编译带绑定值与约束的调用节点。
 func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath string, scopePath execution.InvocationPath, runtimeID string, step execution.Step, depth int) (node.Node, error) {
 	if step.Reference == nil {
 		return nil, fmt.Errorf("workflow reference step %s has no reference", step.ID)
@@ -420,6 +423,7 @@ func (c *executionCompiler) compileWorkflowCall(parentVersionID, invocationPath 
 	return &node.WorkflowCallNode{NodeID: runtimeID, Target: target, Bindings: bindings, Values: cloneParameterValues(concrete.Values), Constraints: constraints}, nil
 }
 
+// invocationIndex 将非根调用范围按父调用路径和步骤 ID 建立查找索引。
 func invocationIndex(values []execution.InvocationScopeSnapshot) map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot {
 	result := make(map[execution.InvocationEdgeKey]execution.InvocationScopeSnapshot, len(values))
 	for _, value := range values {
@@ -430,6 +434,7 @@ func invocationIndex(values []execution.InvocationScopeSnapshot) map[execution.I
 	return result
 }
 
+// cloneParameterValues 深拷贝参数值映射；nil 输入仍返回 nil。
 func cloneParameterValues(source map[string]parameter.Value) map[string]parameter.Value {
 	if source == nil {
 		return nil
@@ -441,6 +446,7 @@ func cloneParameterValues(source map[string]parameter.Value) map[string]paramete
 	return result
 }
 
+// spec 从快照节点依赖构造并缓存元素目标规格，同时校验版本 ID 未映射到不同稳定节点。
 func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementTargetSpec, error) {
 	identity := nodeDependencyIdentity(nodeID, versionID)
 	dependency, ok := c.nodes[identity]
@@ -461,8 +467,8 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 		Selectors:   append([]fingerprint.Selector(nil), version.Selectors...),
 		Fingerprint: fp.Clone()}
 	if err := spec.Validate(); err != nil {
-		// spec.Validate returns FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID with its own
-		// ordered violations; this wrapper hid it behind two echoed identities.
+		// spec.Validate 已返回带有有序违规明细的 FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID；此处保持原错误，
+		// 不在外层回显两个身份。
 		return fingerprint.ElementTargetSpec{}, err
 	}
 	c.programSpecs[versionID] = spec
@@ -470,6 +476,7 @@ func (c *executionCompiler) spec(nodeID, versionID string) (fingerprint.ElementT
 	return spec, nil
 }
 
+// millisecondsDuration 将毫秒转换为 time.Duration，并拒绝负值或超出可表示范围的输入。
 func millisecondsDuration(milliseconds int64) (time.Duration, error) {
 	const maxMilliseconds = int64(^uint64(0)>>1) / int64(time.Millisecond)
 	if milliseconds < 0 || milliseconds > maxMilliseconds {
@@ -478,24 +485,30 @@ func millisecondsDuration(milliseconds int64) (time.Duration, error) {
 	return time.Duration(milliseconds) * time.Millisecond, nil
 }
 
+// impossibleCompilerState 构造编译器内部不变量被破坏时的错误。
 func impossibleCompilerState(format string, args ...any) error {
 	return fmt.Errorf("compiler reached impossible state: "+format, args...)
 }
 
+// nodeDependencyIdentity 构造元素目标节点及其版本的快照依赖键。
 func nodeDependencyIdentity(nodeID, versionID string) execution.NodeDependencyKey {
 	return execution.NodeDependencyKey{ElementTargetID: nodeID, VersionID: versionID}
 }
 
+// runtimeFlowFragmentStepID 构造工作流版本步骤在运行时的稳定 ID。
 func runtimeFlowFragmentStepID(workflowVersionID, flowFragmentStepID string) string {
 	return runtimeInvocationStepID(encodeRuntimeComponent(workflowVersionID), flowFragmentStepID)
 }
 
+// runtimeInvocationStepID 构造调用路径下步骤的长度编码运行时 ID。
 func runtimeInvocationStepID(invocationPath, flowFragmentStepID string) string {
 	return "step|" + invocationPath + encodeRuntimeComponent(flowFragmentStepID)
 }
 
+// encodeRuntimeComponent 以长度前缀编码运行时 ID 组件，保持组件边界无歧义。
 func encodeRuntimeComponent(value string) string { return fmt.Sprintf("%d:%s", len(value), value) }
 
+// referenceKey 构造工作流父版本与步骤之间的引用解析键。
 func referenceKey(parentVersionID, stepID string) execution.WorkflowReferenceKey {
 	return execution.WorkflowReferenceKey{ParentVersionID: parentVersionID, StepID: stepID}
 }
