@@ -14,11 +14,16 @@ import (
 type SelectorType string
 
 const (
-	SelectorRole   SelectorType = "role"
+	// SelectorRole 使用 ARIA role 作为定位策略。
+	SelectorRole SelectorType = "role"
+	// SelectorTestID 使用 data-testid 作为定位策略。
 	SelectorTestID SelectorType = "testid"
-	SelectorCSS    SelectorType = "css"
-	SelectorXPath  SelectorType = "xpath"
-	SelectorText   SelectorType = "text"
+	// SelectorCSS 使用 CSS 选择器作为定位策略。
+	SelectorCSS SelectorType = "css"
+	// SelectorXPath 使用 XPath 作为定位策略。
+	SelectorXPath SelectorType = "xpath"
+	// SelectorText 使用文本匹配作为定位策略。
+	SelectorText SelectorType = "text"
 )
 
 // Selector 是 ElementTargetSpec 的一个候选定位策略，按 Priority 升序依次尝试，
@@ -29,6 +34,7 @@ type Selector struct {
 	Priority int
 }
 
+// isSupported 判断选择器类型是否属于共享支持集合。
 func (t SelectorType) isSupported() bool {
 	switch t {
 	case SelectorRole, SelectorTestID, SelectorCSS, SelectorXPath, SelectorText:
@@ -84,17 +90,8 @@ type Fingerprint struct {
 	Framework FrameworkStack
 }
 
-// Clone is the one deep copy of a fingerprint.
-//
-// There were four hand-written copies of this before, one per package that
-// needed one, and two of them were wrong: sampling's cloneSpec never copied
-// Framework, and cloneUnpublishedFlowFragment never copied the fingerprint at
-// all. Both produced a "copy" that shared a map and two slices with its source,
-// so editing the copy silently edited the original. Whoever owns the type owns
-// the copy, which is the only arrangement where a new reference-typed field
-// cannot be forgotten by three callers out of four.
-//
-// ARIA and Neighbors are all-string structs and copy by value.
+// Clone 返回 Fingerprint 的深拷贝；结果独占 Attributes、Path 和 Framework 的引用数据，
+// ARIA 与 Neighbors 这类全字符串结构体按值复制。
 func (f Fingerprint) Clone() Fingerprint {
 	cloned := f
 	cloned.Path = append([]string(nil), f.Path...)
@@ -108,9 +105,8 @@ func (f Fingerprint) Clone() Fingerprint {
 	return cloned
 }
 
-// Validate enforces the shared identity invariants used by matching and healing.
-// It carries its own code rather than folding into the element target spec,
-// because domain/heal validates descriptors directly without going through a spec.
+// Validate 校验匹配和自愈共用的指纹身份不变量，并以描述符自身错误码返回违规项。
+// 描述符可能由 domain/heal 直接校验，不一定经过元素目标规格。
 func (f Fingerprint) Validate() error {
 	violations := f.appendViolations(nil, "")
 	if len(violations) != 0 {
@@ -119,8 +115,7 @@ func (f Fingerprint) Validate() error {
 	return nil
 }
 
-// appendViolations degrades framework failures into violations of the aggregate
-// that owns this descriptor, so no fault is ever nested inside another.
+// appendViolations 将框架校验失败降级为承载该描述符的聚合违规，避免嵌套 fault。
 func (f Fingerprint) appendViolations(violations []fault.Violation, prefix string) []fault.Violation {
 	if strings.TrimSpace(f.Tag) == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, joinField(prefix, "tag"), "fingerprint tag is required"))
@@ -134,7 +129,7 @@ func (f Fingerprint) appendViolations(violations []fault.Violation, prefix strin
 	return f.Framework.appendViolations(violations, joinField(prefix, "framework"))
 }
 
-// 优先尝试选择器，只有全部选择器失败后才会用到指纹。
+// ElementTargetSpec 描述元素的身份、定位器和备用指纹；优先尝试选择器，全部失败后才使用指纹。
 type ElementTargetSpec struct {
 	UUID        string
 	ID          string
@@ -170,6 +165,7 @@ func (s ElementTargetSpec) Validate() error {
 	return nil
 }
 
+// validUUID 判断字符串是否为 36 字符、带标准连字符布局且可解码的 UUID。
 func validUUID(value string) bool {
 	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
 		return false
