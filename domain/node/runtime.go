@@ -14,13 +14,14 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// terminalEventTimeout 是终态事件持久化使用的独立清理超时。
 const terminalEventTimeout = 5 * time.Second
 
+// operationObservationTimeout 是尽力记录操作观测使用的独立超时。
 const operationObservationTimeout = 5 * time.Second
 
-// NewElementNotFoundError is the Driver contract's explicit business signal that
-// every selector in an ElementTargetSpec has been exhausted. Cancellation,
-// invalid selectors, and browser failures remain distinguishable.
+// NewElementNotFoundError 构造表示目标所有选择器均已耗尽的 Driver 业务错误；取消、无效
+// 选择器和浏览器失败保持可区分。
 func NewElementNotFoundError() error {
 	return mustWrapNodeFault(
 		errors.New("element lookup exhausted"),
@@ -30,39 +31,48 @@ func NewElementNotFoundError() error {
 	)
 }
 
-// Program 程序是一棵按惯例不可变的可执行树加上为一个 WorkflowExecution 捕获的确切 ElementTargetSpec 索引。编译器每次执行都会构建一个新的程序；运行时覆盖永远不会改变规格。
+// Program 是按约定不可变的可执行节点树及本次执行使用的 ElementTargetSpec 索引。
 type Program struct {
 	Root  Node
 	Specs map[string]fingerprint.ElementTargetSpec
 }
 
-// Phase 是某个 step 在 RUNNING -> [HEALING] -> TRANSITIONING ->
-// [VALIDATING] -> SUCCEEDED/FAILED 状态机中所处的位置。
+// Phase 表示步骤在运行、自愈、迁移、验证或终止状态机中的位置。
 type Phase string
 
 const (
-	PhaseRunning       Phase = "RUNNING"
-	PhaseHealing       Phase = "HEALING"
+	// PhaseRunning 表示步骤正在运行。
+	PhaseRunning Phase = "RUNNING"
+	// PhaseHealing 表示步骤正在自愈。
+	PhaseHealing Phase = "HEALING"
+	// PhaseTransitioning 表示步骤正在迁移。
 	PhaseTransitioning Phase = "TRANSITIONING"
-	PhaseValidating    Phase = "VALIDATING"
-	PhaseSucceeded     Phase = "SUCCEEDED"
-	PhaseFailed        Phase = "FAILED"
-	PhaseCanceled      Phase = "CANCELED"
+	// PhaseValidating 表示步骤正在验证。
+	PhaseValidating Phase = "VALIDATING"
+	// PhaseSucceeded 表示步骤成功终止。
+	PhaseSucceeded Phase = "SUCCEEDED"
+	// PhaseFailed 表示步骤失败终止。
+	PhaseFailed Phase = "FAILED"
+	// PhaseCanceled 表示步骤因取消终止。
+	PhaseCanceled Phase = "CANCELED"
 )
 
 // StepExecution 保存一次 StepNode.Run 的当前阶段，并拒绝状态机之外的转换。
 // Repeat 再次运行同一个 StepNode 时会创建新的执行实例，因此终态不会泄漏到
 // 下一轮迭代。
+// StepExecution 保存一次节点执行的当前阶段和 Occurrence。
 type StepExecution struct {
 	nodeID     string
 	phase      Phase
 	occurrence int
 }
 
+// NewStepExecution 创建处于初始阶段、绑定 nodeID 的步骤执行状态。
 func NewStepExecution(nodeID string) *StepExecution {
 	return &StepExecution{nodeID: nodeID}
 }
 
+// Phase 返回步骤执行当前阶段；nil 接收者会触发与其他字段访问相同的运行时语义。
 func (e *StepExecution) Phase() Phase { return e.phase }
 
 var stepPhaseTransitions = map[Phase]map[Phase]struct{}{
@@ -84,17 +94,16 @@ var stepPhaseTransitions = map[Phase]map[Phase]struct{}{
 	},
 }
 
+// CanTransition 校验当前步骤执行是否允许迁移到 next，并传播已分类阶段错误。
 func (e *StepExecution) CanTransition(next Phase) error {
 	if e == nil {
 		return stepPhaseTransitionInvalidError(errors.New("node: nil step execution"))
 	}
-	// ValidatePhaseTransition already returns a fully classified fault; return it
-	// unchanged rather than discarding its detail to build a second one — the
-	// contract forbids wrapping an already-coded fault in another fault.
+	// ValidatePhaseTransition 已返回完整分类错误，原样传播以避免嵌套已编码 fault。
 	return ValidatePhaseTransition(e.phase, next)
 }
 
-// ValidatePhaseTransition 向持久性适配器公开相同的域保护，因此部分或重复写入无法产生不可能的 StepExecution 历史记录。
+// ValidatePhaseTransition 校验阶段迁移图，供持久化适配器复用同一领域保护。
 func ValidatePhaseTransition(current, next Phase) error {
 	if _, ok := stepPhaseTransitions[current][next]; !ok {
 		return stepPhaseTransitionInvalidError(fmt.Errorf("invalid step phase transition %q -> %q", current, next))
@@ -102,6 +111,7 @@ func ValidatePhaseTransition(current, next Phase) error {
 	return nil
 }
 
+// Transition 校验并应用阶段迁移；失败时不修改当前阶段。
 func (e *StepExecution) Transition(next Phase) error {
 	if err := e.CanTransition(next); err != nil {
 		return err
@@ -110,7 +120,7 @@ func (e *StepExecution) Transition(next Phase) error {
 	return nil
 }
 
-// Event describes one runtime phase transition.
+// Event 记录节点执行阶段事件及其实例、节点和 Occurrence 身份。
 type Event struct {
 	InstanceID domainexecution.InstanceID
 	NodeID     string
@@ -118,7 +128,7 @@ type Event struct {
 	Phase      Phase
 }
 
-// OperationObservation is an optional, framework-neutral execution fact.
+// OperationObservation 是可选的框架无关操作事实。
 type OperationObservation struct {
 	InstanceID domainexecution.InstanceID
 	EntryID    domainexecution.EntryID
@@ -134,20 +144,26 @@ type OperationObservation struct {
 	FaultCode  fault.Code
 }
 
-// OperationObserver can be implemented alongside ExecutionSink without changing
-// existing adapters. Implementations must be safe for the single Runtime caller.
+// OperationObserver 记录操作观测；实现需支持单个 Runtime 调用方的访问约束。
 type OperationObserver interface {
+	// RecordOperation 记录一次操作观测。
 	RecordOperation(context.Context, OperationObservation) error
 }
 
 // Element 是一个已定位、可查询、可交互的 DOM 节点，是对任意浏览器
 // 自动化 Driver 的领域层抽象。
 type Element interface {
+	// Exists 判断元素是否存在。
 	Exists(ctx context.Context) (bool, error)
+	// Visible 判断元素是否可见。
 	Visible(ctx context.Context) (bool, error)
+	// Text 返回元素文本。
 	Text(ctx context.Context) (string, error)
+	// Attribute 返回属性值及是否存在标志。
 	Attribute(ctx context.Context, name string) (string, bool, error)
+	// Click 点击元素。
 	Click(ctx context.Context) error
+	// Input 向元素输入文本。
 	Input(ctx context.Context, text string) error
 	// Select 按可见文本选中一个或多个 option。
 	Select(ctx context.Context, option string, more ...string) error
@@ -161,45 +177,47 @@ type Element interface {
 // Driver 按优先级顺序将 ElementTargetSpec 的选择器与实时页面比对解析、
 // 执行导航，并为自愈提供 DOMSnapshot。
 type Driver interface {
+	// Navigate 导航到 URL。
 	Navigate(ctx context.Context, url string) error
+	// Press 向页面发送按键。
 	Press(ctx context.Context, key string) error
+	// Locate 按目标规格定位元素。
 	Locate(ctx context.Context, spec fingerprint.ElementTargetSpec) (Element, error)
+	// Snapshot 返回用于自愈的 DOM 快照。
 	Snapshot(ctx context.Context) (heal.DOMSnapshot, error)
 	// WaitNetworkIdle 阻塞到页面网络空闲；超时通过 ctx 控制
 	// （WaitNode 的条件超时）。
 	WaitNetworkIdle(ctx context.Context) error
 }
 
-// PageLocation is where the browser actually is at the moment it is asked.
+// PageLocation 表示浏览器查询时的实时 URL 和来源。
 type PageLocation struct {
 	URL    string
 	Origin string
 }
 
-// PageLocator reports the live browser location.
-//
-// Healing rewrites a selector against whatever page is currently loaded, so
-// the only thing separating a legitimate repair from executing an attacker's
-// DOM is whether that page is still the origin the target was recorded on.
-// Answering from anything cached — the plan, the last navigation, a field set
-// at runtime construction — cannot detect the redirect that makes the question
-// worth asking, so the answer has to come from the browser at heal time.
+// PageLocator 查询浏览器实时位置，用于自愈时确认来源安全边界。
 type PageLocator interface {
+	// CurrentLocation 返回浏览器当前页面位置。
 	CurrentLocation(ctx context.Context) (PageLocation, error)
 }
 
 // Recorder 是框架无关的会话录制端口，由宿主提供适配器。
 // Runtime 上的 Recorder 为 nil 表示"录屏关闭"，Start/Stop 也就不会被调用。
 type Recorder interface {
+	// Start 开始录制并返回时间线。
 	Start(ctx context.Context, instanceID domainexecution.InstanceID) (RecordingTimeline, error)
+	// Stop 停止录制，并按 retain 决定是否保留产物。
 	Stop(ctx context.Context, retain bool) error
 }
 
-// HealSampleObserver receives the complete deterministic candidate sample for replay.
+// HealSampleObserver 接收可重放的完整确定性候选样本。
 type HealSampleObserver interface {
+	// RecordHealSamples 记录一次自愈候选样本。
 	RecordHealSamples(context.Context, HealSampleRecord) error
 }
 
+// HealSampleRecord 保存实例、节点、规格、旧选择器、自愈结果和候选样本。
 type HealSampleRecord struct {
 	InstanceID  domainexecution.InstanceID
 	NodeID      string
@@ -209,17 +227,22 @@ type HealSampleRecord struct {
 	Samples     []heal.CandidateSample
 }
 
+// TerminalCommit 携带需要与同一 fence 原子提交的终态事件。
 type TerminalCommit struct {
 	Event Event
 }
 
-// ExecutionSink stages terminal-associated facts and publishes them only when
-// CommitTerminal atomically commits the terminal event under the same fence.
+// ExecutionSink 暂存终态相关事实，并仅在同一 fence 下 CommitTerminal 原子提交时发布。
 type ExecutionSink interface {
+	// RecordProgress 记录非终态进度事件。
 	RecordProgress(context.Context, domainexecution.WorkerFence, Event) error
+	// StageHealDecision 暂存自愈决策及其选择器。
 	StageHealDecision(context.Context, domainexecution.WorkerFence, string, string, fingerprint.Selector, heal.Decision) error
+	// StageValidationObservation 暂存验证观测。
 	StageValidationObservation(context.Context, domainexecution.WorkerFence, ValidationObservation) error
+	// StageValidationGroupTerminal 暂存验证组终态观测。
 	StageValidationGroupTerminal(context.Context, domainexecution.WorkerFence, ValidationGroupTerminalObservation) error
+	// CommitTerminal 在 fence 下原子提交终态事件及已暂存事实。
 	CommitTerminal(context.Context, domainexecution.WorkerFence, TerminalCommit) error
 }
 
@@ -265,6 +288,7 @@ type Runtime struct {
 	activeOccurrences    map[string][]int
 }
 
+// Parameters 返回参数作用域的深拷贝；nil Runtime 或 nil 作用域返回 nil。
 func (rt *Runtime) Parameters() map[string]parameter.Value {
 	if rt == nil || rt.parameterScope == nil {
 		return nil
@@ -276,10 +300,12 @@ func (rt *Runtime) Parameters() map[string]parameter.Value {
 	return result
 }
 
+// LeafExecutionStarted 判断是否已有叶节点开始执行。
 func (rt *Runtime) LeafExecutionStarted() bool {
 	return rt != nil && rt.leafExecutionStarted
 }
 
+// observeOperation 将操作观测提交到可选端口。
 func (rt *Runtime) observeOperation(ctx context.Context, observation OperationObservation) error {
 	if rt.OperationObserver == nil {
 		return nil
@@ -287,18 +313,14 @@ func (rt *Runtime) observeOperation(ctx context.Context, observation OperationOb
 	return rt.OperationObserver.RecordOperation(ctx, observation)
 }
 
+// observeOperationBestEffort 在独立超时上下文中尽力记录操作观测，忽略记录错误。
 func (rt *Runtime) observeOperationBestEffort(ctx context.Context, observation OperationObservation) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), operationObservationTimeout)
 	defer cancel()
 	_ = rt.observeOperation(cleanupCtx, observation)
 }
 
-// currentLocation asks the live page where it is.
-//
-// Every failure mode collapses to the zero context — no port, a port error, a
-// blank answer — because heal.Assess reads that as "cannot confirm" and
-// refuses. Returning a stale or assumed location instead would answer the
-// question with the very value a redirect has already invalidated.
+// currentLocation 查询实时页面位置；端口缺失、查询失败或空结果均返回零上下文，使自愈拒绝。
 func (rt *Runtime) currentLocation(ctx context.Context) heal.ExecutionContext {
 	if rt == nil || rt.PageLocator == nil {
 		return heal.ExecutionContext{}
@@ -310,6 +332,7 @@ func (rt *Runtime) currentLocation(ctx context.Context) heal.ExecutionContext {
 	return heal.ExecutionContext{PageURL: location.URL, Origin: location.Origin}
 }
 
+// healingPort 返回显式 HealingPort，未设置时适配 Healer。
 func (rt *Runtime) healingPort() HealingPort {
 	if rt.Healing != nil {
 		return rt.Healing
@@ -317,6 +340,7 @@ func (rt *Runtime) healingPort() HealingPort {
 	return adaptHealer(rt.Healer)
 }
 
+// healingReviewCap 返回有效审核阈值，未设置时使用 0.60。
 func (rt *Runtime) healingReviewCap() float64 {
 	if rt.HealingReviewCap > 0 {
 		return rt.HealingReviewCap
@@ -324,6 +348,7 @@ func (rt *Runtime) healingReviewCap() float64 {
 	return 0.60
 }
 
+// recordHealSamples 将自愈样本提交到可选端口；端口缺失时视为无需记录。
 func (rt *Runtime) recordHealSamples(ctx context.Context, record HealSampleRecord) error {
 	if rt == nil || rt.HealSamples == nil {
 		return nil
@@ -331,18 +356,22 @@ func (rt *Runtime) recordHealSamples(ctx context.Context, record HealSampleRecor
 	return rt.HealSamples.RecordHealSamples(ctx, record)
 }
 
+// waitBeforeStep 应用叶步骤之间的节奏等待。
 func (rt *Runtime) waitBeforeStep(ctx context.Context) error {
 	return rt.pacer.before(ctx, rt.StepInterval)
 }
 
+// runOperation 按 Runtime 重试策略执行一次操作。
 func (rt *Runtime) runOperation(operation func() error) error {
 	return Retry(rt.RetryPolicy, operation)
 }
 
+// runOperationWithAttempts 按 Runtime 重试策略执行操作并返回尝试次数。
 func (rt *Runtime) runOperationWithAttempts(operation func() error) (int, error) {
 	return RetryWithAttempts(rt.RetryPolicy, operation)
 }
 
+// activeOccurrence 返回节点当前调用栈顶的 Occurrence；没有活动帧时返回错误。
 func (rt *Runtime) activeOccurrence(nodeID string) (int, error) {
 	stack := rt.activeOccurrences[nodeID]
 	if len(stack) == 0 {
@@ -351,9 +380,7 @@ func (rt *Runtime) activeOccurrence(nodeID string) (int, error) {
 	return stack[len(stack)-1], nil
 }
 
-// mustActiveOccurrence returns the active occurrence for nodeID, or 0 if
-// none is active. Observations are best-effort and must not break execution
-// when the occurrence stack is empty (e.g. during terminal cleanup).
+// mustActiveOccurrence 返回节点活动 Occurrence；无活动帧时返回 0，供尽力观测使用而不打断执行。
 func (rt *Runtime) mustActiveOccurrence(nodeID string) int {
 	occurrence, err := rt.activeOccurrence(nodeID)
 	if err != nil {
@@ -362,8 +389,7 @@ func (rt *Runtime) mustActiveOccurrence(nodeID string) int {
 	return occurrence
 }
 
-// releaseOccurrence releases only the occurrence owned by one invocation. It is
-// idempotent and never pops a nested same-ID frame by position alone.
+// releaseOccurrence 仅释放指定调用拥有的 Occurrence，具备幂等性且不会按位置误弹出嵌套同 ID 帧。
 func (rt *Runtime) releaseOccurrence(nodeID string, occurrence int) {
 	stack := rt.activeOccurrences[nodeID]
 	for i := len(stack) - 1; i >= 0; i-- {
@@ -380,6 +406,7 @@ func (rt *Runtime) releaseOccurrence(nodeID string, occurrence int) {
 	}
 }
 
+// beginOccurrence 记录节点 RUNNING 事件并返回新建的活动 Occurrence。
 func (rt *Runtime) beginOccurrence(ctx context.Context, nodeID string) (int, error) {
 	if err := rt.emit(ctx, nodeID, PhaseRunning); err != nil {
 		return 0, err
@@ -387,6 +414,7 @@ func (rt *Runtime) beginOccurrence(ctx context.Context, nodeID string) (int, err
 	return rt.activeOccurrence(nodeID)
 }
 
+// emit 记录节点阶段事件，并在成功终态提交后释放对应 Occurrence；事实端口错误会分类返回。
 func (rt *Runtime) emit(ctx context.Context, nodeID string, phase Phase) error {
 	if rt.occurrences == nil {
 		rt.occurrences = make(map[string]int)
@@ -438,6 +466,7 @@ func (rt *Runtime) emitTerminal(ctx context.Context, nodeID string, phase Phase)
 	return rt.emit(cleanupCtx, nodeID, phase)
 }
 
+// failurePhase 根据上下文是否取消选择 FAILED 或 CANCELED 终态。
 func failurePhase(ctx context.Context) Phase {
 	if ctx.Err() != nil {
 		return PhaseCanceled
@@ -445,6 +474,7 @@ func failurePhase(ctx context.Context) Phase {
 	return PhaseFailed
 }
 
+// effectiveSpec 以规范规格为基准应用本次运行的 selector overlay，并复制选择器切片。
 func (rt *Runtime) effectiveSpec(base fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
 	spec := base
 	if canonical, ok := rt.Specs[base.ID]; ok {
@@ -456,6 +486,7 @@ func (rt *Runtime) effectiveSpec(base fingerprint.ElementTargetSpec) fingerprint
 	return spec
 }
 
+// specByID 按 ID 获取规格并应用当前运行的 selector overlay。
 func (rt *Runtime) specByID(id string) (fingerprint.ElementTargetSpec, bool) {
 	spec, ok := rt.Specs[id]
 	if !ok {
@@ -464,13 +495,7 @@ func (rt *Runtime) specByID(id string) (fingerprint.ElementTargetSpec, bool) {
 	return rt.effectiveSpec(spec), true
 }
 
-// promoteSelector puts the healed candidate at the head of base's selector
-// list, keeping the rest as ordered fallbacks.
-//
-// An equal selector already in the list is removed rather than duplicated:
-// across repeated recoveries of one spec the healer can land on a selector it
-// produced before, and a list that grows a duplicate on every heal would make
-// the driver retry a known-dead selector once per past attempt.
+// promoteSelector 将自愈选择器置于列表首位，保留其余有序回退项并去除相同选择器重复项。
 func promoteSelector(base fingerprint.ElementTargetSpec, healed fingerprint.Selector) fingerprint.ElementTargetSpec {
 	selectors := make([]fingerprint.Selector, 0, len(base.Selectors)+1)
 	selectors = append(selectors, healed)
@@ -484,6 +509,7 @@ func promoteSelector(base fingerprint.ElementTargetSpec, healed fingerprint.Sele
 	return spec
 }
 
+// setSelectorOverlay 保存规格选择器的副本，供本次 Runtime 后续定位使用。
 func (rt *Runtime) setSelectorOverlay(spec fingerprint.ElementTargetSpec) {
 	if rt.SelectorOverlay == nil {
 		rt.SelectorOverlay = make(map[string][]fingerprint.Selector)
