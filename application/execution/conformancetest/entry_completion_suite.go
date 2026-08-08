@@ -12,45 +12,33 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// CompletionFaultPoint names a place inside one entry completion where the
-// suite asks a fixture to fail.
+// CompletionFaultPoint 标识一次入口完成内部套件要求夹具失败的位置。
 //
-// The points are the write stages EntryCompletionTransaction declares atomic.
-// A host that commits any of them outside the transaction is caught here by the
-// rollback check rather than by a reviewer reading the adapter. The empty value
-// means "no fault", which is what ClearFault restores.
+// 这些位置对应 EntryCompletionTransaction 声明为原子的写入阶段。宿主若在事务外提交其中任一阶段，
+// 回滚检查会捕获该问题，而不依赖审阅者阅读适配器实现。空值表示“无故障”，由 ClearFault 恢复。
 type CompletionFaultPoint string
 
 const (
-	// CompletionFaultBeforeReplay fails inside LookupEntryCompletion, before it
-	// reads anything. A host that had already made the completion visible by
-	// then would leave the caller unable to tell a fresh request from a
-	// half-applied one.
+	// CompletionFaultBeforeReplay 在 LookupEntryCompletion 内、读取任何内容前失败。宿主若在此之前
+	// 已让完成可见，调用方将无法区分新请求与半应用请求。
 	CompletionFaultBeforeReplay CompletionFaultPoint = "BEFORE_REPLAY"
-	// CompletionFaultAfterDecision fails once the intent has been validated and
-	// before the first write.
+	// CompletionFaultAfterDecision 在意图校验完成且首个写入尚未发生时失败。
 	CompletionFaultAfterDecision CompletionFaultPoint = "AFTER_DECISION"
-	// CompletionFaultAfterEntry fails once the entry's terminal status and the
-	// two counters have been written.
+	// CompletionFaultAfterEntry 在入口终态和两个计数器写入后失败。
 	CompletionFaultAfterEntry CompletionFaultPoint = "AFTER_ENTRY"
-	// CompletionFaultAfterFacts fails once the entry's terminal facts have been
-	// written.
+	// CompletionFaultAfterFacts 在入口终态事实写入后失败。
 	CompletionFaultAfterFacts CompletionFaultPoint = "AFTER_FACTS"
-	// CompletionFaultAfterEvidence fails once the run's evidence references
-	// have been written.
+	// CompletionFaultAfterEvidence 在运行的证据引用写入后失败。
 	CompletionFaultAfterEvidence CompletionFaultPoint = "AFTER_EVIDENCE"
-	// CompletionFaultAfterGate fails once the execution action gate has been
-	// terminalized.
+	// CompletionFaultAfterGate 在 execution action gate 终态化后失败。
 	CompletionFaultAfterGate CompletionFaultPoint = "AFTER_GATE"
-	// CompletionFaultAfterOutbox fails once the outbox record has been written,
-	// which is the last write before the idempotency receipt. It is the point
-	// where a non-atomic host looks most convincingly finished.
+	// CompletionFaultAfterOutbox 在 outbox 记录写入后失败；这是幂等收据之前的最后一次写入，
+	// 也是非原子宿主看起来最像已完成的阶段。
 	CompletionFaultAfterOutbox CompletionFaultPoint = "AFTER_OUTBOX"
 )
 
-// CompletionFaultPoints lists every point the suite injects, lookup first and
-// then the write stages in commit order. Hosts may call it to drive their own
-// tests over the same set instead of restating it.
+// CompletionFaultPoints 按查询优先、随后提交写入顺序列出套件注入的全部故障点。宿主可调用它驱动
+// 自身测试，避免重新声明同一集合。
 func CompletionFaultPoints() []CompletionFaultPoint {
 	return []CompletionFaultPoint{
 		CompletionFaultBeforeReplay,
@@ -63,20 +51,15 @@ func CompletionFaultPoints() []CompletionFaultPoint {
 	}
 }
 
-// CompletionSnapshot is everything one entry completion is allowed to change,
-// read back as a single comparable value.
+// CompletionSnapshot 保存一次入口完成允许改变的全部状态，并作为单个可比较值读回。
 //
-// The first four fields are the entry's own state and must end up exactly equal
-// to the decision core produced. The counters report how many times the fixture
-// performed each class of write; the suite compares them rather than fixing
-// their magnitude, because how many rows one completion produces is a host's
-// business but whether a rolled-back attempt left any behind is not.
+// 前四个字段是入口自身状态，最终必须精确等于决策 Core 产生的值。计数器报告夹具执行各类写入的
+// 次数；套件比较计数而不固定其数值，因为一次完成产生多少行属于宿主业务，但回滚尝试是否留下
+// 任何痕迹不是。
 type CompletionSnapshot struct {
 	EntryStatus domainexecution.EntryStatus
-	// TerminalCause is read back for the same reason EntryStatus is: D-18
-	// exists so a crash-interrupted entry stays distinguishable from one that
-	// ran and failed, and a host that decided the cause but never persisted it
-	// would leave both as FAILED with the suite none the wiser.
+	// TerminalCause 与 EntryStatus 一样被读回：D-18 使崩溃中断入口与运行后失败的入口保持可区分；
+	// 宿主若决定了原因却未持久化，二者都会是 FAILED，而套件无法察觉。
 	TerminalCause          execution.TerminalCause
 	TerminalIntent         execution.TerminalIntent
 	TerminalIntentRevision int64
@@ -88,46 +71,37 @@ type CompletionSnapshot struct {
 	OutboxRecords          int
 }
 
-// CompletionFixture is one host adapter under test, plus the two things the
-// suite needs that the port itself does not expose: a way to read committed
-// state back, and a way to make the adapter fail at a chosen point.
+// CompletionFixture 表示一个待测试的宿主适配器，并补充端口本身未暴露的两项能力：读回已提交状态，
+// 以及让适配器在指定位置失败。
 //
-// SetFault and ClearFault must be safe to call from the goroutine driving the
-// test while no completion is in flight; the suite never changes a fault
-// concurrently with a call it expects to observe that fault.
+// SetFault 和 ClearFault 必须可由驱动测试的 goroutine 在没有完成运行时安全调用；套件不会在预期
+// 观察故障的调用并发执行期间修改故障设置。
 type CompletionFixture interface {
 	execution.EntryCompletionTransaction
-	// Fence is the worker authority this fixture accepts. A completion carrying
-	// any other fence must be refused with CodeWorkerFenceStale.
+	// Fence 返回此夹具接受的工作线程权威；携带其他 fence 的完成必须以 CodeWorkerFenceStale 拒绝。
 	Fence() domainexecution.WorkerFence
-	// EntryID is the entry this fixture holds.
+	// EntryID 返回此夹具持有的入口。
 	EntryID() domainexecution.EntryID
-	// Snapshot reads back everything a completion may have changed.
+	// Snapshot 读回完成可能改变的全部状态。
 	Snapshot() CompletionSnapshot
-	// SetFault arms a failure at one point of the next completion.
+	// SetFault 在下一次完成的指定位置启用故障。
 	SetFault(CompletionFaultPoint)
-	// ClearFault disarms whatever SetFault armed.
+	// ClearFault 清除 SetFault 启用的故障。
 	ClearFault()
 }
 
-// CompletionFactory builds one fresh fixture holding one entry in the supplied
-// state.
+// CompletionFactory 在给定状态下创建一个持有入口的新夹具。
 //
-// It must be deterministic in its identities: every fixture it returns reports
-// the same Fence and EntryID, and two fixtures built from the same state start
-// with identical snapshots. The suite builds a clean run and a crash-then-retry
-// run from two fixtures and compares them, which is only meaningful when those
-// two promises hold.
+// 其身份必须是确定的：返回的每个夹具报告相同 Fence 和 EntryID；从相同状态创建的两个夹具必须
+// 以相同快照开始。套件从两个夹具构建干净运行和崩溃后重试运行并进行比较，这只有在两项保证成立
+// 时才有意义。
 type CompletionFactory func(t *testing.T, state execution.EntryCompletionState) CompletionFixture
 
-// RunEntryCompletion runs the entry completion conformance suite against one
-// host adapter.
+// RunEntryCompletion 针对一个宿主适配器运行入口完成 conformance 套件。
 //
-// It exercises EntryCompletionTransaction through EntryCompletionService,
-// because that is the only supported way to reach the port and a host that
-// passes only when driven directly has not been tested on the path it will
-// actually run. Every subtest builds its own fixture, so a failure leaves no
-// residue for the next one.
+// 它通过 EntryCompletionService 调用 EntryCompletionTransaction，因为这是访问端口的唯一支持路径；
+// 仅在直接驱动端口时通过的宿主，尚未在实际运行路径上得到测试。每个子测试创建自己的夹具，
+// 因此失败不会给下一个测试留下残留状态。
 func RunEntryCompletion(t *testing.T, factory CompletionFactory) {
 	t.Helper()
 
@@ -216,8 +190,7 @@ func RunEntryCompletion(t *testing.T, factory CompletionFactory) {
 		fixture := factory(t, state)
 		service := execution.NewEntryCompletionService(fixture)
 		before := fixture.Snapshot()
-		// Still RUNNING and still decidable, so the request reaches the adapter
-		// and is refused by the compare-and-swap rather than by core.
+		// 状态仍为 RUNNING 且仍可决策，因此请求会到达适配器，并由 CAS 而非 Core 拒绝。
 		drifted := state
 		drifted.TerminalIntentRevision++
 		command := completionCommand(fixture, drifted, completionFailedOutcome(), "")
@@ -378,9 +351,8 @@ func RunEntryCompletion(t *testing.T, factory CompletionFactory) {
 		close(results)
 		close(failures)
 
-		// Every caller must succeed: an identical request is by definition a
-		// replay, and a host that reported a conflict instead would send a
-		// worker back to re-read an entry that already holds the answer.
+		// 每个调用方都必须成功：相同请求按定义属于重放；宿主若报告冲突，会让工作线程重新读取一个
+		// 已经持有答案的入口。
 		for err := range failures {
 			if err != nil {
 				t.Fatalf("concurrent completion = %v, want nil", err)
@@ -406,10 +378,8 @@ func RunEntryCompletion(t *testing.T, factory CompletionFactory) {
 	})
 
 	t.Run("engine-success-under-a-cancel-intent-commits-succeeded", func(t *testing.T) {
-		// 裁决一 at the persistence boundary: the engine finished, so the
-		// external side effects already landed and the record must say so. The
-		// cancel is not lost — it rides into the next revision, where
-		// DecideAdvance is what actually stops the instance.
+		// 持久化边界的裁决一：引擎已完成，外部副作用已发生，记录必须如实反映。取消意图没有丢失，
+		// 而是随下一次修订传递，在那里由 DecideAdvance 真正停止实例。
 		state := completionRunningState(execution.TerminalIntentCancel)
 		fixture := factory(t, state)
 		service := execution.NewEntryCompletionService(fixture)
@@ -435,8 +405,7 @@ func RunEntryCompletion(t *testing.T, factory CompletionFactory) {
 	})
 
 	t.Run("abort-command-identity-does-not-change-what-is-committed", func(t *testing.T) {
-		// 裁决二: the pending abort command is idempotency and audit identity,
-		// so it must move the request digest and must not move the decision.
+		// 持久化边界的裁决二：待处理中止命令是幂等和审计身份，因此必须改变请求摘要，不能改变决策。
 		state := completionRunningState(execution.TerminalIntentCancel)
 		withoutAbort := factory(t, state)
 		withAbort := factory(t, state)
@@ -476,14 +445,11 @@ func RunEntryCompletion(t *testing.T, factory CompletionFactory) {
 	})
 }
 
-// assertCompletionCommitted holds a fixture to the decision it was given.
+// assertCompletionCommitted 约束夹具必须提交传入的决策。
 //
-// The four state fields must equal the decision exactly, because they are the
-// values core produced and the host promised to write verbatim. Completions
-// must advance by one, because that is the whole point of the idempotency
-// receipt. The remaining counters are only required not to go backwards: how
-// many rows one completion writes is a host's own business, but a completion
-// that erased evidence already recorded would not be.
+// 四个状态字段必须精确等于决策，因为它们是 Core 产生且宿主承诺原样写入的值。完成次数必须递增一，
+// 这是幂等收据的意义所在。其余计数器只要求不倒退：一次完成写入多少行属于宿主业务，但不能擦除
+// 已记录的证据。
 func assertCompletionCommitted(t *testing.T, before, after CompletionSnapshot, decision execution.EntryCompletionDecision) {
 	t.Helper()
 	if after.EntryStatus != decision.EntryStatus {
@@ -512,9 +478,8 @@ func assertCompletionCommitted(t *testing.T, before, after CompletionSnapshot, d
 	}
 }
 
-// completionRunningState is the only state a completion can start from. The
-// revision and generation are distinct non-zero values so a host that returned
-// one where the other belongs is visible in the failure message.
+// completionRunningState 是完成可以开始的唯一状态。修订和 generation 使用不同的非零值，使宿主
+// 若错把一个字段返回到另一个字段，能在失败消息中显现。
 func completionRunningState(intent execution.TerminalIntent) execution.EntryCompletionState {
 	return execution.EntryCompletionState{
 		EntryStatus:            domainexecution.EntryRunning,
@@ -524,6 +489,7 @@ func completionRunningState(intent execution.TerminalIntent) execution.EntryComp
 	}
 }
 
+// completionCommand 使用夹具身份和给定状态、引擎结果构造入口完成命令。
 func completionCommand(fixture CompletionFixture, state execution.EntryCompletionState, outcome execution.EngineOutcome, abortPendingCommandID string) execution.CompleteEntryCommand {
 	return execution.CompleteEntryCommand{
 		EntryID:               fixture.EntryID(),
@@ -534,7 +500,7 @@ func completionCommand(fixture CompletionFixture, state execution.EntryCompletio
 	}
 }
 
-// completionSucceededOutcome is a run that finished, evidence and all.
+// completionSucceededOutcome 构造已完成且证据、时间线均成功的运行结果。
 func completionSucceededOutcome() execution.EngineOutcome {
 	return execution.EngineOutcome{Result: engine.EntryResult{
 		ExecutionOutcome: engine.OutcomeSucceeded,
@@ -543,9 +509,8 @@ func completionSucceededOutcome() execution.EngineOutcome {
 	}}
 }
 
-// completionFailedOutcome is a run that failed with degraded evidence, which is
-// the shape most likely to expose a host that lets recording quality leak into
-// the terminal status.
+// completionFailedOutcome 构造运行失败但证据降级的结果；这种形状最容易暴露宿主将录制质量泄漏到
+// 终态的错误。
 func completionFailedOutcome() execution.EngineOutcome {
 	return execution.EngineOutcome{
 		Result: engine.EntryResult{
@@ -557,9 +522,8 @@ func completionFailedOutcome() execution.EngineOutcome {
 	}
 }
 
-// mustCompletionDecision is the answer the suite compares a host against. A
-// command the suite itself built is decidable by construction, so a failure
-// here is a defect in this file rather than in the adapter under test.
+// mustCompletionDecision 计算套件用于对比宿主的答案。套件自行构造的命令按设计可决策，因此此处
+// 失败表示本文件缺陷，而非被测适配器缺陷。
 func mustCompletionDecision(t *testing.T, command execution.CompleteEntryCommand) execution.EntryCompletionDecision {
 	t.Helper()
 	decision, err := execution.DecideEntryCompletion(command.State, command.Outcome)
