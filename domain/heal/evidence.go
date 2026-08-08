@@ -6,15 +6,14 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// CandidateEvidence is a deterministic projection of one candidate's matching signals.
+// CandidateEvidence 是一个候选匹配信号的确定性投影。
 type CandidateEvidence struct {
 	Dimension string
 	Score     float64
 	Matched   bool
 }
 
-// EvidenceFor returns stable evidence in scorer-dimension order without changing
-// the candidate's persisted shape or decision ordering.
+// EvidenceFor 按评分维度顺序返回稳定证据，不修改候选的持久化形状或决策顺序。
 func EvidenceFor(target fingerprint.Fingerprint, candidate fingerprint.Fingerprint) []CandidateEvidence {
 	return []CandidateEvidence{
 		{Dimension: "tag", Score: boolScore(strings.EqualFold(target.Tag, candidate.Tag) && target.Tag != ""), Matched: target.Tag != "" && strings.EqualFold(target.Tag, candidate.Tag)},
@@ -24,6 +23,7 @@ func EvidenceFor(target fingerprint.Fingerprint, candidate fingerprint.Fingerpri
 	}
 }
 
+// boolScore 将匹配布尔值转换为 1 或 0 的分数。
 func boolScore(matched bool) float64 {
 	if matched {
 		return 1

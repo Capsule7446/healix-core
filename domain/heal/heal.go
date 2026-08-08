@@ -98,6 +98,7 @@ func (d Decision) Validate() error {
 	return nil
 }
 
+// validate 校验候选的选择器、可选指纹和有限分数，并将 label 用于私有错误上下文。
 func (c Candidate) validate(label string) error {
 	if err := c.Selector.Validate(); err != nil {
 		return fmt.Errorf("heal: %s has invalid selector: %w", label, err)
@@ -124,10 +125,12 @@ type SnapshotCandidate struct {
 // DOMSnapshot 是 Healer 用来对候选打分的实时页面最小只读视图。
 // 宿主提供具体实现；端口位于此处以确保领域层不依赖任何浏览器库。
 type DOMSnapshot interface {
+	// Candidates 返回当前页面中可供评分的候选快照；实现不得把浏览器类型引入领域层。
 	Candidates(ctx context.Context) ([]SnapshotCandidate, error)
 }
 
 // Healer 重新定位其选择器不再使用确定性指纹评分进行解析的元素，而无需外部模型调用。
 type Healer interface {
+	// Heal 对目标和页面候选执行确定性指纹评分并返回自愈决策。
 	Heal(ctx context.Context, target fingerprint.ElementTargetSpec, snapshot DOMSnapshot) (Decision, error)
 }
