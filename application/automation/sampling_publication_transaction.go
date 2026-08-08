@@ -16,23 +16,25 @@ import (
 const samplingPublicationDigestV1 = "sampling-publication-v1"
 
 const (
-	CodeSamplingPublicationIdentityConflict  fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
-	CodeSamplingPublicationDigestMismatch    fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
-	CodeSamplingPublicationUnavailable       fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE"
+	// CodeSamplingPublicationIdentityConflict 表示同一发布 ID 对应了不同请求身份或摘要。
+	CodeSamplingPublicationIdentityConflict fault.Code = "SAMPLING_PUBLICATION_IDENTITY_CONFLICT"
+	// CodeSamplingPublicationDigestMismatch 表示请求负载与提供的摘要不一致。
+	CodeSamplingPublicationDigestMismatch fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_DIGEST_MISMATCH"
+	// CodeSamplingPublicationUnavailable 表示采样发布事务依赖不可用。
+	CodeSamplingPublicationUnavailable fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_UNAVAILABLE"
+	// CodeSamplingPublicationContractViolation 表示事务适配器返回结果违反发布契约。
 	CodeSamplingPublicationContractViolation fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION"
+	// CodeSamplingPublicationAuthorityConflict 表示发布期间节点或流程权威发生变化。
 	CodeSamplingPublicationAuthorityConflict fault.Code = "AUTOMATION_SAMPLING_PUBLICATION_AUTHORITY_CONFLICT"
-	// CodeSamplingPublicationCommandInvalid is the boundary code for
-	// validateSamplingPublicationCommand and its callers: a blank publication id,
-	// or a publication whose own content is invalid. It passes an
-	// already-classified content failure (AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID)
-	// through unchanged rather than burying it under a second code.
+	// CodeSamplingPublicationCommandInvalid 是 validateSamplingPublicationCommand 及其调用方的边界码，
+	// 表示发布 ID 为空或发布内容自身无效；已分类的内容错误
+	// AUTOMATION_SAMPLING_PUBLICATION_CONTENT_INVALID 保持原样，不再包裹第二个错误码。
 	CodeSamplingPublicationCommandInvalid fault.Code = "SAMPLING_PUBLICATION_COMMAND_INVALID"
 )
 
-// classifySamplingPublicationCommand is the boundary classifier shared by
-// validateSamplingPublicationCommand and ValidatePublishSamplingIntentDigest.
-// Command detail (the blank id, or whatever validation text the wrapped cause
-// carries) stays private, reachable only through errors.Unwrap.
+// classifySamplingPublicationCommand 是 validateSamplingPublicationCommand 和
+// ValidatePublishSamplingIntentDigest 共用的边界分类器。命令细节（空 ID 或被包装 cause 携带的
+// 校验文本）保持私有，仅可通过 errors.Unwrap 访问。
 func classifySamplingPublicationCommand(cause error) error {
 	if cause == nil {
 		return nil
@@ -52,6 +54,7 @@ func classifySamplingPublicationCommand(cause error) error {
 	return err
 }
 
+// SamplingPublicationIdentityConflictError 构造发布身份冲突错误。
 func SamplingPublicationIdentityConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
@@ -64,6 +67,7 @@ func SamplingPublicationIdentityConflictError() error {
 	return err
 }
 
+// SamplingPublicationDigestMismatchError 构造发布摘要与请求负载不一致的错误。
 func SamplingPublicationDigestMismatchError() error {
 	err, constructionErr := fault.New(
 		fault.InvalidArgument,
@@ -76,6 +80,7 @@ func SamplingPublicationDigestMismatchError() error {
 	return err
 }
 
+// SamplingPublicationAuthorityConflictError 构造发布期间权威状态变化的冲突错误。
 func SamplingPublicationAuthorityConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
@@ -88,6 +93,7 @@ func SamplingPublicationAuthorityConflictError() error {
 	return err
 }
 
+// SamplingPublicationUnavailableError 构造采样发布事务不可用错误。
 func SamplingPublicationUnavailableError() error {
 	err, constructionErr := fault.New(
 		fault.Unavailable,
@@ -100,6 +106,7 @@ func SamplingPublicationUnavailableError() error {
 	return err
 }
 
+// samplingPublicationContractViolationError 将适配器返回的非法结果包装为内部契约违规错误。
 func samplingPublicationContractViolationError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
@@ -113,24 +120,30 @@ func samplingPublicationContractViolationError(cause error) error {
 	return err
 }
 
+// SamplingPublicationCommand 保存发布 ID 及待持久化的领域发布内容。
 type SamplingPublicationCommand struct {
 	PublicationID string
 	Publication   domain.SamplingPublication
 }
 
+// PublishSamplingIntent 携带发布事务提交所需的幂等身份、请求摘要和发布内容。
 type PublishSamplingIntent struct {
 	PublicationID string
 	RequestDigest string
 	Publication   domain.SamplingPublication
 }
 
+// PublishSamplingStatus 表示发布事务是首次应用还是幂等重放。
 type PublishSamplingStatus string
 
 const (
-	PublishSamplingApplied  PublishSamplingStatus = "APPLIED"
+	// PublishSamplingApplied 表示发布事务首次应用成功。
+	PublishSamplingApplied PublishSamplingStatus = "APPLIED"
+	// PublishSamplingReplayed 表示发布已应用过，本次返回已持久化结果。
 	PublishSamplingReplayed PublishSamplingStatus = "REPLAYED"
 )
 
+// PublishSamplingOutcome 保存发布事务状态、身份、摘要和领域结果。
 type PublishSamplingOutcome struct {
 	Status        PublishSamplingStatus
 	PublicationID string
@@ -138,19 +151,25 @@ type PublishSamplingOutcome struct {
 	Result        domain.SamplingPublicationResult
 }
 
+// SamplingPublicationTransaction 定义发布结果的幂等查询和原子提交端口。
 type SamplingPublicationTransaction interface {
+	// LookupSamplingPublication 按发布 ID 和请求摘要查找既有结果；未找到时返回 found=false。
 	LookupSamplingPublication(context.Context, string, string) (PublishSamplingOutcome, bool, error)
+	// PublishSampling 校验并原子提交发布意图；重复请求应返回已持久化结果。
 	PublishSampling(context.Context, PublishSamplingIntent) (PublishSamplingOutcome, error)
 }
 
+// SamplingPublicationService 编排采样发布的摘要校验、幂等重放和事务提交。
 type SamplingPublicationService struct {
 	transaction SamplingPublicationTransaction
 }
 
+// NewSamplingPublicationService 构造采样发布服务；事务为 nil 时由 Publish 返回不可用错误。
 func NewSamplingPublicationService(transaction SamplingPublicationTransaction) SamplingPublicationService {
 	return SamplingPublicationService{transaction: transaction}
 }
 
+// ValidatePublishSamplingIntentDigest 校验发布意图中的请求摘要与其 ID 和内容一致。
 func ValidatePublishSamplingIntentDigest(intent PublishSamplingIntent) error {
 	digest, err := SamplingPublicationRequestDigest(SamplingPublicationCommand{
 		PublicationID: intent.PublicationID,
@@ -165,6 +184,7 @@ func ValidatePublishSamplingIntentDigest(intent PublishSamplingIntent) error {
 	return nil
 }
 
+// SamplingPublicationRequestDigest 为发布 ID 和完整内容生成带 schema 前缀的 SHA-256 摘要。
 func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (string, error) {
 	owned := command
 	owned.Publication = command.Publication.Clone()
@@ -178,6 +198,7 @@ func SamplingPublicationRequestDigest(command SamplingPublicationCommand) (strin
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// Publish 校验并提交采样发布；已存在的同身份请求返回独立的幂等结果副本。
 func (s SamplingPublicationService) Publish(ctx context.Context, command SamplingPublicationCommand) (domain.SamplingPublicationResult, error) {
 	if isNilDependency(s.transaction) {
 		return domain.SamplingPublicationResult{}, SamplingPublicationUnavailableError()
@@ -219,11 +240,13 @@ func (s SamplingPublicationService) Publish(ctx context.Context, command Samplin
 	return cloneSamplingPublicationResult(outcome.Result), nil
 }
 
+// cloneSamplingPublicationResult 复制节点映射切片，返回调用方独立拥有的结果。
 func cloneSamplingPublicationResult(result domain.SamplingPublicationResult) domain.SamplingPublicationResult {
 	result.Nodes = append([]domain.SamplingNodeMapping(nil), result.Nodes...)
 	return result
 }
 
+// validateSamplingPublicationCommand 校验发布 ID 和领域发布内容，并分类调用方输入错误。
 func validateSamplingPublicationCommand(command SamplingPublicationCommand) error {
 	if strings.TrimSpace(command.PublicationID) == "" {
 		return classifySamplingPublicationCommand(errors.New("sampling publication id is required"))
@@ -234,6 +257,7 @@ func validateSamplingPublicationCommand(command SamplingPublicationCommand) erro
 	return nil
 }
 
+// validatePublishSamplingOutcome 校验适配器结果的状态、身份、流程版本和节点映射完整匹配。
 func validatePublishSamplingOutcome(command SamplingPublicationCommand, digest string, outcome PublishSamplingOutcome) error {
 	if outcome.Status != PublishSamplingApplied && outcome.Status != PublishSamplingReplayed {
 		return fmt.Errorf("unsupported status %q", outcome.Status)

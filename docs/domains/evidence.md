@@ -36,9 +36,9 @@ flowchart LR
 
 ## 证据坐标与它保证的范围
 
-`StepProgressEvent`（[`events.go:17-25`](../../domain/evidence/events.go)）与 `StepPhaseEvent`（[`events.go:53-61`](../../domain/evidence/events.go)）声明坐标三元组 `(EntryID, InvocationPath, Occurrence)`。`Occurrence` 另有六个结构携带 —— `HealCandidateReset`、`StepFact`、`HealObservation`、`ValidationGroupTerminalObservation`、`ValidationProgressObservation` 与 `ValidationObservation` —— 使 `RepeatNode` 在同一 NodeID 上跑出的各轮事后可区分。
+`StepProgressEvent`（[`events.go`](../../domain/evidence/events.go)）与 `StepPhaseEvent`（[`events.go`](../../domain/evidence/events.go)）声明坐标三元组 `(EntryID, InvocationPath, Occurrence)`。`Occurrence` 另有六个结构携带 —— `HealCandidateReset`、`StepFact`、`HealObservation`、`ValidationGroupTerminalObservation`、`ValidationProgressObservation` 与 `ValidationObservation` —— 使 `RepeatNode` 在同一 NodeID 上跑出的各轮事后可区分。
 
-`EntryID` 与 `InvocationPath` 是不可能持有无意义值的值类型，坐标的第三个分量却是裸 `int`。因此正数规则集中在 [`appendOccurrenceViolations`](../../domain/evidence/observations.go) 一处，由每个带 `Validate` 的载体调用，而不是各写一遍让措辞漂移。[`occurrence_test.go`](../../domain/evidence/occurrence_test.go) · `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` 对六个载体逐一钉住 `0` 与 `-1` 被拒。
+`EntryID` 与 `InvocationPath` 是不可能持有无意义值的值类型，坐标的第三个分量却是裸 `int`。因此正数规则集中在 [`appendOccurrenceViolations`](../../domain/evidence/observations.go) 一处，由每个带 `Validate` 的载体调用；[`occurrence_test.go`](../../domain/evidence/occurrence_test.go) · `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` 对六个载体统一验证 `0` 与 `-1` 被拒。
 
 消费方仍需知道的两条边界：
 
@@ -79,7 +79,7 @@ sequenceDiagram
 
 三条本领域特有的边界：
 
-- **载荷超限单独用 `EVIDENCE_COMMIT_FACT_LIMIT_EXCEEDED`（`OUT_OF_RANGE`）**，因为补救动作是「拆分该 commit」而非「修正某个字段」。它在所有其他 commit 规则**之前**检查（[`commits.go:43-45`](../../domain/evidence/commits.go)），因为它同时限定了后续 violation 遍历的规模 —— 否则一个超大 commit 会被完整走完才因为太大而被拒。
+- **载荷超限单独用 `EVIDENCE_COMMIT_FACT_LIMIT_EXCEEDED`（`OUT_OF_RANGE`）**，因为补救动作是「拆分该 commit」而非「修正某个字段」。它在其他 commit 规则前检查（[`commits.go`](../../domain/evidence/commits.go)），同时限定后续 violation 遍历规模，超大 commit 不会被完整遍历后才拒绝。
 - **封套顺序只由输入决定。** 分组拓扑检查会先消耗各分组声明的成员，再报告剩余成员；剩余部分按源切片顺序遍历，而非遍历 map —— 后者会让同一份 commit 在不同运行中被以不同错误拒绝。
 - **一切身份与观察值都不进公共文本。** commit / execution / step / validation / heal / group / ElementTarget 的 ID 均为调用方所有；`expected` 与 `actual` 是被观测的页面内容，正是本领域最不能外泄的东西。
 

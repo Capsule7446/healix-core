@@ -9,25 +9,15 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-// The publication request digest used to hash json.Marshal of the whole
-// payload. That worked for every field except the three parameter types, whose
-// fields are all unexported: encoding/json emits {} for them, silently. Two
-// publications differing only in a parameter default therefore hashed the same,
-// so republishing an edit under one command id was mistaken for a replay and
-// the edit was returned as already applied without ever being written.
-//
-// This walks the payload instead and reads those three through their public
-// accessors. It is the same technique domain/execution uses for its snapshot
-// digest, kept here rather than in domain because encoding is an application
-// concern and the architecture guard enforces that.
-//
-// Two properties the walk has to keep, both of which json.Marshal gave for free
-// and are easy to lose by hand:
-//   - Every variable-length value is length-prefixed, so no two different
-//     payloads can produce the same byte stream by shifting a boundary.
-//   - Map keys are sorted, so an unordered container cannot make the digest
-//     depend on Go's map iteration order.
+// 采样发布请求摘要使用稳定遍历编码完整负载。三个参数类型的字段未导出，编码器通过其公共
+// 访问器读取值；application 层负责该编码，domain/execution 使用相同技术生成快照摘要。
+// 编码契约包括：
+//   - 每个变长值带长度前缀，确保不同负载不会因边界移动得到相同字节流。
+//   - Map 键按序排列，使摘要不依赖 Go 的 map 遍历顺序。
+//   - 结构体先写入字段数量，字段集合变化会反映到摘要中。
+//   - 浮点数写入精确、可移植的 Float64 位模式。
 
+// encodeCanonicalPayload 以稳定、无歧义的字节序列编码发布负载，用于生成请求摘要。
 func encodeCanonicalPayload(h hash.Hash, value reflect.Value) {
 	if value.Kind() == reflect.Interface {
 		if value.IsNil() {
@@ -38,8 +28,7 @@ func encodeCanonicalPayload(h hash.Hash, value reflect.Value) {
 		encodeCanonicalPayload(h, value.Elem())
 		return
 	}
-	// The three opaque types, read through the accessors that are the only way
-	// to see inside them at all.
+	// 三个不透明类型通过公共访问器读取内部值。
 	if value.CanInterface() {
 		switch typed := value.Interface().(type) {
 		case parameter.Value:
@@ -73,8 +62,7 @@ func encodeCanonicalPayload(h hash.Hash, value reflect.Value) {
 			encodeCanonicalPayload(h, value.Elem())
 		}
 	case reflect.Struct:
-		// The field count leads, so adding a field changes the digest rather than
-		// letting the new value slide into the previous field's bytes.
+		// 先写入字段数量，使字段集合变化反映到摘要。
 		writeDigestUint64(h, uint64(value.NumField()))
 		for index := 0; index < value.NumField(); index++ {
 			encodeCanonicalPayload(h, value.Field(index))
@@ -101,15 +89,12 @@ func encodeCanonicalPayload(h hash.Hash, value reflect.Value) {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		writeDigestUint64(h, value.Uint())
 	case reflect.Float32, reflect.Float64:
-		// Float64bits, not a scaled integer conversion. Converting a float to an
-		// integer is implementation-dependent for NaN and for anything outside the
-		// integer range, which would make the digest differ by architecture rather
-		// than by payload. The bit pattern is exact and portable, and it is what
-		// the other two digest encoders in this module already use.
+		// 浮点值按 Float64bits 提取精确、可移植的位模式，本模块另外两个摘要编码器亦采用此表示。
 		writeDigestUint64(h, math.Float64bits(value.Float()))
 	}
 }
 
+// encodeCanonicalParameterValue 通过参数公共访问器按类型编码参数值。
 func encodeCanonicalParameterValue(h hash.Hash, value parameter.Value) {
 	writeDigestString(h, string(value.Type()))
 	switch value.Type() {
@@ -118,7 +103,7 @@ func encodeCanonicalParameterValue(h hash.Hash, value parameter.Value) {
 	case parameter.Boolean:
 		writeDigestBool(h, value.Boolean())
 	case parameter.MultiSelect:
-		// Order is part of a multi-select value, not an artefact of storage.
+		// 多选项目按其值内顺序编码。
 		items := value.MultiSelect()
 		writeDigestUint64(h, uint64(len(items)))
 		for _, item := range items {
@@ -127,11 +112,13 @@ func encodeCanonicalParameterValue(h hash.Hash, value parameter.Value) {
 	}
 }
 
+// writeDigestString 以长度前缀写入字符串，防止变长值之间发生边界歧义。
 func writeDigestString(h hash.Hash, value string) {
 	writeDigestUint64(h, uint64(len(value)))
 	_, _ = h.Write([]byte(value))
 }
 
+// writeDigestUint64 以固定的大端字节序写入无符号整数。
 func writeDigestUint64(h hash.Hash, value uint64) {
 	var buffer [8]byte
 	for index := 7; index >= 0; index-- {
@@ -141,6 +128,7 @@ func writeDigestUint64(h hash.Hash, value uint64) {
 	_, _ = h.Write(buffer[:])
 }
 
+// writeDigestBool 写入单字节布尔值表示。
 func writeDigestBool(h hash.Hash, value bool) {
 	if value {
 		_, _ = h.Write([]byte{1})

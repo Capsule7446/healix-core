@@ -9,7 +9,7 @@
 - 领域对象负责业务不变量；应用服务负责用例编排。
 - 更新操作的预检不能替代仓储事务内 CAS。
 - `delete-folder`、`approve-heal-candidate` 与 `reject-heal-candidate` 是多资源原子提交。
-- 错误一律以 `domain/fault` 的稳定码表达，本目录各文件列出的 `AUTOMATION_*` 就是那些码。判定用 `fault.CodeOf`（边界分类，用于路由）或 `fault.IsCode`（链上是否出现），不要匹配错误字符串；本层不再导出 `Err*` 哨兵值。
+- 错误一律以 `domain/fault` 的稳定码表达，本目录各文件列出的 `AUTOMATION_*` 就是那些码。判定用 `fault.CodeOf`（边界分类，用于路由）或 `fault.IsCode`（链上是否出现），不要匹配错误字符串；本层不导出 `Err*` 哨兵值。
 - 应用服务先完成显式参数和并发前置校验，再委托领域模型验证必填字段、生命周期、结构、版本连续性等不变量。`at`、审核身份等可信数据必须由入站适配器提供。领域失败时不调用写端口。
 
 ## 形状 A：先读后写（带 Revision CAS）

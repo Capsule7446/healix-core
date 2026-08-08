@@ -23,34 +23,62 @@ const (
 type ValidationAssertionKind string
 
 const (
-	ValidationExists                ValidationAssertionKind = "exists"
-	ValidationNotExists             ValidationAssertionKind = "not_exists"
-	ValidationVisible               ValidationAssertionKind = "visible"
-	ValidationNotVisible            ValidationAssertionKind = "not_visible"
-	ValidationTextEquals            ValidationAssertionKind = "text_equals"
-	ValidationTextContains          ValidationAssertionKind = "text_contains"
-	ValidationTextMatches           ValidationAssertionKind = "text_matches"
-	ValidationValueEquals           ValidationAssertionKind = "value_equals"
-	ValidationValueContains         ValidationAssertionKind = "value_contains"
-	ValidationValueMatches          ValidationAssertionKind = "value_matches"
-	ValidationValueNotEmpty         ValidationAssertionKind = "value_not_empty"
-	ValidationEnabled               ValidationAssertionKind = "enabled"
-	ValidationDisabled              ValidationAssertionKind = "disabled"
-	ValidationChecked               ValidationAssertionKind = "checked"
-	ValidationUnchecked             ValidationAssertionKind = "unchecked"
-	ValidationMixed                 ValidationAssertionKind = "mixed"
-	ValidationSelected              ValidationAssertionKind = "selected"
-	ValidationUnselected            ValidationAssertionKind = "unselected"
-	ValidationPressed               ValidationAssertionKind = "pressed"
-	ValidationUnpressed             ValidationAssertionKind = "unpressed"
-	ValidationSelectedTextEquals    ValidationAssertionKind = "selected_text_equals"
-	ValidationSelectedTextContains  ValidationAssertionKind = "selected_text_contains"
-	ValidationSelectedValueEquals   ValidationAssertionKind = "selected_value_equals"
+	// ValidationExists 断言元素存在。
+	ValidationExists ValidationAssertionKind = "exists"
+	// ValidationNotExists 断言元素不存在。
+	ValidationNotExists ValidationAssertionKind = "not_exists"
+	// ValidationVisible 断言元素可见。
+	ValidationVisible ValidationAssertionKind = "visible"
+	// ValidationNotVisible 断言元素不可见。
+	ValidationNotVisible ValidationAssertionKind = "not_visible"
+	// ValidationTextEquals 断言文本等于期望值。
+	ValidationTextEquals ValidationAssertionKind = "text_equals"
+	// ValidationTextContains 断言文本包含期望值。
+	ValidationTextContains ValidationAssertionKind = "text_contains"
+	// ValidationTextMatches 断言文本匹配正则表达式。
+	ValidationTextMatches ValidationAssertionKind = "text_matches"
+	// ValidationValueEquals 断言值等于期望值。
+	ValidationValueEquals ValidationAssertionKind = "value_equals"
+	// ValidationValueContains 断言值包含期望值。
+	ValidationValueContains ValidationAssertionKind = "value_contains"
+	// ValidationValueMatches 断言值匹配正则表达式。
+	ValidationValueMatches ValidationAssertionKind = "value_matches"
+	// ValidationValueNotEmpty 断言值非空。
+	ValidationValueNotEmpty ValidationAssertionKind = "value_not_empty"
+	// ValidationEnabled 断言元素已启用。
+	ValidationEnabled ValidationAssertionKind = "enabled"
+	// ValidationDisabled 断言元素已禁用。
+	ValidationDisabled ValidationAssertionKind = "disabled"
+	// ValidationChecked 断言元素已选中。
+	ValidationChecked ValidationAssertionKind = "checked"
+	// ValidationUnchecked 断言元素未选中。
+	ValidationUnchecked ValidationAssertionKind = "unchecked"
+	// ValidationMixed 断言元素处于混合状态。
+	ValidationMixed ValidationAssertionKind = "mixed"
+	// ValidationSelected 断言选项已选择。
+	ValidationSelected ValidationAssertionKind = "selected"
+	// ValidationUnselected 断言选项未选择。
+	ValidationUnselected ValidationAssertionKind = "unselected"
+	// ValidationPressed 断言元素已按下。
+	ValidationPressed ValidationAssertionKind = "pressed"
+	// ValidationUnpressed 断言元素未按下。
+	ValidationUnpressed ValidationAssertionKind = "unpressed"
+	// ValidationSelectedTextEquals 断言选中项文本等于期望值。
+	ValidationSelectedTextEquals ValidationAssertionKind = "selected_text_equals"
+	// ValidationSelectedTextContains 断言选中项文本包含期望值。
+	ValidationSelectedTextContains ValidationAssertionKind = "selected_text_contains"
+	// ValidationSelectedValueEquals 断言选中项值等于期望值。
+	ValidationSelectedValueEquals ValidationAssertionKind = "selected_value_equals"
+	// ValidationSelectedValueContains 断言选中项值包含期望值。
 	ValidationSelectedValueContains ValidationAssertionKind = "selected_value_contains"
-	ValidationSelectedSetEquals     ValidationAssertionKind = "selected_set_equals"
-	ValidationSelectedSetContains   ValidationAssertionKind = "selected_set_contains"
-	ValidationAttributeEquals       ValidationAssertionKind = "attribute_equals"
-	ValidationAttributeContains     ValidationAssertionKind = "attribute_contains"
+	// ValidationSelectedSetEquals 断言选中项集合等于期望集合。
+	ValidationSelectedSetEquals ValidationAssertionKind = "selected_set_equals"
+	// ValidationSelectedSetContains 断言选中项集合包含期望集合。
+	ValidationSelectedSetContains ValidationAssertionKind = "selected_set_contains"
+	// ValidationAttributeEquals 断言属性等于期望值。
+	ValidationAttributeEquals ValidationAssertionKind = "attribute_equals"
+	// ValidationAttributeContains 断言属性包含期望值。
+	ValidationAttributeContains ValidationAssertionKind = "attribute_contains"
 )
 
 // ValidationAssertion 故意是单一的。验证步骤仅代表一个语句；调用者使用 ValidationGroup 表达合取/析取，而不是在节点中嵌入断言树。
@@ -91,6 +119,7 @@ func (a ValidationAssertion) Normalized() ValidationAssertion {
 	return a
 }
 
+// Validate 校验断言种类及其允许的期望值、属性和大小写选项组合。
 func (a ValidationAssertion) Validate() error {
 	switch a.Kind {
 	case ValidationExists, ValidationNotExists, ValidationVisible, ValidationNotVisible,
@@ -146,6 +175,7 @@ type ValidationWait struct {
 	StabilityMS int
 }
 
+// Validate 校验最大等待时间和稳定窗口处于边界内且窗口短于等待时间。
 func (w ValidationWait) Validate() error {
 	if w.MaxWaitMS < validationMinWaitMS || w.MaxWaitMS > validationMaxWaitMS {
 		return fmt.Errorf("validation maximum wait must be %d-%dms", validationMinWaitMS, validationMaxWaitMS)
@@ -159,6 +189,7 @@ func (w ValidationWait) Validate() error {
 	return nil
 }
 
+// isZero 判断等待配置是否为零值，供验证组成员继承组级等待策略。
 func (w ValidationWait) isZero() bool { return w.MaxWaitMS == 0 && w.StabilityMS == 0 }
 
 // ValidationConfig 属于 StepValidation。等待仅对独立验证有意义；组成员继承ValidationGroup.Wait。
@@ -183,10 +214,8 @@ type ValidationGroup struct {
 	Branches []ValidationBranch
 }
 
-// validateStandaloneValidationStep returns ordered violations rather than a
-// joined message. Step and member display names are author-written content
-// and never reach the violation text; the recursive step tree carries no flat
-// index (existing precedent), so fields describe the aspect that failed.
+// validateStandaloneValidationStep 返回独立验证步骤的有序违规，而不拼接错误文本。
+// 步骤和成员显示名属于作者输入，不写入违规文本；递归步骤树没有扁平索引，因此字段仅描述失败方面。
 func validateStandaloneValidationStep(step FlowFragmentStep) []fault.Violation {
 	var violations []fault.Violation
 	if step.Validation == nil {
@@ -209,8 +238,7 @@ func validateStandaloneValidationStep(step FlowFragmentStep) []fault.Violation {
 	return violations
 }
 
-// validateValidationGroupStep mirrors validateStandaloneValidationStep for a
-// validation-group root step and its branch members.
+// validateValidationGroupStep 校验验证组根步骤及其分支成员，返回有序违规。
 func validateValidationGroupStep(step FlowFragmentStep, seen map[string]struct{}) []fault.Violation {
 	if step.ValidationGroup == nil {
 		return []fault.Violation{mustViolation(fault.CodeFieldRequired, "steps.validationGroup", "validation group requires group configuration")}

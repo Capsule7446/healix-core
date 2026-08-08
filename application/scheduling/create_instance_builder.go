@@ -12,6 +12,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// BuildInstanceSnapshot 将命令与同一目录视图解析结果组装为封存的 execution.InstanceSnapshot。
 func BuildInstanceSnapshot(command CreateInstanceCommand, resolved ResolvedCreateInstance) (execution.InstanceSnapshot, error) {
 	command = normalizeCreateInstanceCommand(command)
 	if err := preflightResolvedCreateInstance(resolved); err != nil {
@@ -28,12 +29,11 @@ func BuildInstanceSnapshot(command CreateInstanceCommand, resolved ResolvedCreat
 	for index, item := range resolved.Plan.Version.Items {
 		values, exists := command.Entries[item.ID]
 		if !exists {
-			// The item id stays in the private cause, never in public text.
+			// item ID 仅保留在私有 cause 中，不进入公共文本。
 			return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q values are missing", item.ID))
 		}
-		// The entry identity is derived from the instance id and the item id, so it
-		// is well formed by construction; a failure here means concreteRootPath
-		// itself is wrong, not that the caller supplied something bad.
+		// 入口身份由实例 ID 和条目 ID 推导，按构造应始终有效；此处失败表示 concreteRootPath 自身错误，
+		// 而非调用方输入错误。
 		spelledEntry := concreteRootPath(command.InstanceID.String(), item.ID)
 		entryID, err := execution.NewEntryID(spelledEntry)
 		if err != nil {
@@ -44,8 +44,8 @@ func BuildInstanceSnapshot(command CreateInstanceCommand, resolved ResolvedCreat
 			return execution.InstanceSnapshot{}, createInstanceCatalogGraphUnresolvableError(fmt.Errorf("test-task item %q root invocation is missing", item.ID))
 		}
 		if err := validateSuppliedRootValues(values, resolvedRoot.WorkflowVersionID, resolved.Plan); err != nil {
-			// Constraint.Validate already returns PARAMETER_CONSTRAINT_UNSATISFIED or
-			// PARAMETER_VALUE_INVALID; the wrapper also echoed the item id.
+			// Constraint.Validate 已返回 PARAMETER_CONSTRAINT_UNSATISFIED 或 PARAMETER_VALUE_INVALID；
+			// 此处保持原错误，不在包装中回显条目 ID。
 			return execution.InstanceSnapshot{}, err
 		}
 		if err := validateResolvedRootValues(values, resolvedRoot, resolved.Plan); err != nil {
@@ -63,11 +63,8 @@ func BuildInstanceSnapshot(command CreateInstanceCommand, resolved ResolvedCreat
 	}
 	draft, err := buildExecutionDraft(buildExecutionPlanInput{InstanceID: command.InstanceID, Publication: resolved.Plan, Entries: entries})
 	if err != nil {
-		// This is the boundary for the whole draft-building tree. Its internal
-		// invariant checks stay ordinary Go errors, as the contract permits, and are
-		// classified once here rather than at each of the dozen sites inside. An
-		// error that already carries a code passes through untouched: wrapping it
-		// would nest two faults and force the host to unwrap to classify.
+		// 这是整个草稿构建树的边界。内部不变量检查按契约保持普通 Go 错误，在此处统一分类，而不是
+		// 在内部十余个位置分别分类。已有错误码的错误原样通过，避免嵌套两个 fault 并迫使宿主解包分类。
 		return execution.InstanceSnapshot{}, classifyCatalogGraphFailure(err)
 	}
 	draft.FailurePolicy = command.FailurePolicy
@@ -76,6 +73,7 @@ func BuildInstanceSnapshot(command CreateInstanceCommand, resolved ResolvedCreat
 	return execution.SealInstanceSnapshot(input)
 }
 
+// addResolvedValueBudget 按参数类型从预算中扣除解析值的字符串和元素大小。
 func addResolvedValueBudget(budget *createInstanceRequestBudget, value parameter.Value) error {
 	switch value.Type() {
 	case parameter.Text:
@@ -98,6 +96,7 @@ func addResolvedValueBudget(budget *createInstanceRequestBudget, value parameter
 	}
 }
 
+// addResolvedValuesBudget 扣除参数映射及其排序后的名称和值预算。
 func addResolvedValuesBudget(budget *createInstanceRequestBudget, values map[string]parameter.Value) error {
 	if err := budget.addParameters(len(values)); err != nil {
 		return err
@@ -113,6 +112,7 @@ func addResolvedValuesBudget(budget *createInstanceRequestBudget, values map[str
 	return nil
 }
 
+// addResolvedBindingsBudget 扣除绑定映射、名称、字面值和父参数名预算。
 func addResolvedBindingsBudget(budget *createInstanceRequestBudget, bindings map[string]parameter.Binding) error {
 	if err := budget.addParameters(len(bindings)); err != nil {
 		return err
@@ -136,6 +136,7 @@ func addResolvedBindingsBudget(budget *createInstanceRequestBudget, bindings map
 	return nil
 }
 
+// preflightResolvedCreateInstance 预先遍历解析目录，校验集合、深度、字符串和参数预算。
 func preflightResolvedCreateInstance(resolved ResolvedCreateInstance) error {
 	budget := newCreateInstanceRequestBudget()
 	invalid := func(reason string) error {
@@ -331,10 +332,12 @@ func preflightResolvedCreateInstance(resolved ResolvedCreateInstance) error {
 	return nil
 }
 
+// concreteRootPath 构造实例条目根调用的稳定路径。
 func concreteRootPath(instanceID, itemID string) string {
 	return fmt.Sprintf("%d:%s%d:%s", len(instanceID), instanceID, len(itemID), itemID)
 }
 
+// resolvedWorkflowVersion 解析条目使用的工作流版本 ID，保留锁定的版本选择。
 func resolvedWorkflowVersion(item automation.ExecutionFlowItem, plan automation.ResolvedExecutionFlow) string {
 	if item.VersionPolicy == automation.FlowFragmentVersionFixed {
 		return item.WorkflowVersionID
@@ -347,6 +350,7 @@ func resolvedWorkflowVersion(item automation.ExecutionFlowItem, plan automation.
 	return ""
 }
 
+// normalizeCreateInstanceCommand 规范化创建命令中的策略和参数映射表示。
 func normalizeCreateInstanceCommand(command CreateInstanceCommand) CreateInstanceCommand {
 	if command.FailurePolicy == "" {
 		command.FailurePolicy = execution.FailurePolicyStopOnFailure
@@ -370,6 +374,7 @@ func normalizeCreateInstanceCommand(command CreateInstanceCommand) CreateInstanc
 	return command
 }
 
+// validateCreateInstanceCommand 按固定顺序校验创建命令身份、策略和条目参数，并统一分类错误。
 func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr error) {
 	defer func() {
 		if resultErr != nil && !fault.IsCode(resultErr, CodeCreateInstanceCommandInvalid) {
@@ -379,9 +384,7 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 	if command.InstanceID.Validate() != nil {
 		return errors.New("instance id is required and must be normalized")
 	}
-	// Ordered, not a map: two blank identities used to report whichever one map
-	// iteration reached first, so a host's diagnostic log named a different
-	// field each run for the same rejected command.
+	// 使用有序切片而非 map，使多个空身份始终按固定顺序报告，诊断日志不会因 map 遍历顺序变化而变化。
 	for _, required := range []struct{ name, value string }{
 		{"command id", command.CommandID},
 		{"test-task id", command.ExecutionFlowID},
@@ -403,11 +406,9 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 			return errors.New("healer policy contains a non-finite value")
 		}
 	}
-	// The two branches here return different KINDS of failure: a malformed item
-	// id is an uncoded error, while a bad value carries the parameter's own code.
-	// The outer envelope makes both CodeCreateInstanceCommandInvalid, but
-	// fault.IsCode walks the chain, so with one of each present the answer to
-	// IsCode(err, parameter.CodeValueInvalid) flipped between runs.
+	// 以下两个分支返回不同 KIND 的错误：条目 ID 形状错误是未分类错误，参数值错误携带参数自身错误码。
+	// 外层包装都使用 CodeCreateInstanceCommandInvalid，但 fault.IsCode 会遍历错误链；若两种错误同时
+	// 存在，调用方看到的 parameter.CodeValueInvalid 必须不受遍历顺序影响。
 	for _, itemID := range sortedKeys(command.Entries) {
 		if strings.TrimSpace(itemID) == "" || itemID != strings.TrimSpace(itemID) {
 			return errors.New("test-task item id is invalid")
@@ -422,6 +423,7 @@ func validateCreateInstanceCommand(command CreateInstanceCommand) (resultErr err
 	return nil
 }
 
+// validateSuppliedRootValues 按排序后的名称校验调用方参数存在且符合工作流定义约束。
 func validateSuppliedRootValues(values map[string]parameter.Value, versionID string, plan automation.ResolvedExecutionFlow) error {
 	definitions := map[string]automation.ParameterDefinition{}
 	for _, workflow := range plan.Workflows {
@@ -432,13 +434,9 @@ func validateSuppliedRootValues(values map[string]parameter.Value, versionID str
 			break
 		}
 	}
-	// Sorted, not map order. Both branches below return on their first offender
-	// and they return DIFFERENT KINDS of failure: an unknown name is a bare
-	// uncoded error, while a constraint failure carries the parameter's own code.
-	// With one of each present, the fault code the caller saw flipped between
-	// runs for byte-identical input. The two checks downstream of this one —
-	// validateSnapshotValues and ResolveParameterValues — were already ordered;
-	// this one sat in front of both and was not.
+	// 按名称排序而非 map 顺序。以下两个分支在遇到首个违规时返回，且返回不同 KIND 的错误：未知名称是
+	// 未分类错误，约束失败携带参数自身错误码。即使同时存在两种错误，字节相同的输入也必须得到稳定
+	// 错误码；下游 validateSnapshotValues 和 ResolveParameterValues 已有固定顺序，此处也保持一致。
 	for _, name := range sortedKeys(values) {
 		definition, exists := definitions[name]
 		if !exists {
@@ -451,6 +449,7 @@ func validateSuppliedRootValues(values map[string]parameter.Value, versionID str
 	return nil
 }
 
+// validateResolvedRootValues 校验解析器根据调用方值和默认值生成的结果与事务解析值一致。
 func validateResolvedRootValues(values map[string]parameter.Value, invocation execution.InvocationScopeSnapshot, plan automation.ResolvedExecutionFlow) error {
 	for _, workflow := range plan.Workflows {
 		if workflow.Version.ID != invocation.WorkflowVersionID {
@@ -468,6 +467,7 @@ func validateResolvedRootValues(values map[string]parameter.Value, invocation ex
 	return fmt.Errorf("workflow version %q is missing", invocation.WorkflowVersionID)
 }
 
+// invocationByPath 按调用路径查找解析后的调用范围快照。
 func invocationByPath(invocations []execution.InvocationScopeSnapshot, path execution.InvocationPath) (execution.InvocationScopeSnapshot, bool) {
 	for _, invocation := range invocations {
 		if invocation.Path == path {
@@ -477,6 +477,7 @@ func invocationByPath(invocations []execution.InvocationScopeSnapshot, path exec
 	return execution.InvocationScopeSnapshot{}, false
 }
 
+// cloneProperties 复制自动化属性映射，返回调用方独立拥有的 map。
 func cloneProperties(values automation.Properties) map[string]string {
 	result := make(map[string]string, len(values))
 	for key, value := range values {
@@ -485,6 +486,7 @@ func cloneProperties(values automation.Properties) map[string]string {
 	return result
 }
 
+// cloneInvocationScopes 深拷贝调用范围及其参数值、参数绑定。
 func cloneInvocationScopes(values []execution.InvocationScopeSnapshot) []execution.InvocationScopeSnapshot {
 	result := make([]execution.InvocationScopeSnapshot, len(values))
 	for index, value := range values {

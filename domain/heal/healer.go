@@ -9,7 +9,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// Thresholds 阈值定义用于对治疗决策进行分类的置信边界。
+// Thresholds 定义用于对自愈决策分类的置信度边界。
 type Thresholds struct {
 	AppliedCap float64 // 分数 >= AppliedCap：直接应用
 	ReviewCap  float64 // ReviewCap <= 分数 < AppliedCap：应用，但强制待审 + 录屏
@@ -47,7 +47,7 @@ func NewDefaultHealer() *DefaultHealer {
 	return &DefaultHealer{Weights: policy.Weights, Thresholds: policy.Thresholds}
 }
 
-// NewDefaultHealerWithPolicy 从完整的、经过验证的策略快照构造一个治疗器。该值被复制，因此后续调用者更改无法更改正在进行的运行。
+// NewDefaultHealerWithPolicy 从完整且经过验证的策略快照构造自愈器；策略按值复制，调用方后续修改不会影响结果。
 func NewDefaultHealerWithPolicy(policy PolicyV1) (*DefaultHealer, error) {
 	if err := policy.Validate(); err != nil {
 		return nil, err
@@ -68,6 +68,7 @@ func (h *DefaultHealer) Validate() error {
 
 var _ Healer = (*DefaultHealer)(nil)
 
+// Heal 获取页面候选、按路径 LCS 缩小范围、确定性评分排序并按阈值生成决策。
 func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.ElementTargetSpec, snapshot DOMSnapshot) (Decision, error) {
 	if err := h.Validate(); err != nil {
 		return Decision{}, err
@@ -102,9 +103,8 @@ func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.ElementTarg
 		return validateDecision(decision)
 	}
 
-	// A struct copy, so Best would otherwise share the winning candidate's
-	// fingerprint map and slices with Candidates[0]; a caller editing one would
-	// see the other change.
+	// 结构体浅复制会让 Best 与 Candidates[0] 共享指纹映射和切片，因此此处再次深复制，
+	// 使调用方修改任一返回值都不会影响另一个。
 	best := scored[0]
 	best.Fingerprint = best.Fingerprint.Clone()
 	switch {
@@ -121,12 +121,14 @@ func (h *DefaultHealer) Heal(ctx context.Context, target fingerprint.ElementTarg
 	return validateDecision(decision)
 }
 
+// sortCandidates 在原切片上按分数及确定性仲裁键稳定排序。
 func sortCandidates(candidates []Candidate) {
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidateLess(candidates[i], candidates[j])
 	})
 }
 
+// validateDecision 校验决策组合不变量；无效时返回零值决策和错误。
 func validateDecision(decision Decision) (Decision, error) {
 	if err := decision.Validate(); err != nil {
 		return Decision{}, err

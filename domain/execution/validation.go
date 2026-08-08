@@ -11,37 +11,66 @@ import (
 )
 
 const (
-	MaxStepNestingDepth            = 64
-	MaxVisitedSteps                = 10_000
-	MaxWorkflowReferenceDepth      = 32
-	MaxReachableWorkflows          = 1_000
-	MaxWorkflowReferenceEdges      = 5_000
-	MaxRepeatCount                 = 1_000
-	MaxWaitMS                      = 60_000
-	MaxExpandedExecutions          = 1_000_000
-	MaxCumulativeWaitMS            = 86_400_000
-	MaxDraftWorkflows              = 1_000
-	MaxDraftNodes                  = 10_000
-	MaxDraftReferences             = 5_000
-	MaxAggregateSteps              = 10_000
-	MaxAggregateParameters         = 10_000
-	MaxAggregateSelectors          = 50_000
-	MaxAggregateFingerprintKV      = 100_000
-	MaxAggregatePathSegments       = 100_000
-	MaxAggregateBindings           = 100_000
+	// MaxStepNestingDepth 限制计划步骤树的最大嵌套深度。
+	MaxStepNestingDepth = 64
+	// MaxVisitedSteps 限制步骤边界校验可访问的步骤数量。
+	MaxVisitedSteps = 10_000
+	// MaxWorkflowReferenceDepth 限制工作流引用递归深度。
+	MaxWorkflowReferenceDepth = 32
+	// MaxReachableWorkflows 限制计划可达的工作流数量。
+	MaxReachableWorkflows = 1_000
+	// MaxWorkflowReferenceEdges 限制计划可达的工作流引用边数量。
+	MaxWorkflowReferenceEdges = 5_000
+	// MaxRepeatCount 限制重复步骤的重复次数。
+	MaxRepeatCount = 1_000
+	// MaxWaitMS 限制单个等待步骤的毫秒数。
+	MaxWaitMS = 60_000
+	// MaxExpandedExecutions 限制展开后的总执行次数。
+	MaxExpandedExecutions = 1_000_000
+	// MaxCumulativeWaitMS 限制展开后的累计等待毫秒数。
+	MaxCumulativeWaitMS = 86_400_000
+	// MaxDraftWorkflows 限制计划草稿中的工作流数量。
+	MaxDraftWorkflows = 1_000
+	// MaxDraftNodes 限制计划草稿中的节点数量。
+	MaxDraftNodes = 10_000
+	// MaxDraftReferences 限制计划草稿中的引用解析数量。
+	MaxDraftReferences = 5_000
+	// MaxAggregateSteps 限制聚合计划中的步骤总数。
+	MaxAggregateSteps = 10_000
+	// MaxAggregateParameters 限制聚合计划中的参数总数。
+	MaxAggregateParameters = 10_000
+	// MaxAggregateSelectors 限制聚合计划中的选择器总数。
+	MaxAggregateSelectors = 50_000
+	// MaxAggregateFingerprintKV 限制聚合计划中的指纹属性键值数量。
+	MaxAggregateFingerprintKV = 100_000
+	// MaxAggregatePathSegments 限制聚合计划中的指纹路径片段数量。
+	MaxAggregatePathSegments = 100_000
+	// MaxAggregateBindings 限制聚合计划中的参数绑定数量。
+	MaxAggregateBindings = 100_000
+	// MaxAggregateCollectionElements 限制聚合计划中所有集合元素总数。
 	MaxAggregateCollectionElements = 100_000
-	MaxAggregateStringBytes        = 16 * 1024 * 1024
-	MaxStringBytes                 = 64 * 1024
+	// MaxAggregateStringBytes 限制聚合计划中字符串字节总数。
+	MaxAggregateStringBytes = 16 * 1024 * 1024
+	// MaxStringBytes 限制单个计划字符串的字节数。
+	MaxStringBytes = 64 * 1024
 
-	validationMinWaitMS      = 1_000
-	validationMaxWaitMS      = 60_000
+	// validationMinWaitMS 是验证最大等待的最小毫秒数。
+	validationMinWaitMS = 1_000
+	// validationMaxWaitMS 是验证最大等待的最大毫秒数。
+	validationMaxWaitMS = 60_000
+	// validationMinStabilityMS 是验证稳定窗口的最小毫秒数。
 	validationMinStabilityMS = 200
+	// validationMaxStabilityMS 是验证稳定窗口的最大毫秒数。
 	validationMaxStabilityMS = 5_000
-	validationMaxBranches    = 5
+	// validationMaxBranches 限制验证组的分支数量。
+	validationMaxBranches = 5
+	// validationMaxBranchSteps 限制单个验证分支的步骤数量。
 	validationMaxBranchSteps = 10
-	validationMaxGroupSteps  = 20
+	// validationMaxGroupSteps 限制验证组的步骤总数。
+	validationMaxGroupSteps = 20
 )
 
+// Validate 校验参数定义、选项集合、默认值和默认值类型。
 func (p Parameter) Validate() error {
 	if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.DisplayName) == "" {
 		return errors.New("parameter name and display name are required")
@@ -81,6 +110,7 @@ func (p Parameter) Validate() error {
 	return nil
 }
 
+// validateValue 校验参数值类型、选择项归属、必选多选值和重复项。
 func (p Parameter) validateValue(value parameter.Value) error {
 	if err := value.Validate(); err != nil {
 		return err
@@ -118,6 +148,7 @@ func (p Parameter) validateValue(value parameter.Value) error {
 	return nil
 }
 
+// validateBindings 校验父子工作流参数绑定的名称、类型、默认值和选择项兼容性。
 func validateBindings(parent, child []Parameter, bindings map[string]parameter.Binding) error {
 	parents := map[string]Parameter{}
 	for _, definition := range parent {
@@ -128,9 +159,7 @@ func validateBindings(parent, child []Parameter, bindings map[string]parameter.B
 	for _, definition := range child {
 		children[definition.Name] = definition
 	}
-	// Sorted, not map order: four of the branches below return on the first
-	// offending binding, so two bad bindings used to produce a different error —
-	// sometimes a different KIND of error — depending on iteration order.
+	// 按排序后的名称遍历；多个分支会在首个违规处返回，因此确定顺序能让结果只由输入决定。
 	names := make([]string, 0, len(bindings))
 	for name := range bindings {
 		names = append(names, name)
@@ -182,6 +211,8 @@ func validateBindings(parent, child []Parameter, bindings map[string]parameter.B
 	}
 	return nil
 }
+
+// selectProbe 为选择项构造用于父子参数兼容性校验的探测值。
 func selectProbe(kind parameter.Type, option string) parameter.Value {
 	if kind == parameter.SingleSelect {
 		return parameter.SingleSelectValue(option)
@@ -189,6 +220,7 @@ func selectProbe(kind parameter.Type, option string) parameter.Value {
 	return parameter.MultiSelectValue([]string{option})
 }
 
+// validateSnapshotValues 校验参数快照定义、未知键、缺失值和值内容。
 func validateSnapshotValues(definitions []Parameter, values map[string]parameter.Value) error {
 	byName := make(map[string]Parameter, len(definitions))
 	for _, definition := range definitions {
@@ -202,9 +234,7 @@ func validateSnapshotValues(definitions []Parameter, values map[string]parameter
 		}
 		byName[definition.Name] = definition
 	}
-	// Sorted, not map order: a snapshot carrying two unknown keys used to report
-	// whichever one Go visited first, so the same plan was rejected naming a
-	// different parameter on a different run.
+	// 未知键按排序后取首个报告，避免映射遍历顺序影响错误结果。
 	unknown := make([]string, 0, len(values))
 	for name := range values {
 		if _, exists := byName[name]; !exists {
@@ -229,16 +259,13 @@ func validateSnapshotValues(definitions []Parameter, values map[string]parameter
 	return nil
 }
 
-// Validate classifies an execution plan's validation failure at this one
-// exported boundary: an uncoded internal-invariant failure becomes
-// EXECUTION_CREATE_INSTANCE_PLAN_INVALID with the bare detail retained only on
-// the private cause, while a failure already classified by a workflow
-// snapshot's own step-shape envelope, a node's fingerprint spec, or a
-// parameter contract passes through unchanged.
+// Validate 校验执行计划，并在导出边界将未分类内部不变量失败归入
+// EXECUTION_CREATE_INSTANCE_PLAN_INVALID；工作流步骤、节点指纹或参数契约的已分类错误原样通过。
 func (p PlanSnapshot) Validate() error {
 	return classifyCreateInstancePlan(p.validateShape())
 }
 
+// validateShape 校验计划身份、入口、工作流、节点、引用、依赖和预算形状。
 func (p PlanSnapshot) validateShape() error {
 	if err := validateAggregateInputBounds(p); err != nil {
 		return err
@@ -374,6 +401,7 @@ func (p PlanSnapshot) validateShape() error {
 	return nil
 }
 
+// validateAggregateInputBounds 预检计划集合、字符串、步骤、参数、选择器和绑定资源上限。
 func validateAggregateInputBounds(p PlanSnapshot) error {
 	type stepFrame struct {
 		steps []Step
@@ -619,6 +647,7 @@ func validateAggregateInputBounds(p PlanSnapshot) error {
 	return nil
 }
 
+// validateStepBounds 校验步骤树的最大深度和访问节点数量。
 func validateStepBounds(steps []Step) error {
 	type entry struct {
 		steps []Step
@@ -651,6 +680,7 @@ func validateStepBounds(steps []Step) error {
 	return nil
 }
 
+// validateReachableWorkflowReferences 遍历根工作流可达引用，校验循环、深度、数量和边上限。
 func validateReachableWorkflowReferences(rootVersionIDs []string, workflows map[string]WorkflowSnapshot, resolutions map[WorkflowReferenceKey]ReferenceResolution) error {
 	type frame struct {
 		versionID string
@@ -714,6 +744,7 @@ func validateReachableWorkflowReferences(rootVersionIDs []string, workflows map[
 	return nil
 }
 
+// validateDependencies 校验工作流步骤引用的节点、工作流版本、解析边和参数绑定依赖。
 func validateDependencies(workflow WorkflowSnapshot, workflows map[string]WorkflowSnapshot, nodes map[NodeDependencyKey]struct{}, resolutions map[WorkflowReferenceKey]ReferenceResolution) error {
 	stack := append([]Step(nil), workflow.Steps...)
 	for len(stack) > 0 {

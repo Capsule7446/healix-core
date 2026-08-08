@@ -8,7 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
-// CreateInstanceCommand is the sole authority for caller-supplied create data.
+// CreateInstanceCommand 是调用方提供创建数据的唯一权威来源。
 type CreateInstanceCommand struct {
 	CommandID         string
 	InstanceID        execution.InstanceID
@@ -22,13 +22,14 @@ type CreateInstanceCommand struct {
 	HealerPolicy      execution.HealerPolicySnapshot
 }
 
-// ResolvedCreateInstance contains only assets read from one consistent catalog view.
+// ResolvedCreateInstance 仅包含从同一一致目录视图读取的资产。
 type ResolvedCreateInstance struct {
 	Plan        automation.ResolvedExecutionFlow
 	Environment automation.Environment
 	Invocations []execution.InvocationScopeSnapshot
 }
 
+// CreateInstanceResult 保存创建实例返回的运行、封存快照、入口 ID 和是否本次应用。
 type CreateInstanceResult struct {
 	Run        execution.Instance
 	Snapshot   execution.InstanceSnapshot
@@ -36,6 +37,7 @@ type CreateInstanceResult struct {
 	WasApplied bool
 }
 
+// StoredCreateInstanceResult 保存事务中持久化的运行、快照摘要和入口 ID。
 type StoredCreateInstanceResult struct {
 	Run            execution.Instance
 	Snapshot       execution.InstanceSnapshot
@@ -43,19 +45,24 @@ type StoredCreateInstanceResult struct {
 	EntryIDs       []execution.EntryID
 }
 
+// StoredCreateInstanceCommand 保存命令 ID、请求摘要及权威创建结果。
 type StoredCreateInstanceCommand struct {
 	CommandID     string
 	RequestDigest string
 	Result        StoredCreateInstanceResult
 }
 
+// InsertCreateInstanceStatus 表示实例插入是首次应用还是幂等重放。
 type InsertCreateInstanceStatus string
 
 const (
-	InsertCreateInstanceApplied  InsertCreateInstanceStatus = "APPLIED"
+	// InsertCreateInstanceApplied 表示本次事务首次插入实例。
+	InsertCreateInstanceApplied InsertCreateInstanceStatus = "APPLIED"
+	// InsertCreateInstanceReplayed 表示相同请求已插入，本次未改变状态。
 	InsertCreateInstanceReplayed InsertCreateInstanceStatus = "REPLAYED"
 )
 
+// InsertCreateInstanceOutcome 保存插入状态、命令身份、请求摘要和权威结果。
 type InsertCreateInstanceOutcome struct {
 	Status        InsertCreateInstanceStatus
 	CommandID     string
@@ -63,6 +70,7 @@ type InsertCreateInstanceOutcome struct {
 	Result        StoredCreateInstanceResult
 }
 
+// CreateInstanceIntent 携带原子插入实例所需的命令身份、运行、封存快照和入口列表。
 type CreateInstanceIntent struct {
 	CommandID     string
 	RequestDigest string
@@ -71,8 +79,10 @@ type CreateInstanceIntent struct {
 	Entries       []execution.Entry
 }
 
+// CodeCreateInstanceCommandInvalid 表示创建命令形状或预算无效。
 const CodeCreateInstanceCommandInvalid fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_INVALID"
 
+// createInstanceCommandInvalidError 构造创建命令无效的调用方错误。
 func createInstanceCommandInvalidError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
@@ -86,8 +96,10 @@ func createInstanceCommandInvalidError(cause error) error {
 	return err
 }
 
+// CodeCreateInstanceCommandConflict 表示命令 ID 已对应不同请求摘要。
 const CodeCreateInstanceCommandConflict fault.Code = "EXECUTION_CREATE_INSTANCE_COMMAND_CONFLICT"
 
+// createInstanceCommandConflictError 构造命令身份冲突错误。
 func createInstanceCommandConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
@@ -100,8 +112,10 @@ func createInstanceCommandConflictError() error {
 	return err
 }
 
+// CodeCreateInstanceSnapshotConflict 表示创建快照与权威实例状态冲突。
 const CodeCreateInstanceSnapshotConflict fault.Code = "EXECUTION_CREATE_INSTANCE_SNAPSHOT_CONFLICT"
 
+// createInstanceSnapshotConflictError 构造创建快照冲突错误。
 func createInstanceSnapshotConflictError() error {
 	err, constructionErr := fault.New(
 		fault.Conflict,
@@ -114,8 +128,10 @@ func createInstanceSnapshotConflictError() error {
 	return err
 }
 
+// CodeCreateInstanceAdapterContractViolation 表示适配器返回非法权威创建结果。
 const CodeCreateInstanceAdapterContractViolation fault.Code = "EXECUTION_CREATE_INSTANCE_ADAPTER_CONTRACT_VIOLATION"
 
+// createInstanceAdapterContractViolationError 构造适配器契约违规内部错误。
 func createInstanceAdapterContractViolationError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
@@ -129,8 +145,10 @@ func createInstanceAdapterContractViolationError(cause error) error {
 	return err
 }
 
+// CodeCreateInstanceRetryable 表示创建结果暂时不可用，可安全重试。
 const CodeCreateInstanceRetryable fault.Code = "EXECUTION_CREATE_INSTANCE_RETRYABLE"
 
+// createInstanceRetryableError 构造可重试的暂时不可用错误。
 func createInstanceRetryableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
@@ -144,13 +162,11 @@ func createInstanceRetryableError(cause error) error {
 	return err
 }
 
+// CodeCreateInstanceCatalogGraphUnresolvable 表示目录图无法解析或不可用。
 const CodeCreateInstanceCatalogGraphUnresolvable fault.Code = "EXECUTION_CREATE_INSTANCE_CATALOG_GRAPH_UNRESOLVABLE"
 
-// classifyCatalogGraphFailure gives an unclassified catalog-graph failure its
-// registered code, and lets an already-classified one through unchanged. The
-// distinction matters as the domain packages migrate: once a nested validator
-// starts returning its own code, wrapping it again here would bury that code
-// under a second one and force the host to unwrap before it could classify.
+// classifyCatalogGraphFailure 为未分类目录图失败补上注册错误码，并让已分类错误原样通过，避免嵌套
+// 校验器的错误码被第二层包装掩盖。
 func classifyCatalogGraphFailure(cause error) error {
 	if _, classified := fault.CodeOf(cause); classified {
 		return cause
@@ -158,6 +174,7 @@ func classifyCatalogGraphFailure(cause error) error {
 	return createInstanceCatalogGraphUnresolvableError(cause)
 }
 
+// createInstanceCatalogGraphUnresolvableError 构造目录图不可解析的前置条件错误。
 func createInstanceCatalogGraphUnresolvableError(cause error) error {
 	err, constructionErr := fault.Wrap(
 		cause,
@@ -171,18 +188,20 @@ func createInstanceCatalogGraphUnresolvableError(cause error) error {
 	return err
 }
 
+// CreateInstanceStore 定义围绕创建实例事务执行操作的存储端口。
 type CreateInstanceStore interface {
+	// InTransaction 在单一事务中执行创建实例读写。
 	InTransaction(context.Context, func(CreateInstanceTx) error) error
 }
 
+// CreateInstanceTx 定义查找命令、解析一致目录视图和原子插入实例的事务端口。
 type CreateInstanceTx interface {
+	// FindCommand 按命令 ID 查找已存储命令；未找到时返回 found=false。
 	FindCommand(context.Context, string) (StoredCreateInstanceCommand, bool, error)
-	// ResolveCreateInstance must resolve task, recursive workflow LATEST/current pointers,
-	// nodes, environment, bindings, defaults, and concrete invocations from one
-	// transaction view. It must validate cycles, missing pointers, and execution
-	// depth/invocation/reference/value limits before returning.
+	// ResolveCreateInstance 必须从同一事务视图解析任务、递归工作流 LATEST/current 指针、节点、环境、
+	// 绑定、默认值和具体调用；返回前必须校验循环、缺失指针及执行深度/调用/引用/值限制。
 	ResolveCreateInstance(context.Context, CreateInstanceCommand) (ResolvedCreateInstance, error)
-	// InsertCreateInstance atomically stores the command, queued Run, exact entries,
-	// sealed snapshot, and queue membership/order. Its outcome is authoritative.
+	// InsertCreateInstance 原子存储命令、排队 Run、精确入口、封存快照及队列成员关系/顺序；返回结果
+	// 是权威结果。
 	InsertCreateInstance(context.Context, CreateInstanceIntent) (InsertCreateInstanceOutcome, error)
 }

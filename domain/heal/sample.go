@@ -11,7 +11,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
-// CandidateSample is the replay-safe projection of one ranked healing candidate.
+// CandidateSample 是一个已排序自愈候选的可安全重放投影。
 type CandidateSample struct {
 	CandidateHash   string
 	FingerprintHash string
@@ -24,12 +24,15 @@ type CandidateSample struct {
 }
 
 const (
+	// CandidateSampleEligible 表示候选达到审核阈值但未被选中。
 	CandidateSampleEligible = "eligible"
+	// CandidateSampleBelowCap 表示候选低于审核阈值。
 	CandidateSampleBelowCap = "below_review_cap"
+	// CandidateSampleSelected 表示候选是决策选中的最佳候选。
 	CandidateSampleSelected = "selected"
 )
 
-// Samples returns a deterministic, immutable projection of the decision candidates.
+// Samples 返回决策候选的确定性、不可变投影；审核阈值无效时返回 nil。
 func (d Decision) Samples(target fingerprint.Fingerprint, reviewCap float64) []CandidateSample {
 	if math.IsNaN(reviewCap) || math.IsInf(reviewCap, 0) || reviewCap < 0 || reviewCap > 1 {
 		return nil
@@ -55,7 +58,7 @@ func (d Decision) Samples(target fingerprint.Fingerprint, reviewCap float64) []C
 	return out
 }
 
-// CandidateHash is stable across processes and excludes raw page content.
+// CandidateHash 以稳定字段编码计算候选摘要，不包含原始页面文本。
 func CandidateHash(candidate Candidate) string {
 	var value strings.Builder
 	writeCanonicalString(&value, "heal-candidate:v3")
@@ -67,11 +70,13 @@ func CandidateHash(candidate Candidate) string {
 	return hex.EncodeToString(digest[:])
 }
 
+// fingerprintHash 以规范指纹键计算稳定摘要，不包含未规范化的页面内容。
 func fingerprintHash(value fingerprint.Fingerprint) string {
 	digest := sha256.Sum256([]byte("fingerprint:v2\x00" + fingerprintCanonicalKey(value)))
 	return hex.EncodeToString(digest[:])
 }
 
+// ValidateSamples 校验候选样本的排名、摘要、分数、状态组合和唯一选中项。
 func ValidateSamples(samples []CandidateSample) error {
 	seenSelected := false
 	for index, sample := range samples {
@@ -91,6 +96,7 @@ func ValidateSamples(samples []CandidateSample) error {
 	return nil
 }
 
+// validateCandidateSampleStatus 校验样本状态与 Eligible、Selected 标志的一致性。
 func validateCandidateSampleStatus(sample CandidateSample) error {
 	switch sample.Status {
 	case CandidateSampleBelowCap:
@@ -111,7 +117,7 @@ func validateCandidateSampleStatus(sample CandidateSample) error {
 	return nil
 }
 
-// SortSamples provides a defensive copy for adapters that need stable ordering.
+// SortSamples 返回样本及证据切片的防御性副本，并按 Rank 稳定排序。
 func SortSamples(samples []CandidateSample) []CandidateSample {
 	out := append([]CandidateSample(nil), samples...)
 	for i := range out {

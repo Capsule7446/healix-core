@@ -1,28 +1,40 @@
-name: Qodana
+name: Qodana Static Analysis
+
 on:
   workflow_dispatch:
   pull_request:
+    branches:
+      - master
   push:
-    branches: # Specify your branches here
-      - main # The 'main' branch
-      - 'releases/*' # The release branches
+    branches:
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
   qodana:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      checks: write
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}  # to check out the actual pull request commit, not the merge commit
-          fetch-depth: 0  # a full history is required for pull request analysis
-      - name: 'Qodana Scan'
-        uses: JetBrains/qodana-action@v2026.1
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Qodana scan
+        uses: JetBrains/qodana-action@b588768b6e7e6da579e518bc584f79de0d243692
         with:
-          pr-mode: false
+          pr-mode: true
+          post-pr-comment: true
+          use-annotations: true
+          upload-result: true
+          artifact-name: qodana-report
+          github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_1824243340 }}
-          QODANA_ENDPOINT: 'https://qodana.cloud'
+          QODANA_ENDPOINT: https://qodana.cloud

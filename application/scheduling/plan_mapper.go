@@ -10,11 +10,14 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// buildExecutionPlanInput 汇总构建执行计划草稿所需的实例、已解析发布物和入口输入。
 type buildExecutionPlanInput struct {
 	InstanceID  execution.InstanceID
 	Publication automation.ResolvedExecutionFlow
 	Entries     []executionEntryInput
 }
+
+// executionEntryInput 描述发布物中一个测试任务入口及其已解析参数快照。
 type executionEntryInput struct {
 	EntryID                           execution.EntryID
 	TestTaskItemID                    string
@@ -22,6 +25,8 @@ type executionEntryInput struct {
 	FlowFragmentID, WorkflowVersionID string
 	ParameterSnapshot                 parameterSnapshotInput
 }
+
+// parameterSnapshotInput 携带入口参数快照的存在性、身份、模式版本和值副本。
 type parameterSnapshotInput struct {
 	IsPresent     bool
 	ID            string
@@ -29,11 +34,11 @@ type parameterSnapshotInput struct {
 	Values        map[string]parameter.Value
 }
 
+// buildExecutionDraft 校验发布物和入口映射，将宿主提供的数据深复制为框架无关的执行计划草稿。
 func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot, error) {
 	if err := input.Publication.Validate(); err != nil {
-		// ResolvedExecutionFlow.Validate() always returns nil or its own classified
-		// fault; wrapping it in an uncoded "invalid publication: %w" buried that
-		// classification behind an unpublished code at this boundary.
+		// ResolvedExecutionFlow.Validate() 只返回 nil 或自身已分类的 fault；在此包装为未编码
+		// 的 "invalid publication: %w" 会把该分类埋在边界之后，导致未注册错误码成为可见结果。
 		return execution.PlanSnapshot{}, err
 	}
 	if input.InstanceID.Validate() != nil {
@@ -71,6 +76,8 @@ func buildExecutionDraft(input buildExecutionPlanInput) (execution.PlanSnapshot,
 	}
 	return draft, nil
 }
+
+// validateEntries 校验入口数量、顺序、身份唯一性以及固定/最新版本解析来源。
 func validateEntries(input buildExecutionPlanInput) error {
 	items := input.Publication.Version.Items
 	if len(input.Entries) != len(items) {
@@ -107,6 +114,8 @@ func validateEntries(input buildExecutionPlanInput) error {
 	}
 	return nil
 }
+
+// rejectUnmappedParameters 要求定义了参数的工作流入口携带完整且已解析的参数快照。
 func rejectUnmappedParameters(input buildExecutionPlanInput) error {
 	definitions := make(map[string][]automation.ParameterDefinition, len(input.Publication.Workflows))
 	for _, dependency := range input.Publication.Workflows {
@@ -127,6 +136,8 @@ func rejectUnmappedParameters(input buildExecutionPlanInput) error {
 	}
 	return nil
 }
+
+// validateResolvedParameterValues 解析并比较参数值，拒绝缺少定义项的快照。
 func validateResolvedParameterValues(definitions []automation.ParameterDefinition, values map[string]parameter.Value) error {
 	resolved, err := automation.ResolveParameterValues(definitions, values)
 	if err != nil {
@@ -138,6 +149,7 @@ func validateResolvedParameterValues(definitions []automation.ParameterDefinitio
 	return nil
 }
 
+// mapFailurePolicy 将自动化上下文的失败策略映射为执行上下文策略。
 func mapFailurePolicy(p automation.FailurePolicy) (execution.FailurePolicy, error) {
 	switch p {
 	case automation.FailurePolicyStopOnFailure:
@@ -148,6 +160,8 @@ func mapFailurePolicy(p automation.FailurePolicy) (execution.FailurePolicy, erro
 		return "", fmt.Errorf("unsupported failure policy %q", p)
 	}
 }
+
+// mapWorkflows 将已解析工作流依赖映射为执行快照，并深复制参数和步骤数据。
 func mapWorkflows(items []automation.FlowFragmentDependencySnapshot) ([]execution.WorkflowSnapshot, error) {
 	r := make([]execution.WorkflowSnapshot, len(items))
 	for i, item := range items {
@@ -159,6 +173,8 @@ func mapWorkflows(items []automation.FlowFragmentDependencySnapshot) ([]executio
 	}
 	return r, nil
 }
+
+// mapParameters 校验并映射参数定义，同时复制可变选项切片以隔离所有权。
 func mapParameters(items []automation.ParameterDefinition) ([]execution.Parameter, error) {
 	r := make([]execution.Parameter, len(items))
 	for i, item := range items {
@@ -169,6 +185,8 @@ func mapParameters(items []automation.ParameterDefinition) ([]execution.Paramete
 	}
 	return r, nil
 }
+
+// mapSteps 递归映射步骤树，并复制切片、参数绑定和嵌套断言数据。
 func mapSteps(items []automation.FlowFragmentStep) []execution.Step {
 	r := make([]execution.Step, len(items))
 	for i, item := range items {
@@ -190,6 +208,8 @@ func mapSteps(items []automation.FlowFragmentStep) []execution.Step {
 	}
 	return r
 }
+
+// mapNodes 将元素目标依赖映射为执行节点快照，并复制选择器和指纹值。
 func mapNodes(items []automation.ElementTargetDependencySnapshot) []execution.NodeSnapshot {
 	r := make([]execution.NodeSnapshot, len(items))
 	for i, item := range items {
@@ -197,6 +217,8 @@ func mapNodes(items []automation.ElementTargetDependencySnapshot) []execution.No
 	}
 	return r
 }
+
+// mapReferences 将工作流引用解析结果映射为执行引用解析快照。
 func mapReferences(items []automation.FlowFragmentReferenceResolution) []execution.ReferenceResolution {
 	r := make([]execution.ReferenceResolution, len(items))
 	for i, item := range items {
@@ -204,6 +226,8 @@ func mapReferences(items []automation.FlowFragmentReferenceResolution) []executi
 	}
 	return r
 }
+
+// applyReferenceResolutions 按父版本和步骤 ID 回填引用的已解析工作流版本，并递归处理子步骤。
 func applyReferenceResolutions(workflows []execution.WorkflowSnapshot, resolutions []execution.ReferenceResolution) error {
 	type referenceKey struct{ parentVersionID, stepID string }
 	byKey := make(map[referenceKey]execution.ReferenceResolution, len(resolutions))
@@ -234,6 +258,7 @@ func applyReferenceResolutions(workflows []execution.WorkflowSnapshot, resolutio
 	return nil
 }
 
+// cloneParameterBindings 深复制参数绑定映射；nil 输入保持 nil，非 nil 输入由结果独占所有权。
 func cloneParameterBindings(source map[string]parameter.Binding) map[string]parameter.Binding {
 	if source == nil {
 		return nil
@@ -245,6 +270,7 @@ func cloneParameterBindings(source map[string]parameter.Binding) map[string]para
 	return result
 }
 
+// cloneParameterValues 深复制参数值映射；nil 输入保持 nil，避免计划快照与调用方共享可变值。
 func cloneParameterValues(source map[string]parameter.Value) map[string]parameter.Value {
 	if source == nil {
 		return nil
@@ -255,6 +281,8 @@ func cloneParameterValues(source map[string]parameter.Value) map[string]paramete
 	}
 	return result
 }
+
+// equalParameterValues 比较两个参数值映射的键集合和值内容是否完全相等。
 func equalParameterValues(left, right map[string]parameter.Value) bool {
 	if len(left) != len(right) {
 		return false

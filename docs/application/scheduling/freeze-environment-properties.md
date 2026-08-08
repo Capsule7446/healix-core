@@ -34,7 +34,7 @@ sequenceDiagram
 
 - Environment 只有一组普通类型化 `Variables`；Core 不按键名或内容推断敏感性。
 - 每个变量键非空、值必须是合法的五种 `parameter.Value`；资产和执行实例快照边界均深拷贝，包含 MULTI_SELECT 切片。
-- V1/V2 均可显式选择；默认 Current 当前指向 V2。V1 按旧字符串摘要验证并提升为 TEXT，V2 摘要包含类型与 payload。
+- V1/V2 均可显式选择；默认 schema 为 V2。V1 的 `Properties` 按 TEXT 读取并参与原摘要，V2 的 `Variables` 摘要包含类型与 payload。
 - TEXT、NUMBER、BOOLEAN、SINGLE_SELECT 可用于字符串插值；MULTI_SELECT 不隐式字符串化。
 - Base URL 如存在，必须是绝对 HTTP(S) URL 且不含 user info。
 - Test Task 只声明必需键名，不保存环境属性值。
@@ -42,7 +42,7 @@ sequenceDiagram
 
 ## 不属于 Core 的能力
 
-凭据分类、Vault/provider 集成、授权、轮换、脱敏和 reveal 审计均不属于当前 Core 模型。宿主若需要这些能力，应在向 Core 提供普通属性之前自行完成，且不得把宿主凭据模型反向引入领域契约。
+凭据分类、Vault/provider 集成、授权、轮换、脱敏和 reveal 审计均不属于当前 Core 模型。宿主若需要这些能力，应在向 Core 提供普通属性的集成阶段自行完成，且不得把宿主凭据模型反向引入领域契约。
 
 ## 源码与测试
 

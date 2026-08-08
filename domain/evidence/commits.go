@@ -8,6 +8,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
+// HealCandidateReset 记录自愈成功后重置原始选择器所需的步骤、元素目标和节点版本身份。
 type HealCandidateReset struct {
 	EntryID           execution.EntryID
 	StepExecutionID   execution.StepExecutionID
@@ -17,10 +18,13 @@ type HealCandidateReset struct {
 	ObservedAt        int64
 }
 
+// StepRevision 是步骤事实提交的单调修订号。
 type StepRevision uint64
 
+// maxStepTransitionFacts 限制一次步骤迁移提交中各事实集合及总事实数量。
 const maxStepTransitionFacts = 10_000
 
+// StepTransitionCommit 携带一次原子步骤迁移提交的事件、终态观测、自愈观测和选择器重置。
 type StepTransitionCommit struct {
 	CommitID               string
 	ExpectedRevision       StepRevision
@@ -31,15 +35,11 @@ type StepTransitionCommit struct {
 	OriginalSelectorResets []HealCandidateReset
 }
 
-// Validate reports every failure through one aggregate envelope carrying ordered
-// violations. Collection indexes are 0-based and address the slice the caller
-// passed; no commit, execution, step, validation, heal, group, or element target
-// identity reaches public text.
+// Validate 通过一个携带有序违规项的聚合封套报告全部失败。集合索引从 0 开始并对应调用方
+// 传入的切片；提交、执行、步骤、校验、自愈、分组或元素目标身份均不会进入公开文本。
 func (c StepTransitionCommit) Validate() error {
-	// The fact limit is checked before anything else, unlike the previous ordering,
-	// because it also bounds the violation walks below: without it a maximum-size
-	// commit would be walked in full before being rejected for being too large.
-	// It carries its own code, so it cannot share this envelope anyway.
+	// 事实上限必须先校验，因为它同时限制下方违规遍历的工作量；超过上限的提交直接返回
+	// 自身错误码，不与字段违规共享封套。
 	if c.exceedsFactLimit() {
 		return commitFactLimitExceededError()
 	}
@@ -70,6 +70,7 @@ func (c StepTransitionCommit) Validate() error {
 	return nil
 }
 
+// exceedsFactLimit 判断任一事实集合或事实总数是否超过提交上限。
 func (c StepTransitionCommit) exceedsFactLimit() bool {
 	return len(c.FinalValidations) > maxStepTransitionFacts ||
 		len(c.FinalValidationGroups) > maxStepTransitionFacts ||
@@ -78,6 +79,7 @@ func (c StepTransitionCommit) exceedsFactLimit() bool {
 		len(c.FinalValidations)+len(c.FinalValidationGroups)+len(c.HealObservations)+len(c.OriginalSelectorResets) > maxStepTransitionFacts
 }
 
+// isTerminalPhase 判断字符串是否属于终止阶段集合。
 func isTerminalPhase(phase string) bool {
 	switch phase {
 	case "SUCCEEDED", "FAILED", "CANCELED", "ABORTED":
@@ -87,14 +89,14 @@ func isTerminalPhase(phase string) bool {
 	}
 }
 
+// appendFinalValidationViolations 校验终态校验观测，并检查其是否属于已提交步骤和执行。
 func (c StepTransitionCommit) appendFinalValidationViolations(violations []fault.Violation) []fault.Violation {
 	for index, validation := range c.FinalValidations {
 		if atCap(violations) {
 			return violations
 		}
 		field := fmt.Sprintf("finalValidations.%d", index)
-		// The observation's own fault is discarded rather than nested: its detail
-		// belongs to this envelope's violations, and its text carries identities.
+		// 观测自身错误不会嵌套；其细节应归入当前封套的违规项，且其文本可能携带身份信息。
 		if validation.Validate() != nil {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, field, "final validation is invalid"))
 		}
@@ -105,6 +107,7 @@ func (c StepTransitionCommit) appendFinalValidationViolations(violations []fault
 	return violations
 }
 
+// appendHealObservationViolations 校验自愈观测的唯一性、身份归属和成功阶段约束。
 func (c StepTransitionCommit) appendHealObservationViolations(violations []fault.Violation) []fault.Violation {
 	seenHealIDs := make(map[string]struct{}, len(c.HealObservations))
 	for index, heal := range c.HealObservations {
@@ -129,6 +132,7 @@ func (c StepTransitionCommit) appendHealObservationViolations(violations []fault
 	return violations
 }
 
+// appendSelectorResetViolations 校验原始选择器重置的唯一性、阶段和步骤身份归属。
 func (c StepTransitionCommit) appendSelectorResetViolations(violations []fault.Violation) []fault.Violation {
 	type resetIdentity struct {
 		EntryID           execution.EntryID
@@ -157,6 +161,7 @@ func (c StepTransitionCommit) appendSelectorResetViolations(violations []fault.V
 	return violations
 }
 
+// appendGroupTopologyViolations 校验终态校验与校验组之间的成员拓扑、唯一性和阶段一致性。
 func appendGroupTopologyViolations(violations []fault.Violation, event StepPhaseEvent, validations []ValidationObservation, groups []ValidationGroupTerminalObservation) []fault.Violation {
 	type memberKey struct {
 		GroupID         string
@@ -191,8 +196,7 @@ func appendGroupTopologyViolations(violations []fault.Violation, event StepPhase
 		}
 		element := fmt.Sprintf("finalValidationGroups.%d", index)
 		field := func(name string) string { return element + "." + name }
-		// The group's own fault is discarded rather than nested: its text carries
-		// identities, and its detail belongs to this envelope's violations.
+		// 校验组自身错误不会嵌套；其文本可能携带身份信息，细节应归入当前封套的违规项。
 		if group.Validate() != nil {
 			violations = append(violations, mustViolation(fault.CodeFieldInvalid, element, "final validation group is invalid"))
 		}
@@ -238,11 +242,8 @@ func appendGroupTopologyViolations(violations []fault.Violation, event StepPhase
 			delete(members, key)
 		}
 	}
-	// members has been drained of every member its group consumed, so whatever is
-	// left is unaccounted for. Ranging over the map would report a random one of
-	// the leftovers, which means the same commit could be rejected with different
-	// detail on a different run. Walking the source slice instead makes the
-	// reported failures a function of the input alone.
+	// members 已移除每个分组消费的成员，剩余项即为未被分组记录的成员。按源切片遍历
+	// 剩余成员，确保同一提交的违规报告只由输入决定，而不受映射遍历顺序影响。
 	for index, validation := range validations {
 		if atCap(violations) {
 			return violations
@@ -265,6 +266,7 @@ func appendGroupTopologyViolations(violations []fault.Violation, event StepPhase
 	return violations
 }
 
+// validationTerminalMatchesPhase 判断校验组终止原因是否与步骤终止阶段一致。
 func validationTerminalMatchesPhase(reason ValidationTerminalReason, phase string) bool {
 	switch reason {
 	case ValidationTerminalPassed:
@@ -278,11 +280,13 @@ func validationTerminalMatchesPhase(reason ValidationTerminalReason, phase strin
 	}
 }
 
+// NodeVersionPromotion 描述提交后需要提升为正式版本的元素目标节点版本。
 type NodeVersionPromotion struct {
 	ElementTargetID string
 	VersionID       string
 }
 
+// StepTransitionCommitResult 保存提交后的修订号、应用标记和节点版本提升列表。
 type StepTransitionCommitResult struct {
 	Revision   StepRevision
 	WasApplied bool

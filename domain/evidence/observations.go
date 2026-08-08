@@ -10,16 +10,19 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
+// DecisionBand 表示自愈候选在审核阈值下的决策档位。
 type DecisionBand string
 
 const (
-	DecisionUnknown  DecisionBand = "UNKNOWN"
-	DecisionApplied  DecisionBand = "APPLIED"
+	// DecisionUnknown 表示没有候选或未产生决策。
+	DecisionUnknown DecisionBand = "UNKNOWN"
+	// DecisionApplied 表示候选已达到应用档位。
+	DecisionApplied DecisionBand = "APPLIED"
+	// DecisionBelowCap 表示候选达到审核但未达到直接应用档位。
 	DecisionBelowCap DecisionBand = "BELOW_CAP"
 )
 
-// ValidateDecisionBand rejects without naming the band or the candidate hash: the
-// band is caller-declared and the hash identifies a heal candidate.
+// ValidateDecisionBand 校验候选摘要与决策档位的组合，不在公开违规文本中回显档位或摘要。
 func ValidateDecisionBand(candidateHash string, band DecisionBand) error {
 	if violations := appendDecisionBandViolations(nil, candidateHash, band, ""); len(violations) != 0 {
 		return healObservationInvalidError(violations)
@@ -27,6 +30,7 @@ func ValidateDecisionBand(candidateHash string, band DecisionBand) error {
 	return nil
 }
 
+// appendDecisionBandViolations 追加候选摘要与决策档位不一致时的字段违规。
 func appendDecisionBandViolations(violations []fault.Violation, candidateHash string, band DecisionBand, prefix string) []fault.Violation {
 	hasCandidate := strings.TrimSpace(candidateHash) != ""
 	field := joinField(prefix, "decisionBand")
@@ -39,6 +43,7 @@ func appendDecisionBandViolations(violations []fault.Violation, candidateHash st
 	return violations
 }
 
+// ValidateConfidence 校验置信度为有限且位于闭区间 [0,1]。
 func ValidateConfidence(confidence float64) error {
 	if violations := appendConfidenceViolations(nil, confidence, ""); len(violations) != 0 {
 		return healObservationInvalidError(violations)
@@ -46,6 +51,7 @@ func ValidateConfidence(confidence float64) error {
 	return nil
 }
 
+// appendConfidenceViolations 追加置信度非有限或越界时的字段违规。
 func appendConfidenceViolations(violations []fault.Violation, confidence float64, prefix string) []fault.Violation {
 	if math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "confidence"), "confidence must be finite and within the inclusive range from zero through one"))
@@ -53,11 +59,7 @@ func appendConfidenceViolations(violations []fault.Violation, confidence float64
 	return violations
 }
 
-// appendOccurrenceViolations rejects a non-positive occurrence. The other two
-// components of the evidence coordinate are validated value types that cannot
-// hold a meaningless value; this one is a bare int, so every carrier routes its
-// check through here instead of restating the rule and letting the spellings
-// drift apart.
+// appendOccurrenceViolations 追加非正 Occurrence 的字段违规，供所有事实和观测载体复用。
 func appendOccurrenceViolations(violations []fault.Violation, occurrence int, prefix string) []fault.Violation {
 	if occurrence <= 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, joinField(prefix, "occurrence"), "occurrence must be positive"))
@@ -65,7 +67,7 @@ func appendOccurrenceViolations(violations []fault.Violation, occurrence int, pr
 	return violations
 }
 
-// joinField builds a logical field path relative to the aggregate being validated.
+// joinField 将字段名拼接为相对于当前聚合的逻辑字段路径。
 func joinField(prefix, name string) string {
 	if prefix == "" {
 		return name
@@ -73,6 +75,7 @@ func joinField(prefix, name string) string {
 	return prefix + "." + name
 }
 
+// HealObservation 记录一次自愈尝试的候选、指纹、置信度、决策和执行坐标。
 type HealObservation struct {
 	ID                string
 	InstanceID        execution.InstanceID
@@ -90,6 +93,7 @@ type HealObservation struct {
 	ObservedAt        int64
 }
 
+// Validate 校验自愈观测的身份、Occurrence、时间、置信度和决策档位。
 func (o HealObservation) Validate() error {
 	var violations []fault.Violation
 	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ElementTargetID == "" || o.BaseNodeVersionID == "" {
@@ -107,34 +111,46 @@ func (o HealObservation) Validate() error {
 	return nil
 }
 
+// ValidationValueKind 标识验证实际值是缺失、标量、集合或已脱敏。
 type ValidationValueKind string
 
 const (
-	ValidationValueAbsent     ValidationValueKind = "absent"
-	ValidationValueScalar     ValidationValueKind = "scalar"
+	// ValidationValueAbsent 表示没有观察到实际值。
+	ValidationValueAbsent ValidationValueKind = "absent"
+	// ValidationValueScalar 表示实际值是单个字符串。
+	ValidationValueScalar ValidationValueKind = "scalar"
+	// ValidationValueCollection 表示实际值是字符串集合。
 	ValidationValueCollection ValidationValueKind = "collection"
-	ValidationValueRedacted   ValidationValueKind = "redacted"
+	// ValidationValueRedacted 表示实际值存在但已脱敏。
+	ValidationValueRedacted ValidationValueKind = "redacted"
 )
 
+// ValidationValue 保存验证期望或实际值的安全表示；原始页面内容不会进入错误文本。
 type ValidationValue struct {
 	Kind       ValidationValueKind
 	Scalar     string
 	collection []string
 }
 
+// AbsentValidationValue 返回无实际值的验证值。
 func AbsentValidationValue() ValidationValue { return ValidationValue{Kind: ValidationValueAbsent} }
+
+// ScalarValidationValue 返回携带标量字符串的验证值。
 func ScalarValidationValue(value string) ValidationValue {
 	return ValidationValue{Kind: ValidationValueScalar, Scalar: value}
 }
+
+// CollectionValidationValue 返回集合验证值，并复制调用方切片。
 func CollectionValidationValue(values []string) ValidationValue {
 	owned := make([]string, len(values))
 	copy(owned, values)
 	return ValidationValue{Kind: ValidationValueCollection, collection: owned}
 }
+
+// RedactedValidationValue 返回已脱敏的验证值。
 func RedactedValidationValue() ValidationValue { return ValidationValue{Kind: ValidationValueRedacted} }
 
-// Validate never echoes the kind or the payload. The payload is observed page
-// content, which is exactly what a validation value may not disclose.
+// Validate 校验值类型与载荷组合，不回显类型或载荷，因为载荷属于观测到的页面内容。
 func (v ValidationValue) Validate() error {
 	if violations := v.appendViolations(nil, ""); len(violations) != 0 {
 		return validationObservationInvalidError(violations)
@@ -142,6 +158,7 @@ func (v ValidationValue) Validate() error {
 	return nil
 }
 
+// appendViolations 追加验证值类型与载荷不一致时的字段违规。
 func (v ValidationValue) appendViolations(violations []fault.Violation, prefix string) []fault.Violation {
 	switch v.Kind {
 	case ValidationValueAbsent, ValidationValueRedacted:
@@ -162,6 +179,7 @@ func (v ValidationValue) appendViolations(violations []fault.Violation, prefix s
 	return violations
 }
 
+// Equal 比较两个验证值的类型、标量和集合内容是否完全相等。
 func (v ValidationValue) Equal(other ValidationValue) bool {
 	if v.Kind != other.Kind || v.Scalar != other.Scalar || len(v.collection) != len(other.collection) {
 		return false
@@ -174,6 +192,7 @@ func (v ValidationValue) Equal(other ValidationValue) bool {
 	return true
 }
 
+// CollectionValue 返回集合载荷的副本；非集合类型返回 nil 和 false。
 func (v ValidationValue) CollectionValue() ([]string, bool) {
 	if v.Kind != ValidationValueCollection {
 		return nil, false
@@ -183,24 +202,35 @@ func (v ValidationValue) CollectionValue() ([]string, bool) {
 	return owned, true
 }
 
+// ValidationTerminalReason 表示验证组终止的原因。
 type ValidationTerminalReason string
 
 const (
-	ValidationTerminalPassed      ValidationTerminalReason = "passed"
-	ValidationTerminalTimeout     ValidationTerminalReason = "timeout"
-	ValidationTerminalCanceled    ValidationTerminalReason = "canceled"
+	// ValidationTerminalPassed 表示验证组有获胜分支并通过。
+	ValidationTerminalPassed ValidationTerminalReason = "passed"
+	// ValidationTerminalTimeout 表示验证组因超时终止。
+	ValidationTerminalTimeout ValidationTerminalReason = "timeout"
+	// ValidationTerminalCanceled 表示验证组因取消终止。
+	ValidationTerminalCanceled ValidationTerminalReason = "canceled"
+	// ValidationTerminalSystemError 表示验证组因系统错误终止。
 	ValidationTerminalSystemError ValidationTerminalReason = "system_error"
 )
 
+// ValidationBranchDisposition 表示验证组分支的终态归类。
 type ValidationBranchDisposition string
 
 const (
-	ValidationBranchWon                ValidationBranchDisposition = "won"
+	// ValidationBranchWon 表示分支是获胜分支。
+	ValidationBranchWon ValidationBranchDisposition = "won"
+	// ValidationBranchSatisfiedNotWinner 表示分支满足但未获胜。
 	ValidationBranchSatisfiedNotWinner ValidationBranchDisposition = "satisfied_not_winner"
-	ValidationBranchNotSatisfied       ValidationBranchDisposition = "not_satisfied"
-	ValidationBranchNotObserved        ValidationBranchDisposition = "not_observed"
+	// ValidationBranchNotSatisfied 表示分支未满足。
+	ValidationBranchNotSatisfied ValidationBranchDisposition = "not_satisfied"
+	// ValidationBranchNotObserved 表示分支未被观测。
+	ValidationBranchNotObserved ValidationBranchDisposition = "not_observed"
 )
 
+// isSupported 判断分支终态归类是否属于支持集合。
 func (d ValidationBranchDisposition) isSupported() bool {
 	switch d {
 	case ValidationBranchWon, ValidationBranchSatisfiedNotWinner, ValidationBranchNotSatisfied, ValidationBranchNotObserved:
@@ -210,6 +240,7 @@ func (d ValidationBranchDisposition) isSupported() bool {
 	}
 }
 
+// Validate 校验分支终态归类，并返回验证观测错误。
 func (d ValidationBranchDisposition) Validate() error {
 	if !d.isSupported() {
 		return validationObservationInvalidError([]fault.Violation{
@@ -219,11 +250,13 @@ func (d ValidationBranchDisposition) Validate() error {
 	return nil
 }
 
+// ValidationMemberIdentity 标识验证组期望的分支和元素目标成员。
 type ValidationMemberIdentity struct {
 	BranchID        string
 	ElementTargetID string
 }
 
+// ValidationGroupTerminalObservation 记录验证组终态、获胜分支和期望成员集合。
 type ValidationGroupTerminalObservation struct {
 	ID              string
 	InstanceID      execution.InstanceID
@@ -237,6 +270,7 @@ type ValidationGroupTerminalObservation struct {
 	ObservedAt      int64
 }
 
+// NewValidationGroupTerminalObservation 创建验证组终态观测，并复制期望成员切片。
 func NewValidationGroupTerminalObservation(id string, instanceID execution.InstanceID, entryID execution.EntryID, stepExecutionID execution.StepExecutionID, occurrence int, groupID string, terminalReason ValidationTerminalReason, winningBranchID string, expectedMembers []ValidationMemberIdentity, observedAt int64) ValidationGroupTerminalObservation {
 	owned := make([]ValidationMemberIdentity, len(expectedMembers))
 	copy(owned, expectedMembers)
@@ -248,15 +282,15 @@ func NewValidationGroupTerminalObservation(id string, instanceID execution.Insta
 	}
 }
 
+// ExpectedMembers 返回期望成员切片的副本，避免暴露未导出内部所有权。
 func (o ValidationGroupTerminalObservation) ExpectedMembers() []ValidationMemberIdentity {
 	owned := make([]ValidationMemberIdentity, len(o.expectedMembers))
 	copy(owned, o.expectedMembers)
 	return owned
 }
 
-// Validate reports every failure through one envelope with ordered violations.
-// Branch, group, and element target identities and the terminal reason all stay
-// out of public text.
+// Validate 通过一个携带有序违规项的封套报告所有失败；分支、分组、元素目标身份和终止原因
+// 均不会进入公开文本。
 func (o ValidationGroupTerminalObservation) Validate() error {
 	var violations []fault.Violation
 	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.GroupID == "" {
@@ -306,6 +340,7 @@ func (o ValidationGroupTerminalObservation) Validate() error {
 	return nil
 }
 
+// ValidationProgressObservation 记录非终态验证进度及自愈状态。
 type ValidationProgressObservation struct {
 	ID                     string
 	InstanceID             execution.InstanceID
@@ -329,6 +364,7 @@ type ValidationProgressObservation struct {
 	ObservedAt             int64
 }
 
+// Validate 将进度观测映射为普通验证观测并复用其校验规则。
 func (o ValidationProgressObservation) Validate() error {
 	return ValidationObservation{
 		ID: o.ID, InstanceID: o.InstanceID, EntryID: o.EntryID,
@@ -343,6 +379,7 @@ func (o ValidationProgressObservation) Validate() error {
 	}.Validate()
 }
 
+// ValidationObservation 记录一次验证结果、期望/实际值、分支归类和自愈信息。
 type ValidationObservation struct {
 	ID                     string
 	InstanceID             execution.InstanceID
@@ -368,10 +405,8 @@ type ValidationObservation struct {
 	Final                  bool
 }
 
-// Validate reports every failure through one envelope with ordered violations.
-// The expected and actual values are observed page content, so their sub
-// validation failures degrade into violations here rather than nesting a fault
-// whose text could carry that content.
+// Validate 通过一个携带有序违规项的封套报告所有失败；期望值和实际值属于页面内容，子校验
+// 失败降级为当前违规项，避免嵌套 fault 泄露这些内容。
 func (o ValidationObservation) Validate() error {
 	var violations []fault.Violation
 	if o.ID == "" || o.InstanceID.Validate() != nil || o.EntryID.Validate() != nil || o.StepExecutionID.Validate() != nil || o.ValidationStepID == "" || o.ElementTargetID == "" || o.ElementTargetVersionID == "" || o.AssertionKind == "" || o.Reason == "" {

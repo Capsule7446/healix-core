@@ -1,4 +1,4 @@
-# domain/fault Test Case Matrix
+# domain/fault 测试用例矩阵
 
 ## 范围与口径
 
@@ -12,7 +12,7 @@
 2. **分类稳定**：`Code`/`Kind` 是宿主分支依据，必须能穿透 `fmt.Errorf` 包装与 `errors.Join`，且不得被二次包装改写。
 3. **所有权独立**：构造与读取都深拷贝 `params`/`violations`，调用方持有的切片与内核持有的互不别名。
 
-## Public API / Use-case Inventory
+## 公开 API 与领域入口
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
@@ -29,9 +29,9 @@
 | `MaxViolations` | [`domain/fault/fault.go`](../../domain/fault/fault.go) | `TestOverCapViolationsTruncateInsteadOfFailingConstruction` 覆盖截断而非失败的语义。 |
 | `CodeFieldRequired` / `CodeFieldInvalid` / `CodeFieldDuplicate` / `CodeFieldMismatch` | [`domain/fault/violation_codes.go`](../../domain/fault/violation_codes.go) | 封闭 reason 词表；「不得作为顶层 Error 的 code」由 [`architecture/fault_contract_guard_test.go`](../../architecture/fault_contract_guard_test.go) 强制。 |
 
-## Test Case Evidence Matrix
+## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestNewRejectsInvalidPublicValues` | 封闭集之外的 `Kind`；不匹配 `^[A-Z][A-Z0-9_]{2,62}$` 的 `Code`；空白、超 512 字节、含控制字符的 message。 | 构造失败并返回普通 Go error；无部分构造的 `*Error` 逃逸。 | [`domain/fault/fault_test.go`](../../domain/fault/fault_test.go) · `TestNewRejectsInvalidPublicValues` |
 | `TestFaultPreservesCauseWithoutDisclosingIt` | `Wrap` 一个文本含 token/URL 的 cause。 | `Error()` 与 `Message()` 只输出 `CODE: message`；cause 仅经 `Unwrap` 可达。 | [`domain/fault/fault_test.go`](../../domain/fault/fault_test.go) · `TestFaultPreservesCauseWithoutDisclosingIt` |
@@ -46,7 +46,7 @@
 | `TestOverCapViolationsTruncateInsteadOfFailingConstruction` | `MaxViolations + 10` 条 violation。 | 截断到确定性前 32 条并构造成功，而非构造失败——敌意输入不得把校验变成拒绝服务。 | [`domain/fault/fault_test.go`](../../domain/fault/fault_test.go) · `TestOverCapViolationsTruncateInsteadOfFailingConstruction` |
 | `TestCodeSatisfiesErrorWithItsOwnString` | 把 `Code` 装进 `error` 接口后调用 `Error()` 并用 `%v` 渲染。 | 输出等于 code 字符串本身；这是 `errors.Is(err, someCode)` 成立的前提，因此任何匹配过 sentinel 的宿主都可能触达它。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestCodeSatisfiesErrorWithItsOwnString` |
 | `TestParamAccessorsReturnWhatWasConstructed` | 正常构造的 `Param`，以及零值 `Param`。 | 访问器回读构造值；零值返回空串而非 panic。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestParamAccessorsReturnWhatWasConstructed` |
-| `TestPopulatedFaultReadsBackThroughItsOwnAccessors` | 带 param 与 violation 的非 nil fault。 | `Kind`/`Code`/`Message`/`Params`/`Violations` 的**非 nil 分支**回读构造值。此前包内测试只经 `KindOf`/`Describe` 读取，非 nil 分支从未执行。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestPopulatedFaultReadsBackThroughItsOwnAccessors` |
+| `TestPopulatedFaultReadsBackThroughItsOwnAccessors` | 带 param 与 violation 的非 nil fault。 | `Kind`/`Code`/`Message`/`Params`/`Violations` 的**非 nil 分支**回读构造值；该测试直接覆盖这些访问器。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestPopulatedFaultReadsBackThroughItsOwnAccessors` |
 | `TestNilFaultCollectionAccessorsReturnNil` | nil `*Error` 上的 `Params()` 与 `Violations()`。 | 返回 nil 切片而非 panic 或空切片。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestNilFaultCollectionAccessorsReturnNil` |
 | `TestFormatOfANilFaultStaysPrintable` | nil `*Error` 经 5 个 fmt 动词渲染。 | 全部渲染出 `<nil>`；日志语句中的 panic 会让诊断路径打垮它本要诊断的东西。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestFormatOfANilFaultStaysPrintable` |
 | `TestIsCodeRejectsAnUnusableCode` | 空串、小写、2 字符、含空格、下划线结尾的 `Code`；目标 error 为真 fault 与 nil。 | 一律返回 false，且必须由前置守卫而非巧合决定；合法 code 仍正常匹配。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestIsCodeRejectsAnUnusableCode` |
@@ -58,7 +58,7 @@
 | `TestConstructRejectsAFailingOption` | 一个返回 error 的 `Option`。 | 该 error 原样透出。`Option` 已导出而 `faultOptions` 未导出，因此只有本包能构造失败 option——这正是包外无法覆盖此分支的原因。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestConstructRejectsAFailingOption` |
 | `TestConstructRejectsUnusableParams` | 经 `New` 与 `Wrap` 两条路径传入零值 `Param`。 | 两者都拒绝；`Wrap` 不因为多了 cause 就放宽校验。 | [`domain/fault/fault_surface_test.go`](../../domain/fault/fault_surface_test.go) · `TestConstructRejectsUnusableParams` |
 
-## Cross-cutting / Conformance Cases
+## 跨入口与一致性用例
 
 错误码注册表与实现的一致性不在本表，由 [`architecture/fault_contract_guard_test.go`](../../architecture/fault_contract_guard_test.go) 强制：(Kind, Code) 配对、跨上下文前缀所有权、未注册码、未导出码常量、导出哨兵 error、以及 violation reason code 不得作为顶层 `Error` 的 code。外部消费者视角的兼容性证据见 [`contract/fault_public_api_test.go`](../../contract/fault_public_api_test.go)。
 

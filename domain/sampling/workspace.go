@@ -6,15 +6,21 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fingerprint"
 )
 
+// ResolutionMode 表示未发布元素目标与候选正式目标的解析方式。
 type ResolutionMode string
 
 const (
+	// ResolutionModeUndecided 表示尚未选择解析方式。
 	ResolutionModeUndecided ResolutionMode = "UNDECIDED"
-	ResolutionModeCreate    ResolutionMode = "CREATE"
-	ResolutionModeMerge     ResolutionMode = "MERGE"
-	ResolutionModeReuse     ResolutionMode = "REUSE"
+	// ResolutionModeCreate 表示创建新的正式元素目标。
+	ResolutionModeCreate ResolutionMode = "CREATE"
+	// ResolutionModeMerge 表示合并到候选正式元素目标。
+	ResolutionModeMerge ResolutionMode = "MERGE"
+	// ResolutionModeReuse 表示复用候选正式元素目标。
+	ResolutionModeReuse ResolutionMode = "REUSE"
 )
 
+// ElementTargetCandidate 描述一个可供未发布元素目标解析的正式候选。
 type ElementTargetCandidate struct {
 	ElementTargetID string
 	DisplayName     string
@@ -25,6 +31,7 @@ type ElementTargetCandidate struct {
 	Exact           bool
 }
 
+// UnpublishedElementTarget 保存采样期间的临时元素目标及其解析候选。
 type UnpublishedElementTarget struct {
 	ID             string
 	DisplayName    string
@@ -38,7 +45,7 @@ type UnpublishedElementTarget struct {
 	Candidates     []ElementTargetCandidate
 }
 
-// UnpublishedFlowFragment 是内存中的草稿。它不复述会话生命周期：那是 Session.Status 的唯一归属。它也不携带发布状态——发布是一次原子幂等事务，"进行中"在领域侧没有观察点，而其结果是 Publish 的返回值或一个 typed fault，不是草稿上的字段。
+// UnpublishedFlowFragment 保存未发布流程片段的草稿步骤、参数和临时元素目标。
 type UnpublishedFlowFragment struct {
 	ID          string
 	SessionID   string
@@ -54,20 +61,15 @@ type UnpublishedFlowFragment struct {
 	Nodes                       []UnpublishedElementTarget
 }
 
-// RebuildUnpublishedElementTargetReferences 从可编辑工作流树中派生临时 ElementTarget -> Step 投影。临时采样数据有意仅存储在内存中，因此这是任何捕获、编辑、删除或重新排序操作后的唯一事实来源。
+// RebuildUnpublishedElementTargetReferences 递归重建临时元素目标到步骤 ID 的引用投影。
 func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment) error {
 	if workflow == nil {
-		// A nil receiver is a caller code defect with no runtime remediation.
 		return internalError()
 	}
 	stepIDsByNode := make(map[string][]string, len(workflow.Nodes))
 	for _, node := range workflow.Nodes {
 		stepIDsByNode[node.ID] = nil
 	}
-	// The walk collects every undefined reference before returning. Stopping at the
-	// first meant a draft with several took one rebuild attempt per reference. Walk
-	// order is the tree's own depth-first order, so the report is a function of the
-	// input, and the cap is the only reason to stop early.
 	var violations []fault.Violation
 	var walk func([]automation.FlowFragmentStep) error
 	walk = func(steps []automation.FlowFragmentStep) error {
@@ -75,8 +77,6 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 			if step.ElementTargetID != "" {
 				stepIDs, ok := stepIDsByNode[step.ElementTargetID]
 				if !ok {
-					// Both the step id and the temporary element target id are caller
-					// identities; neither may appear in the public violation.
 					if len(violations) < fault.MaxViolations {
 						violations = append(violations, mustViolation(fault.CodeFieldMismatch, "steps.elementTargetId", "a step references a temporary element target that the draft does not define"))
 					}
@@ -100,8 +100,6 @@ func RebuildUnpublishedElementTargetReferences(workflow *UnpublishedFlowFragment
 	if err := walk(workflow.Steps); err != nil {
 		return err
 	}
-	// The projection is only written once every reference resolved, so a rejected
-	// rebuild never leaves a partially derived projection behind.
 	if len(violations) != 0 {
 		return workspaceInvalidError(violations)
 	}

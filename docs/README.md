@@ -147,14 +147,14 @@ flowchart TD
 
 ### 测试台账
 
-- [测试台账索引](testing/TEST_CASES_INDEX.md)：各包 `TEST_CASES.md` 的入口与覆盖现状。台账里的源码链接与测试函数名由链接守卫强制，改名不同步会直接变红。
+- [测试台账索引](testing/TEST_CASES_INDEX.md)：各包 `TEST_CASES.md` 的入口与覆盖现状。台账里的源码链接与测试函数名由链接守卫强制，符号调整必须同步更新。
 
 ### 契约文档
 
 `docs/contracts/` 与其余文档性质不同：它不是对代码的描述，而是**被代码读取的清单**。改动这四份文件会直接让测试变红。
 
 - [错误码注册表](contracts/error-code-registry.md)：全部顶层 `fault.Code` 的权威清单（Kind、message、参数、含义）。[`architecture/fault_contract_guard_test.go`](../architecture/fault_contract_guard_test.go) 在运行时逐行解析它，与代码中的常量比对；新增或修改错误码必须同步此表。
-- [v0.5 错误清单](contracts/v0.5-error-inventory.md)：v0.5 时期的错误面盘点。注册表引用其 `:37` 行作为 `SAMPLING_*` 前缀与产出包故意不对齐的裁决依据，因此行号具有承重意义，不可随意增删行。
+- [错误码边界说明](contracts/error-code-boundaries.md)：按当前生产包说明错误码前缀、公开边界、消费方式和验证守卫。
 - [摘要 wire tag 清单](contracts/digest-wire-tags.md)：所有持久化摘要的域分隔标签。这些字节是存储格式，改一个就会静默让既有记录的幂等键全部失效；[`architecture/digest_wire_tag_test.go`](../architecture/digest_wire_tag_test.go) 双向校验清单与代码一致。
 - [退役计划](contracts/retirement-plan.md)：正在移出 Core、尚未删除的能力。这是全仓唯一允许出现 `Deprecated:` 标记的地方；[`architecture/unified_language_boundary_test.go`](../architecture/unified_language_boundary_test.go) 同时校验登记表与本文一致、退役表面不得无标记增长。
 
@@ -165,7 +165,7 @@ flowchart TD
 3. **区分 Core 行为与端口接入。** 文档只描述 Core 行为和端口语义；如需端口所代表的能力，使用“实现或接入该端口”说明，不展开具体实现方案。
 4. **不把设想写成现状。** 尚未支持的映射、参数或流程使用“不支持”标记；未来方案应放入独立设计记录，而不是混入当前行为说明。
 5. **变更必须成套更新。** 修改领域不变量、应用时序、端口、公开契约或适配器责任时，同一变更应更新相关领域文档、Use Case 文档、架构图和本索引。
-6. **Use Case 文档逐项维护。** 新增、重命名或删除应用用例时，必须同步更新模块 README 与本页完整索引；不得只依赖目录发现。
+6. **Use Case 文档逐项维护。** 新增、调整名称或删除应用用例时，必须同步更新模块 README 与本页完整索引；不得只依赖目录发现。
 7. **领域数量显式校验。** 当前领域索引固定列出十个领域文档；领域拆分或合并时，必须同步修改系统总览、上下文地图、关系图和本节标题。
 8. **链接必须可解析。** 所有相对链接以当前文档所在目录为基准。三条守卫都在 [`architecture/doc_links_test.go`](../architecture/doc_links_test.go)，链接失效会直接让 `go test ./...` 变红：指向 `.go` 的链接、指向 `.md` 的链接、以及紧随 `.go` 链接以 `·` 标注的测试函数名。
 
@@ -174,4 +174,4 @@ flowchart TD
    本页刻意不写出该形式的字面示范：守卫是纯文本正则，分不清「一条真链接」和「一个描述链接长什么样的例子」，写了就会让它在自己的规则说明上永远红一条。照抄现有文档里的写法即可。
 9. **架构约束自动验证。** 依赖方向与有界上下文归属以 [`architecture/dependencies_test.go`](../architecture/dependencies_test.go) 的自动检查为准；业务错误码与[错误码注册表](contracts/error-code-registry.md)的一致性以 [`architecture/fault_contract_guard_test.go`](../architecture/fault_contract_guard_test.go) 为准。文档中的依赖规则和错误码描述应与这两个测试保持一致。
 10. **本页不重复项目介绍。** 根 README 负责项目入口与对外说明；本页只维护文档的信息架构、阅读路径、状态含义和事实治理。
-11. **`docs/contracts/` 是代码的输入，不是代码的描述。** 这四份清单被 `architecture/` 下的守卫在运行时读取，改动等同于改代码：错误码注册表逐行比对常量，wire tag 清单双向比对字面量，v0.5 错误清单的 `:37` 行被注册表按行号引用。移动或重命名其中任何一个，都必须同步 `fault_contract_guard_test.go` 与 `digest_wire_tag_test.go` 里的路径常量。
+11. **`docs/contracts/` 是代码的输入，不是代码的描述。** 错误码注册表、摘要 wire tag 清单和退役契约由 `architecture/` 守卫读取或交叉校验；错误码边界说明用于解释当前归属，不参与逐行解析。移动或调整受守卫读取的文件，必须同步对应测试中的路径常量。

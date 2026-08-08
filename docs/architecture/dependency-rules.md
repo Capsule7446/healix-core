@@ -60,7 +60,7 @@ flowchart BT
 | 执行事实 | `application/execution` 与 `domain/node` | `FactCommitter`、`ProgressWriter`、`ExecutionSink` | 幂等、修订检查、终态事务原子性 |
 | 参数值 | `domain/parameter` 共享内核 | `Value`、`Binding` | 保持类型、复制隔离并在边界校验 |
 | 执行实例创建与读取 | `application/scheduling` | `CreateInstanceStore`、`CreateInstanceTx`、`ClaimSource` | 原子冻结不可变快照；快照随 `Claim` 一并交出，Core 没有单独的执行实例读端口 |
-| 顶层执行项进入授权 | `application/execution` | `EntryAuthorizer` | 在浏览器会话建立**之前**判定该工作器是否仍持有该顶层执行项的权限 |
+| 顶层执行项进入授权 | `application/execution` | `EntryAuthorizer` | 在浏览器会话建立阶段判定该工作器是否仍持有该顶层执行项的权限 |
 
 ## 原子性与并发要求
 
@@ -74,7 +74,7 @@ flowchart BT
 - 后续顶层执行项的 `PENDING → SKIPPED` 及其因果；和
 - 执行实例的最终状态。
 
-这两个迁移在 `DecideAdvance` 里就已经过 `execution.ValidateEntryStatusTransition`；合法迁移表见[执行领域](../domains/execution.md#状态与流程)。**失败时不得留下部分转换。**
+这两个状态迁移在 `DecideAdvance` 里就已经过 `execution.ValidateEntryStatusTransition`；合法迁移表见[执行领域](../domains/execution.md#状态与流程)。**失败时不得留下部分转换。**
 
 ### 执行证据写入
 
@@ -84,16 +84,16 @@ flowchart BT
 
 封存快照与幂等记录的 digest 依赖一组域分隔 wire tag。改动其中任何一个都会静默作废全部已存 digest，且没有测试能自然发现 —— 摘要只会变成另一个同样合法的字符串。完整清单与已发生的一次失效见[摘要 wire tag 登记表](../contracts/digest-wire-tags.md)，由 [`digest_wire_tag_test.go`](../../architecture/digest_wire_tag_test.go) 守住。
 
-## 不得复活的旧边界
+## 当前禁止的边界与命名
 
-以下名字都已从代码中删除，并各有守卫防止它们回来。文档不得把它们描述成现行 API：
+当前执行 API 只允许以下入口和命名。架构守卫同时阻止文档和代码重新引入已禁止的第二套执行模型：
 
-| 旧名字 | 现行读法 | 守卫 |
+| 禁止符号或形状 | 当前契约 | 守卫 |
 |---|---|---|
-| `domain/workspace` 包 | 该边界已不存在 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestWorkspacePackageIsRemoved` |
-| `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | `CompilePlan` 与 `RunProgram` 是仅有的两个执行入口 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |
-| `RunSnapshot`、`CreateRunCommand`/`CreateRunService`、`AbortRunService`、`RunReader` | `InstanceSnapshot`、`CreateInstanceCommand`/`CreateInstanceService`、`AbortInstanceService`，以及随 `Claim` 交出的快照 | 命名由 [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) 一族守住 |
-| 任何保留旧公开名的导出类型别名 | 直接替换，不设弃用窗口 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoExportedTypeAliasKeepsAnOldNameAlive` |
-| 任何承诺旧名字仍可用的弃用标记 | 替换本身就是迁移，不提供弃用窗口 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoDeprecationMarkersPromiseAnOldNameStillWorks` |
+| `domain/workspace` 包 | Core 不包含该领域包 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestWorkspacePackageIsRemoved` |
+| `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | 禁止出现在公开执行 API；执行入口固定为 `CompilePlan` 与 `RunProgram` | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |
+| `RunSnapshot`、`CreateRunCommand`/`CreateRunService`、`AbortRunService`、`RunReader` | 执行模型使用 `InstanceSnapshot`、`CreateInstanceCommand`/`CreateInstanceService`、`AbortInstanceService`，快照随 `Claim` 交出 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · 命名边界测试 |
+| 公开类型兼容别名 | 不允许；直接使用当前类型名 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoExportedTypeAliasKeepsAnOldNameAlive` |
+| 以弃用标记承诺兼容行为 | 不允许；能力移交只能登记在退役契约中 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoDeprecationMarkersPromiseAnOldNameStillWorks` |
 
 `RootVersionID`、`CompileExecution`、封存的 Plan/Draft 主模型和凭据服务同样已从当前执行契约移除。

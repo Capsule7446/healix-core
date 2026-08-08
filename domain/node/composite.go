@@ -29,7 +29,7 @@ const (
 	WaitNetworkIdle WaitKind = "network_idle"
 )
 
-// 时的默认上限。
+// DefaultWaitTimeout 是条件等待未指定超时时使用的默认上限。
 const DefaultWaitTimeout = 10 * time.Second
 
 // waitPollInterval 是 WaitElement 的轮询间隔。
@@ -46,8 +46,10 @@ type WaitNode struct {
 	Timeout  time.Duration                 // WaitElement/WaitNetworkIdle：条件超时，0 用 DefaultWaitTimeout
 }
 
+// ID 返回等待节点 ID。
 func (w *WaitNode) ID() string { return w.NodeID }
 
+// Validate 校验等待种类及其持续时间、目标和超时字段组合。
 func (w *WaitNode) Validate() error {
 	switch w.Kind {
 	case "", WaitSleep:
@@ -70,14 +72,13 @@ func (w *WaitNode) Validate() error {
 	return nil
 }
 
+// Run 执行等待节点，记录生命周期和观测，并将驱动/阶段错误分类为安全领域错误。
 func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := w.Validate(); err != nil {
 		return fmt.Errorf("wait %s: validate: %w", w.NodeID, err)
 	}
 	if err := rt.waitBeforeStep(ctx); err != nil {
-		// waitBeforeStep fails on cancellation or deadline, both of which have
-		// registered codes. The wrapper this replaces left them unclassified and
-		// echoed the node id.
+		// waitBeforeStep 的取消或截止时间错误均已有注册码；分类时不回显节点 ID。
 		return classifyNodeFault(err)
 	}
 	occurrence, err := rt.beginOccurrence(ctx, w.NodeID)
@@ -124,6 +125,7 @@ func (w *WaitNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	return nil
 }
 
+// sleep 等待固定时长或响应上下文取消。
 func (w *WaitNode) sleep(ctx context.Context) error {
 	select {
 	case <-time.After(w.Duration):
@@ -133,6 +135,7 @@ func (w *WaitNode) sleep(ctx context.Context) error {
 	}
 }
 
+// timeout 返回显式条件超时，未设置时使用 DefaultWaitTimeout。
 func (w *WaitNode) timeout() time.Duration {
 	if w.Timeout > 0 {
 		return w.Timeout
@@ -140,6 +143,7 @@ func (w *WaitNode) timeout() time.Duration {
 	return DefaultWaitTimeout
 }
 
+// waitElement 轮询定位器和可见性，直到满足要求或超时。
 func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime, requireVisible, requireInvisible bool) error {
 	return rt.poller().Run(ctx, w.timeout(), func(pollCtx context.Context) (bool, error) {
 		el, err := rt.locator().Locate(pollCtx, w.Target)
@@ -163,6 +167,7 @@ func (w *WaitNode) waitElement(ctx context.Context, rt *Runtime, requireVisible,
 	})
 }
 
+// waitNetworkIdle 在条件超时上下文中等待驱动报告网络空闲。
 func (w *WaitNode) waitNetworkIdle(ctx context.Context, rt *Runtime) error {
 	ctx, cancel := context.WithTimeout(ctx, w.timeout())
 	defer cancel()
@@ -179,8 +184,10 @@ type RepeatNode struct {
 	Children []Node
 }
 
+// ID 返回重复节点 ID。
 func (r *RepeatNode) ID() string { return r.NodeID }
 
+// Run 按顺序重复运行子节点，任一子节点失败即停止后续迭代。
 func (r *RepeatNode) Run(ctx context.Context, rt *Runtime) error {
 	if r.Times < 0 {
 		return stepConfigurationInvalidError(mustViolation(fault.CodeFieldInvalid, "times", "repeat times cannot be negative"))
@@ -221,8 +228,10 @@ type WorkflowNode struct {
 	Parameters         map[string]parameter.Value
 }
 
+// ID 返回工作流节点 ID。
 func (w *WorkflowNode) ID() string { return w.NodeID }
 
+// Run 按顺序运行子节点，并在拥有参数作用域时保存、恢复其深拷贝。
 func (w *WorkflowNode) Run(ctx context.Context, rt *Runtime) error {
 	for i, child := range w.Children {
 		if child == nil {
@@ -265,6 +274,7 @@ type WorkflowCallNode struct {
 	Constraints map[string]parameter.Constraint
 }
 
+// ID 返回调用节点自身 ID；未设置时回退到目标工作流节点 ID。
 func (w *WorkflowCallNode) ID() string {
 	if w.NodeID != "" {
 		return w.NodeID
@@ -275,6 +285,7 @@ func (w *WorkflowCallNode) ID() string {
 	return w.Target.ID()
 }
 
+// Run 在隔离参数作用域中执行目标工作流调用，并记录调用生命周期。
 func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
 	if w.Target == nil {
 		return stepConfigurationInvalidError(mustViolation(fault.CodeFieldRequired, "target", "workflow call target is required"))
@@ -298,6 +309,7 @@ func (w *WorkflowCallNode) Run(ctx context.Context, rt *Runtime) error {
 	return nil
 }
 
+// runTarget 解析调用绑定，继承 env.* 参数后在临时作用域执行目标工作流。
 func (w *WorkflowCallNode) runTarget(ctx context.Context, rt *Runtime) error {
 	resolved, err := w.resolveBindings()
 	if err != nil {
@@ -314,13 +326,8 @@ func (w *WorkflowCallNode) runTarget(ctx context.Context, rt *Runtime) error {
 	return w.Target.Run(ctx, rt)
 }
 
-// resolveBindings walks parameter names in sorted order so that, when more
-// than one binding is invalid, which one is reported is a function of the
-// input alone rather than Go's randomized map iteration order. No parameter
-// name or workflow identity reaches public text: every name is caller
-// declared, and the caller's own Values/Constraints maps are what it must
-// inspect to find the gap — the same defect class already closed for
-// domain/parameter's binding resolution.
+// resolveBindings 按排序后的参数名解析值和约束，保证首个错误只由输入决定；参数名和工作流
+// 身份不会进入公开文本，解析结果中的值均为深拷贝。
 func (w *WorkflowCallNode) resolveBindings() (map[string]parameter.Value, error) {
 	names := make([]string, 0, len(w.Values)+len(w.Constraints))
 	seen := make(map[string]struct{}, len(w.Values)+len(w.Constraints))
@@ -357,6 +364,7 @@ func (w *WorkflowCallNode) resolveBindings() (map[string]parameter.Value, error)
 	return resolved, nil
 }
 
+// cloneParameterScope 深复制参数作用域映射；nil 输入保持 nil，结果由调用方独占。
 func cloneParameterScope(source map[string]parameter.Value) map[string]parameter.Value {
 	if source == nil {
 		return nil

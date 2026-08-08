@@ -16,9 +16,9 @@
 
 ## 执行适配器
 
-- 环境快照适配器 提供所选 环境的身份、修订号、基础 URL 和克隆后的普通 `Properties`；Core 仅接收创建执行实例时冻结的副本，并在 `env.` 下提供，不做凭据特定解释。宿主负责安全存储这些属性、授权访问，并防止敏感值泄漏到日志。
+- 环境快照适配器提供所选环境的身份、修订号、基础 URL 和克隆后的类型化 `Variables`；Core 仅接收创建执行实例时冻结的副本，并在 `env.` 下只读提供，不做凭据特定解释。宿主负责安全存储这些变量、授权访问，并防止敏感值泄漏到日志。
 - `ExecutionAuthorityVerifier` 在任何 Driver、Recorder、Facts 或时间线端口可见前，向领取权威验证 `InstanceID + SnapshotDigest + EntryID + ClaimToken` 仍为当前有效组合；非空 token 不得视为授权证明。
-- `EntryAuthorizer` 是 `NewEntryExecutor` 的必填端口，在 `BrowserSessionFactory.Create` 之前回答"这个工作器是否仍持有该 entry 的执行权"。它只收到 `WorkerFence` 与 `Entry`，看不到 `SnapshotDigest`，因此它不是 `ExecutionAuthorityVerifier` 的替代品，也不被后者覆盖；两个端口必须分别实现，并由宿主保证对同一次领取给出一致答案。
+- `EntryAuthorizer` 是 `NewEntryExecutor` 的必填端口，在 `BrowserSessionFactory.Create` 阶段回答“这个工作器是否仍持有该 entry 的执行权”。它只收到 `WorkerFence` 与 `Entry`，看不到 `SnapshotDigest`，因此它不是 `ExecutionAuthorityVerifier` 的替代品；两个端口必须分别实现，并由宿主保证对同一次领取给出一致答案。
 - `ProgressWriter` 对非终态事件实施工作器栅栏校验。
 - `StepTransitionTransaction` 原子提交终态与事实，检查修订号、提交身份及已封存依赖目标；Core 侧的 `FactCommitter` / `StepTransitionService` 只负责校验与转交，不持久化。
 - 驱动器、录制器、执行接收器必须尊重上下文；清理过程仍可能收到分离的上下文。

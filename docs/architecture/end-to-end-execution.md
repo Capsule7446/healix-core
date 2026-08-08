@@ -28,7 +28,7 @@ flowchart TD
 
 [`CreateInstanceService`](../../application/scheduling/create_instance_service.go) 是冻结边界：它在调度创建事务中读取一致版本的发布物，把所有 `latest` 解析为具体版本，并调用 [`create_instance_builder.go`](../../application/scheduling/create_instance_builder.go) 构造并封存不可变的 [`execution.InstanceSnapshot`](../../domain/execution/instance_snapshot.go)。快照保存顶层执行项、环境、截图/修复策略、类型化参数、Workflow/Node 快照和引用闭包；**执行期不得回读可变的自动化聚合。**
 
-参数使用共享内核 [`parameter.Value`](../../domain/parameter/value.go) 与 [`parameter.Binding`](../../domain/parameter/binding.go)，支持标量和复合值。当前快照 schema（`V2`）的环境载荷是类型化的 `Variables`，引擎在 [`compiler.go:188-189`](../../application/engine/compiler.go) 上把它们逐项展开成 `env.<name>` 注入根参数作用域，同名冲突直接让编译失败；字符串形态的 `Properties` 是 V1 遗留，V2 快照出现它即非法，细节见[执行领域](../domains/execution.md#环境快照有两种形状当前只用一种)。**不存在 CredentialReference、CredentialReader 或 CredentialService 子系统。**
+参数使用共享内核 [`parameter.Value`](../../domain/parameter/value.go) 与 [`parameter.Binding`](../../domain/parameter/binding.go)，支持标量和复合值。当前默认快照 schema（`V2`）的环境载荷是类型化的 `Variables`，引擎在 [`compiler.go`](../../application/engine/compiler.go) 上把它们逐项展开成 `env.<name>` 注入根参数作用域，同名冲突直接让编译失败；V1 仅在显式恢复兼容快照时接受字符串 `Properties`，细节见[执行领域](../domains/execution.md#环境快照有两种形状当前只用一种)。**不存在 CredentialReference、CredentialReader 或 CredentialService 子系统。**
 
 ## 2. 调度与状态
 
@@ -40,17 +40,17 @@ flowchart TD
 
 [`application/execution.EntryExecutor`](../../application/execution/entry_executor.go) 一次只执行**一个**已授权的顶层执行项：顺序和「失败后是否继续」属于调度，不属于执行器。
 
-它的把关顺序是固定的三步（[`entry_executor.go:136-146`](../../application/execution/entry_executor.go)）：
+它的把关顺序是固定的三步（[`entry_executor.go`](../../application/execution/entry_executor.go)）：
 
-1. `fence.Validate()` —— 栅栏返回自己已分类的 fault，此处不再包一层，否则会把分类藏在未分类的外层错误后面。
+1. `fence.Validate()` —— 栅栏返回自己已分类的 fault，此处直接透传，避免把分类藏在未分类的外层错误后面。
 2. `EntryAuthorizer.AuthorizeEntry` —— 同样原样返回授权者的 fault。
 3. `BrowserSessionFactory.Create` —— 到这一步才创建宿主资源。
 
-**授权必须排在建会话之前。** `engine.RunProgram` 自己那道身份校验跑在宿主的 `EntryRunner` 里，而要走到 `EntryRunner`，浏览器已经开出来了。因此 `NewEntryExecutor` 的第一个参数就是 `EntryAuthorizer`，缺它构造直接失败（[`entry_executor.go:109-112`](../../application/execution/entry_executor.go)）。
+**授权必须先于会话创建。** `engine.RunProgram` 的身份校验位于宿主的 `EntryRunner`，该阶段浏览器会话已经创建。因此 `NewEntryExecutor` 的第一个参数就是 `EntryAuthorizer`，缺它构造直接失败（[`entry_executor.go`](../../application/execution/entry_executor.go)）。
 
 会话建成后，这一个全新的、宿主所有的 `BrowserSession` 交给宿主的 `EntryRunner` 连接至引擎执行，并在该顶层执行项结束后同步关闭。**该顶层执行项内递归展开的工作流复用同一 `BrowserSession` 和 `node.Runtime`**，并使用分层参数作用域。`Program` 和 `Runtime` 都不属于持久化执行实例。
 
-引擎返回的 [`EntryResult.ExecutionOutcome`](../../application/engine/engine.go)（`engine.go:86-89`）用 `OutcomeSucceeded` / `OutcomeFailed` / `OutcomeCanceled` / `ExecutionNotStarted` 表达一次运行的结果。它们**不是** `execution.EntryStatus`：这两组常量曾经拼写相同（`EntrySucceeded` 等），却分属两个包、彼此之间没有任何映射，改名正是为了让「引擎跑出什么」和「调度把执行项写成什么状态」不再看起来像同一件事。写终态状态是调度和宿主事务的事。
+引擎返回的 [`EntryResult.ExecutionOutcome`](../../application/engine/engine.go)（`engine.go`）用 `OutcomeSucceeded` / `OutcomeFailed` / `OutcomeCanceled` / `ExecutionNotStarted` 表达一次运行的结果。它们**不是** `execution.EntryStatus`：两组常量分属不同包、没有自动映射。写入顶层执行项终态是调度和宿主事务的事。
 
 参数按执行实例 → 顶层执行项 → TestTask 项 → 工作流调用覆盖。绑定和插值失败会显式终止执行，不退化为仅字符串替换。
 
@@ -71,7 +71,7 @@ Node 通过执行端口写非终态进度和终态提交。[`StepTransitionCommi
 | 失败点 | Core 行为 | 宿主责任 |
 |---|---|---|
 | 执行实例创建解析或校验失败 | 返回错误，不暴露半成品执行实例 | 回滚创建事务 |
-| 领取执行权/栅栏过期 | 拒绝状态或事实写入 | 重新领取或终止旧工作器 |
+| 领取执行权/栅栏过期 | 拒绝状态或事实写入 | 重新领取或终止失效工作器 |
 | 顶层执行项授权被拒 | 原样返回授权者的 fault，不创建任何宿主资源 | 判定该工作器是否仍持有权限，必要时重新领取 |
 | 会话工厂失败 | 以 `EXECUTION_SCHEDULING_ADAPTER_UNAVAILABLE` 返回；若工厂在报错的同时仍交回了非 nil 会话，该半成品会话会被关闭，关闭错误一并 join 进结果 | 修复适配器可达性 |
 | 会话工厂返回 nil 会话却不报错 | 以 `EXECUTION_ENTRY_BROWSER_SESSION_ADAPTER_CONTRACT_VIOLATION` 返回 | 修复适配器的契约实现 |

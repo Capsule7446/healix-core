@@ -6,7 +6,7 @@
 - 输出：`domain.ExecutionFlowAggregate`
 - 领域转换：`ExecutionFlowAggregate.PublishVersion` —— 调用方提交的是一份 `ExecutionFlowVersionPublication`，由聚合追加版本、把 `SourceVersionID` 指向原当前版本并推进 Revision，而不是由调用方构造整个已发布聚合。版本 ID 重复或 `CreatedAt` 非单调时返回 `AUTOMATION_AGGREGATE_TRANSITION_INVALID`。
 - 端口：`ExecutionFlowRepository.Load` / `SaveAggregate`；读取失败包装为 `load test task %q`，写入失败包装为 `persist test task %q`。
-- 独有的前置校验：本方法没有走共用的 `transition` 辅助函数，而是在服务里直接展开。除 taskID 外还要求 `publication.ID` 非空，这一条在 `Load` 之前就返回未分类的校验错误。
+- 独有的前置校验：本方法在服务中直接展开，不调用共用的 `transition` 辅助函数。除 taskID 外还要求 `publication.ID` 非空，并在调用 `Load` 前返回未分类的校验错误。
 
 ## 源码
 

@@ -2,7 +2,7 @@
 
 ## 目标
 
-`CreateInstanceService.CreateInstance` 在一个事务中解析并冻结一次完整执行输入：TestTask 版本、fixed/latest workflow 依赖、typed parameters、invocation bindings、Environment Variables、失败/截图/修复策略，以及串行 entry identities。输出是带摘要的不可变 `execution.InstanceSnapshot` 和 `QUEUED` 执行实例。
+`CreateInstanceService.CreateInstance` 在一个事务中解析并冻结一次完整执行输入：TestTask 版本、固定或 `LATEST` workflow 依赖、类型化参数、调用绑定、Environment Variables、失败/截图/修复策略，以及串行 entry identity。输出是带摘要的不可变 `execution.InstanceSnapshot` 和 `QUEUED` 执行实例。
 
 ## 输入
 
@@ -14,9 +14,9 @@
 
 1. 复制并规范化 command，校验资源上限及 typed values。
 2. 计算稳定 request digest；相同 command ID + 相同 digest 返回既有结果，不同 digest 返回冲突。
-3. 解析指定 TestTask version、Environment revision/properties 和所有 workflow dependencies。
-4. 对 `LATEST` 项和嵌套引用读取当时 current published version，并把解析结果写入 snapshot；此后执行、重试均不得重新解析 latest。
-5. 校验 parameter declarations、required/type/options、parent bindings 和 invocation graph。
+3. 解析指定 TestTask version、Environment revision/Variables 和所有 workflow 依赖。
+4. 对 `LATEST` 项和嵌套引用读取创建事务中的已发布版本，并把解析结果写入 snapshot；执行与重试均使用该冻结结果。
+5. 校验参数声明、required/type/options、父级绑定和调用图。
 6. `SealInstanceSnapshot` 深拷贝并计算 canonical digest。
 7. 在同一事务中插入执行实例、snapshot、entries 和 command 幂等结果。
 

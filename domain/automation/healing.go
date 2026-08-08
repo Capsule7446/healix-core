@@ -18,8 +18,10 @@ type VersionMeta struct {
 	DeletedAt     int64
 }
 
+// CodeVersionNumberExhausted 表示版本号已耗尽。
 const CodeVersionNumberExhausted fault.Code = "AUTOMATION_VERSION_NUMBER_EXHAUSTED"
 
+// VersionNumberOverflowError 构造版本号容量耗尽错误。
 func VersionNumberOverflowError() error {
 	err, constructionErr := fault.New(
 		fault.ResourceExhausted,
@@ -32,6 +34,7 @@ func VersionNumberOverflowError() error {
 	return err
 }
 
+// NextVersionNumber 根据现有版本计算下一个版本号；持久化版本无效或容量耗尽时返回错误。
 func NextVersionNumber(existing []VersionMeta) (int, error) {
 	maximum := 0
 	for _, version := range existing {
@@ -48,6 +51,7 @@ func NextVersionNumber(existing []VersionMeta) (int, error) {
 	return maximum + 1, nil
 }
 
+// ResolveCurrentVersion 从未删除版本中解析版本号最大的当前版本。
 func ResolveCurrentVersion(versions []VersionMeta) (string, bool) {
 	var current VersionMeta
 	found := false
@@ -63,23 +67,31 @@ func ResolveCurrentVersion(versions []VersionMeta) (string, bool) {
 	return current.ID, found
 }
 
+// HealOutcome 标识一次自愈观测的结果。
 type HealOutcome string
 
 const (
+	// HealOriginalRecovered 表示原始选择器已恢复。
 	HealOriginalRecovered HealOutcome = "ORIGINAL_RECOVERED"
-	HealFailed            HealOutcome = "FAILED"
-	HealSucceeded         HealOutcome = "SUCCEEDED"
+	// HealFailed 表示自愈失败。
+	HealFailed HealOutcome = "FAILED"
+	// HealSucceeded 表示自愈成功。
+	HealSucceeded HealOutcome = "SUCCEEDED"
 )
 
 // HealDecisionBand 将确定性治疗者的置信门保留在工作区分类帐中。未知的观察结果将作为证据保留，但不会成为可审查的候选者。
 type HealDecisionBand string
 
 const (
-	HealDecisionBandUnknown  HealDecisionBand = "UNKNOWN"
-	HealDecisionBandApplied  HealDecisionBand = "APPLIED"
+	// HealDecisionBandUnknown 表示没有候选治理区间。
+	HealDecisionBandUnknown HealDecisionBand = "UNKNOWN"
+	// HealDecisionBandApplied 表示达到自动应用阈值。
+	HealDecisionBandApplied HealDecisionBand = "APPLIED"
+	// HealDecisionBandBelowCap 表示达到审查阈值但未达到自动应用阈值。
 	HealDecisionBandBelowCap HealDecisionBand = "BELOW_CAP"
 )
 
+// ValidateHealDecisionBand 校验候选身份与决策区间是否匹配。
 func ValidateHealDecisionBand(candidateHash string, band HealDecisionBand) error {
 	hasCandidate := strings.TrimSpace(candidateHash) != ""
 	if !hasCandidate && band != HealDecisionBandUnknown {
@@ -91,6 +103,7 @@ func ValidateHealDecisionBand(candidateHash string, band HealDecisionBand) error
 	return nil
 }
 
+// ValidateHealConfidence 校验置信度为非 NaN 且位于 [0,1] 区间。
 func ValidateHealConfidence(confidence float64) error {
 	if math.IsNaN(confidence) || confidence < 0 || confidence > 1 {
 		return healConfidenceInvalidError()
@@ -98,28 +111,33 @@ func ValidateHealConfidence(confidence float64) error {
 	return nil
 }
 
+// HealCandidateStatus 标识自愈候选的审查生命周期状态。
 type HealCandidateStatus string
 
 const (
-	HealCandidateObserving        HealCandidateStatus = "OBSERVING"
+	// HealCandidateObserving 表示候选正在积累观测。
+	HealCandidateObserving HealCandidateStatus = "OBSERVING"
+	// HealCandidateAwaitingApproval 表示候选等待审批。
 	HealCandidateAwaitingApproval HealCandidateStatus = "AWAITING_APPROVAL"
-	HealCandidatePromoted         HealCandidateStatus = "PROMOTED"
-	HealCandidateRejected         HealCandidateStatus = "REJECTED"
-	HealCandidateStale            HealCandidateStatus = "STALE"
+	// HealCandidatePromoted 表示候选已提升为正式版本。
+	HealCandidatePromoted HealCandidateStatus = "PROMOTED"
+	// HealCandidateRejected 表示候选已被拒绝。
+	HealCandidateRejected HealCandidateStatus = "REJECTED"
+	// HealCandidateStale 表示候选基线已过期。
+	HealCandidateStale HealCandidateStatus = "STALE"
 )
 
+// HealApprovalStatus 标识审查命令携带的审批决定；它不是持久化生命周期状态。
 type HealApprovalStatus string
 
-// HealApprovalStatus names the decision a review command carries. It is a
-// command input, not a stored lifecycle: a candidate awaiting review is
-// expressed by HealCandidateStatus, so there is no pending or not-required
-// member here for Validate to reject.
 const (
+	// HealApprovalApproved 表示审批通过。
 	HealApprovalApproved HealApprovalStatus = "APPROVED"
+	// HealApprovalRejected 表示审批拒绝。
 	HealApprovalRejected HealApprovalStatus = "REJECTED"
 )
 
-// HealCandidateReviewCommand carries stable candidate identity and review metadata.
+// HealCandidate 表示带有稳定身份、选择器和指纹的自愈候选。
 type HealCandidate struct {
 	Hash              string
 	ElementTargetID   string
@@ -132,6 +150,7 @@ type HealCandidate struct {
 	Revision          Revision
 }
 
+// Validate 校验候选身份及其是否处于等待审批状态。
 func (candidate HealCandidate) Validate() error {
 	if err := candidate.validateIdentity(); err != nil {
 		return err
@@ -142,6 +161,7 @@ func (candidate HealCandidate) Validate() error {
 	return nil
 }
 
+// ValidateReviewed 校验候选身份及其是否处于已批准或已拒绝状态。
 func (candidate HealCandidate) ValidateReviewed() error {
 	if err := candidate.validateIdentity(); err != nil {
 		return err
@@ -152,6 +172,7 @@ func (candidate HealCandidate) ValidateReviewed() error {
 	return nil
 }
 
+// validateIdentity 校验候选哈希、节点版本身份和持久化修订。
 func (candidate HealCandidate) validateIdentity() error {
 	if strings.TrimSpace(candidate.Hash) == "" || strings.TrimSpace(candidate.ElementTargetID) == "" ||
 		strings.TrimSpace(candidate.BaseNodeVersionID) == "" {
@@ -160,6 +181,7 @@ func (candidate HealCandidate) validateIdentity() error {
 	return candidate.Revision.ValidatePersisted()
 }
 
+// Review 复制候选并应用批准或拒绝状态，成功时递增修订且不修改原值。
 func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate, error) {
 	if err := candidate.Validate(); err != nil {
 		return HealCandidate{}, err
@@ -179,6 +201,7 @@ func (candidate HealCandidate) Review(status HealCandidateStatus) (HealCandidate
 	return next, nil
 }
 
+// HealCandidateReviewCommand 携带候选身份、期望修订和审查命令身份。
 type HealCandidateReviewCommand struct {
 	CommandID                 string
 	ElementTargetID           string
@@ -188,6 +211,7 @@ type HealCandidateReviewCommand struct {
 	ExpectedNodeRevision      Revision
 }
 
+// Validate 校验审查命令身份、期望修订及审批状态。
 func (command HealCandidateReviewCommand) Validate(approval HealApprovalStatus) error {
 	for _, identity := range []string{
 		command.CommandID,
@@ -213,17 +237,25 @@ func (command HealCandidateReviewCommand) Validate(approval HealApprovalStatus) 
 	return nil
 }
 
+// HealStreakDisposition 标识自愈连续观测的终态或进行中状态。
 type HealStreakDisposition string
 
 const (
-	HealStreakObserving     HealStreakDisposition = "OBSERVING"
-	HealStreakAutoPublish   HealStreakDisposition = "AUTO_PUBLISH"
+	// HealStreakObserving 表示连续观测仍在积累。
+	HealStreakObserving HealStreakDisposition = "OBSERVING"
+	// HealStreakAutoPublish 表示达到自动发布条件。
+	HealStreakAutoPublish HealStreakDisposition = "AUTO_PUBLISH"
+	// HealStreakAwaitApproval 表示达到审查条件并等待审批。
 	HealStreakAwaitApproval HealStreakDisposition = "AWAIT_APPROVAL"
-	HealStreakReset         HealStreakDisposition = "RESET"
-	HealStreakStale         HealStreakDisposition = "STALE"
-	HealStreakRejected      HealStreakDisposition = "REJECTED"
+	// HealStreakReset 表示连续状态已重置。
+	HealStreakReset HealStreakDisposition = "RESET"
+	// HealStreakStale 表示基线已过期。
+	HealStreakStale HealStreakDisposition = "STALE"
+	// HealStreakRejected 表示连续状态已被拒绝。
+	HealStreakRejected HealStreakDisposition = "REJECTED"
 )
 
+// ContributingHealFact 标识组成自愈连续状态的一条事实及其顺序。
 type ContributingHealFact struct {
 	FactID          string
 	CommitID        string
@@ -233,6 +265,7 @@ type ContributingHealFact struct {
 	Sequence        uint64
 }
 
+// HealObservation 表示一次带有候选治理和基线状态的自愈观测。
 type HealObservation struct {
 	FactID            string
 	CommitID          string
@@ -248,6 +281,7 @@ type HealObservation struct {
 	BaseIsCurrent     bool
 }
 
+// HealStreak 保存自愈候选、贡献事实、已消费来源和当前处置状态。
 type HealStreak struct {
 	ElementTargetID      string
 	BaseNodeVersionID    string
@@ -260,10 +294,12 @@ type HealStreak struct {
 	Disposition          HealStreakDisposition
 }
 
+// HealStreakDecision 包装接收观测或拒绝后的下一份连续状态。
 type HealStreakDecision struct {
 	Next HealStreak
 }
 
+// Observe 接收一条观测并按来源、序列、基线和决策区间计算下一份连续状态。
 func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecision, error) {
 	if err := streak.validate(); err != nil {
 		return HealStreakDecision{}, healStreakStateInvalidError(err)
@@ -339,6 +375,7 @@ func (streak HealStreak) Observe(observation HealObservation) (HealStreakDecisio
 	return HealStreakDecision{Next: next}, nil
 }
 
+// Validate 校验连续状态及其贡献事实，失败时返回自愈状态错误。
 func (streak HealStreak) Validate() error {
 	if err := streak.validate(); err != nil {
 		return healStreakStateInvalidError(err)
@@ -346,6 +383,7 @@ func (streak HealStreak) Validate() error {
 	return nil
 }
 
+// validate 执行连续状态的内部结构、来源顺序和处置状态校验。
 func (streak HealStreak) validate() error {
 	provenance := streak.consumedProvenance()
 	if err := validateHealContributions(provenance); err != nil {
@@ -407,6 +445,7 @@ func (streak HealStreak) validate() error {
 	return validateHealContributions(streak.Contributions)
 }
 
+// Reject 在等待审批状态下记录新的拒绝序列并返回拒绝状态。
 func (streak HealStreak) Reject(sequence uint64) (HealStreakDecision, error) {
 	if err := streak.validate(); err != nil {
 		return HealStreakDecision{}, healStreakStateInvalidError(err)
@@ -424,6 +463,7 @@ func (streak HealStreak) Reject(sequence uint64) (HealStreakDecision, error) {
 	return HealStreakDecision{Next: next}, nil
 }
 
+// validateHealContributions 校验贡献事实身份唯一且序列严格递增。
 func validateHealContributions(contributions []ContributingHealFact) error {
 	for index, contribution := range contributions {
 		if err := contribution.validate(); err != nil {
@@ -441,6 +481,7 @@ func validateHealContributions(contributions []ContributingHealFact) error {
 	return nil
 }
 
+// validate 校验贡献事实所需的身份字段和非零序列。
 func (contribution ContributingHealFact) validate() error {
 	if strings.TrimSpace(contribution.FactID) == "" || strings.TrimSpace(contribution.CommitID) == "" || strings.TrimSpace(contribution.InstanceID) == "" || strings.TrimSpace(contribution.EntryID) == "" || strings.TrimSpace(contribution.StepExecutionID) == "" || contribution.Sequence == 0 {
 		return fmt.Errorf("heal contribution requires fact, commit, instance, entry, step, and sequence identity")
@@ -448,6 +489,7 @@ func (contribution ContributingHealFact) validate() error {
 	return nil
 }
 
+// validate 校验观测身份、结果和候选治理字段。
 func (observation HealObservation) validate() error {
 	if strings.TrimSpace(observation.FactID) == "" || strings.TrimSpace(observation.CommitID) == "" || strings.TrimSpace(observation.InstanceID) == "" || strings.TrimSpace(observation.EntryID) == "" || strings.TrimSpace(observation.StepExecutionID) == "" || observation.Sequence == 0 || strings.TrimSpace(observation.ElementTargetID) == "" || strings.TrimSpace(observation.BaseNodeVersionID) == "" {
 		return fmt.Errorf("heal observation requires fact, commit, instance, entry, step, sequence, node, and base version identity")
@@ -464,6 +506,7 @@ func (observation HealObservation) validate() error {
 	return nil
 }
 
+// contribution 将观测转换为用于去重和顺序追踪的贡献事实。
 func (observation HealObservation) contribution() ContributingHealFact {
 	return ContributingHealFact{
 		FactID: observation.FactID, CommitID: observation.CommitID, InstanceID: observation.InstanceID,
@@ -471,6 +514,7 @@ func (observation HealObservation) contribution() ContributingHealFact {
 	}
 }
 
+// newHealStreak 根据成功观测创建新的观察中连续状态。
 func newHealStreak(observation HealObservation) HealStreak {
 	return HealStreak{
 		ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
@@ -482,6 +526,7 @@ func newHealStreak(observation HealObservation) HealStreak {
 	}
 }
 
+// newHealTerminal 根据观测创建不可继续观察的终态连续状态。
 func newHealTerminal(observation HealObservation, disposition HealStreakDisposition) HealStreak {
 	return HealStreak{
 		ElementTargetID: observation.ElementTargetID, BaseNodeVersionID: observation.BaseNodeVersionID,
@@ -490,26 +535,27 @@ func newHealTerminal(observation HealObservation, disposition HealStreakDisposit
 	}
 }
 
+// matches 判断观测是否与连续状态的节点、基线、候选和决策区间完全匹配。
 func (streak HealStreak) matches(observation HealObservation) bool {
 	return streak.ElementTargetID == observation.ElementTargetID && streak.BaseNodeVersionID == observation.BaseNodeVersionID &&
 		streak.CandidateHash == observation.CandidateHash && streak.Band == observation.Band
 }
 
+// isTerminal 判断连续状态是否已进入终态处置。
 func (streak HealStreak) isTerminal() bool {
 	return streak.Disposition == HealStreakAutoPublish || streak.Disposition == HealStreakAwaitApproval ||
 		streak.Disposition == HealStreakReset || streak.Disposition == HealStreakStale || streak.Disposition == HealStreakRejected
 }
 
-// Clone is the one deep copy of a heal streak. It was unexported, so the two
-// application layers that also needed one hand-rolled theirs, and both stopped
-// after Contributions — leaving ConsumedObservations shared with the source.
-// Exporting it is what makes the second field impossible to forget.
+// Clone 返回自愈连续状态的深复制，独立复制 Contributions 和 ConsumedObservations 两个切片，
+// 因此修改副本不会改变原值。
 func (streak HealStreak) Clone() HealStreak {
 	streak.Contributions = append([]ContributingHealFact(nil), streak.Contributions...)
 	streak.ConsumedObservations = append([]ContributingHealFact(nil), streak.ConsumedObservations...)
 	return streak
 }
 
+// consumedProvenance 返回已消费来源；旧数据缺少该字段时回退到贡献事实。
 func (streak HealStreak) consumedProvenance() []ContributingHealFact {
 	if len(streak.ConsumedObservations) != 0 {
 		return streak.ConsumedObservations
@@ -517,6 +563,7 @@ func (streak HealStreak) consumedProvenance() []ContributingHealFact {
 	return streak.Contributions
 }
 
+// withObservation 返回追加观测后的连续状态副本并更新最后序列。
 func (streak HealStreak) withObservation(contribution ContributingHealFact) HealStreak {
 	next := streak.Clone()
 	next.ConsumedObservations = append(next.consumedProvenance(), contribution)
@@ -524,6 +571,7 @@ func (streak HealStreak) withObservation(contribution ContributingHealFact) Heal
 	return next
 }
 
+// withDisposition 返回应用处置状态后的连续状态副本并停止观察。
 func (streak HealStreak) withDisposition(disposition HealStreakDisposition) HealStreak {
 	next := streak.Clone()
 	next.Observing = false

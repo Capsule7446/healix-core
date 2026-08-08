@@ -5,8 +5,10 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
+// CodeEntryStatesInvalid 表示入口状态集合无法与实例计划或串行状态机对齐。
 const CodeEntryStatesInvalid fault.Code = "EXECUTION_ENTRY_STATES_INVALID"
 
+// invalidEntryStatesError 构造入口状态校验失败的前置条件错误。
 func invalidEntryStatesError() error {
 	err, constructionErr := fault.New(
 		fault.FailedPrecondition,
@@ -19,20 +21,26 @@ func invalidEntryStatesError() error {
 	return err
 }
 
+// SkipCause 说明入口因前序终止状态而被跳过的原因。
 type SkipCause string
 
 const (
-	SkipCausePriorFailure      SkipCause = "PRIOR_FAILURE"
+	// SkipCausePriorFailure 表示前序入口失败后按停止策略跳过。
+	SkipCausePriorFailure SkipCause = "PRIOR_FAILURE"
+	// SkipCausePriorCancellation 表示前序入口取消后跳过。
 	SkipCausePriorCancellation SkipCause = "PRIOR_CANCELLATION"
-	SkipCausePriorAbort        SkipCause = "PRIOR_ABORT"
+	// SkipCausePriorAbort 表示前序入口中止后跳过。
+	SkipCausePriorAbort SkipCause = "PRIOR_ABORT"
 )
 
+// EntryState 是决策时按入口 ID 提供的当前状态及跳过原因。
 type EntryState struct {
 	EntryID   execution.EntryID
 	Status    execution.EntryStatus
 	SkipCause SkipCause
 }
 
+// ExecutionTransition 描述一次入口状态迁移及其跳过原因。
 type ExecutionTransition struct {
 	EntryID execution.EntryID
 	From    execution.EntryStatus
@@ -40,14 +48,14 @@ type ExecutionTransition struct {
 	Cause   SkipCause
 }
 
+// Decision 是串行调度器对下一入口或实例最终状态的决定。
 type Decision struct {
 	NextEntryID execution.EntryID
 	Transitions []ExecutionTransition
 	FinalStatus *execution.InstanceStatus
 }
 
-// DecideAdvance makes a serial scheduling decision using the run snapshot as the
-// sole authority for membership, order, and failure policy.
+// DecideAdvance 使用运行快照作为成员关系、顺序和失败策略的唯一权威，作出串行调度决定。
 func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (Decision, error) {
 	if snapshot.Digest() == "" {
 		return Decision{}, invalidEntryStatesError()
@@ -115,6 +123,7 @@ func DecideAdvance(snapshot execution.InstanceSnapshot, states []EntryState) (De
 	return Decision{FinalStatus: &status}, nil
 }
 
+// validateSerialShape 校验入口状态是否符合串行执行形状，并找出应停止的位置、原因和最终状态。
 func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (int, SkipCause, execution.InstanceStatus, error) {
 	frontierSeen := false
 	stopIndex := -1
@@ -170,6 +179,7 @@ func validateSerialShape(states []EntryState, policy execution.FailurePolicy) (i
 	return stopIndex, expectedCause, finalStatus, nil
 }
 
+// stopFor 将终止入口状态按失败策略映射为后续跳过原因和实例最终状态。
 func stopFor(status execution.EntryStatus, policy execution.FailurePolicy) (SkipCause, execution.InstanceStatus) {
 	switch status {
 	case execution.EntryFailed:
@@ -184,10 +194,12 @@ func stopFor(status execution.EntryStatus, policy execution.FailurePolicy) (Skip
 	return "", ""
 }
 
+// isKnownStatus 判断入口状态是否属于调度器支持的状态集合。
 func isKnownStatus(status execution.EntryStatus) bool {
 	return status == execution.EntryPending || status == execution.EntryRunning || execution.IsTerminalEntryStatus(status)
 }
 
+// stopAfter 为停止入口之后仍处于待处理状态的入口生成跳过迁移，并设置实例最终状态。
 func stopAfter(entries []execution.Entry, states []EntryState, index int, cause SkipCause, status execution.InstanceStatus) (Decision, error) {
 	transitions := make([]ExecutionTransition, 0, len(entries)-index-1)
 	for i := index + 1; i < len(entries); i++ {

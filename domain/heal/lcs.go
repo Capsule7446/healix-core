@@ -11,6 +11,7 @@ func lcsLength(a, b []string) int {
 	return lcsLengthWithBuffer(rows, columns, dp)
 }
 
+// lcsLengthWithBuffer 使用调用方提供的 dp 缓冲区计算两条路径的 LCS 长度，不保留输入引用。
 func lcsLengthWithBuffer(rows, columns []string, dp []int) int {
 	clear(dp)
 	for _, rowValue := range rows {
@@ -29,10 +30,8 @@ func lcsLengthWithBuffer(rows, columns []string, dp []int) int {
 	return dp[len(columns)]
 }
 
-// narrowByPathLCS 是候选筛选算法：对每个候选的祖先路径与
-// target 的路径计算 LCS 分数，只保留分数并列最大值的候选——这与
-// Healenium/EPAM 所述的优化思路一致，即只对路径距离已达到观测最大值的节点，
-// 才去跑（更昂贵的）启发式节点距离阶段。
+// narrowByPathLCS 计算目标与每个候选祖先路径的 LCS 长度，只保留达到最大长度的候选，
+// 以便后续评分仅处理路径相似度最高的节点；非空输入返回新的候选值切片。
 func narrowByPathLCS(targetPath []string, candidates []SnapshotCandidate) []SnapshotCandidate {
 	if len(candidates) == 0 {
 		return candidates
@@ -60,6 +59,7 @@ func narrowByPathLCS(targetPath []string, candidates []SnapshotCandidate) []Snap
 	return narrowed
 }
 
+// shortestPathLength 返回目标路径与候选路径中较短长度的最大值加一，用于分配 LCS 缓冲区。
 func shortestPathLength(targetPath []string, candidates []SnapshotCandidate) int {
 	length := 0
 	for _, candidate := range candidates {

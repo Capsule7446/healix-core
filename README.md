@@ -2,13 +2,7 @@
 
 `healix-core` 是一个面向浏览器自动化产品的 Go 领域与执行内核。它把可发布的自动化资产、不可变执行计划、确定性节点运行、自愈决策和执行事实建模为与传输、数据库和浏览器实现无关的包，供 Desktop、CLI、CI Runner 或 Server 作为库嵌入。
 
-当前发布版本为 **v0.5.0**。公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。
-
-主干在 v0.5.0 之后仍有未发布的破坏性重命名（执行实例：`Run*` → `Instance*`；自动化：`TestTask`/`Workflow`/`Node` → `ExecutionFlow`/`FlowFragment`/`ElementTarget`）与业务错误码契约（`domain/fault`）。本文的代码示例描述**当前仓库树**，不是 v0.5.0 标签；按标签取用时请以该标签的源码为准。
-
-### v0.5.0
-
-此版本完成了执行模型与公开契约的收敛：以 `CompilePlan` 和 `RunProgram` 作为运行入口，并要求宿主在执行前验证 Claim/调度决定提供的完整执行身份。执行边界和宿主义务见下文的[端到端执行](#端到端执行)、[适配器必须保证什么](#adapter-必须保证什么)与[公开契约](docs/integration/public-contract.md)。
+当前代码基线为 **v0.8.1**，公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。执行入口固定为 `CompilePlan` 与 `RunProgram`；业务失败统一通过 `domain/fault` 的错误码契约表达。
 
 ## 许可证
 
@@ -98,7 +92,7 @@ flowchart TB
 |---|---|
 | `domain/automation` | 版本化资产、Revision、发布快照、引用锁定、生命周期和文件夹树规则 |
 | `domain/sampling` | 交互式采样会话、capture 幂等、匹配和临时工作流 |
-| `domain/execution` | 封存的执行实例快照、调用作用域、Environment `Properties` 快照、执行实例/顶层执行项状态、预算与转换不变量；`domain/heal` 的决策在执行时归属 Execution |
+| `domain/execution` | 封存的执行实例快照、调用作用域、Environment `Variables` 快照、执行实例/顶层执行项状态、预算与转换不变量；`domain/heal` 的决策在执行时归属 Execution |
 | `domain/node` | 临时 `Program`/`Runtime` 执行模型、动作/等待/校验、重试、生命周期和运行端口 |
 | `domain/heal` | 无浏览器或 LLM 依赖的确定性重定位、评分、评估与候选证据 |
 | `domain/evidence` | 进度事实、终态事件、修复/校验观察和原子提交值语义 |
@@ -158,7 +152,7 @@ sequenceDiagram
 远端版本可用时：
 
 ```bash
-go get github.com/Capsule7446/healix-core@v0.5.0
+go get github.com/Capsule7446/healix-core@v0.8.1
 ```
 
 在相邻目录进行本地联调时，可在宿主 `go.mod` 中使用：
@@ -295,24 +289,24 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 })
 ```
 
-宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`InstanceID + SnapshotDigest + EntryID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `InstanceSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.InstanceSnapshot`，因为除 Plan 中冻结的 flow fragment/element target/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
+宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`InstanceID + SnapshotDigest + EntryID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `InstanceSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.InstanceSnapshot`，因为除 Plan 中冻结的 flow fragment/element target/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Variables` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
 
 ## 当前生命周期约束
 
-- Environment 是普通 Automation 资产；执行实例只冻结其 `Properties` 副本。Core 没有 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret-store 模型。
+- Environment 是普通 Automation 资产；当前执行实例快照冻结其类型化 `Variables` 副本。Core 没有 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret-store 模型。
 - `automation.ExecutionFlowVersion`（测试任务版本）只能由显式手工创作创建；Sampling 与 Heal 只发布各自产物，不会隐式发布新版本。
 - `sampling.UnpublishedFlowFragment` 是采样草稿/重写工作区，`sampling.Session` 是浏览器交互会话；二者不是别名，也不共享生命周期。
 - `evidence.HealObservation` 只记录观察，没有晋升状态；晋升是栅栏校验提交的结果。
 - `domain/heal` 提供确定性算法和值，但在运行生命周期中属于 Execution；`Program`/`Runtime` 同样是临时 Execution 模型。
 
-## Adapter 必须保证什么
+## 适配器必须保证什么
 
 - **入站：** 校验外部 DTO，生成唯一 ID 和时间戳；创建执行实例时在同一目录/事务视图中解析完整依赖图、参数作用域、Environment 和所有 `latest`，再封存快照。
 - **自动化持久化：** 使用 opaque Revision 做 CAS，并在同一事务保存聚合、版本与指针变化。
 - **调度：** 原子 claim、不可伪造 token、worker fencing、事务化应用 decision，并返回与 Plan 完全一致的 entry 状态集合。
 - **浏览器执行：** 实现 `BrowserSessionFactory` 与 `node.Driver`/`Element`/`Locator`，尊重 `context.Context`；Core 为每个顶层执行项调用一次 `BrowserSessionFactory.Create` 并在推进前关闭会话，嵌套 Workflow 复用该会话。适配器必须保证每次创建使用全新的身份与存储隔离；Core 不验证会话新鲜性。目标缺失必须返回携带 `node.CodeElementNotFound` 的 fault，只有该类别会触发确定性自愈。
 - **记录与事实：** 对进度实施 fencing；按 revision、commit identity 和封印依赖目标原子提交终态与 facts。
-- **错误：** Core 不导出哨兵 error 变量；分类一律经业务错误码进行。用 `fault.CodeOf` / `fault.KindOf` / `fault.Describe` 读取边界故障的单一分类，用 `fault.IsCode` 询问某个错误码是否出现在整条链上；两者会给出不同答案，不要混用。包装原因时保留链路，不依赖完整错误字符串。`*fault.Error` 的私有 cause 只经 `Unwrap` 暴露，`Format` 已封住 `%+v` / `%#v`，因此日志不会泄露它。
+- **错误：** Core 不导出哨兵 error 变量；分类一律经业务错误码进行。用 `fault.CodeOf` / `fault.KindOf` / `fault.Describe` 读取边界故障的单一分类，用 `fault.IsCode` 询问某个错误码是否出现在整条链上；两者会给出不同答案，不要混用。包装原因时保留链路，不依赖完整错误字符串。`*fault.Error` 的私有 cause 只经 `Unwrap` 暴露，`Format` 封住 `%+v` / `%#v`，因此日志不会泄露它。
 
 详见[适配器职责](docs/integration/adapter-responsibilities.md)。
 
@@ -326,7 +320,7 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 
 这些是当前代码边界，不是对宿主能力的暗示或路线图承诺。
 
-唯一的例外是持久化摘要：请求/快照摘要使用的域分隔 wire tag 被当作存储格式对待，改动其字节会静默作废按旧标签哈希的全部记录。这些标签由 `architecture/digest_wire_tag_test.go` 逐一登记，修改必须伴随迁移方案。
+持久化摘要的域分隔 wire tag 属于存储格式；改动其字节会静默使既有摘要失效。这些标签由 `architecture/digest_wire_tag_test.go` 逐一登记，修改必须伴随重算或双读兼容策略。
 
 ## 本地验证
 

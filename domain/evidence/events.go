@@ -5,15 +5,21 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
+// ProgressPhase 表示步骤进度事件的非终止阶段。
 type ProgressPhase string
 
 const (
-	ProgressRunning       ProgressPhase = "RUNNING"
-	ProgressHealing       ProgressPhase = "HEALING"
+	// ProgressRunning 表示步骤正在执行。
+	ProgressRunning ProgressPhase = "RUNNING"
+	// ProgressHealing 表示步骤正在执行自愈。
+	ProgressHealing ProgressPhase = "HEALING"
+	// ProgressTransitioning 表示步骤正在迁移状态。
 	ProgressTransitioning ProgressPhase = "TRANSITIONING"
-	ProgressValidating    ProgressPhase = "VALIDATING"
+	// ProgressValidating 表示步骤正在校验结果。
+	ProgressValidating ProgressPhase = "VALIDATING"
 )
 
+// StepProgressEvent 记录步骤执行期间的非终止进度及其执行坐标。
 type StepProgressEvent struct {
 	ID                 execution.StepExecutionID
 	EntryID            execution.EntryID
@@ -27,6 +33,7 @@ type StepProgressEvent struct {
 	Timestamp          int64
 }
 
+// Validate 校验进度事件的身份、非终止阶段、Occurrence 和时间戳。
 func (e StepProgressEvent) Validate() error {
 	var violations []fault.Violation
 	if e.ID.Validate() != nil || e.EntryID.Validate() != nil || e.FlowFragmentStepID == "" || e.DisplayName == "" || e.Kind == "" {
@@ -47,7 +54,7 @@ func (e StepProgressEvent) Validate() error {
 	return nil
 }
 
-// StepPhaseEvent is the framework-neutral terminal execution timeline event.
+// StepPhaseEvent 是框架无关的终止执行时间线事件。
 type StepPhaseEvent struct {
 	ID                 execution.StepExecutionID
 	EntryID            execution.EntryID

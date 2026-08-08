@@ -1,10 +1,10 @@
-# Test Case Matrix Index
+# 测试用例矩阵索引
 
 本索引汇总每个拥有生产代码的一级 domain/application 包的 testcase 矩阵。每个矩阵同时记录公开入口清单和全部顶层 Go `Test…` 函数的可执行证据。表驱动测试的子案例在对应函数源码中维护。
 
-## Domain
+## 领域包
 
-| Package | Matrix | Coverage focus |
+| 包 | 矩阵 | 覆盖重点 |
 |---|---|---|
 | `domain/automation` | [`TEST_CASES.md`](../../domain/automation/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/evidence` | [`TEST_CASES.md`](../../domain/evidence/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
@@ -18,9 +18,9 @@
 | `domain/sampling` | [`TEST_CASES.md`](../../domain/sampling/TEST_CASES.md) | 值对象、验证、状态机、算法、生命周期、所有权与边界。 |
 | `domain/weburl` | [`TEST_CASES.md`](../../domain/weburl/TEST_CASES.md) | 共享内核：绝对 HTTP(S) URL 规则的唯一判定处——scheme、host、userinfo、控制字符，以及封闭的拒绝原因词表。 |
 
-## Application
+## 应用包
 
-| Package | Matrix | Coverage focus |
+| 包 | 矩阵 | 覆盖重点 |
 |---|---|---|
 | `application/automation` | [`TEST_CASES.md`](../../application/automation/TEST_CASES.md) | Use case、端口错误、事务、回滚、幂等、并发和跨层契约。 |
 | `application/engine` | [`TEST_CASES.md`](../../application/engine/TEST_CASES.md) | Use case、端口错误、事务、回滚、幂等、并发和跨层契约。 |

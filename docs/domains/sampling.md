@@ -23,11 +23,11 @@ flowchart LR
 
 `UnpublishedFlowFragment` / `UnpublishedElementTarget`（[`workspace.go`](../../domain/sampling/workspace.go)）是**独立的**可编辑发布准备模型，支持临时资产与重写。它们不是 `Session` 或 `Session Snapshot` 的别名 —— 临时工作区不是会话快照，也不替代会话生命周期。
 
-`CaptureID` 是重试幂等键，`IdentityKey` 是同一录制中的节点身份。`MatchProfile` 组合 selectors、fingerprint、origin；`ResolutionMode` 是四值封闭集 `UNDECIDED` / `CREATE` / `MERGE` / `REUSE`（[`workspace.go:48-51`](../../domain/sampling/workspace.go)），没有第五个取值。
+`CaptureID` 是重试幂等键，`IdentityKey` 是同一录制中的节点身份。`MatchProfile` 组合 selectors、fingerprint、origin；`ResolutionMode` 是四值封闭集 `UNDECIDED` / `CREATE` / `MERGE` / `REUSE`（[`workspace.go`](../../domain/sampling/workspace.go)），没有第五个取值。
 
 ## 不变量
 
-- 新会话要求 workflowID 与合法 startURL；UUID 使用 v7（[`session.go:396`](../../domain/sampling/session.go) 写入版本位 `0x70`）。
+- 新会话要求 workflowID 与合法 startURL；UUID 使用 v7（[`session.go`](../../domain/sampling/session.go) 写入版本位 `0x70`）。
 - 仅 `recording` 可 Record；Pause/Resume/End/Interrupt 遵守状态矩阵，终态不可恢复；Interrupt/Fail 幂等。
 - 同一 `CaptureID` 的重试返回原结果，即使载荷变化；新动作序号单调。
 - `IdentityKey` 稳定复用 NodeUUID；`ElementTargetSpec` 新建与更新均校验。
@@ -37,9 +37,9 @@ flowchart LR
 
 ### 未发布资产不得携带正式身份
 
-`UnpublishedElementTarget` 上唯一的引用字段是 [`ExistingNodeID`](../../domain/sampling/workspace.go) —— 它指向**已经**发布出去的 ElementTarget，不是这份草稿自己的身份。Version、VersionNumber、Revision、CurrentVersionID 这类正式身份只能由自动化在发布成功之后分配；草稿先带上它，就可能在任何东西发布它之前被执行或被引用。
+`UnpublishedElementTarget` 上唯一的引用字段是 [`ExistingNodeID`](../../domain/sampling/workspace.go) —— 它指向已发布的 ElementTarget，不是这份草稿自己的身份。Version、VersionNumber、Revision、CurrentVersionID 这类正式身份由自动化在发布成功后分配；草稿携带这些正式身份会导致执行或引用越过发布边界。
 
-[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestUnpublishedSamplingAssetsCarryNoFormalIdentity` 对两个类型的字段名同时做两道检查：禁用子串（`Version`/`VersionNumber`/`Revision`/`CurrentVersionID`/`ElementTargetVersionID`）和禁用前缀（`Saved`/`Published`/`Promoted`/`Formal`）。两道都需要 —— 曾经存在的 `SavedWorkflowID` 不含任何一个禁用子串，只有前缀那一道拦得住它。`Saved` 与 `Existing` 的区别是语义的而非语法的：「Saved」说这份资产在发布前就握有正式身份，「Existing」说它引用了别人已经发布的东西。
+[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestUnpublishedSamplingAssetsCarryNoFormalIdentity` 对两个类型的字段名同时做两道检查：禁用子串（`Version`/`VersionNumber`/`Revision`/`CurrentVersionID`/`ElementTargetVersionID`）和禁用前缀（`Saved`/`Published`/`Promoted`/`Formal`）。`ExistingNodeID` 只表示对已发布 ElementTarget 的引用，不表示草稿拥有正式身份；新增字段必须保持这一语义。
 
 ## 状态与流程
 
@@ -58,7 +58,7 @@ stateDiagram-v2
   interrupted --> [*]
 ```
 
-每个终态只有一个名字。`StatusCompleted` / `StatusFailed` 常量别名与 `Session.Complete` / `Session.Fail` 转发方法曾让 `Ended` / `Interrupted` 各自有两个公开名字，现已删除；`TestNoExportedConstAliasKeepsAnOldNameAlive` 与 `TestNoExportedMethodAliasKeepsAnOldNameAlive` 守住这两种形状，它们是原类型别名守卫看不见的。
+每个终态只有一个公开名字：`Ended` 与 `Interrupted`。常量和方法别名由统一语言边界测试禁止，调用方应直接使用 `Session.End` 与 `Session.Interrupt`。
 
 ## 失败语义
 
@@ -69,7 +69,7 @@ stateDiagram-v2
 三条本领域特有的边界：
 
 - **起始 URL 解析失败只作为私有 cause。** `url.Error` 会把完整 URL（含 path 与 query）格式化进自己的文本，故它绝不进公共文本；公共 violation 只说明 `startUrl` 格式非法。
-- **捕获到的 `ElementTargetSpec` 校验失败原样上传 `FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID`**，不再套一层 `SAMPLING_CAPTURE_INVALID` —— 嵌套 fault 会迫使宿主递归解包才能分类。
+- **捕获到的 `ElementTargetSpec` 校验失败原样上传 `FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID`**，不追加 `SAMPLING_CAPTURE_INVALID` —— 嵌套 fault 会迫使宿主递归解包才能分类。
 - **step / 临时 ElementTarget 的身份 ID 一律不进公共文本。** 会话状态与动作种类虽是闭集，但被拒的取值按定义就在闭集之外，即任意调用方输入，同样不回显。
 
 `nil` 接收者与 UUID 熵源失败合并为 `SAMPLING_INTERNAL`：两者都没有调用方可执行的补救动作，分成两个 code 只会多出一个没人能处理的 i18n key。

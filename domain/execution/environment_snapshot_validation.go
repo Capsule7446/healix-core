@@ -10,13 +10,9 @@ import (
 	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
-// validateEnvironmentSnapshot builds one aggregate violation envelope for the
-// instance's environment, screenshot, and healer policy snapshots. Every sub-check
-// stays an ordinary Go error and is discarded once recorded as a generic
-// violation, so an environment property or variable name — caller-declared,
-// and never useful to echo back — never reaches public text. Property and
-// variable maps are walked in sorted key order so violation order is a
-// function of the input alone.
+// validateEnvironmentSnapshot 为实例环境、截图和自愈策略快照构建一个聚合违规封套。各子校验
+// 只产生普通 Go 错误，记录为通用违规后即丢弃，因此调用方声明的属性名或变量名不会进入
+// 公开文本。属性和变量映射按排序键遍历，使违规顺序只由输入决定。
 func validateEnvironmentSnapshot(schemaVersion InstanceSnapshotSchema, env EnvironmentSnapshot, screenshot ScreenshotPolicySnapshot, healer HealerPolicySnapshot) error {
 	var violations []fault.Violation
 	violations = appendEnvironmentIdentityViolations(violations, env)
@@ -29,6 +25,7 @@ func validateEnvironmentSnapshot(schemaVersion InstanceSnapshotSchema, env Envir
 	return nil
 }
 
+// appendEnvironmentIdentityViolations 追加环境修订号、身份字段和基础 URL 的违规项。
 func appendEnvironmentIdentityViolations(violations []fault.Violation, v EnvironmentSnapshot) []fault.Violation {
 	if atCap(violations) {
 		return violations
@@ -39,16 +36,14 @@ func appendEnvironmentIdentityViolations(violations []fault.Violation, v Environ
 	if !validString(v.ID, true) || !validString(v.DisplayName, true) || !validString(v.BaseURL, false) {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.identity", "environment identity is invalid"))
 	}
-	// The shared rule also rejects control characters, which this call site
-	// previously did not check even though the two navigation call sites did.
-	// A base URL is concatenated into request targets, so a raw CR here is
-	// the same splitting vector it is there.
+	// 基础 URL 会拼接进请求目标，因此必须拒绝控制字符，避免原始 CR 等字符造成请求分割。
 	if v.BaseURL != "" && !weburl.Accept(v.BaseURL) {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "environment.baseUrl", "environment base URL must be an absolute HTTP(S) URL without credentials"))
 	}
 	return violations
 }
 
+// appendEnvironmentVariableViolations 按快照模式校验属性或类型化变量，并按键排序遍历。
 func appendEnvironmentVariableViolations(violations []fault.Violation, schemaVersion InstanceSnapshotSchema, v EnvironmentSnapshot) []fault.Violation {
 	if schemaVersion == InstanceSnapshotSchemaV1 {
 		if len(v.Variables) != 0 {
@@ -84,6 +79,7 @@ func appendEnvironmentVariableViolations(violations []fault.Violation, schemaVer
 	return violations
 }
 
+// appendScreenshotPolicyViolations 校验截图策略版本、启用条件和目标路径安全性。
 func appendScreenshotPolicyViolations(violations []fault.Violation, v ScreenshotPolicySnapshot) []fault.Violation {
 	if atCap(violations) {
 		return violations
@@ -97,6 +93,7 @@ func appendScreenshotPolicyViolations(violations []fault.Violation, v Screenshot
 	return violations
 }
 
+// appendHealerPolicyViolations 校验自愈策略版本、阈值和权重的有限非负约束。
 func appendHealerPolicyViolations(violations []fault.Violation, v HealerPolicySnapshot) []fault.Violation {
 	if atCap(violations) {
 		return violations
@@ -122,4 +119,5 @@ func appendHealerPolicyViolations(violations []fault.Violation, v HealerPolicySn
 	return violations
 }
 
+// unit 判断浮点值是否为有限且位于闭区间 [0,1]。
 func unit(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v <= 1 }

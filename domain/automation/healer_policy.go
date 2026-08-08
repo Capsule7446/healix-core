@@ -6,6 +6,7 @@ import (
 	"math"
 )
 
+// HealerPolicySnapshotVersionV1 标识当前修复策略快照版本。
 const HealerPolicySnapshotVersionV1 = 1
 
 // HealerWeightsSnapshotV1 是执行域的修复器权重的工作区端 ACL 表示形式。将此快照保留在本地可防止工作区有界上下文导入域/修复，同时仍允许排队运行冻结其确定性策略。
@@ -23,6 +24,7 @@ type HealerWeightsSnapshotV1 struct {
 	Framework float64
 }
 
+// HealerPolicySnapshotV1 保存修复器版本、阈值和各评分维度权重。
 type HealerPolicySnapshotV1 struct {
 	Version    int
 	ReviewCap  float64
@@ -30,6 +32,7 @@ type HealerPolicySnapshotV1 struct {
 	Weights    HealerWeightsSnapshotV1
 }
 
+// DefaultHealerPolicySnapshotV1 返回一份默认 V1 修复策略快照值。
 func DefaultHealerPolicySnapshotV1() HealerPolicySnapshotV1 {
 	return HealerPolicySnapshotV1{
 		Version:    HealerPolicySnapshotVersionV1,
@@ -43,7 +46,7 @@ func DefaultHealerPolicySnapshotV1() HealerPolicySnapshotV1 {
 	}
 }
 
-// NormalizeHealerPolicySnapshotV1 将缺失的策略前 JSON 值映射到 V1 默认值。一旦版本存在，每个提供的值都是权威的；特别是，零权重不会被默认值取代。
+// NormalizeHealerPolicySnapshotV1 将缺失版本映射为 V1 默认快照；版本存在时每个提供的值（包括零权重）保持权威。
 func NormalizeHealerPolicySnapshotV1(policy HealerPolicySnapshotV1) HealerPolicySnapshotV1 {
 	if policy.Version == 0 {
 		return DefaultHealerPolicySnapshotV1()
@@ -51,6 +54,7 @@ func NormalizeHealerPolicySnapshotV1(policy HealerPolicySnapshotV1) HealerPolicy
 	return policy
 }
 
+// Validate 校验策略版本、阈值顺序及权重的有限性、非负性和总和。
 func (p HealerPolicySnapshotV1) Validate() error {
 	p = NormalizeHealerPolicySnapshotV1(p)
 	if p.Version != HealerPolicySnapshotVersionV1 {
@@ -78,6 +82,7 @@ func (p HealerPolicySnapshotV1) Validate() error {
 	return nil
 }
 
+// finiteUnit 判断浮点值是否为有限且位于 [0,1] 区间。
 func finiteUnit(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
 }

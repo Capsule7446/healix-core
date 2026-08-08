@@ -13,6 +13,7 @@ import (
 	"github.com/Capsule7446/healix-core/domain/parameter"
 )
 
+// wrapHealGovernanceFault 按给定 Kind、错误码和安全消息包装自愈治理错误。
 func wrapHealGovernanceFault(cause error, kind fault.Kind, code fault.Code, message string) error {
 	err, constructionErr := fault.Wrap(cause, kind, code, message)
 	if constructionErr != nil {
@@ -21,30 +22,38 @@ func wrapHealGovernanceFault(cause error, kind fault.Kind, code fault.Code, mess
 	return err
 }
 
+// healGovernanceSnapshotInvalidError 构造自愈治理快照无效的前置条件错误。
 func healGovernanceSnapshotInvalidError(cause error) error {
 	return wrapHealGovernanceFault(cause, fault.FailedPrecondition, CodeHealGovernanceSnapshotInvalid, "heal governance snapshot is invalid")
 }
 
+// healAcceptedFactInvalidError 构造已接受自愈事实无效的调用方错误。
 func healAcceptedFactInvalidError(cause error) error {
 	return wrapHealGovernanceFault(cause, fault.InvalidArgument, CodeHealAcceptedFactInvalid, "accepted heal fact is invalid")
 }
 
+// healTerminalEffectConflictError 构造终态效果与持久化状态冲突的错误。
 func healTerminalEffectConflictError(cause error) error {
 	return wrapHealGovernanceFault(cause, fault.Conflict, CodeHealTerminalEffectConflict, "heal terminal effect conflicts with persisted state")
 }
 
+// HealGovernanceKey 标识一个元素目标及其基线节点版本的自愈治理范围。
 type HealGovernanceKey struct {
 	ElementTargetID   string
 	BaseNodeVersionID string
 }
 
+// HealAcceptedFactKind 表示已接受事实是观测还是重置。
 type HealAcceptedFactKind string
 
 const (
+	// HealAcceptedObservation 表示事实携带自愈观测。
 	HealAcceptedObservation HealAcceptedFactKind = "OBSERVATION"
-	HealAcceptedReset       HealAcceptedFactKind = "RESET"
+	// HealAcceptedReset 表示事实携带原始状态恢复重置。
+	HealAcceptedReset HealAcceptedFactKind = "RESET"
 )
 
+// HealAcceptedFact 携带已接受事实的身份、顺序以及观测或重置载荷。
 type HealAcceptedFact struct {
 	Kind        HealAcceptedFactKind
 	FactID      string
@@ -55,6 +64,7 @@ type HealAcceptedFact struct {
 	Reset       *evidence.HealCandidateReset
 }
 
+// HealContributionSnapshot 保存用于治理 streak 的事实贡献身份快照。
 type HealContributionSnapshot struct {
 	FactID          string
 	CommitID        string
@@ -64,15 +74,21 @@ type HealContributionSnapshot struct {
 	Sequence        uint64
 }
 
+// HealTerminalEffectKind 表示 streak 转换产生的终态效果。
 type HealTerminalEffectKind string
 
 const (
-	HealEffectAutoPublish   HealTerminalEffectKind = "AUTO_PUBLISH"
+	// HealEffectAutoPublish 表示自动发布候选版本。
+	HealEffectAutoPublish HealTerminalEffectKind = "AUTO_PUBLISH"
+	// HealEffectAwaitApproval 表示创建待审核候选。
 	HealEffectAwaitApproval HealTerminalEffectKind = "AWAIT_APPROVAL"
-	HealEffectReset         HealTerminalEffectKind = "RESET"
-	HealEffectStale         HealTerminalEffectKind = "STALE"
+	// HealEffectReset 表示重置治理状态。
+	HealEffectReset HealTerminalEffectKind = "RESET"
+	// HealEffectStale 表示将候选标记为过期。
+	HealEffectStale HealTerminalEffectKind = "STALE"
 )
 
+// HealTerminalEffectSnapshot 保存已持久化终态效果及其候选、决策区间、贡献和发布身份。
 type HealTerminalEffectSnapshot struct {
 	Kind          HealTerminalEffectKind
 	CandidateHash string
@@ -82,6 +98,7 @@ type HealTerminalEffectSnapshot struct {
 	ReviewID      string
 }
 
+// HealGovernanceSnapshot 保存治理范围当前节点版本、修订、streak、候选状态和既有效果。
 type HealGovernanceSnapshot struct {
 	Key                    HealGovernanceKey
 	CurrentNodeVersionID   string
@@ -91,11 +108,13 @@ type HealGovernanceSnapshot struct {
 	ExistingTerminalEffect *HealTerminalEffectSnapshot
 }
 
+// HealGovernancePlan 将治理快照与一个已接受事实交给规划器。
 type HealGovernancePlan struct {
 	Snapshot HealGovernanceSnapshot
 	Fact     HealAcceptedFact
 }
 
+// HealTerminalEffectIntent 描述本次 streak 转换需要提交的终态效果。
 type HealTerminalEffectIntent struct {
 	Kind          HealTerminalEffectKind
 	CandidateHash string
@@ -103,6 +122,7 @@ type HealTerminalEffectIntent struct {
 	Contributions []HealContributionSnapshot
 }
 
+// HealGovernanceDecision 保存事实应用所需的键、期望修订、下一 streak 和可选效果。
 type HealGovernanceDecision struct {
 	Key              HealGovernanceKey
 	FactID           string
@@ -112,16 +132,21 @@ type HealGovernanceDecision struct {
 	Effect           *HealTerminalEffectIntent
 }
 
+// HealGovernancePlanner 定义根据已接受事实规划自愈治理转换的端口。
 type HealGovernancePlanner interface {
+	// PlanHealGovernance 校验计划并返回下一 streak 与终态效果决策。
 	PlanHealGovernance(HealGovernancePlan) (HealGovernanceDecision, error)
 }
 
+// DefaultHealGovernancePlanner 使用 Core 领域规则规划自愈治理。
 type DefaultHealGovernancePlanner struct{}
 
+// NewDefaultHealGovernancePlanner 构造默认自愈治理规划器。
 func NewDefaultHealGovernancePlanner() DefaultHealGovernancePlanner {
 	return DefaultHealGovernancePlanner{}
 }
 
+// PlanHealGovernance 校验治理计划、映射已接受事实、推进 streak，并生成终态效果意图。
 func (DefaultHealGovernancePlanner) PlanHealGovernance(plan HealGovernancePlan) (HealGovernanceDecision, error) {
 	if err := validateHealGovernancePlan(plan); err != nil {
 		return HealGovernanceDecision{}, err
@@ -143,6 +168,7 @@ func (DefaultHealGovernancePlanner) PlanHealGovernance(plan HealGovernancePlan) 
 	return decision, nil
 }
 
+// validateCanonicalHealIdentity 校验自愈身份已规范化且符合参数名称规则。
 func validateCanonicalHealIdentity(identity string) error {
 	if identity != strings.TrimSpace(identity) || parameter.ValidateName(identity) != nil {
 		return errors.New("heal identity is invalid")
@@ -150,6 +176,7 @@ func validateCanonicalHealIdentity(identity string) error {
 	return nil
 }
 
+// validateHealContributionIdentities 校验贡献事实中所有身份字段。
 func validateHealContributionIdentities(contribution domainautomation.ContributingHealFact) error {
 	for _, identity := range []string{
 		contribution.FactID,
@@ -165,6 +192,7 @@ func validateHealContributionIdentities(contribution domainautomation.Contributi
 	return nil
 }
 
+// validateHealStreakIdentities 校验 streak 本身及其贡献、已消费观测中的身份字段。
 func validateHealStreakIdentities(streak domainautomation.HealStreak) error {
 	for _, identity := range []string{streak.ElementTargetID, streak.BaseNodeVersionID, streak.CandidateHash} {
 		if identity != "" {
@@ -186,6 +214,7 @@ func validateHealStreakIdentities(streak domainautomation.HealStreak) error {
 	return nil
 }
 
+// validateHealGovernancePlan 校验治理快照、事实身份、streak 一致性和既有效果契约。
 func validateHealGovernancePlan(plan HealGovernancePlan) error {
 	for _, identity := range []string{
 		plan.Snapshot.Key.ElementTargetID,
@@ -226,6 +255,7 @@ func validateHealGovernancePlan(plan HealGovernancePlan) error {
 	return nil
 }
 
+// validateHealCandidateStatus 校验候选状态与 streak 处置状态匹配。
 func validateHealCandidateStatus(status domainautomation.HealCandidateStatus, disposition domainautomation.HealStreakDisposition) error {
 	if status == "" {
 		return nil
@@ -249,6 +279,7 @@ func validateHealCandidateStatus(status domainautomation.HealCandidateStatus, di
 	return nil
 }
 
+// validateHealEffectIdentities 校验终态效果的发布身份与效果种类约束。
 func validateHealEffectIdentities(effect *HealTerminalEffectSnapshot) error {
 	for _, identity := range []string{effect.VersionID, effect.ReviewID} {
 		if identity != "" {
@@ -274,6 +305,7 @@ func validateHealEffectIdentities(effect *HealTerminalEffectSnapshot) error {
 	return nil
 }
 
+// validateExistingHealEffect 校验已存在效果与 streak 终态、候选哈希、决策区间和贡献完全一致。
 func validateExistingHealEffect(effect *HealTerminalEffectSnapshot, streak domainautomation.HealStreak) error {
 	if effect == nil {
 		return nil
@@ -304,6 +336,7 @@ func validateExistingHealEffect(effect *HealTerminalEffectSnapshot, streak domai
 	return nil
 }
 
+// mapAcceptedHealFact 将观测或重置事实映射为领域 HealObservation，并绑定治理范围和当前基线。
 func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot) (domainautomation.HealObservation, error) {
 	baseIsCurrent := snapshot.CurrentNodeVersionID == snapshot.Key.BaseNodeVersionID
 	switch fact.Kind {
@@ -378,6 +411,7 @@ func mapAcceptedHealFact(fact HealAcceptedFact, snapshot HealGovernanceSnapshot)
 	}
 }
 
+// mapHealDecisionBand 将 evidence 决策区间映射为 automation 领域区间。
 func mapHealDecisionBand(band evidence.DecisionBand) (domainautomation.HealDecisionBand, error) {
 	switch band {
 	case evidence.DecisionUnknown:
@@ -391,6 +425,7 @@ func mapHealDecisionBand(band evidence.DecisionBand) (domainautomation.HealDecis
 	}
 }
 
+// terminalEffectForTransition 在 streak 处置发生变化时生成相应的终态效果意图。
 func terminalEffectForTransition(previous, next domainautomation.HealStreak) *HealTerminalEffectIntent {
 	if previous.Disposition == next.Disposition {
 		return nil
@@ -415,6 +450,7 @@ func terminalEffectForTransition(previous, next domainautomation.HealStreak) *He
 	return &HealTerminalEffectIntent{Kind: kind, CandidateHash: next.CandidateHash, Band: next.Band, Contributions: contributions}
 }
 
+// cloneHealStreak 返回 streak 的独立副本，保持切片所有权隔离。
 func cloneHealStreak(streak domainautomation.HealStreak) domainautomation.HealStreak {
 	return streak.Clone()
 }

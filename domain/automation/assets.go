@@ -1,4 +1,4 @@
-// Package automation defines durable versioned automation assets and publication rules.
+// Package automation 定义持久化版本化自动化资产及其发布规则。
 package automation
 
 import (
@@ -14,17 +14,17 @@ import (
 	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
+// Properties 保存资产的键值属性；复制操作返回独立映射。
 type Properties map[string]string
 
-// EnvironmentVariables contains the typed values exposed through the env. scope.
-// Callers retain ownership of maps passed to domain operations and may modify them
-// after the operation returns. They must not modify a map concurrently while a
-// domain operation is reading or cloning it; synchronize such access externally.
+// EnvironmentVariables 保存环境作用域公开的类型化参数值。
+// 调用方保留传入映射的所有权，操作返回后可以修改；操作不会修改映射本身。
+// 操作读取或复制映射期间不得并发写入，调用方须在外部同步访问。
 type EnvironmentVariables map[string]parameter.Value
 
-// Clone returns an independently owned map and clones every value, including
-// MULTI_SELECT slices. A nil receiver is normalized to an empty, non-nil map.
-// The caller must prevent concurrent writes to the receiver while Clone runs.
+// Clone 返回独立拥有的映射并复制每个值，包括 MULTI_SELECT 切片。
+// nil 接收值规范化为空的非 nil 映射；返回值不与接收值共享可变引用。
+// 调用方须避免 Clone 执行期间并发写入接收值。
 func (v EnvironmentVariables) Clone() EnvironmentVariables {
 	out := make(EnvironmentVariables, len(v))
 	for name, value := range v {
@@ -33,16 +33,12 @@ func (v EnvironmentVariables) Clone() EnvironmentVariables {
 	return out
 }
 
-// Validate checks every variable name and typed value without taking ownership
-// or modifying the map. The caller must prevent concurrent writes while it runs.
-// It stays an internal, ordinary Go error: it is reachable only through
-// Environment.Validate, which owns AUTOMATION_ENVIRONMENT_INVALID and degrades
-// this failure into its own violation, so the variable name never reaches
-// public text.
+// Validate 校验每个变量名和类型化值，不取得或修改映射所有权。
+// 调用方须避免校验期间并发写入；该方法返回内部普通 Go 错误。
+// Environment.Validate 将该错误转换为 AUTOMATION_ENVIRONMENT_INVALID 聚合违规，
+// 因此变量名不会写入公共错误文本。
 func (v EnvironmentVariables) Validate() error {
-	// Sorted, not map order: two bad variables used to report whichever one Go
-	// visited first. Environment.Validate folds this into one fixed violation, so
-	// the public contract never moved, but the private cause a host logs did.
+	// 按变量名排序后校验，使违规顺序不依赖映射迭代顺序。
 	names := make([]string, 0, len(v))
 	for name := range v {
 		names = append(names, name)
@@ -59,10 +55,12 @@ func (v EnvironmentVariables) Validate() error {
 	return nil
 }
 
+// isElementWaitKind 判断等待类型是否属于元素等待枚举。
 func isElementWaitKind(kind string) bool {
 	return kind == "element" || kind == "element_visible" || kind == "element_invisible"
 }
 
+// Clone 返回属性映射的独立副本，不与接收值共享底层映射。
 func (p Properties) Clone() Properties {
 	out := make(Properties, len(p))
 	for key, value := range p {
@@ -71,6 +69,7 @@ func (p Properties) Clone() Properties {
 	return out
 }
 
+// Validate 校验属性键不为空，失败时返回普通错误。
 func (p Properties) Validate() error {
 	for key := range p {
 		if strings.TrimSpace(key) == "" {
@@ -80,18 +79,19 @@ func (p Properties) Validate() error {
 	return nil
 }
 
+// VersionSource 标识发布版本的来源。
 type VersionSource string
 
 const (
-	SourceManual   VersionSource = "MANUAL"
+	// SourceManual 表示手工创建的版本。
+	SourceManual VersionSource = "MANUAL"
+	// SourceSampling 表示采样创建的版本。
 	SourceSampling VersionSource = "SAMPLING"
+	// SourceAutoHeal 表示自动修复创建的版本。
 	SourceAutoHeal VersionSource = "AUTO_HEAL"
 )
 
-// Validate stays an internal, ordinary Go error: it is reachable only through
-// ElementTargetAggregate.Validate, which owns AUTOMATION_ELEMENT_TARGET_INVALID
-// and degrades this failure into its own violation, so the out-of-range enum
-// value never reaches public text. Direct callers still get a stable substring.
+// Validate 校验来源是否属于支持的枚举值；失败时返回普通错误，由聚合边界负责归类。
 func (s VersionSource) Validate() error {
 	switch s {
 	case SourceManual, SourceSampling, SourceAutoHeal:
@@ -101,6 +101,7 @@ func (s VersionSource) Validate() error {
 	}
 }
 
+// ElementTarget 表示元素目标的稳定元数据和当前版本指针。
 type ElementTarget struct {
 	ID          string
 	DisplayName string
@@ -115,6 +116,7 @@ type ElementTarget struct {
 	Revision         Revision
 }
 
+// ElementTargetVersion 表示元素目标的一份不可变版本内容。
 type ElementTargetVersion struct {
 	ID              string
 	ElementTargetID string
@@ -128,31 +130,24 @@ type ElementTargetVersion struct {
 	DeletedAt       int64
 }
 
+// ElementTargetAggregate 持有元素目标元数据、当前版本及完整版本历史。
 type ElementTargetAggregate struct {
 	ElementTarget ElementTarget
 	Current       ElementTargetVersion
 	Versions      []ElementTargetVersion
 }
 
-// ValidateFor validates one exact immutable version selected out of an element
-// target's history. It deliberately does not assert that the selected version is
-// still the target's current one — that is the whole point of reusing a
-// historical version — so it aims the current pointer at the selection and then
-// applies the identical content rules.
-//
-// The REUSE publication path needs this. Its projection carries the selected
-// historical version as Current while ElementTarget.CurrentVersionID still holds
-// the live pointer for the compare-and-swap, so the full aggregate check can
-// never pass by construction, and skipping it wholesale left the selected
-// version's selectors, fingerprint, version number and source unchecked on every
-// path. FlowFragmentVersion.ValidateFor already solved the same problem the same
-// way.
+// ValidateFor 校验从元素目标历史中选定的确切不可变版本。
+// 它临时将选定版本作为当前版本执行同一套内容规则，但不要求该版本仍是实时指针指向的版本，
+// 因为历史版本可以被 REUSE 发布路径重新使用。
+// 选定版本仍会检查选择器、指纹、版本号和来源，避免绕过聚合校验进入不可变发布内容。
 func (v ElementTargetVersion) ValidateFor(target ElementTarget) error {
 	selected := target
 	selected.CurrentVersionID = v.ID
 	return (ElementTargetAggregate{ElementTarget: selected, Current: v}).Validate()
 }
 
+// Validate 校验元素目标身份、当前版本、选择器、指纹和版本来源，并按字段顺序返回聚合错误。
 func (a ElementTargetAggregate) Validate() error {
 	var violations []fault.Violation
 	if strings.TrimSpace(a.ElementTarget.ID) == "" {
@@ -190,12 +185,8 @@ func (a ElementTargetAggregate) Validate() error {
 	if a.Current.Fingerprint.Attributes == nil {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "current.fingerprint.attributes", "fingerprint attributes are required"))
 	}
-	// These two mirror rules that domain/fingerprint already enforces on the same
-	// value. They were missing here, so a negative sibling index or a malformed
-	// framework stack — both rejected the moment the element is sampled — could
-	// still be written into an immutable published version through this path and
-	// then read back by heal scoring. The duplication is pinned by an agreement
-	// test; the drift is what actually caused the gap.
+	// 指纹的兄弟索引和框架栈必须在发布边界再次校验，确保不可变版本不会保存无效内容。
+	// 这些字段由采样输入携带，聚合校验不得因版本复用路径而跳过。
 	if a.Current.Fingerprint.SiblingIndex < 0 {
 		violations = append(violations, mustViolation(fault.CodeFieldInvalid, "current.fingerprint.siblingIndex", "fingerprint sibling index must not be negative"))
 	}
@@ -211,9 +202,7 @@ func (a ElementTargetAggregate) Validate() error {
 	return nil
 }
 
-// hasInvalidKey reports whether any property key is blank once trimmed. The
-// result does not depend on which key is iterated first, so ranging the map
-// here does not make the caller's violation order a function of map order.
+// hasInvalidKey 判断属性映射中是否存在去除空白后为空的键。
 func (p Properties) hasInvalidKey() bool {
 	for key := range p {
 		if strings.TrimSpace(key) == "" {
@@ -223,6 +212,7 @@ func (p Properties) hasInvalidKey() bool {
 	return false
 }
 
+// Environment 表示可复用的环境配置及其生命周期字段。
 type Environment struct {
 	ID          string
 	DisplayName string
@@ -234,6 +224,7 @@ type Environment struct {
 	Revision    Revision
 }
 
+// Validate 校验环境身份、时间、基础 URL 和类型化变量，并在失败时返回聚合错误。
 func (e Environment) Validate() error {
 	var violations []fault.Violation
 	if strings.TrimSpace(e.ID) == "" {
@@ -242,10 +233,8 @@ func (e Environment) Validate() error {
 	if strings.TrimSpace(e.DisplayName) == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "displayName", "display name is required"))
 	}
-	// The three messages below are kept distinct because an author fixing a
-	// base URL benefits from knowing which rule they broke. What is no longer
-	// duplicated is the rule itself — including the control-character check
-	// this call site previously lacked.
+	// 基础 URL 的协议、凭据和绝对地址约束分别报告，便于调用方定位字段原因。
+	// 所有分支同时拒绝不符合 weburl 共享规则的控制字符和地址形状。
 	if baseURL := strings.TrimSpace(e.BaseURL); baseURL != "" {
 		switch weburl.Check(baseURL) {
 		case weburl.Accepted:
@@ -266,6 +255,7 @@ func (e Environment) Validate() error {
 	return nil
 }
 
+// ParameterDefinition 定义流程片段参数的名称、类型、约束和默认值。
 type ParameterDefinition struct {
 	Name        string
 	DisplayName string
@@ -276,11 +266,8 @@ type ParameterDefinition struct {
 	Options     []string
 }
 
-// Validate returns an AUTOMATION_FLOW_FRAGMENT_INVALID envelope: parameter
-// definitions are flow fragment content, so they carry their own code's
-// single-violation short circuits rather than a separate family. Option and
-// type values never reach public text; a failing default degrades through
-// ValidateValue, which keeps a parameter.Value's own PARAMETER_* code intact.
+// Validate 校验参数定义及默认值，并将结构错误归入 AUTOMATION_FLOW_FRAGMENT_INVALID。
+// 选项、类型和默认值不写入公共文本；值自身的 PARAMETER_* 错误保持原码。
 func (p ParameterDefinition) Validate() error {
 	if strings.TrimSpace(p.Name) == "" || strings.TrimSpace(p.DisplayName) == "" {
 		return flowFragmentInvalidError(mustViolation(fault.CodeFieldRequired, "definition.name", "parameter name and display name are required"))
@@ -320,9 +307,8 @@ func (p ParameterDefinition) Validate() error {
 	return nil
 }
 
-// ValidateValue returns an AUTOMATION_FLOW_FRAGMENT_INVALID envelope for a
-// structural mismatch between the value and its declaration. A failing
-// value.Validate() keeps its own PARAMETER_* code and passes through unwrapped.
+// ValidateValue 校验给定值是否符合参数定义，并将结构不匹配归入流程片段错误。
+// 值自身的 Validate 错误保持原错误码并直接返回，不嵌套或改写错误。
 func (p ParameterDefinition) ValidateValue(value parameter.Value) error {
 	if err := value.Validate(); err != nil {
 		return err
@@ -358,17 +344,25 @@ func (p ParameterDefinition) ValidateValue(value parameter.Value) error {
 	return nil
 }
 
+// StepKind 标识流程步骤的种类。
 type StepKind string
 
 const (
-	StepAction          StepKind = "ACTION"
-	StepWait            StepKind = "WAIT"
-	StepRepeat          StepKind = "REPEAT"
+	// StepAction 表示动作步骤。
+	StepAction StepKind = "ACTION"
+	// StepWait 表示等待步骤。
+	StepWait StepKind = "WAIT"
+	// StepRepeat 表示重复步骤。
+	StepRepeat StepKind = "REPEAT"
+	// StepFlowFragmentRef 表示流程片段引用步骤。
 	StepFlowFragmentRef StepKind = "WORKFLOW_REF"
-	StepValidation      StepKind = "VALIDATION"
+	// StepValidation 表示验证步骤。
+	StepValidation StepKind = "VALIDATION"
+	// StepValidationGroup 表示验证组步骤。
 	StepValidationGroup StepKind = "VALIDATION_GROUP"
 )
 
+// FlowFragmentReference 描述流程片段引用及其参数绑定。
 type FlowFragmentReference struct {
 	FlowFragmentID    string
 	WorkflowVersionID string
@@ -376,6 +370,7 @@ type FlowFragmentReference struct {
 	ParameterBindings map[string]parameter.Binding
 }
 
+// FlowFragmentStep 表示流程片段中的一个步骤及其子步骤。
 type FlowFragmentStep struct {
 	ID          string
 	DisplayName string
@@ -386,7 +381,7 @@ type FlowFragmentStep struct {
 	ElementTargetID   string
 	// ElementTargetVersionID 是不可变的 FlowFragmentVersion 定义的一部分。  它故意位于 ElementTargetID 旁边，因为单次运行可能合法地包含同一稳定节点的两个版本。
 	ElementTargetVersionID string
-	// Value and Values are ordinary literal/interpolated workflow input.
+	// Value 和 Values 保存普通字面量或插值后的流程输入。
 	Value       string
 	Values      []string
 	WaitKind    string
@@ -401,11 +396,13 @@ type FlowFragmentStep struct {
 	Children        []FlowFragmentStep
 }
 
+// FlowFragmentContent 保存流程片段步骤树和参数定义。
 type FlowFragmentContent struct {
 	Steps      []FlowFragmentStep
 	Parameters []ParameterDefinition
 }
 
+// FlowFragment 表示流程片段的稳定元数据和当前版本指针。
 type FlowFragment struct {
 	ID          string
 	DisplayName string
@@ -420,6 +417,7 @@ type FlowFragment struct {
 	Revision         Revision
 }
 
+// FlowFragmentVersion 表示流程片段的一份不可变版本内容。
 type FlowFragmentVersion struct {
 	ID             string
 	FlowFragmentID string
@@ -429,13 +427,14 @@ type FlowFragmentVersion struct {
 	DeletedAt      int64
 }
 
+// FlowFragmentAggregate 持有流程片段元数据、当前版本及完整版本历史。
 type FlowFragmentAggregate struct {
 	FlowFragment FlowFragment
 	Current      FlowFragmentVersion
 	Versions     []FlowFragmentVersion
 }
 
-// ValidateFor 验证从运行快照中选择的确切不可变版本。它故意不声明所选的历史版本仍然是稳定资产的当前版本。
+// ValidateFor 校验从流程片段历史中选定的确切不可变版本；它不要求所选历史版本仍是稳定资产的当前版本。
 func (v FlowFragmentVersion) ValidateFor(workflow FlowFragment) error {
 	selected := workflow
 	selected.CurrentVersionID = v.ID
@@ -452,6 +451,7 @@ type workflowStepFrame struct {
 	depth int
 }
 
+// validateWorkflowStepBounds 校验步骤树的最大深度和总数量。
 func validateWorkflowStepBounds(steps []FlowFragmentStep) error {
 	stack := []workflowStepFrame{{steps: steps, depth: 1}}
 	count := 0
@@ -474,6 +474,7 @@ func validateWorkflowStepBounds(steps []FlowFragmentStep) error {
 	return nil
 }
 
+// Validate 校验流程片段元数据、步骤树、参数定义和当前版本，并在失败时返回聚合错误。
 func (a FlowFragmentAggregate) Validate() error {
 	if err := validateWorkflowStepBounds(a.Current.Definition.Steps); err != nil {
 		return flowFragmentInvalidError(mustViolation(fault.CodeFieldInvalid, "steps", "flow fragment step tree exceeds its nesting or count limit"))
@@ -532,13 +533,8 @@ func (a FlowFragmentAggregate) Validate() error {
 				if strings.TrimSpace(step.ElementTargetID) != "" && strings.TrimSpace(step.ElementTargetVersionID) == "" {
 					violations = append(violations, mustViolation(fault.CodeFieldRequired, "steps.action.elementTargetVersionId", "step action requires an exact element target version"))
 				}
-				// The reverse direction. Only navigate and press may omit the element
-				// target, and every downstream gate — reference resolution, the
-				// publication decision, the dependency closure, the snapshot step
-				// shape, the compiler — keys off a non-empty ElementTargetID, so a
-				// version id left behind on one of those two actions was carried
-				// through all of them untouched and into the published version. Wait,
-				// repeat and fragment-reference steps already reject it outright.
+				// navigate 和 press 可以省略元素目标；引用解析、发布、依赖闭包、快照校验和编译均要求非空 ElementTargetID。
+				// 因此没有元素目标的步骤不得携带版本 ID；等待、重复和流程片段引用步骤同样拒绝该组合。
 				if strings.TrimSpace(step.ElementTargetID) == "" && strings.TrimSpace(step.ElementTargetVersionID) != "" {
 					violations = append(violations, mustViolation(fault.CodeFieldInvalid, "steps.action.elementTargetVersionId", "a step action without an element target cannot carry a version"))
 				}
@@ -627,8 +623,8 @@ func (a FlowFragmentAggregate) Validate() error {
 	for index, definition := range a.Current.Definition.Parameters {
 		if err := definition.Validate(); err != nil {
 			if _, classified := fault.CodeOf(err); classified && !fault.IsCode(err, CodeFlowFragmentInvalid) {
-				// A parameter default's own PARAMETER_* fault keeps its code rather
-				// than being restated as a generic definition failure.
+				// 参数默认值自身的 PARAMETER_* 错误保持原码，不改写为泛化的定义错误，
+				// 调用方可以据此区分值校验失败和定义结构失败。
 				violations = append(violations, mustViolation(fault.CodeFieldInvalid, fmt.Sprintf("definition.parameters.%d", index), "parameter definition value is incompatible with its declaration"))
 			} else {
 				violations = append(violations, mustViolation(fault.CodeFieldInvalid, fmt.Sprintf("definition.parameters.%d", index), "parameter definition is invalid"))
@@ -648,6 +644,7 @@ func (a FlowFragmentAggregate) Validate() error {
 	return nil
 }
 
+// supportedAction 判断动作名称是否属于当前支持的动作集合。
 func supportedAction(action string) bool {
 	switch action {
 	case "click", "input", "select", "hover", "navigate", "press", "noop", "extract":
@@ -657,13 +654,17 @@ func supportedAction(action string) bool {
 	}
 }
 
+// FlowFragmentVersionPolicy 标识流程片段引用的版本选择策略。
 type FlowFragmentVersionPolicy string
 
 const (
-	FlowFragmentVersionFixed  FlowFragmentVersionPolicy = "FIXED"
+	// FlowFragmentVersionFixed 表示固定版本策略。
+	FlowFragmentVersionFixed FlowFragmentVersionPolicy = "FIXED"
+	// FlowFragmentVersionLatest 表示最新版本策略。
 	FlowFragmentVersionLatest FlowFragmentVersionPolicy = "LATEST"
 )
 
+// Validate 校验版本选择策略是否属于支持的枚举值。
 func (p FlowFragmentVersionPolicy) Validate() error {
 	switch p {
 	case FlowFragmentVersionFixed, FlowFragmentVersionLatest:

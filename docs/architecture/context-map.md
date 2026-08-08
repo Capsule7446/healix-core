@@ -6,7 +6,7 @@
 
 十个领域包归入两个有界上下文与一个共享内核：自动化（`automation`、`sampling`）、执行（`execution`、`node`、`heal`、`evidence`）和共享内核（`fault`、`fingerprint`、`interpolation`、`parameter`）。共享内核**不是**第三个有界上下文，它没有自己的业务语言，只提供两个上下文都要用的值语义。
 
-映射写在 [`dependencies_test.go`](../../architecture/dependencies_test.go) 的 `domainContext`（第 371-382 行），并由 [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestBoundedContextIsolation` 强制：任一 `domain/*` 包 import 另一个 `domain/*` 包时，除非双方之一属于 `shared`，否则两者的上下文必须相同。地图里漏登记一个包同样是失败 —— 未知包不会被默认放行。
+映射写在 [`dependencies_test.go`](../../architecture/dependencies_test.go) 的 `domainContext`，并由 [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestBoundedContextIsolation` 强制：任一 `domain/*` 包 import 另一个 `domain/*` 包时，除非双方之一属于 `shared`，否则两者的上下文必须相同。地图里漏登记一个包同样是失败 —— 未知包不会被默认放行。
 
 ```mermaid
 flowchart TB
@@ -67,7 +67,7 @@ flowchart TB
 
 ## 一处刻意的前缀错位
 
-`SAMPLING_PUBLICATION_IDENTITY_CONFLICT`、`SAMPLING_PUBLICATION_AUTHORITY_INVALID` 与 `SAMPLING_PUBLICATION_COMMAND_INVALID` 由 `application/automation` 产出，却带 `SAMPLING_*` 前缀。这不是漏改：code 前缀标的是**消费方看到的业务上下文**，不是产出它的 Go 包。三行都在注册表里注明了该错位由 `v0.5-error-inventory.md:37` 授权。产出包与前缀不一致的情况仅此三处，其余一律对齐。
+`SAMPLING_PUBLICATION_IDENTITY_CONFLICT`、`SAMPLING_PUBLICATION_AUTHORITY_INVALID` 与 `SAMPLING_PUBLICATION_COMMAND_INVALID` 由 `application/automation` 产出，却带 `SAMPLING_*` 前缀。这是有意的契约：code 前缀表示消费方看到的业务上下文，不表示 Go 产出包；注册表中的三行记录了该归属。除此三项外，产出包与前缀保持一致。
 
 ## 禁止的捷径
 

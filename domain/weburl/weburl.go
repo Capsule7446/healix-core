@@ -1,10 +1,5 @@
-// 包 weburl 拥有 Core 中"绝对 HTTP(S) URL"这一条共享规则。
-//
-// 该规则原本在四处各写一遍——automation 的 BaseURL、execution 的 environment
-// snapshot、execution 的 navigation step、node 的运行期导航——并且已经漂移：
-// 两个 BaseURL 校验点缺少控制字符检查，navigation 校验点则在存在插值时跳过了
-// host 检查。规则相同而实现分散，漂移只是时间问题，所以规则收敛到这里，各上下文
-// 只保留自己的错误码与字段名。
+// Package weburl 提供 Core 共享的绝对 HTTP(S) URL 校验规则。
+// 各上下文可将封闭的拒绝原因映射为自己的错误码、字段名和安全文案。
 package weburl
 
 import (
@@ -20,12 +15,18 @@ import (
 type Rejection string
 
 const (
-	Accepted           Rejection = ""
+	// Accepted 表示 URL 通过共享校验规则。
+	Accepted Rejection = ""
+	// RejectControlChars 表示 URL 含有 ASCII 控制字符。
 	RejectControlChars Rejection = "control_characters"
-	RejectNotAbsolute  Rejection = "not_absolute"
-	RejectScheme       Rejection = "scheme_not_http"
-	RejectHostMissing  Rejection = "host_missing"
-	RejectUserinfo     Rejection = "userinfo_present"
+	// RejectNotAbsolute 表示 URL 不是绝对 URL 或无法解析。
+	RejectNotAbsolute Rejection = "not_absolute"
+	// RejectScheme 表示 URL scheme 不是 http 或 https。
+	RejectScheme Rejection = "scheme_not_http"
+	// RejectHostMissing 表示 URL 缺少主机。
+	RejectHostMissing Rejection = "host_missing"
+	// RejectUserinfo 表示 URL 含有用户信息。
+	RejectUserinfo Rejection = "userinfo_present"
 )
 
 // Check 按固定顺序应用共享规则，先判定的原因优先。
@@ -43,8 +44,7 @@ func Check(value string) Rejection {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return RejectScheme
 	}
-	// userinfo 先于 host 判定：https://trusted.test@evil.test 的 host 是合法的，
-	// 真正的问题是它读起来像 trusted.test。
+	// userinfo 先于 host 判定，以确保含凭据的 URL 始终得到明确拒绝原因。
 	if parsed.User != nil {
 		return RejectUserinfo
 	}
@@ -57,4 +57,5 @@ func Check(value string) Rejection {
 // Accept 是只关心通过与否的调用方的简写。
 func Accept(value string) bool { return Check(value) == Accepted }
 
+// isControl 判断 rune 是否为 ASCII 控制字符。
 func isControl(r rune) bool { return r < 0x20 || r == 0x7f }

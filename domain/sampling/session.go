@@ -14,31 +14,41 @@ import (
 	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
+// Status 表示采样会话的生命周期状态。
 type Status string
 
 const (
-	StatusCreated   Status = "created"
+	// StatusCreated 表示会话已创建但尚未开始记录。
+	StatusCreated Status = "created"
+	// StatusRecording 表示会话正在接受捕获。
 	StatusRecording Status = "recording"
-	// StatusPaused 使内存中的捕获会话保持活动状态。  恢复必须继续相同的操作/节点身份空间，而不是创建新的临时工作流。
+	// StatusPaused 表示会话暂停接受捕获但仍可恢复。
 	StatusPaused Status = "paused"
-	StatusEnded  Status = "ended"
-	// StatusInterrupted 表示受控浏览器意外消失。捕获的工件仍然可用，但会话无法恢复。
+	// StatusEnded 表示会话已正常结束且不可恢复。
+	StatusEnded Status = "ended"
+	// StatusInterrupted 表示会话被中断且不可恢复。
 	StatusInterrupted Status = "interrupted"
 )
 
+// ActionKind 表示采样捕获对应的操作类型。
 type ActionKind string
 
 const (
+	// ActionNavigate 表示导航操作。
 	ActionNavigate ActionKind = "navigate"
-	ActionClick    ActionKind = "click"
-	ActionInput    ActionKind = "input"
-	ActionSelect   ActionKind = "select"
-	ActionPress    ActionKind = "press"
-	// ActionValidate 仅由一次性验证选择器发出。  它像普通捕获一样创建节点标识，但故意不描述页面端交互。
+	// ActionClick 表示点击操作。
+	ActionClick ActionKind = "click"
+	// ActionInput 表示文本输入操作。
+	ActionInput ActionKind = "input"
+	// ActionSelect 表示选项选择操作。
+	ActionSelect ActionKind = "select"
+	// ActionPress 表示按键操作。
+	ActionPress ActionKind = "press"
+	// ActionValidate 表示验证捕获，不描述页面端交互。
 	ActionValidate ActionKind = "validate"
 )
 
-// ValidationSample 是浏览器采样器发出的框架中立的语义建议。  它仅包含构建验证步骤所需的值； DOM/框架实现细节保留在采样器适配器中。  工作区将其转换为其持久验证值对象。
+// ValidationSample 保存构建验证步骤所需的框架无关语义值。
 type ValidationSample struct {
 	Kind           string
 	Expected       string
@@ -48,6 +58,7 @@ type ValidationSample struct {
 	Sensitive      bool
 }
 
+// Capture 表示采样器提交的一次操作或验证捕获。
 type Capture struct {
 	CaptureID   string
 	NodeUUID    string
@@ -61,16 +72,19 @@ type Capture struct {
 	Validation  *ValidationSample
 }
 
+// ActionHints 保存捕获操作的可选标记和意图。
 type ActionHints struct {
 	Optional bool
 	Intent   string
 }
 
+// CapturedNode 保存采样期间发现的元素目标及其临时 UUID。
 type CapturedNode struct {
 	UUID string
 	Spec fingerprint.ElementTargetSpec
 }
 
+// RecordedAction 保存会话中的有序操作记录及其目标引用。
 type RecordedAction struct {
 	UUID            string
 	Sequence        int
@@ -84,6 +98,7 @@ type RecordedAction struct {
 	Validation      *ValidationSample
 }
 
+// CaptureResult 返回捕获的幂等结果及创建、顺序和目标身份。
 type CaptureResult struct {
 	SessionID       string
 	CaptureID       string
@@ -94,6 +109,7 @@ type CaptureResult struct {
 	Created         bool
 }
 
+// Snapshot 提供会话的只读深拷贝快照。
 type Snapshot struct {
 	ID             string
 	FlowFragmentID string
@@ -103,6 +119,7 @@ type Snapshot struct {
 	Actions        []RecordedAction
 }
 
+// Session 管理采样会话状态、捕获节点、操作记录和幂等索引。
 type Session struct {
 	id          string
 	workflowID  string
@@ -115,23 +132,16 @@ type Session struct {
 	byCaptureID map[string]CaptureResult
 }
 
+// NewSession 校验工作流与起始 URL，创建处于 StatusCreated 的采样会话。
 func NewSession(workflowID, startURL string) (*Session, error) {
 	var violations []fault.Violation
 	if strings.TrimSpace(workflowID) == "" {
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "flowFragmentId", "flow fragment id is required"))
 	}
 	if strings.TrimSpace(startURL) == "" {
-		// Returning here keeps the violation order deterministic: an empty string
-		// parses successfully, so continuing would add a redundant host violation.
 		violations = append(violations, mustViolation(fault.CodeFieldRequired, "startUrl", "start url is required"))
 		return nil, sessionInputInvalidError(violations)
 	}
-	// The shared rule adds the two checks this call site was missing: a start
-	// URL with userinfo (`https://trusted.test@evil.test/`) reads as the
-	// trusted host to whoever approves the sampling session, and one with a
-	// raw CR splits any request it is later concatenated into. The rejection
-	// reason is a closed vocabulary, so unlike url.Error — which formats the
-	// whole URL into its own text — it is safe to keep as a private cause.
 	if rejection := weburl.Check(startURL); rejection != weburl.Accepted {
 		code, message := startURLViolation(rejection)
 		violations = append(violations, mustViolation(code, "startUrl", message))
@@ -155,6 +165,7 @@ func NewSession(workflowID, startURL string) (*Session, error) {
 	}, nil
 }
 
+// ID 返回会话 ID；nil 接收者返回空字符串。
 func (s *Session) ID() string {
 	if s == nil {
 		return ""
@@ -162,6 +173,7 @@ func (s *Session) ID() string {
 	return s.id
 }
 
+// Start 将新会话切换到记录状态，并追加初始导航操作。
 func (s *Session) Start() error {
 	if s == nil {
 		return internalError()
@@ -180,12 +192,7 @@ func (s *Session) Start() error {
 	return nil
 }
 
-// shapeViolations reports every shape failure of a capture at once, in a fixed
-// field order. Returning at the first one meant a validate capture missing both
-// its identity key and its validation detail told the caller only about the
-// identity key, so fixing it surfaced the next failure instead of accepting the
-// capture — which is exactly what the one-fault-carrying-every-failure rule
-// exists to prevent.
+// shapeViolations 按固定字段顺序聚合一次捕获的所有形状错误。
 func (c Capture) shapeViolations() []fault.Violation {
 	var violations []fault.Violation
 	if strings.TrimSpace(c.CaptureID) == "" {
@@ -209,6 +216,7 @@ func (c Capture) shapeViolations() []fault.Violation {
 	return violations
 }
 
+// Record 校验并幂等记录一次捕获，必要时创建或更新临时元素节点。
 func (s *Session) Record(c Capture) (CaptureResult, error) {
 	if s == nil {
 		return CaptureResult{}, internalError()
@@ -216,8 +224,6 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	if s.status != StatusRecording {
 		return CaptureResult{}, sessionStateInvalidError()
 	}
-	// The idempotent replay check needs a non-blank id, so it runs before the
-	// shape walk; everything after it accumulates.
 	if strings.TrimSpace(c.CaptureID) != "" {
 		if previous, ok := s.byCaptureID[c.CaptureID]; ok {
 			return previous, nil
@@ -258,9 +264,6 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 		}
 		c.Spec.UUID = nodeUUID
 		c.Spec.ID = "node-" + compactUUID(nodeUUID)[:12]
-		// The spec already carries FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID with its
-		// own ordered violations. Wrapping it in a sampling code would nest two
-		// faults and force the host to unwrap recursively before classifying.
 		if err := c.Spec.Validate(); err != nil {
 			return CaptureResult{}, err
 		}
@@ -297,7 +300,7 @@ func (s *Session) Record(c Capture) (CaptureResult, error) {
 	return result, nil
 }
 
-// Pause 暂停会停止接受捕获而不关闭会话。  暂停的会话保留其身份映射，因此在恢复后对元素的重复采样仍然重用原始临时节点。
+// Pause 将记录中的会话切换为暂停状态，并保留节点身份映射。
 func (s *Session) Pause() error {
 	if s == nil {
 		return internalError()
@@ -309,6 +312,7 @@ func (s *Session) Pause() error {
 	return nil
 }
 
+// Resume 将暂停的会话切换回记录状态。
 func (s *Session) Resume() error {
 	if s == nil {
 		return internalError()
@@ -320,7 +324,7 @@ func (s *Session) Resume() error {
 	return nil
 }
 
-// End 是正常的终端生命周期转换。  它有意与暂停不同：结束的会话可以编辑/发布，但永远不会恢复。
+// End 将记录或暂停的会话切换到不可恢复的结束状态。
 func (s *Session) End() error {
 	if s == nil {
 		return internalError()
@@ -332,12 +336,14 @@ func (s *Session) End() error {
 	return nil
 }
 
+// Interrupt 将尚未结束的会话标记为中断状态。
 func (s *Session) Interrupt() {
 	if s != nil && (s.status == StatusCreated || s.status == StatusRecording || s.status == StatusPaused) {
 		s.status = StatusInterrupted
 	}
 }
 
+// Snapshot 返回包含节点、操作和验证数据深拷贝的会话快照；nil 接收者返回空快照。
 func (s *Session) Snapshot() Snapshot {
 	if s == nil {
 		return Snapshot{}
@@ -357,6 +363,7 @@ func (s *Session) Snapshot() Snapshot {
 	}
 }
 
+// cloneValidation 深拷贝验证样本及其支持类型；nil 输入保持 nil。
 func cloneValidation(input *ValidationSample) *ValidationSample {
 	if input == nil {
 		return nil
@@ -366,12 +373,10 @@ func cloneValidation(input *ValidationSample) *ValidationSample {
 	return &copy
 }
 
+// NewUUID 生成包含时间片段和随机字节的 UUID；熵源失败返回内部错误。
 func NewUUID() (string, error) {
 	var value [16]byte
 	if _, err := rand.Read(value[:]); err != nil {
-		// An entropy-source failure has no caller remediation, so it is INTERNAL and
-		// its cause stays private. Every call site forwards this already-classified
-		// fault rather than re-labelling it.
 		return "", wrapInternalError(err)
 	}
 	timestamp := uint64(time.Now().UnixMilli())
@@ -387,8 +392,10 @@ func NewUUID() (string, error) {
 		value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
 }
 
+// compactUUID 删除 UUID 中的连字符。
 func compactUUID(value string) string { return strings.ReplaceAll(value, "-", "") }
 
+// originOf 从 URL 提取 scheme://host；解析失败或缺少任一部分时返回空字符串。
 func originOf(value string) string {
 	u, err := url.Parse(value)
 	if err != nil || u.Scheme == "" || u.Host == "" {
@@ -397,6 +404,7 @@ func originOf(value string) string {
 	return u.Scheme + "://" + u.Host
 }
 
+// cloneSpec 深拷贝元素目标规格及其选择器和指纹。
 func cloneSpec(spec fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec {
 	copied := spec
 	copied.Selectors = append([]fingerprint.Selector(nil), spec.Selectors...)
@@ -404,14 +412,7 @@ func cloneSpec(spec fingerprint.ElementTargetSpec) fingerprint.ElementTargetSpec
 	return copied
 }
 
-// startURLViolation keeps one safe violation per shared rejection reason. The
-// messages stay distinct because a person fixing a start URL benefits from
-// knowing which rule they broke; none of them echoes the URL.
-//
-// A missing host keeps VALIDATION_FIELD_REQUIRED rather than the INVALID the
-// other reasons use. That is the published contract for this field, and it is
-// the honest code besides: the other reasons mean the caller supplied
-// something wrong, while a missing host means they supplied nothing.
+// startURLViolation 将 URL 拒绝原因映射为不回显 URL 的字段错误码和消息。
 func startURLViolation(rejection weburl.Rejection) (fault.Code, string) {
 	switch rejection {
 	case weburl.RejectScheme:

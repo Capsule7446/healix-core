@@ -2,13 +2,17 @@ package automation
 
 import "github.com/Capsule7446/healix-core/domain/parameter"
 
+// FailurePolicy 标识执行流程遇到失败后的处理策略。
 type FailurePolicy string
 
 const (
-	FailurePolicyStopOnFailure     FailurePolicy = "STOP_ON_FAILURE"
+	// FailurePolicyStopOnFailure 表示首个失败后停止流程。
+	FailurePolicyStopOnFailure FailurePolicy = "STOP_ON_FAILURE"
+	// FailurePolicyContinueOnFailure 表示失败后继续流程。
 	FailurePolicyContinueOnFailure FailurePolicy = "CONTINUE_ON_FAILURE"
 )
 
+// IsValid 判断失败策略是否属于支持的枚举值。
 func (p FailurePolicy) IsValid() bool {
 	return p == FailurePolicyStopOnFailure || p == FailurePolicyContinueOnFailure
 }
@@ -25,6 +29,7 @@ type ExecutionFlow struct {
 	Revision         Revision
 }
 
+// ExecutionFlowItem 描述执行流程中引用流程片段的一个条目及参数。
 type ExecutionFlowItem struct {
 	ID                string
 	TestTaskVersionID string
@@ -35,6 +40,7 @@ type ExecutionFlowItem struct {
 	Parameters        map[string]parameter.Value
 }
 
+// ExecutionFlowVersion 表示执行流程的一份不可变版本内容。
 type ExecutionFlowVersion struct {
 	ID                      string
 	ExecutionFlowID         string
@@ -46,6 +52,7 @@ type ExecutionFlowVersion struct {
 	CreatedAt               int64
 }
 
+// ExecutionFlowVersionPublication 携带发布新执行流程版本所需的内容。
 type ExecutionFlowVersionPublication struct {
 	ID                      string
 	Items                   []ExecutionFlowItem
@@ -54,6 +61,7 @@ type ExecutionFlowVersionPublication struct {
 	CreatedAt               int64
 }
 
+// ExecutionFlowAggregate 持有执行流程元数据、当前版本和完整版本历史。
 type ExecutionFlowAggregate struct {
 	Task     ExecutionFlow
 	Current  ExecutionFlowVersion
@@ -70,15 +78,20 @@ type ResolvedExecutionFlow struct {
 	References                    []FlowFragmentReferenceResolution
 }
 
+// ElementTargetDependencySnapshot 保存解析后的元素目标及其选定版本。
 type ElementTargetDependencySnapshot struct {
 	ElementTarget ElementTarget
 	Version       ElementTargetVersion
 }
+
+// FlowFragmentDependencySnapshot 保存解析后的流程片段及其选定版本。
 type FlowFragmentDependencySnapshot struct {
 	FlowFragment       FlowFragment
 	Version            FlowFragmentVersion
 	ResolvedFromLatest bool
 }
+
+// FlowFragmentReferenceResolution 保存流程片段引用解析后的目标和来源策略。
 type FlowFragmentReferenceResolution struct {
 	ParentFlowFragmentVersionID string
 	StepID                      string

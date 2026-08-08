@@ -1,7 +1,6 @@
 # 领域术语对照表
 
-本文维护 Healix Core 的统一语言，帮助读者区分**业务名称、代码类型、所属领域与生命周期产物**。源码和测试仍是最终事实来源；本表不是
-API 清单。
+本文维护 Healix Core 的统一语言，帮助读者区分**业务名称、代码类型、所属领域与生命周期产物**。源码和测试仍是最终事实来源；本表不是 API 清单。
 
 ## 命名维度
 
@@ -26,7 +25,7 @@ API 清单。
 | Heal | 自愈 | 确定性重定位与治理概念。 |
 | Evidence | 执行证据 | 可持久化的进度、观察与终态事实。 |
 | Fault | 业务错误 | `domain/fault` 定义的稳定错误码契约；不是 Go 语言层面的 `error` 一词。 |
-| Instance | 执行实例 | 一次完整执行的身份、快照与状态。代码中曾称 `Run`，现已全面改名为 `Instance`。 |
+| Instance | 执行实例 | 一次完整执行的身份、快照与状态；代码统一使用 `execution.Instance`。 |
 | Entry | 顶层执行项 | 执行计划中按序运行的顶层工作流执行项。 |
 | Plan | 执行计划 | 已封存的执行输入与依赖快照。 |
 | Program | 执行程序 | 为单次顶层执行项临时编译的节点树。 |
@@ -44,7 +43,7 @@ API 清单。
 
 | 代码符号                                | 中文正式称呼       | 所属领域          | 模型角色   | 定义                                                       |
 |-------------------------------------|--------------|---------------|--------|----------------------------------------------------------|
-| `automation.Environment`            | 环境           | Automation    | 普通可变资产  | 保存受修订号控制的普通 `Properties`；创建执行实例时将当前状态深复制为 `execution.EnvironmentSnapshot`，而非解析 Environment 版本。Core 没有独立凭据/secret 模型。 |
+| `automation.Environment`            | 环境           | Automation    | 普通可变资产  | 保存受修订号控制的类型化 `Variables` 与基础 URL；创建执行实例时将当前状态深复制为 `execution.EnvironmentSnapshot`，而非解析 Environment 版本。Core 没有独立凭据/secret 模型。 |
 | `automation.Folder`                 | 文件夹          | Automation    | 普通可变层级实体 | 受修订号控制、用于组织 Automation 资产的树形目录节点；没有不可变发布版本。 |
 | `automation.ElementTarget`          | 节点资产         | Automation    | 聚合根实体  | 可编辑并可发布不可变版本供引用的节点定义资产。 |
 | `automation.ElementTargetVersion`   | 节点版本         | Automation    | 版本实体   | 节点资产在特定版本上的不可变定义。                                        |
@@ -56,13 +55,13 @@ API 清单。
 | `automation.ExecutionFlowVersionPublication` | 测试任务发布计划 | Automation | 发布快照   | 发布时解析并锁定工作流、节点与工作流引用依赖的 Automation 产物。          |
 | `sampling.UnpublishedFlowFragment`  | 采样工作区        | Sampling      | 草稿工作区  | 保存采样草稿与重写状态，其中的 `UnpublishedElementTarget` 尚未取得正式身份；不同于承载浏览器交互生命周期的 `sampling.Session`。 |
 | `sampling.Session`                  | 采样会话         | Sampling      | 会话实体   | 管理一次浏览器采样交互、capture 幂等与关闭状态；不是采样工作区的别名。 |
-| `execution.PlanSnapshot`            | 执行计划草案       | Execution     | 待验证值模型 | Scheduling 从发布物和运行输入构造的计划候选；`Seal` 之前尚不能交给执行器。            |
+| `execution.PlanSnapshot`            | 执行计划草案       | Execution     | 待验证值模型 | Scheduling 从发布物和运行输入构造的计划候选；完成 `Seal` 后才能交给执行器。            |
 | `execution.Plan`                    | 执行计划         | Execution     | 已封存值快照  | `Seal` 校验、深复制并规范化后的顶层执行项与依赖计划；执行实例创建时进入不可变执行实例快照。 |
 | `execution.Entry`                   | 顶层执行项       | Execution     | 计划条目   | 执行计划中按序运行的顶层工作流执行项。                                |
 | `execution.WorkflowSnapshot`        | 工作流快照        | Execution     | 依赖快照   | 执行计划锁定的工作流定义。                                     |
 | `execution.NodeSnapshot`            | 节点快照         | Execution     | 依赖快照   | 执行计划锁定的节点定义。                                         |
 | `execution.Instance`                | 执行实例         | Execution     | 状态实体   | 一份执行的整体身份与状态；创建时解析所有 `latest` 并冻结执行实例快照。 |
-| `execution.InstanceSnapshot`        | 执行实例快照         | Execution     | 已封存值快照 | 冻结测试任务、具体版本、环境 `Properties`、策略和完整调用作用域；运行时不再解析 `current`/`latest`。 |
+| `execution.InstanceSnapshot`        | 执行实例快照         | Execution     | 已封存值快照 | 冻结测试任务、具体版本、环境类型化 `Variables`、策略和完整调用作用域；运行时只使用快照中的具体版本。 |
 | `execution.InstanceID` / `EntryID`  | 执行实例身份 / 顶层执行项身份 | Execution | 封闭值对象 | 执行坐标是构造函数校验过的封闭类型，不是裸 `string`；由 [`TestExecutionCoordinatesAreDistinctTypesNotStrings`](../architecture/unified_language_boundary_test.go) 执行检查。 |
 | `execution.InvocationScopeSnapshot` | 调用作用域快照      | Execution     | 依赖快照   | 按调用路径隔离一次顶层或嵌套工作流调用的类型化值与绑定。 |
 | `parameter.Value`                   | 参数值          | Parameter     | 封闭值对象 | 保留 TEXT、NUMBER、BOOLEAN、SINGLE_SELECT、MULTI_SELECT 类型，不降级为字符串。 |
@@ -98,7 +97,7 @@ API 清单。
 | 执行实例与顶层执行项                      | 执行实例（`execution.Instance`）表示整份计划的运行；顶层执行项表示执行实例中某个 `execution.Entry` 的执行及其状态。两者各有独立状态机（`InstanceStatus` / `EntryStatus`）。 |
 | Progress 与 Evidence                      | Progress 是 Evidence 领域接收的一类非终态事实；Evidence 是定义全部可持久化执行事实、观察和提交协议的领域。                              |
 | Plan 与调度                                 | 执行计划是领域值快照；调度是构造执行计划、决定顶层执行项顺序并处理领取执行权的应用编排模块，不是领域对象。                                  |
-| Environment 与 secret/credential             | Environment 是受修订号控制的普通可变 `Properties` 资产；创建执行实例时克隆当前状态为 `EnvironmentSnapshot`，不存在 Environment 发布版本，也不存在 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret store。 |
+| Environment 与 secret/credential             | Environment 是受修订号控制的普通可变 `Variables` 资产；创建执行实例时克隆当前状态为 `EnvironmentSnapshot`，不存在 Environment 发布版本，也不存在 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret store。 |
 | `latest` 与具体版本                           | `latest` 只是创作策略；创建执行实例时从一致目录视图解析并冻结 `ElementTarget`、`FlowFragment`、`ExecutionFlow` 的具体发布版本，运行时不重新解析。 |
 | 顶层执行项与嵌套工作流浏览器             | `EntryExecutor` 为每个顶层执行项创建并关闭一个全新的宿主所有 `BrowserSession`；该顶层执行项内的嵌套工作流共享同一会话。 |
 | HealObservation 与晋升                 | 观察是事实输入；晋升是栅栏校验提交结果，不是观察字段或独立生命周期。 |
@@ -118,11 +117,11 @@ flowchart LR
     Program -->|终态提交| Evidence[evidence.StepFact / StepTransitionCommit\n终态事实与提交]
 ```
 
-这条链路表达的是**跨上下文转换**，不是对象改名：
+这条链路表达的是**跨上下文转换**，参与者是职责不同的对象：
 
 1. Automation 保存“要执行什么”；测试任务版本（`ExecutionFlowVersion`）由显式手工创作创建。
-2. Scheduling 在创建执行实例的一致目录/事务视图中解析所有 `latest`、Environment `Properties`、类型化值与绑定以及调用作用域。
-3. Execution 封存不可变 `InstanceSnapshot`；运行期间不再查询 `current`/`latest`。
+2. Scheduling 在创建执行实例的一致目录/事务视图中解析所有 `latest`、Environment `Variables`、类型化值与绑定以及调用作用域。
+3. Execution 封存不可变 `InstanceSnapshot`；运行期间只读取快照中的具体版本。
 4. Engine 为每个顶层执行项临时编译 `Program` 并创建 `node.Runtime`。`EntryExecutor` 调用宿主的 `BrowserSessionFactory.Create`，将一个全新的宿主所有 `BrowserSession` 交给宿主的 `EntryRunner` 连接至 Engine 执行，并在顶层执行项结束后同步关闭会话；嵌套工作流共享该 `node.Runtime` 和 `BrowserSession`，但每条调用路径拥有根据绑定派生的独立类型化参数作用域。
 5. 运行时向 Evidence 提交进度、观察和终态事实；`HealObservation` 本身不执行晋升，晋升由栅栏校验提交结果表达。
 
@@ -133,4 +132,4 @@ flowchart LR
 - 讨论产品资产时使用“测试任务”；强调其技术职责时可补充“版本化执行定义”。
 - “Execution”单独出现时优先指 Execution 领域；表示具体对象时使用“执行计划”“执行实例”或“顶层执行项”。
 - 文档首次出现跨上下文类型时同时写代码符号与中文名，后续再使用简称。
-- 新增或重命名领域概念时，应同步更新本表、对应[领域文档](domains/)和[文档导航](README.md)。
+- 新增或调整领域概念时，应同步更新本表、对应[领域文档](domains/)和[文档导航](README.md)。
