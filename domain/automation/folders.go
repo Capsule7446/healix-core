@@ -1,11 +1,7 @@
 package automation
 
-// 本文件整体退役。文件夹的全部不变量——无环、同级不重名、深度上限、删除前为空——都是通用目录树规则，
-// 把 Folder 换成书签或网盘目录，这段代码一行都不用改。它与 Automation 的核心（版本、发布、引用锁定）没有交集：
-// 没有版本实体、不进发布依赖闭包、不进执行快照。资产上的 FolderID 甚至从未被校验到本树上。
-//
-// 真正的引用完整性（RequireEmpty 用的 occupancy）也是宿主查出来传进来的，domain 只是拿它跟 0 比。
-// 宿主的存储层本就更适合承担这件事。宿主完整实现之前不会删除。
+// 文件夹规则是通用目录树约束，当前仅保留兼容契约；宿主负责持久化和引用完整性查询。
+// 领域层校验无环、同级不重名、深度上限和删除前为空，FolderID 不参与版本发布或执行快照。
 
 import (
 	"errors"
@@ -17,12 +13,17 @@ import (
 
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 const (
-	CodeFolderNotFound    fault.Code = "AUTOMATION_FOLDER_NOT_FOUND"
-	CodeFolderInvalid     fault.Code = "AUTOMATION_FOLDER_INVALID"
+	// CodeFolderNotFound 表示文件夹不存在。
+	CodeFolderNotFound fault.Code = "AUTOMATION_FOLDER_NOT_FOUND"
+	// CodeFolderInvalid 表示文件夹内容无效。
+	CodeFolderInvalid fault.Code = "AUTOMATION_FOLDER_INVALID"
+	// CodeFolderTreeInvalid 表示文件夹层级无效。
 	CodeFolderTreeInvalid fault.Code = "AUTOMATION_FOLDER_TREE_INVALID"
-	CodeFolderNotEmpty    fault.Code = "AUTOMATION_FOLDER_NOT_EMPTY"
+	// CodeFolderNotEmpty 表示删除目标仍包含内容。
+	CodeFolderNotEmpty fault.Code = "AUTOMATION_FOLDER_NOT_EMPTY"
 )
 
+// folderFault 将文件夹原因包装为指定分类和错误码的领域错误。
 func folderFault(cause error, kind fault.Kind, code fault.Code, message string) error {
 	faultErr, err := fault.Wrap(cause, kind, code, message)
 	if err != nil {
@@ -31,18 +32,22 @@ func folderFault(cause error, kind fault.Kind, code fault.Code, message string) 
 	return faultErr
 }
 
+// folderInvalidError 构造文件夹内容无效错误。
 func folderInvalidError(cause error) error {
 	return folderFault(cause, fault.InvalidArgument, CodeFolderInvalid, "automation folder is invalid")
 }
 
+// folderTreeInvalidError 构造文件夹层级无效错误。
 func folderTreeInvalidError(cause error) error {
 	return folderFault(cause, fault.FailedPrecondition, CodeFolderTreeInvalid, "automation folder tree is invalid")
 }
 
+// folderNotEmptyError 构造目标文件夹非空错误。
 func folderNotEmptyError(cause error) error {
 	return folderFault(cause, fault.FailedPrecondition, CodeFolderNotEmpty, "automation folder must be empty")
 }
 
+// FolderNotFoundError 构造文件夹不存在错误。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func FolderNotFoundError() error {
 	faultErr, err := fault.New(fault.NotFound, CodeFolderNotFound, "automation folder was not found")
@@ -52,17 +57,23 @@ func FolderNotFoundError() error {
 	return faultErr
 }
 
+// FolderKind 标识文件夹承载的资产种类。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type FolderKind string
 
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 const (
-	FolderNode     FolderKind = "NODE"
+	// FolderNode 表示节点文件夹。
+	FolderNode FolderKind = "NODE"
+	// FolderWorkflow 表示流程文件夹。
 	FolderWorkflow FolderKind = "WORKFLOW"
-	FolderTask     FolderKind = "TEST_TASK"
-	MaxFolderDepth            = 5
+	// FolderTask 表示测试任务文件夹。
+	FolderTask FolderKind = "TEST_TASK"
+	// MaxFolderDepth 限制文件夹层级最大深度。
+	MaxFolderDepth = 5
 )
 
+// Validate 校验文件夹种类是否属于支持的枚举值。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (kind FolderKind) Validate() error {
 	switch kind {
@@ -73,6 +84,7 @@ func (kind FolderKind) Validate() error {
 	}
 }
 
+// Folder 表示文件夹身份、父子关系和生命周期时间。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type Folder struct {
 	ID          string
@@ -91,11 +103,13 @@ type FolderForest struct {
 	depths map[string]int
 }
 
+// FolderOccupancy 表示宿主查询到的文件夹资产占用数量。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 type FolderOccupancy struct {
 	Assets int
 }
 
+// validateFolderText 校验文件夹文本无首尾空白且符合参数名称规则。
 func validateFolderText(value string) error {
 	if value != strings.TrimSpace(value) || parameter.ValidateName(value) != nil {
 		return errors.New("folder text is invalid")
@@ -103,6 +117,7 @@ func validateFolderText(value string) error {
 	return nil
 }
 
+// Validate 校验文件夹身份、种类、名称和父级关系。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (folder Folder) Validate() error {
 	if err := validateFolderText(folder.ID); err != nil {
@@ -136,6 +151,7 @@ func ValidateFolderTree(folders []Folder) (map[string]int, error) {
 	return forest.Depths(), nil
 }
 
+// NewFolderForest 校验并构造文件夹森林，检测重复、父级不匹配、环和深度上限。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func NewFolderForest(folders []Folder) (FolderForest, error) {
 	byID := make(map[string]Folder, len(folders))
@@ -202,6 +218,7 @@ func NewFolderForest(folders []Folder) (FolderForest, error) {
 	return FolderForest{byID: byID, depths: depths}, nil
 }
 
+// Depths 返回每个文件夹相对于虚拟根的深度副本。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (f FolderForest) Depths() map[string]int {
 	result := make(map[string]int, len(f.depths))
@@ -211,6 +228,7 @@ func (f FolderForest) Depths() map[string]int {
 	return result
 }
 
+// RequireEmpty 校验文件夹不存在子文件夹且占用为零。
 // Deprecated: 文件夹层级正在移交宿主，见 docs/contracts/retirement-plan.md。
 func (f FolderForest) RequireEmpty(id string, occupancy FolderOccupancy) error {
 	if err := validateFolderText(id); err != nil {
