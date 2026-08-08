@@ -13,7 +13,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestExpandStrictInputs` | `Expand Strict Inputs`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/interpolation/strict_boundary_test.go`](../../domain/interpolation/strict_boundary_test.go) · `TestExpandStrictInputs` |
 | `TestNamesStrictSyntaxAndDuplicates` | `Names Strict Syntax And Duplicates`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/interpolation/strict_boundary_test.go`](../../domain/interpolation/strict_boundary_test.go) · `TestNamesStrictSyntaxAndDuplicates` |

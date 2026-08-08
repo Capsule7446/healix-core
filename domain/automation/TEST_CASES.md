@@ -15,9 +15,9 @@
 | `Environment.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ParameterDefinition.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ParameterDefinition.ValidateValue` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowVersion.ValidateFor` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `FlowFragmentVersion.ValidateFor` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 校验被选中的工作流版本归属和内容。 |
 | `FlowFragmentAggregate.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 校验工作流资产聚合、当前版本和步骤定义。 |
-| `WorkflowVersionPolicy.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `FlowFragmentVersionPolicy.Validate` | [`domain/automation/assets.go`](../../domain/automation/assets.go) | 校验固定版本或最新版本策略。 |
 | `FolderKind.Validate` | [`domain/automation/folders.go`](../../domain/automation/folders.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Folder.Validate` | [`domain/automation/folders.go`](../../domain/automation/folders.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ValidateFolderTree` | [`domain/automation/folders.go`](../../domain/automation/folders.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -55,7 +55,7 @@
 | `ResolveParameterValues` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ResolvedExecutionFlow.Validate` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 校验已解析的工作流、节点、引用和参数作用域。 |
 | `EnvironmentKeys` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeDependencyIdentity` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ElementTargetDependencyIdentity` | [`domain/automation/test_task.go`](../../domain/automation/test_task.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FailurePolicy.IsValid` | [`domain/automation/test_task_types.go`](../../domain/automation/test_task_types.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ElementTargetAggregate.ValidateLoadedHistory` / `PublishVersion` / `Clone` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 校验版本历史并深复制可变字段。 |
 | `FlowFragmentAggregate.ValidateLoadedHistory` / `PublishVersion` | [`domain/automation/versioning.go`](../../domain/automation/versioning.go) | 校验工作流版本历史、步骤定义和发布版本。 |
@@ -65,7 +65,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestParameterDefinitionValidateValueDirect` | `Parameter Definition Validate Value Direct`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/direct_gap_test.go`](../../domain/automation/direct_gap_test.go) · `TestParameterDefinitionValidateValueDirect` |
 | `TestNormalizePoliciesAndFailurePolicyDirect` | `Normalize Policies And Failure Policy Direct`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/direct_gap_test.go`](../../domain/automation/direct_gap_test.go) · `TestNormalizePoliciesAndFailurePolicyDirect` |
@@ -154,7 +154,6 @@
 | `TestWorkflowAggregateValidateRejectsStepKindConstraintMatrix` | `Workflow Aggregate Validate Rejects Step Kind Constraint Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/workflow_contract_matrix_test.go`](../../domain/automation/workflow_contract_matrix_test.go) · `TestWorkflowAggregateValidateRejectsStepKindConstraintMatrix` |
 | `TestWorkflowAggregateValidateRejectsDiscriminatedUnionResidualFields` | `Workflow Aggregate Validate Rejects Discriminated Union Residual Fields`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/workflow_contract_matrix_test.go`](../../domain/automation/workflow_contract_matrix_test.go) · `TestWorkflowAggregateValidateRejectsDiscriminatedUnionResidualFields` |
 | `TestWorkflowAggregateValidateOwnsStepAndParameterIdentity` | `Workflow Aggregate Validate Owns Step And Parameter Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/automation/workflow_contract_matrix_test.go`](../../domain/automation/workflow_contract_matrix_test.go) · `TestWorkflowAggregateValidateOwnsStepAndParameterIdentity` |
-
 | `TestExecutionFlowValidateOrdersViolationsDeterministically` | 零值 ExecutionFlow，五个必填字段全缺。 | 违规按 id / displayName / currentVersionId / createdAt / updatedAt 顺序产出。 | [`domain/automation/execution_flow_envelope_test.go`](../../domain/automation/execution_flow_envelope_test.go) · `TestExecutionFlowValidateOrdersViolationsDeterministically` |
 | `TestExecutionFlowVersionValidateOrdersViolationsDeterministically` | 同时违反标量、环境键与两个 item 的多条规则。 | 精确 15 条违规按声明顺序产出；50 次重复运行顺序不变。 | [`domain/automation/execution_flow_envelope_test.go`](../../domain/automation/execution_flow_envelope_test.go) · `TestExecutionFlowVersionValidateOrdersViolationsDeterministically` |
 | `TestExecutionFlowVersionValidateTruncatesViolationsAtCap` | 12 个全部非法的 item（可产生 60+ 条违规）。 | violation 数恰为 fault.MaxViolations，截断前缀确定。 | [`domain/automation/execution_flow_envelope_test.go`](../../domain/automation/execution_flow_envelope_test.go) · `TestExecutionFlowVersionValidateTruncatesViolationsAtCap` |

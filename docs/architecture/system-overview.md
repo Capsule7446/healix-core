@@ -78,6 +78,6 @@ flowchart LR
 - 执行引擎从当前顶层执行项生成临时 `node.Program`，并为每个顶层执行项创建新的 `node.Runtime`；嵌套 workflow 共享该运行时。
 - `EntryExecutor` 在创建浏览器会话**之前**完成授权：先 `WorkerFence.Validate`，再 `EntryAuthorizer.AuthorizeEntry`，通过后才 `BrowserSessionFactory.Create`（[`entry_executor.go:136-146`](../../application/execution/entry_executor.go)）。`engine.RunProgram` 内部那道校验来得太晚 —— 它跑在宿主的 `EntryRunner` 里，届时浏览器已经开出来了。
 - `application/engine` 的 `ExecutionOutcome` 用 `OutcomeSucceeded` / `OutcomeFailed` / `OutcomeCanceled` / `ExecutionNotStarted` 表达一次运行的结果（[`engine.go:86-89`](../../application/engine/engine.go)）；它与 `domain/execution` 的 `EntryStatus` 是两组独立状态值，不应互相替换。
-- 参数使用 `parameter.Value`/`Binding` 保持复合类型，不再限制为字符串。
+- 参数使用 `parameter.Value`/`Binding` 保持 TEXT、NUMBER、BOOLEAN、SINGLE_SELECT、MULTI_SELECT 五种封闭类型。
 - 显式中止由 `AbortInstanceService` 要求宿主事务原子提交权威的 `execution.Aborted` 并失效工作器栅栏，随后发送取消信号；信号失败保留已提交结果并以 `EXECUTION_INSTANCE_SIGNAL_RETRYABLE` 返回（[`instance_command_services.go:88`](../../application/scheduling/instance_command_services.go)）。普通执行上下文取消仍映射为 `CANCELED`，是不同操作。
 - 领取栅栏校验、乐观并发、幂等、进度写入和终态事实必须在宿主事务中兑现 —— 这是适配器义务，Core 只声明协议字段。

@@ -37,7 +37,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestLiteralBindingPreservesTypedValueAndClonesCollections` | `Literal Binding Preserves Typed Value And Clones Collections`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/binding_test.go`](../../domain/parameter/binding_test.go) · `TestLiteralBindingPreservesTypedValueAndClonesCollections` |
 | `TestParentReferenceBindingResolvesOnlyNamedTypedParent` | `Parent Reference Binding Resolves Only Named Typed Parent`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/binding_test.go`](../../domain/parameter/binding_test.go) · `TestParentReferenceBindingResolvesOnlyNamedTypedParent` |
@@ -55,7 +55,6 @@
 | `TestValueAcceptsStringsAtExactLimit` | `Value Accepts Strings At Exact Limit`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/value_test.go`](../../domain/parameter/value_test.go) · `TestValueAcceptsStringsAtExactLimit` |
 | `TestValueRejectsOversizedStrings` | `Value Rejects Oversized Strings`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/value_test.go`](../../domain/parameter/value_test.go) · `TestValueRejectsOversizedStrings` |
 | `TestClosedValuesCloneAndValidate` | `Closed Values Clone And Validate`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/parameter/value_test.go`](../../domain/parameter/value_test.go) · `TestClosedValuesCloneAndValidate` |
-
 | `TestNewNumberValueRejectsWithoutEchoingInput` | 导出构造器收到非法数字输入（含哨兵值）。 | 返回 PARAMETER_VALUE_INVALID；公共文本与私有 cause 均不含被拒输入。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestNewNumberValueRejectsWithoutEchoingInput` |
 | `TestNewNumberValueRejectsOversizedInputWithSameCode` | 超出 MaxValueStringBytes 的数字输入。 | 与其他值非法情形共用同一 code，不单独设 OUT_OF_RANGE。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestNewNumberValueRejectsOversizedInputWithSameCode` |
 | `TestValidateNameRejectsWithoutEchoingName` | 空白、控制字符、格式字符、非法 UTF-8、超字节上限五类名称。 | 一律返回 PARAMETER_NAME_INVALID；被拒名称不进公共文本。 | [`domain/parameter/fault_contract_test.go`](../../domain/parameter/fault_contract_test.go) · `TestValidateNameRejectsWithoutEchoingName` |

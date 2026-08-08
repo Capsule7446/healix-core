@@ -9,20 +9,19 @@
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
 | `CompilePlan` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 从完整的不可变 `execution.InstanceSnapshot` 编译 `CompiledPlan`；未封存快照返回 `EXECUTION_PLAN_UNSEALED`。 |
-| `CompiledPlan.Entries` / `CompiledPlan.Entry` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 以执行顺序返回调用方拥有的副本；按 `EntryID` 查找时不暴露私有索引或 `node.Program`。 |
+| `CompiledPlan.Entries()` / `CompiledPlan.Entry` | [`application/engine/compiler.go`](../../application/engine/compiler.go) | 以执行顺序返回调用方拥有的副本；按 `EntryID` 查找时不暴露私有索引或 `node.Program`。 |
 | `RunProgram` | [`application/engine/engine.go`](../../application/engine/engine.go) | 校验 `InstanceID`、快照摘要、`EntryID` 与领取令牌，再通过 `ExecutionAuthorityVerifier` 验证权威，之后才访问运行端口。 |
 | `Config` / `ExecutionAuthority` / `EntryResult` | [`application/engine/engine.go`](../../application/engine/engine.go) | 组合运行端口、执行权威和执行/录制/时间线结果；`ExecutionInterrupted` 等未知结果只由恢复流程使用。 |
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestCompilePlanRejectsSnapshotIdentityMatrix` | `Compile Plan Rejects Snapshot Identity Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_matrix_test.go`](../../application/engine/compiler_matrix_test.go) · `TestCompilePlanRejectsSnapshotIdentityMatrix` |
 | `TestCompilePlanRejectsDuplicateNestedStepIDs` | `Compile Plan Rejects Duplicate Nested Step IDs`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_matrix_test.go`](../../application/engine/compiler_matrix_test.go) · `TestCompilePlanRejectsDuplicateNestedStepIDs` |
 | `TestCompilePlanBuildsWaitKinds` | `Compile Plan Builds Wait Kinds`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_matrix_test.go`](../../application/engine/compiler_matrix_test.go) · `TestCompilePlanBuildsWaitKinds` |
 | `TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan` | `Compile Plan Builds Complete Step Tree Without Aliasing Plan`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_matrix_test.go`](../../application/engine/compiler_matrix_test.go) · `TestCompilePlanBuildsCompleteStepTreeWithoutAliasingPlan` |
 | `TestCompilePlanPreservesCompleteFingerprint` | `Compile Plan Preserves Complete Fingerprint`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_matrix_test.go`](../../application/engine/compiler_matrix_test.go) · `TestCompilePlanPreservesCompleteFingerprint` |
-
 | `TestCompilePlanIndexesInvocationsOnceAcrossEntries` | `Compile Run Snapshot Indexes Invocations Once Across Entries`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_test.go`](../../application/engine/compiler_test.go) · `TestCompilePlanIndexesInvocationsOnceAcrossEntries` |
 | `TestCompilePlanInjectsEnvironmentIntoParameterlessRoot` | `Compile Run Snapshot Injects Environment Into Parameterless Root`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_test.go`](../../application/engine/compiler_test.go) · `TestCompilePlanInjectsEnvironmentIntoParameterlessRoot` |
 | `TestCompilePlanRejectsUnsealedZeroValue` | `Compile Run Snapshot Rejects Unsealed Zero Value`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/compiler_test.go`](../../application/engine/compiler_test.go) · `TestCompilePlanRejectsUnsealedZeroValue` |
@@ -42,11 +41,8 @@
 | `TestRunProgramRetainsSuccessfulRecording` | `Run Compiled Entry Retains Successful Recording`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/engine_test.go`](../../application/engine/engine_test.go) · `TestRunProgramRetainsSuccessfulRecording` |
 | `TestRunProgramRejectsIncompleteConfigurationBeforeExecution` | `Run Compiled Entry Rejects Incomplete Configuration Before Execution`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/engine_test.go`](../../application/engine/engine_test.go) · `TestRunProgramRejectsIncompleteConfigurationBeforeExecution` |
 | `TestRunProgramRecorderFailureAndDetachedCleanupContract` | `Run Compiled Entry Recorder Failure And Detached Cleanup Contract`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/engine_test.go`](../../application/engine/engine_test.go) · `TestRunProgramRecorderFailureAndDetachedCleanupContract` |
-
-
 | `TestCompilePlanMapsNestedValidationAndReferences` | `Compile Plan Maps Nested Validation And References`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/plan_mapper_test.go`](../../application/engine/plan_mapper_test.go) · `TestCompilePlanMapsNestedValidationAndReferences` |
 | `TestCompilePlanRequiresInstanceIdentity` | `Compile Plan Requires Instance Identity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/plan_mapper_test.go`](../../application/engine/plan_mapper_test.go) · `TestCompilePlanRequiresInstanceIdentity` |
-
 | `TestRunProgramReportsTimelineStartFailureBeforeLeafExecution` | `Run Compiled Entry With Result Reports Timeline Start Failure Before Leaf Execution`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/result_test.go`](../../application/engine/result_test.go) · `TestRunProgramReportsTimelineStartFailureBeforeLeafExecution` |
 | `TestRunProgramReportsFailureWhenLaterLeafTimelineStartFails` | `Run Compiled Entry With Result Reports Failure When Later Leaf Timeline Start Fails`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/result_test.go`](../../application/engine/result_test.go) · `TestRunProgramReportsFailureWhenLaterLeafTimelineStartFails` |
 | `TestRunProgramKeepsExecutionSuccessWhenTimelineFinishFails` | `Run Compiled Entry With Result Keeps Execution Success When Timeline Finish Fails`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/engine/result_test.go`](../../application/engine/result_test.go) · `TestRunProgramKeepsExecutionSuccessWhenTimelineFinishFails` |

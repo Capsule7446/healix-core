@@ -14,7 +14,7 @@
 
 1. 复制并规范化 command，校验资源上限及 typed values。
 2. 计算稳定 request digest；相同 command ID + 相同 digest 返回既有结果，不同 digest 返回冲突。
-3. 解析指定 TestTask version、Environment revision/properties 和所有 workflow dependencies。
+3. 解析指定 TestTask version、Environment revision/Variables 和所有 workflow dependencies。
 4. 对 `LATEST` 项和嵌套引用读取当时 current published version，并把解析结果写入 snapshot；此后执行、重试均不得重新解析 latest。
 5. 校验 parameter declarations、required/type/options、parent bindings 和 invocation graph。
 6. `SealInstanceSnapshot` 深拷贝并计算 canonical digest。

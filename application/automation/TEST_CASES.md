@@ -13,8 +13,7 @@
 | `EnvironmentService.Update` | [`application/automation/environment_service.go`](../../application/automation/environment_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `EnvironmentService.Delete` | [`application/automation/environment_service.go`](../../application/automation/environment_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `EnvironmentService.Restore` | [`application/automation/environment_service.go`](../../application/automation/environment_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RevisionConflictError.Error` | [`application/automation/errors.go`](../../application/automation/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RevisionConflictError.Unwrap` | [`application/automation/errors.go`](../../application/automation/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `AutomationRevisionConflictError` | [`application/automation/errors.go`](../../application/automation/errors.go) | 返回稳定的 Revision 冲突 fault；不暴露可变身份或旧式哨兵类型。 |
 | `NewFolderService` | [`application/automation/folder_service.go`](../../application/automation/folder_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FolderService.Create` | [`application/automation/folder_service.go`](../../application/automation/folder_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FolderService.Move` | [`application/automation/folder_service.go`](../../application/automation/folder_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -36,11 +35,7 @@
 | `NodeService.Delete` | [`application/automation/node_service.go`](../../application/automation/node_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `NodeService.Restore` | [`application/automation/node_service.go`](../../application/automation/node_service.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `MapSamplingPublication` | [`application/automation/sampling_publication_mapper.go`](../../application/automation/sampling_publication_mapper.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `SamplingPublicationIdentityConflictError.Error` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `SamplingPublicationIdentityConflictError.Is` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `SamplingPublicationContractError.Error` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `SamplingPublicationContractError.Unwrap` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `SamplingPublicationContractError.Is` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `SamplingPublicationIdentityConflictError` / `SamplingPublicationDigestMismatchError` / `SamplingPublicationAuthorityConflictError` / `SamplingPublicationUnavailableError` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 返回统一 fault；底层适配器原因仅通过私有错误链保留。 |
 | `NewSamplingPublicationService` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `ValidatePublishSamplingIntentDigest` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `SamplingPublicationRequestDigest` | [`application/automation/sampling_publication_transaction.go`](../../application/automation/sampling_publication_transaction.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -50,7 +45,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestRevisionConflictErrorExposesSafeClassification` | `Revision Conflict Error Exposes Classification And Context`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/automation/asset_service_test.go`](../../application/automation/asset_service_test.go) · `TestRevisionConflictErrorExposesSafeClassification` |
 | `TestNodeServiceLifecycleAndPublication` | `Node Service Lifecycle And Publication`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/automation/asset_service_test.go`](../../application/automation/asset_service_test.go) · `TestNodeServiceLifecycleAndPublication` |

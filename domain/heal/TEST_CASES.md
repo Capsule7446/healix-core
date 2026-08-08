@@ -28,7 +28,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestAssessDispositionBusinessMatrix` | `Assess Disposition Business Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/heal/assessment_business_matrix_test.go`](../../domain/heal/assessment_business_matrix_test.go) · `TestAssessDispositionBusinessMatrix` |
 | `TestAssessBlocksOriginMismatch` | `Assess Blocks Origin Mismatch`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/heal/assessment_test.go`](../../domain/heal/assessment_test.go) · `TestAssessBlocksOriginMismatch` |

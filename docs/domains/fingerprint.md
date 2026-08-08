@@ -72,7 +72,7 @@ sequenceDiagram
 
 两条本领域特有的边界：
 
-- **Detector 错误不原样外传。** 宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED` 上（[`detection.go:47`](../../domain/fingerprint/detection.go)），经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。已被分类过的 detector 错误则原样透传，不再套一层（[`detection.go:44-46`](../../domain/fingerprint/detection.go)）。
+- **Detector 错误不原样外传。** 宿主注入的探测器其错误文本不受 Core 约束（可能含页面 URL 或 DOM 片段），只作为私有 cause 挂在 `FINGERPRINT_FRAMEWORK_DETECTOR_FAILED` 上（[`detection.go:47`](../../domain/fingerprint/detection.go)），经 `Unwrap` 可达。该失败归 `INTERNAL` 而非 `INVALID_ARGUMENT`，因为调用方没有运行时补救动作。已被分类过的 detector 错误直接透传（[`detection.go:44-46`](../../domain/fingerprint/detection.go)）。
 - **被拒的 selector 值、UUID、framework/evidence 取值一律不进公共文本** —— 闭集之外的取值按定义就是任意调用方输入。
 
 ## 并发、安全与资源

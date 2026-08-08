@@ -17,11 +17,10 @@
 | `CancelInstanceService` / `AbortInstanceService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 以命令身份、当前状态和工作器栅栏执行取消/中止；中止提交终态后再发送取消信号。 |
 | `ReorderQueueService` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在队列范围和修订号约束下重排执行实例。 |
 | `CancelInstanceRequestDigest` / `AbortInstanceRequestDigest` / `ReorderQueueRequestDigest` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 为命令重放和冲突校验生成稳定摘要。 |
-| `ReorderQueueRequestDigest` | [`application/scheduling/instance_command_services.go`](../../application/scheduling/instance_command_services.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestBatch2PublicCommandContractsCompile` | `Batch2 Public Command Contracts Compile`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/scheduling/batch2_contract_external_test.go`](../../application/scheduling/batch2_contract_external_test.go) · `TestBatch2PublicCommandContractsCompile` |
 | `TestCoordinatorFailsClosedOnStaleDecisionResult` | `Coordinator Fails Closed On Stale Decision Result`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`application/scheduling/coordinator_test.go`](../../application/scheduling/coordinator_test.go) · `TestCoordinatorFailsClosedOnStaleDecisionResult` |

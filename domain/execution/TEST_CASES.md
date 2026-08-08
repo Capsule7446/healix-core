@@ -27,17 +27,16 @@
 | `SealInstanceSnapshot` / `HydrateInstanceSnapshot` | [`domain/execution/instance_snapshot.go`](../../domain/execution/instance_snapshot.go) | 校验并封存完整快照；恢复时重新验证摘要和输入。 |
 | `ValidateEntryStatusTransition` / `IsTerminalEntryStatus` / `EntryStatus.CanTransitionTo` | [`domain/execution/status.go`](../../domain/execution/status.go) | 维护顶层执行项状态机，不与实例状态机混用。 |
 | `Parameter.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Draft.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `PlanSnapshot.Validate` | [`domain/execution/validation.go`](../../domain/execution/validation.go) | 校验封存前计划快照的结构、引用闭包和预算。 |
 | `WorkflowSnapshot.Validate` | [`domain/execution/step_shape.go`](../../domain/execution/step_shape.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Validation.Validate` | [`domain/execution/step_shape.go`](../../domain/execution/step_shape.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `WorkerFence.Validate` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StaleWorkerFenceError.Error` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StaleWorkerFenceError.Is` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `NewStaleWorkerFenceError` | [`domain/execution/worker_fence.go`](../../domain/execution/worker_fence.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `HealerPolicySnapshot.HealPolicy` | [`domain/execution/healer_policy_conversion.go`](../../domain/execution/healer_policy_conversion.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestFailurePolicyAndPlanFailurePolicyDirect` | `Failure Policy And Plan Failure Policy Direct`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/direct_gap_test.go`](../../domain/execution/direct_gap_test.go) · `TestFailurePolicyAndPlanFailurePolicyDirect` |
 | `TestValidateInstanceDirect` | `Validate Run Direct`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/execution/direct_gap_test.go`](../../domain/execution/direct_gap_test.go) · `TestValidateInstanceDirect` |

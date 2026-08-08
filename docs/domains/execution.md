@@ -37,7 +37,7 @@ flowchart LR
 
 这道互斥由 [`environment_snapshot_validation.go:50-70`](../../domain/execution/environment_snapshot_validation.go) 强制，digest 编码也按同一分支走（[`instance_snapshot.go:686-690`](../../domain/execution/instance_snapshot.go)）。当前版本 `InstanceSnapshotSchemaCurrent = V2`（[`instance_snapshot.go:23`](../../domain/execution/instance_snapshot.go)），而创建构建器只填 `Variables`（[`create_instance_builder.go:75`](../../application/scheduling/create_instance_builder.go)）。
 
-因此 **`env.` 命名空间里的值是类型化 `parameter.Value`，不是字符串**：引擎在 [`compiler.go:188-189`](../../application/engine/compiler.go) 上从 `environment.Variables` 逐项拼出 `env.<name>` 注入根作用域，同名冲突直接让编译失败。`Properties` 是 V1 遗留形状，新写入路径不再产生它。
+因此 **`env.` 命名空间里的值是类型化 `parameter.Value`，不是字符串**：引擎在 [`compiler.go:188-189`](../../application/engine/compiler.go) 上从 `environment.Variables` 逐项拼出 `env.<name>` 注入根作用域，同名冲突直接让编译失败。V1 快照可携带 `Properties`，V2 快照必须使用 `Variables`；创建服务默认构造 V2。
 
 Core 没有 `CredentialReference`、`CredentialResolver` 或 `CredentialService` 子系统；敏感值保护属于宿主的存储、授权与日志责任。
 
@@ -62,7 +62,7 @@ Core 没有 `CredentialReference`、`CredentialResolver` 或 `CredentialService`
 
 其余组合一律以 `EXECUTION_STATUS_TRANSITION_INVALID`（`FAILED_PRECONDITION`）拒绝。两处不对称值得单独记住：**`SKIPPED` 只能从 `PENDING` 到达，`ABORTED` 只能从 `RUNNING` 到达**；终态没有出边。`IsTerminalEntryStatus`（[`status.go:23-30`](../../domain/execution/status.go)）把 `SUCCEEDED`、`FAILED`、`CANCELED`、`ABORTED`、`SKIPPED` 判为终态，`PENDING` 与 `RUNNING` 不是。
 
-这个状态机不只是声明。[`DecideAdvance`](../../application/scheduling/decision.go) 发出的两个迁移 —— 下一个待运行项的 `PENDING → RUNNING`（`decision.go:101-106`）、后继项的 `PENDING → SKIPPED`（`decision.go:195-196`）—— 都先经 `ValidateEntryStatusTransition`，并由 [`entry_status_enforcement_test.go`](../../architecture/entry_status_enforcement_test.go) · `TestEntryStatusMachineHasProductionCallers` 守住它不再退回零生产调用方。
+这个状态机由生产调用落实。[`DecideAdvance`](../../application/scheduling/decision.go) 发出的两个迁移 —— 下一个待运行项的 `PENDING → RUNNING`（`decision.go:101-106`）、后继项的 `PENDING → SKIPPED`（`decision.go:195-196`）—— 都先经 `ValidateEntryStatusTransition`，并由 [`entry_status_enforcement_test.go`](../../architecture/entry_status_enforcement_test.go) · `TestEntryStatusMachineHasProductionCallers` 守住调用关系。
 
 **`RUNNING → 终态` 一侧尚无对应的纯决策函数。** `DecideAdvance` 只看得到状态、看不到执行结果，终态写入目前由宿主适配器在事务里完成 —— 这是当前设计的真实缺口，不是文档省略。
 
@@ -91,4 +91,4 @@ Core 没有 `CredentialReference`、`CredentialResolver` 或 `CredentialService`
 - [执行实例创建](../../application/scheduling/create_instance_service.go)、[创建构建器](../../application/scheduling/create_instance_builder.go)、[推进决策](../../application/scheduling/decision.go)、[顶层执行项执行器](../../application/execution/entry_executor.go)
 - [执行实例快照测试](../../domain/execution/instance_snapshot_test.go)、[快照不变量测试](../../domain/execution/instance_snapshot_invariants_test.go)、[参数校验测试](../../domain/execution/parameter_validation_test.go)、[执行实例创建测试](../../application/scheduling/create_instance_test.go)
 - [状态机生产调用方守卫](../../architecture/entry_status_enforcement_test.go) · `TestEntryStatusMachineHasProductionCallers`
-- [迁移字面量守卫](../../architecture/entry_status_enforcement_test.go) · `TestExecutionTransitionLiteralsUseValidStatusTransitions`
+- [状态迁移字面量守卫](../../architecture/entry_status_enforcement_test.go) · `TestExecutionTransitionLiteralsUseValidStatusTransitions`

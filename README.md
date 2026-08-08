@@ -299,14 +299,14 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 - `evidence.HealObservation` 只记录观察，没有晋升状态；晋升是栅栏校验提交的结果。
 - `domain/heal` 提供确定性算法和值，但在运行生命周期中属于 Execution；`Program`/`Runtime` 同样是临时 Execution 模型。
 
-## Adapter 必须保证什么
+## 适配器必须保证什么
 
 - **入站：** 校验外部 DTO，生成唯一 ID 和时间戳；创建执行实例时在同一目录/事务视图中解析完整依赖图、参数作用域、Environment 和所有 `latest`，再封存快照。
 - **自动化持久化：** 使用 opaque Revision 做 CAS，并在同一事务保存聚合、版本与指针变化。
 - **调度：** 原子 claim、不可伪造 token、worker fencing、事务化应用 decision，并返回与 Plan 完全一致的 entry 状态集合。
 - **浏览器执行：** 实现 `BrowserSessionFactory` 与 `node.Driver`/`Element`/`Locator`，尊重 `context.Context`；Core 为每个顶层执行项调用一次 `BrowserSessionFactory.Create` 并在推进前关闭会话，嵌套 Workflow 复用该会话。适配器必须保证每次创建使用全新的身份与存储隔离；Core 不验证会话新鲜性。目标缺失必须返回携带 `node.CodeElementNotFound` 的 fault，只有该类别会触发确定性自愈。
 - **记录与事实：** 对进度实施 fencing；按 revision、commit identity 和封印依赖目标原子提交终态与 facts。
-- **错误：** Core 不导出哨兵 error 变量；分类一律经业务错误码进行。用 `fault.CodeOf` / `fault.KindOf` / `fault.Describe` 读取边界故障的单一分类，用 `fault.IsCode` 询问某个错误码是否出现在整条链上；两者会给出不同答案，不要混用。包装原因时保留链路，不依赖完整错误字符串。`*fault.Error` 的私有 cause 只经 `Unwrap` 暴露，`Format` 已封住 `%+v` / `%#v`，因此日志不会泄露它。
+- **错误：** Core 不导出哨兵 error 变量；分类一律经业务错误码进行。用 `fault.CodeOf` / `fault.KindOf` / `fault.Describe` 读取边界故障的单一分类，用 `fault.IsCode` 询问某个错误码是否出现在整条链上；两者会给出不同答案，不要混用。包装原因时保留链路，不依赖完整错误字符串。`*fault.Error` 的私有 cause 只经 `Unwrap` 暴露，`Format` 封住 `%+v` / `%#v`，因此日志不会泄露它。
 
 详见[适配器职责](docs/integration/adapter-responsibilities.md)。
 
@@ -320,7 +320,7 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 
 这些是当前代码边界，不是对宿主能力的暗示或路线图承诺。
 
-唯一的例外是持久化摘要：请求/快照摘要使用的域分隔 wire tag 被当作存储格式对待，改动其字节会静默作废按旧标签哈希的全部记录。这些标签由 `architecture/digest_wire_tag_test.go` 逐一登记，修改必须伴随迁移方案。
+持久化摘要的域分隔 wire tag 属于存储格式；改动其字节会静默使既有摘要失效。这些标签由 `architecture/digest_wire_tag_test.go` 逐一登记，修改必须伴随重算或双读兼容策略。
 
 ## 本地验证
 

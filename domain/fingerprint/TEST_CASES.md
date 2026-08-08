@@ -11,7 +11,7 @@
 | `DetectFrameworks` | [`domain/fingerprint/detection.go`](../../domain/fingerprint/detection.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Selector.Validate` | [`domain/fingerprint/fingerprint.go`](../../domain/fingerprint/fingerprint.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Fingerprint.Validate` | [`domain/fingerprint/fingerprint.go`](../../domain/fingerprint/fingerprint.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeSpec.Validate` | [`domain/fingerprint/fingerprint.go`](../../domain/fingerprint/fingerprint.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ElementTargetSpec.Validate` | [`domain/fingerprint/fingerprint.go`](../../domain/fingerprint/fingerprint.go) | 校验元素目标的选择器、指纹描述和可选身份。 |
 | `FrameworkInfo.Validate` | [`domain/fingerprint/framework.go`](../../domain/fingerprint/framework.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FrameworkStack.Validate` | [`domain/fingerprint/framework.go`](../../domain/fingerprint/framework.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `FrameworkStack.Clone` | [`domain/fingerprint/framework.go`](../../domain/fingerprint/framework.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -19,7 +19,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestSelectorValidate` | `Selector Validate`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/fingerprint/fingerprint_test.go`](../../domain/fingerprint/fingerprint_test.go) · `TestSelectorValidate` |
 | `TestSelectorValidateBusinessMatrix` | `Selector Validate Business Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/fingerprint/fingerprint_test.go`](../../domain/fingerprint/fingerprint_test.go) · `TestSelectorValidateBusinessMatrix` |

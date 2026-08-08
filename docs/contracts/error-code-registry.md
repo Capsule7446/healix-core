@@ -108,7 +108,7 @@
 | `EXECUTION_REQUEST_ABORT_IDENTITY_CONFLICT` | `CONFLICT` | `entry state changed before the abort request was recorded` | none | The compare-and-swap matched no row because another writer reached the entry first. Re-read the authoritative entry state and rebuild the command before retrying; observed and authoritative state values remain private. |
 | `EXECUTION_REQUEST_ABORT_ADAPTER_CONTRACT_VIOLATION` | `INTERNAL` | `abort request adapter violated the port contract` | ordered typed violations only | The adapter returned an unknown status, a different entry or request identity, a recorded hit not reported as replayed, or a decision it recomputed. That is an adapter defect with no caller remediation; preserve validation causes privately and expose no adapter data, identities, digests, or decision values. |
 
-## Automation
+## 自动化上下文
 
 | Code | Kind | Safe message | Allowed params / violations | Notes |
 |---|---|---|---|---|
@@ -199,7 +199,7 @@
 
 ## 不单独拥有错误码家族的上下文
 
-### `domain/heal`
+### `domain/heal`（自愈上下文）
 
 `domain/heal` 不拥有 `HEAL_*` 家族；其内部不跨越 Core 公开边界的普通 error 属于允许的实现错误。只有跨越 Core 公开边界的业务失败才需要注册 code。
 

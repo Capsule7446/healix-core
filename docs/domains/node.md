@@ -85,7 +85,7 @@ flowchart LR
 
 `EXECUTION_TRANSIENT_DRIVER` 不走这条分类，它由 `transientDriverFault`（[`fault_classification.go:10`](../../domain/node/fault_classification.go)）在 Driver 明确声明可重试时单独产出 —— 只有显式瞬态才可重试，是自愈不被误触发的前提。
 
-Node 对外只产生上表中的 `EXECUTION_*` 分类。宿主持久化时应保存 `fault.Kind` 与 `fault.Code`；Core 不提供旧式 `ErrorKind` 或双读映射。
+Node 对外只产生上表中的 `EXECUTION_*` 分类。宿主持久化时应保存 `fault.Kind` 与 `fault.Code`；Core 不定义 `ErrorKind` 或双读映射。
 
 关键事实写入错误会传播；最佳努力的 operation observation 使用独立超时且不改变业务结果。轮询区分父 context 取消与自身 deadline。
 

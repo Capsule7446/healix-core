@@ -39,7 +39,7 @@ flowchart LR
 
 `UnpublishedElementTarget` 上唯一的引用字段是 [`ExistingNodeID`](../../domain/sampling/workspace.go) —— 它指向**已经**发布出去的 ElementTarget，不是这份草稿自己的身份。Version、VersionNumber、Revision、CurrentVersionID 这类正式身份只能由自动化在发布成功之后分配；草稿先带上它，就可能在任何东西发布它之前被执行或被引用。
 
-[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestUnpublishedSamplingAssetsCarryNoFormalIdentity` 对两个类型的字段名同时做两道检查：禁用子串（`Version`/`VersionNumber`/`Revision`/`CurrentVersionID`/`ElementTargetVersionID`）和禁用前缀（`Saved`/`Published`/`Promoted`/`Formal`）。两道都需要 —— 曾经存在的 `SavedWorkflowID` 不含任何一个禁用子串，只有前缀那一道拦得住它。`Saved` 与 `Existing` 的区别是语义的而非语法的：「Saved」说这份资产在发布前就握有正式身份，「Existing」说它引用了别人已经发布的东西。
+[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestUnpublishedSamplingAssetsCarryNoFormalIdentity` 对两个类型的字段名同时做两道检查：禁用子串（`Version`/`VersionNumber`/`Revision`/`CurrentVersionID`/`ElementTargetVersionID`）和禁用前缀（`Saved`/`Published`/`Promoted`/`Formal`）。`ExistingNodeID` 只表示对已发布 ElementTarget 的引用，不表示草稿拥有正式身份；新增字段必须保持这一语义。
 
 ## 状态与流程
 
@@ -69,7 +69,7 @@ stateDiagram-v2
 三条本领域特有的边界：
 
 - **起始 URL 解析失败只作为私有 cause。** `url.Error` 会把完整 URL（含 path 与 query）格式化进自己的文本，故它绝不进公共文本；公共 violation 只说明 `startUrl` 格式非法。
-- **捕获到的 `ElementTargetSpec` 校验失败原样上传 `FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID`**，不再套一层 `SAMPLING_CAPTURE_INVALID` —— 嵌套 fault 会迫使宿主递归解包才能分类。
+- **捕获到的 `ElementTargetSpec` 校验失败原样上传 `FINGERPRINT_ELEMENT_TARGET_SPEC_INVALID`**，不追加 `SAMPLING_CAPTURE_INVALID` —— 嵌套 fault 会迫使宿主递归解包才能分类。
 - **step / 临时 ElementTarget 的身份 ID 一律不进公共文本。** 会话状态与动作种类虽是闭集，但被拒的取值按定义就在闭集之外，即任意调用方输入，同样不回显。
 
 `nil` 接收者与 UUID 熵源失败合并为 `SAMPLING_INTERNAL`：两者都没有调用方可执行的补救动作，分成两个 code 只会多出一个没人能处理的 i18n key。

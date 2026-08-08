@@ -31,7 +31,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestNewRejectsInvalidPublicValues` | 封闭集之外的 `Kind`；不匹配 `^[A-Z][A-Z0-9_]{2,62}$` 的 `Code`；空白、超 512 字节、含控制字符的 message。 | 构造失败并返回普通 Go error；无部分构造的 `*Error` 逃逸。 | [`domain/fault/fault_test.go`](../../domain/fault/fault_test.go) · `TestNewRejectsInvalidPublicValues` |
 | `TestFaultPreservesCauseWithoutDisclosingIt` | `Wrap` 一个文本含 token/URL 的 cause。 | `Error()` 与 `Message()` 只输出 `CODE: message`；cause 仅经 `Unwrap` 可达。 | [`domain/fault/fault_test.go`](../../domain/fault/fault_test.go) · `TestFaultPreservesCauseWithoutDisclosingIt` |

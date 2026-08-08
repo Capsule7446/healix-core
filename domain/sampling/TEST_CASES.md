@@ -8,12 +8,12 @@
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
-| `InsertDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `UpdateDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `DeleteDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `MoveDraftStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ReorderDraftSteps` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `DeleteDraftNode` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `InsertUnpublishedFlowFragmentStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `UpdateUnpublishedFlowFragmentStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `DeleteUnpublishedFlowFragmentStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `MoveUnpublishedFlowFragmentStep` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `ReorderUnpublishedFlowFragmentSteps` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `DeleteUnpublishedElementTarget` | [`domain/sampling/draft.go`](../../domain/sampling/draft.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `Match` | [`domain/sampling/matching.go`](../../domain/sampling/matching.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
 | `RewriteUnpublishedElementTargetReferences` | [`domain/sampling/rewrite.go`](../../domain/sampling/rewrite.go) | 按临时到正式节点映射递归重写步骤引用，并保持输入不变。 |
 | `NewSession` | [`domain/sampling/session.go`](../../domain/sampling/session.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
@@ -30,7 +30,7 @@
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestUpdateUnpublishedFlowFragmentStepDirectNestedReplacementAndRejection` | `Update Draft Step Direct Nested Replacement And Rejection`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/direct_gap_test.go`](../../domain/sampling/direct_gap_test.go) · `TestUpdateUnpublishedFlowFragmentStepDirectNestedReplacementAndRejection` |
 | `TestRebuildUnpublishedElementTargetReferencesDirectNestedStaleUnknownAndAtomicity` | `Rebuild Temporary Node References Direct Nested Stale Unknown And Atomicity`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/sampling/direct_gap_test.go`](../../domain/sampling/direct_gap_test.go) · `TestRebuildUnpublishedElementTargetReferencesDirectNestedStaleUnknownAndAtomicity` |

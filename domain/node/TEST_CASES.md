@@ -8,58 +8,44 @@
 
 | 公开入口 | 定义文件 | 测试证据状态 |
 |---|---|---|
-| `WaitNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WaitNode.Validate` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WaitNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RepeatNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RepeatNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowCallNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `WorkflowCallNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ClassifiedError.Error` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ClassifiedError.Unwrap` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `TransientError` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ClassifyError` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Retry` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `RetryWithAttempts` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `healerPortAdapter.Recover` | [`domain/node/healing_port.go`](../../domain/node/healing_port.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StepTimelineEvent.Validate` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `runtimeReadOnlyBrowser.CaptureScreenshot` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `copiedDOMSnapshot.Candidates` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `runtimeReadOnlyBrowser.SnapshotDOM` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `runtimeReadOnlyBrowser.ObserveElement` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewNodeCompletionChain` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NodeCompletionChain.HasHandlers` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `LeafExecutionError` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `leafLifecycle.MarkSkipped` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `leafLifecycle.Complete` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Poller.Run` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `OperationRunner.Run` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `elementReader.Exists` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `elementReader.Visible` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `elementReader.Text` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `elementReader.Attribute` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `runtimeLocator.Locate` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `IsTransient` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `NewStepExecution` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StepExecution.Phase` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StepExecution.CanTransition` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidatePhaseTransition` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StepExecution.Transition` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Runtime.Parameters` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `Runtime.LeafExecutionStarted` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StepNode.ID` | [`domain/node/step.go`](../../domain/node/step.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `StepNode.Run` | [`domain/node/step.go`](../../domain/node/step.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `runtimeVariables.Variable` | [`domain/node/step.go`](../../domain/node/step.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidationNode.ID` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidationNode.Run` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidationGroupNode.ID` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
-| `ValidationGroupNode.Run` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据；无业务分支的辅助 accessor 以调用方契约覆盖。 |
+| `WaitNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `WaitNode.Validate` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `WaitNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `RepeatNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `RepeatNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `WorkflowNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `WorkflowNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `WorkflowCallNode.ID` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `WorkflowCallNode.Run` | [`domain/node/composite.go`](../../domain/node/composite.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `RetryPolicy` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `Retry` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `RetryWithAttempts` | [`domain/node/errors.go`](../../domain/node/errors.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `NewElementNotFoundError` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `StepTimelineEvent.Validate` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `NewNodeCompletionChain` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `NodeCompletionChain.HasHandlers` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `LeafExecutionError` | [`domain/node/lifecycle.go`](../../domain/node/lifecycle.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `Locator` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 宿主实现的定位端口；由节点运行测试覆盖调用契约。 |
+| `Reader` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 宿主实现的读取端口；由节点运行测试覆盖调用契约。 |
+| `Poller.Run` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `OperationRunner.Run` | [`domain/node/mechanisms.go`](../../domain/node/mechanisms.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `NewStepExecution` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `StepExecution.Phase` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `StepExecution.CanTransition` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `ValidatePhaseTransition` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `StepExecution.Transition` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `Runtime.Parameters` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `Runtime.LeafExecutionStarted` | [`domain/node/runtime.go`](../../domain/node/runtime.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `StepNode.ID` | [`domain/node/step.go`](../../domain/node/step.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `StepNode.Run` | [`domain/node/step.go`](../../domain/node/step.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `ValidationNode.ID` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `ValidationNode.Run` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `ValidationGroupNode.ID` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
+| `ValidationGroupNode.Run` | [`domain/node/validation.go`](../../domain/node/validation.go) | 在下方 testcase 矩阵中提供直接行为证据。 |
 
 ## 测试用例证据矩阵
 
-| Test case | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
+| 测试用例 | 输入、边界或业务前置状态 | 预期契约 | 可执行证据 |
 |---|---|---|---|
 | `TestStepActionFailureBusinessMatrix` | `Step Action Failure Business Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/node/business_case_matrix_test.go`](../../domain/node/business_case_matrix_test.go) · `TestStepActionFailureBusinessMatrix` |
 | `TestWaitControlBusinessMatrix` | `Wait Control Business Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/node/business_case_matrix_test.go`](../../domain/node/business_case_matrix_test.go) · `TestWaitControlBusinessMatrix` |

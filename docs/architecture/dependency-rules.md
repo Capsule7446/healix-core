@@ -74,7 +74,7 @@ flowchart BT
 - 后续顶层执行项的 `PENDING → SKIPPED` 及其因果；和
 - 执行实例的最终状态。
 
-这两个迁移在 `DecideAdvance` 里就已经过 `execution.ValidateEntryStatusTransition`；合法迁移表见[执行领域](../domains/execution.md#状态与流程)。**失败时不得留下部分转换。**
+这两个状态迁移在 `DecideAdvance` 里就已经过 `execution.ValidateEntryStatusTransition`；合法迁移表见[执行领域](../domains/execution.md#状态与流程)。**失败时不得留下部分转换。**
 
 ### 执行证据写入
 
@@ -84,11 +84,11 @@ flowchart BT
 
 封存快照与幂等记录的 digest 依赖一组域分隔 wire tag。改动其中任何一个都会静默作废全部已存 digest，且没有测试能自然发现 —— 摘要只会变成另一个同样合法的字符串。完整清单与已发生的一次失效见[摘要 wire tag 登记表](../contracts/digest-wire-tags.md)，由 [`digest_wire_tag_test.go`](../../architecture/digest_wire_tag_test.go) 守住。
 
-## 执行入口与命名边界
+## 当前禁止的边界与命名
 
 当前执行 API 只允许以下入口和命名。架构守卫同时阻止文档和代码重新引入已禁止的第二套执行模型：
 
-| 旧名字 | 现行读法 | 守卫 |
+| 禁止符号或形状 | 当前契约 | 守卫 |
 |---|---|---|
 | `domain/workspace` 包 | Core 不包含该领域包 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestWorkspacePackageIsRemoved` |
 | `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | 不属于当前 API；执行只能使用 `CompilePlan` 与 `RunProgram` | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |

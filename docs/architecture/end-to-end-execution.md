@@ -42,7 +42,7 @@ flowchart TD
 
 它的把关顺序是固定的三步（[`entry_executor.go:136-146`](../../application/execution/entry_executor.go)）：
 
-1. `fence.Validate()` —— 栅栏返回自己已分类的 fault，此处不再包一层，否则会把分类藏在未分类的外层错误后面。
+1. `fence.Validate()` —— 栅栏返回自己已分类的 fault，此处直接透传，避免把分类藏在未分类的外层错误后面。
 2. `EntryAuthorizer.AuthorizeEntry` —— 同样原样返回授权者的 fault。
 3. `BrowserSessionFactory.Create` —— 到这一步才创建宿主资源。
 
@@ -71,7 +71,7 @@ Node 通过执行端口写非终态进度和终态提交。[`StepTransitionCommi
 | 失败点 | Core 行为 | 宿主责任 |
 |---|---|---|
 | 执行实例创建解析或校验失败 | 返回错误，不暴露半成品执行实例 | 回滚创建事务 |
-| 领取执行权/栅栏过期 | 拒绝状态或事实写入 | 重新领取或终止旧工作器 |
+| 领取执行权/栅栏过期 | 拒绝状态或事实写入 | 重新领取或终止失效工作器 |
 | 顶层执行项授权被拒 | 原样返回授权者的 fault，不创建任何宿主资源 | 判定该工作器是否仍持有权限，必要时重新领取 |
 | 会话工厂失败 | 以 `EXECUTION_SCHEDULING_ADAPTER_UNAVAILABLE` 返回；若工厂在报错的同时仍交回了非 nil 会话，该半成品会话会被关闭，关闭错误一并 join 进结果 | 修复适配器可达性 |
 | 会话工厂返回 nil 会话却不报错 | 以 `EXECUTION_ENTRY_BROWSER_SESSION_ADAPTER_CONTRACT_VIOLATION` 返回 | 修复适配器的契约实现 |
