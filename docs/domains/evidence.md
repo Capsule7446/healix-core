@@ -38,7 +38,7 @@ flowchart LR
 
 `StepProgressEvent`（[`events.go:17-25`](../../domain/evidence/events.go)）与 `StepPhaseEvent`（[`events.go:53-61`](../../domain/evidence/events.go)）声明坐标三元组 `(EntryID, InvocationPath, Occurrence)`。`Occurrence` 另有六个结构携带 —— `HealCandidateReset`、`StepFact`、`HealObservation`、`ValidationGroupTerminalObservation`、`ValidationProgressObservation` 与 `ValidationObservation` —— 使 `RepeatNode` 在同一 NodeID 上跑出的各轮事后可区分。
 
-`EntryID` 与 `InvocationPath` 是不可能持有无意义值的值类型，坐标的第三个分量却是裸 `int`。因此正数规则集中在 [`appendOccurrenceViolations`](../../domain/evidence/observations.go) 一处，由每个带 `Validate` 的载体调用，而不是各写一遍让措辞漂移。[`occurrence_test.go`](../../domain/evidence/occurrence_test.go) · `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` 对六个载体逐一钉住 `0` 与 `-1` 被拒。
+`EntryID` 与 `InvocationPath` 是不可能持有无意义值的值类型，坐标的第三个分量却是裸 `int`。因此正数规则集中在 [`appendOccurrenceViolations`](../../domain/evidence/observations.go) 一处，由每个带 `Validate` 的载体调用；[`occurrence_test.go`](../../domain/evidence/occurrence_test.go) · `TestEveryValidatingCoordinateCarrierRejectsNonPositiveOccurrence` 对六个载体统一验证 `0` 与 `-1` 被拒。
 
 消费方仍需知道的两条边界：
 

@@ -40,7 +40,7 @@ classDiagram
 - **`ElementTargetSpec`**（[`fingerprint.go:136-146`](../../domain/fingerprint/fingerprint.go)）：在 selector 与 fingerprint 之上加 `UUID`、`ID`、`PageURL`、`Origin`、`Role`。
 - **`PageObservation`** 是探测输入，**`FrameworkDetector`** 是外部探测算法端口（[`detection.go:14-28`](../../domain/fingerprint/detection.go)）。
 
-`Fingerprint.Clone`（[`fingerprint.go:98`](../../domain/fingerprint/fingerprint.go)）是这个类型**唯一**的深拷贝。此前四个包各写了一份，其中两份是错的 —— sampling 的 `cloneSpec` 从不复制 `Framework`，`cloneUnpublishedFlowFragment` 干脆不复制 fingerprint —— 产出的「副本」与源共享一个 map 和两个切片。拥有类型的包拥有拷贝，是唯一能让新增引用类型字段不被四分之三的调用方遗漏的安排，并由 [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestFingerprintHasExactlyOneDeepCopy` 守住。
+`Fingerprint.Clone`（[`fingerprint.go:98`](../../domain/fingerprint/fingerprint.go)）是该类型当前唯一的深拷贝契约。所有调用方都通过拥有类型的拷贝获得独立值，新增引用类型字段也由同一入口统一处理；[`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestFingerprintHasExactlyOneDeepCopy` 强制这一边界。
 
 ## 不变量
 
