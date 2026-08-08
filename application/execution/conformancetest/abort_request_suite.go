@@ -9,35 +9,27 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// AbortFaultPoint names one place a host adapter can be made to fail while
-// recording a pending abort intent.
+// AbortFaultPoint 标识宿主适配器记录待处理中止意图时可注入故障的位置。
 //
-// The points are the write stages AbortRequestTransaction declares atomic. A
-// host that commits any of them outside the transaction is caught here by the
-// rollback check rather than by a reviewer reading the adapter. The empty value
-// means "no fault", which is what ClearFault restores.
+// 这些位置对应 AbortRequestTransaction 声明为原子的写入阶段。宿主若在事务外提交其中任一阶段，
+// 回滚检查会捕获该问题，而不依赖审阅者阅读适配器实现。空值表示“无故障”，由 ClearFault 恢复。
 type AbortFaultPoint string
 
 const (
-	// AbortFaultBeforeReplay fails inside LookupAbortRequest, before it reads
-	// anything. A host that had already made the request visible by then would
-	// leave the caller unable to tell a fresh request from a half-applied one.
+	// AbortFaultBeforeReplay 在 LookupAbortRequest 内、读取任何内容前失败。宿主若在此之前已让请求
+	// 可见，调用方将无法区分新请求与半应用请求。
 	AbortFaultBeforeReplay AbortFaultPoint = "BEFORE_REPLAY"
-	// AbortFaultAfterDecision fails once the intent has been validated and
-	// before the first write.
+	// AbortFaultAfterDecision 在意图校验完成且首个写入尚未发生时失败。
 	AbortFaultAfterDecision AbortFaultPoint = "AFTER_DECISION"
-	// AbortFaultAfterIntent fails once the pending terminal intent has been
-	// written under its compare-and-swap.
+	// AbortFaultAfterIntent 在待处理终态意图已通过 CAS 写入后失败。
 	AbortFaultAfterIntent AbortFaultPoint = "AFTER_INTENT"
-	// AbortFaultAfterReceipt fails once the abort command receipt has been
-	// written, which is the last write before the idempotency receipt. It is the
-	// point where a non-atomic host looks most convincingly finished.
+	// AbortFaultAfterReceipt 在中止命令收据写入后失败；该写入是幂等收据之前的最后一次写入，
+	// 也是非原子宿主看起来最像已完成的阶段。
 	AbortFaultAfterReceipt AbortFaultPoint = "AFTER_RECEIPT"
 )
 
-// AbortFaultPoints lists every point the suite injects, lookup first and then
-// the write stages in commit order. Hosts may call it to drive their own tests
-// over the same set instead of restating it.
+// AbortFaultPoints 按查询优先、随后提交写入顺序列出套件注入的全部故障点。宿主可调用它驱动自身
+// 测试，避免重新声明同一集合。
 func AbortFaultPoints() []AbortFaultPoint {
 	return []AbortFaultPoint{
 		AbortFaultBeforeReplay,
@@ -47,14 +39,10 @@ func AbortFaultPoints() []AbortFaultPoint {
 	}
 }
 
-// AbortSnapshot is everything one abort request is allowed to change, read back
-// as a single comparable value.
+// AbortSnapshot 保存一次中止请求允许改变的全部状态，并作为单个可比较值读回。
 //
-// EntryStatus is present precisely because a request must never change it. The
-// counters report how many rows each class of write produced; the suite compares
-// them rather than fixing their magnitude, because how many rows one request
-// produces is a host's business but whether a rolled-back attempt left any
-// behind is not.
+// EntryStatus 之所以存在，正因为请求绝不能改变它。计数器报告各类写入产生的行数；套件比较这些
+// 计数而不固定其数值，因为一次请求产生多少行属于宿主业务，但回滚尝试是否留下任何痕迹不是。
 type AbortSnapshot struct {
 	EntryStatus            domainexecution.EntryStatus
 	TerminalIntent         execution.TerminalIntent
@@ -62,53 +50,43 @@ type AbortSnapshot struct {
 	CancellationGeneration int64
 	PendingIntents         int
 	CommandReceipts        int
-	// IdempotencyReceipts is the third write the port declares atomic, and it
-	// needs reading back for two reasons the other two counters cannot cover: a
-	// receipt committed outside the transaction makes a crashed attempt look
-	// applied on retry, and a receipt appended again on every replay grows
-	// without bound while the recorded outcome stays correct.
+	// IdempotencyReceipts 是端口声明为原子的第三类写入，必须读回，因为其他两个计数器无法覆盖两种
+	// 情况：事务外提交收据会使崩溃尝试在重试时看似已应用；每次重放都追加收据会令其无限增长，
+	// 即使记录的结果保持正确。
 	IdempotencyReceipts int
 }
 
-// AbortFixture is one host adapter under test, plus the two things the suite
-// needs that the port itself does not expose: a way to read committed state
-// back, and a way to make the adapter fail at a chosen point.
+// AbortFixture 表示一个待测试的宿主适配器，并补充端口本身未暴露的两项能力：读回已提交状态，
+// 以及让适配器在指定位置失败。
 //
-// SetFault and ClearFault must be safe to call from the goroutine driving the
-// test while no request is in flight; the suite never changes a fault
-// concurrently with a call it expects to observe that fault.
+// SetFault 和 ClearFault 必须可由驱动测试的 goroutine 在没有请求运行时安全调用；套件不会在预期
+// 观察故障的调用并发执行期间修改故障设置。
 type AbortFixture interface {
 	execution.AbortRequestTransaction
-	// Fence is the worker authority this fixture accepts.
+	// Fence 返回此夹具接受的工作线程权威。
 	Fence() domainexecution.WorkerFence
-	// EntryID is the entry this fixture holds.
+	// EntryID 返回此夹具持有的入口。
 	EntryID() domainexecution.EntryID
-	// Snapshot reads back everything an abort request may have changed.
+	// Snapshot 读回中止请求可能改变的全部状态。
 	Snapshot() AbortSnapshot
-	// SetFault arms a failure at one point of the next request.
+	// SetFault 在下一次请求的指定位置启用故障。
 	SetFault(AbortFaultPoint)
-	// ClearFault disarms whatever SetFault armed.
+	// ClearFault 清除 SetFault 启用的故障。
 	ClearFault()
 }
 
-// AbortFactory builds one fresh fixture holding one running entry in the
-// supplied state.
+// AbortFactory 在给定状态下创建一个持有运行中入口的新夹具。
 //
-// It must be deterministic in its identities: every fixture it returns reports
-// the same Fence and EntryID, and two fixtures built from the same state start
-// with identical snapshots. The suite builds a clean run and a crash-then-retry
-// run from two fixtures and compares them, which is only meaningful when those
-// two promises hold.
+// 其身份必须是确定的：返回的每个夹具报告相同 Fence 和 EntryID；从相同状态创建的两个夹具必须
+// 以相同快照开始。套件从两个夹具构建干净运行和崩溃后重试运行并进行比较，这只有在两项保证成立
+// 时才有意义。
 type AbortFactory func(t *testing.T, state execution.EntryCompletionState) AbortFixture
 
-// RunAbortRequest runs the abort request conformance suite against one host
-// adapter.
+// RunAbortRequest 针对一个宿主适配器运行中止请求 conformance 套件。
 //
-// It exercises AbortRequestTransaction through AbortRequestService, because
-// that is the only supported way to reach the port and a host that passes only
-// when driven directly has not been tested on the path it will actually run.
-// Every subtest builds its own fixture, so a failure leaves no residue for the
-// next one.
+// 它通过 AbortRequestService 调用 AbortRequestTransaction，因为这是访问端口的唯一支持路径；
+// 仅在直接驱动端口时通过的宿主，尚未在实际运行路径上得到测试。每个子测试创建自己的夹具，
+// 因此失败不会给下一个测试留下残留状态。
 func RunAbortRequest(t *testing.T, factory AbortFactory) {
 	t.Helper()
 
@@ -148,10 +126,8 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 	})
 
 	t.Run("request-leaves-the-entry-running", func(t *testing.T) {
-		// This is the whole reason D-17 is a separate contract from D-12. An
-		// adapter that terminated the entry here would give the instance two
-		// terminal write paths that can disagree, and would strand the
-		// completion's authority compare-and-swap on a row it no longer matches.
+		// 这正是 D-17 与 D-12 分开成为独立契约的全部原因。适配器若在此处终止入口，会给实例两条
+		// 可能不一致的终态写入路径，并使完成操作的权威 CAS 停留在已不匹配的行上。
 		state := abortRunningState(execution.TerminalIntentNone)
 		fixture := factory(t, state)
 		before := fixture.Snapshot()
@@ -214,8 +190,7 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 					t.Fatalf("fault at %s left state behind: %+v -> %+v", point, before, crashed)
 				}
 
-				// A retry after the crash must be indistinguishable from a first
-				// clean attempt: same decision, same committed state.
+				// 崩溃后的重试必须与首次干净尝试不可区分：决策相同，已提交状态相同。
 				fixture.ClearFault()
 				retried, err := service.Request(context.Background(), command)
 				if err != nil {
@@ -232,12 +207,9 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 		}
 	})
 
-	// The next two subtests are deliberately separate. A stale fence and a stale
-	// observed state are both "somebody else moved first", but the caller reacts
-	// oppositely: a lost claim means stop, a moved state means re-read and
-	// rebuild. An adapter that answered both with one code — or with an
-	// unclassified storage error — would leave the host unable to tell them
-	// apart, so each asserts its own code rather than merely "an error".
+	// 接下来两个子测试有意分开。过期 fence 和过期观测状态都表示“其他人先移动了状态”，但调用方
+	// 的处理相反：领取失效意味着停止，状态变化意味着重新读取并重建。适配器若以同一个错误码或
+	// 未分类存储错误回答二者，宿主将无法区分，因此每个测试都断言各自错误码，而不只是“有错误”。
 	t.Run("stale-fence-writes-nothing", func(t *testing.T) {
 		state := abortRunningState(execution.TerminalIntentNone)
 		fixture := factory(t, state)
@@ -258,8 +230,7 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 		state := abortRunningState(execution.TerminalIntentNone)
 		fixture := factory(t, state)
 		before := fixture.Snapshot()
-		// The command is well formed and its fence is current; it simply
-		// observed a revision the entry has already moved past.
+		// 命令形状有效且 fence 仍然当前；它只是观测到了入口已经越过的修订。
 		stale := abortCommand(fixture, state, "command-1")
 		stale.State.TerminalIntentRevision = state.TerminalIntentRevision + 1
 
@@ -273,9 +244,8 @@ func RunAbortRequest(t *testing.T, factory AbortFactory) {
 	})
 }
 
-// assertAbortRecorded holds a committed request to the decision core produced:
-// the two counters must be the Next* pair verbatim, and exactly one row of each
-// class must exist however many attempts it took.
+// assertAbortRecorded 断言已提交请求忠实记录了决策 Core 产生的值：两个计数器必须原样等于 Next*
+// 对，且无论尝试多少次，每一类写入都必须恰好存在一行。
 func assertAbortRecorded(t *testing.T, snapshot AbortSnapshot, decision execution.AbortRequestDecision) {
 	t.Helper()
 	if snapshot.TerminalIntent != decision.NextIntent {
@@ -298,6 +268,7 @@ func assertAbortRecorded(t *testing.T, snapshot AbortSnapshot, decision executio
 	}
 }
 
+// abortRunningState 构造给定终态意图、初始修订为 1 且 generation 为 0 的运行中状态。
 func abortRunningState(intent execution.TerminalIntent) execution.EntryCompletionState {
 	return execution.EntryCompletionState{
 		EntryStatus:            domainexecution.EntryRunning,
@@ -307,6 +278,7 @@ func abortRunningState(intent execution.TerminalIntent) execution.EntryCompletio
 	}
 }
 
+// abortCommand 使用夹具身份和给定观测状态构造中止请求命令。
 func abortCommand(fixture AbortFixture, state execution.EntryCompletionState, commandID string) execution.RequestAbortCommand {
 	return execution.RequestAbortCommand{
 		EntryID: fixture.EntryID(),
@@ -316,6 +288,7 @@ func abortCommand(fixture AbortFixture, state execution.EntryCompletionState, co
 	}
 }
 
+// mustAbortDecision 计算中止决策；失败时立即终止测试。
 func mustAbortDecision(t *testing.T, command execution.RequestAbortCommand) execution.AbortRequestDecision {
 	t.Helper()
 	decision, err := execution.DecideAbortRequest(command.State, command.Request)

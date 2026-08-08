@@ -9,25 +9,18 @@ import (
 	"github.com/Capsule7446/healix-core/domain/fault"
 )
 
-// MaxExpectedEntryCompletionRevision is the largest value core will ever write
-// into NextIntentRevision or NextCancellationGeneration.
+// MaxExpectedEntryCompletionRevision 是 Core 写入 NextIntentRevision 或 NextCancellationGeneration
+// 的最大值。
 //
-// A counter already at or above it has no successor core may produce: the next
-// value would be math.MaxInt64, and one further completion would wrap to
-// MinInt64 — a value no adapter can compare-and-swap against, which silently
-// turns the host's optimistic-concurrency check into no check at all. The
-// completion is refused instead.
+// 已达到或超过该值的计数器没有 Core 可产生的后继值：下一个值会是 math.MaxInt64，再完成一次会
+// 溢出到 MinInt64；适配器无法对该值执行 CAS，宿主的乐观并发检查会静默变成完全不检查。因此拒绝完成。
 //
-// The ceiling is checked per counter, and only for a counter the decision
-// actually advances. A cancellation generation carried through unchanged has no
-// successor to be exhausted, so a state sitting at the ceiling is still
-// completable whenever the intent was not carried out.
+// 上限按计数器分别检查，且仅检查决策实际推进的计数器。原样传递的 cancellation generation 不需要
+// 后继值，因此意图未执行时，即使状态处于上限仍可完成。
 const MaxExpectedEntryCompletionRevision int64 = math.MaxInt64 - 1
 
-// mustEntryCompletionViolation builds a field-level reason. Construction can
-// only fail on a malformed field name or code, both of which are compile-time
-// constants here, so a failure is a programming error rather than a business
-// one.
+// mustEntryCompletionViolation 构造字段级原因。这里的字段名和错误码均为编译期常量，构造失败只
+// 可能表示程序错误，而非业务错误。
 func mustEntryCompletionViolation(code fault.Code, field, message string) fault.Violation {
 	violation, err := fault.NewViolation(code, field, message)
 	if err != nil {
@@ -36,6 +29,7 @@ func mustEntryCompletionViolation(code fault.Code, field, message string) fault.
 	return violation
 }
 
+// entryCompletionStateInvalidError 构造带字段违规明细的无效完成状态错误。
 func entryCompletionStateInvalidError(violation fault.Violation) error {
 	err, constructionErr := fault.New(fault.InvalidArgument, CodeEntryCompletionStateInvalid, "entry completion state is invalid", fault.WithViolations(violation))
 	if constructionErr != nil {
@@ -44,6 +38,7 @@ func entryCompletionStateInvalidError(violation fault.Violation) error {
 	return err
 }
 
+// entryCompletionRevisionExhaustedError 构造不存在可表示后继修订时的范围错误。
 func entryCompletionRevisionExhaustedError() error {
 	err, constructionErr := fault.New(fault.OutOfRange, CodeEntryCompletionRevisionExhausted, "entry completion revision has no representable successor")
 	if constructionErr != nil {
@@ -52,6 +47,7 @@ func entryCompletionRevisionExhaustedError() error {
 	return err
 }
 
+// entryCompletionNotRunningError 构造入口不处于 RUNNING 状态时的完成前置条件错误。
 func entryCompletionNotRunningError() error {
 	err, constructionErr := fault.New(fault.FailedPrecondition, CodeEntryCompletionNotRunning, "entry is not running and cannot be completed")
 	if constructionErr != nil {
@@ -60,6 +56,7 @@ func entryCompletionNotRunningError() error {
 	return err
 }
 
+// engineOutcomeInvalidError 构造带字段违规明细的无效引擎结果错误。
 func engineOutcomeInvalidError(violation fault.Violation) error {
 	err, constructionErr := fault.New(fault.InvalidArgument, CodeEngineOutcomeInvalid, "engine outcome is invalid", fault.WithViolations(violation))
 	if constructionErr != nil {
@@ -68,24 +65,23 @@ func engineOutcomeInvalidError(violation fault.Violation) error {
 	return err
 }
 
-// TerminalIntent is the core-owned vocabulary for "someone has asked this
-// instance to stop". The host persists and compares these values but never
-// invents one: ExecutionActionGateV1 keeps a single execution authority
-// precisely by leaving the legal values here.
+// TerminalIntent 是 Core 所有的“有人请求停止此实例”词汇。宿主持久化并比较这些值，但不自行发明值；
+// ExecutionActionGateV1 通过将合法值保留在此处来维护单一执行权威。
 //
-// TerminalIntentNone is a real value, not a zero placeholder — an entry that
-// nobody asked to stop still has an intent to record, and a blank intent is
-// rejected rather than read as "none".
+// TerminalIntentNone 是真实值而非零占位：即使没有人请求停止，入口仍有要记录的意图；空意图会被拒绝，
+// 不会被解释为“none”。
 type TerminalIntent string
 
 const (
-	TerminalIntentNone   TerminalIntent = "NONE"
+	// TerminalIntentNone 表示当前没有取消或中止请求。
+	TerminalIntentNone TerminalIntent = "NONE"
+	// TerminalIntentCancel 表示请求取消尚未完成的执行。
 	TerminalIntentCancel TerminalIntent = "CANCEL"
-	TerminalIntentAbort  TerminalIntent = "ABORT"
+	// TerminalIntentAbort 表示请求中止正在执行的入口。
+	TerminalIntentAbort TerminalIntent = "ABORT"
 )
 
-// Validate reports whether the intent is one core defined. Hosts call it when
-// they read an intent back out of storage, before feeding it to a decision.
+// Validate 校验意图是否属于 Core 定义的词汇。宿主从存储读回意图后，应在将其交给决策前调用。
 func (intent TerminalIntent) Validate() error {
 	switch intent {
 	case TerminalIntentNone, TerminalIntentCancel, TerminalIntentAbort:
@@ -95,22 +91,18 @@ func (intent TerminalIntent) Validate() error {
 	}
 }
 
-// EngineOutcome is what one entry's engine run observed, as a domain value.
+// EngineOutcome 保存一次入口引擎运行观测到的领域结果。
 //
-// Result is engine.RunProgram's own report, carried through unchanged rather
-// than re-encoded: a second parallel enum would be a second place for the two
-// vocabularies to drift. FailureCode is the classified fault code of whatever
-// error accompanied the run, empty when there was none; it is recorded for the
-// audit trail and deliberately never steers the terminal status.
+// Result 是 engine.RunProgram 自身的报告，原样传递而不重新编码；维护第二套枚举会为两套词汇产生
+// 漂移的第二个位置。FailureCode 是运行错误（若有）的已分类错误码；无错误时为空。它用于审计链，
+// 且有意不参与终态决定。
 type EngineOutcome struct {
 	Result      engine.EntryResult
 	FailureCode fault.Code
 }
 
-// NotStartedEngineOutcome is the outcome of an entry whose engine never ran —
-// a stale fence, a refused authorization, a browser that could not be created.
-// It is a valid, decidable outcome rather than an absence, so every failed
-// entry still has a terminal state to commit and a lease to release.
+// NotStartedEngineOutcome 构造引擎从未运行的入口结果，例如 fence 过期、授权被拒或浏览器无法创建。
+// 这是有效且可决策的结果而非缺失值，使每个失败入口仍有可提交的终态和可释放的租约。
 func NotStartedEngineOutcome() EngineOutcome {
 	return EngineOutcome{Result: engine.EntryResult{
 		ExecutionOutcome: engine.ExecutionNotStarted,
@@ -119,31 +111,24 @@ func NotStartedEngineOutcome() EngineOutcome {
 	}}
 }
 
-// InterruptedEngineOutcome is the outcome of an entry whose run was never
-// observed to completion — the host process died while the engine was running,
-// and recovery found the entry still RUNNING with a claim nobody holds.
+// InterruptedEngineOutcome 构造运行未被观察到完成的入口结果：引擎运行期间宿主进程终止，恢复发现
+// 入口仍为 RUNNING 且没有任何人持有领取。
 //
-// It exists because NotStartedEngineOutcome was the only construction recovery
-// could reach, and using it there is not merely lossy but false: "not started"
-// asserts the engine is known not to have begun, while an orphan may well have
-// run to completion and taken its result down with the process. Both once
-// terminated as FAILED with nothing to tell them apart afterwards, which for a
-// product sold on its evidence chain makes failure-rate statistics and
-// heal-candidate selection read a crash as a business failure.
+// 恢复路径在处理孤立入口时必须使用此结果，而不能使用 NotStartedEngineOutcome：后者表示引擎已知
+// 未开始，孤立入口可能已运行完成并随进程终止带走结果，因此将其作为未开始会产生事实错误。若两者
+// 都终止为 FAILED，持久化后无法区分；依赖证据链的产品会将崩溃误读为业务失败，进而污染失败率统计
+// 和自愈候选选择。
 func InterruptedEngineOutcome() EngineOutcome {
 	return EngineOutcome{Result: engine.EntryResult{
 		ExecutionOutcome: engine.ExecutionInterrupted,
-		// Every axis says the same thing: unknown. Writing DISABLED here would
-		// repeat one level down the exact falsehood this constructor exists to
-		// stop -- an entry whose observer died may well have been recording, and
-		// may have left a partial file the host will later find and be unable to
-		// reconcile with a record claiming recording was switched off.
+		// 每个轴都表达同一事实：未知。此处写入 DISABLED 会在更低层重复本构造器要阻止的错误：
+		// 观测器终止的入口可能正在录制，并留下宿主之后发现却无法与“录制已关闭”记录对应的部分文件。
 		RecordingOutcome: engine.RecordingUnobserved,
 		TimelineOutcome:  engine.TimelineUnobserved,
 	}}
 }
 
-// Validate reports whether every field is inside the engine vocabulary.
+// Validate 校验所有字段是否属于引擎词汇。
 func (outcome EngineOutcome) Validate() error {
 	switch outcome.Result.ExecutionOutcome {
 	case engine.OutcomeSucceeded, engine.OutcomeFailed, engine.OutcomeCanceled, engine.ExecutionNotStarted, engine.ExecutionInterrupted:
@@ -160,23 +145,19 @@ func (outcome EngineOutcome) Validate() error {
 	default:
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "result.timelineOutcome", "timeline outcome is not one the engine reports"))
 	}
-	// A code that is present but blank is a lost classification, not "no
-	// failure": it would be recorded as an empty audit field nobody can trace.
+	// 已存在但为空白的错误码表示分类丢失，而不是“无失败”：它会以无人可追踪的空审计字段被记录。
 	if outcome.FailureCode != "" && strings.TrimSpace(string(outcome.FailureCode)) == "" {
 		return engineOutcomeInvalidError(mustEntryCompletionViolation(fault.CodeFieldInvalid, "failureCode", "failure code is present but blank"))
 	}
 	return nil
 }
 
-// EntryCompletionState is what the host observed about one entry immediately
-// before completing it. It is the whole decision basis: anything absent here is
-// deliberately absent.
+// EntryCompletionState 保存宿主在完成入口前立即观测到的状态，是完整决策依据；未包含的内容均为有意
+// 缺省。
 //
-// AbortPendingCommandID is one such deliberate absence. A pending abort command
-// is idempotency identity, not a terminal intent, and keeping it out of this
-// struct makes "mistake a pending abort for an effective intent" structurally
-// impossible rather than merely discouraged. It travels on
-// CompleteEntryCommand, where it belongs.
+// AbortPendingCommandID 就是这种有意缺省的字段。待处理中止命令是幂等身份，而非终态意图；将其排除
+// 在此结构之外，可在结构层面阻止“把待处理中止误认为有效意图”，而不只是依赖约定。它随
+// CompleteEntryCommand 传递，归属在那里。
 type EntryCompletionState struct {
 	EntryStatus            domainexecution.EntryStatus
 	TerminalIntent         TerminalIntent
@@ -184,10 +165,8 @@ type EntryCompletionState struct {
 	CancellationGeneration int64
 }
 
-// Validate reports whether the observed state is inside the core vocabulary. It
-// deliberately says nothing about whether the entry can be completed — a
-// well-formed PENDING state is valid and undecidable, and those are different
-// answers with different remediations.
+// Validate 校验观测状态是否属于 Core 词汇。它有意不判断入口是否可以完成：形状有效的 PENDING 状态
+// 是有效但不可决策的状态，两者答案不同，处理方式也不同。
 func (state EntryCompletionState) Validate() error {
 	switch state.EntryStatus {
 	case domainexecution.EntryPending, domainexecution.EntryRunning, domainexecution.EntrySucceeded,
@@ -208,43 +187,30 @@ func (state EntryCompletionState) Validate() error {
 	return nil
 }
 
-// EntryCompletionDecision is the complete terminal answer for one entry.
+// TerminalCause 表示入口达到终态前，有多少运行过程被观测到；它是独立于终态状态的第二条轴。
 //
-// The Current* fields repeat what core was told it observed, so the host has an
-// exact compare-and-swap predicate without re-reading. The Next* fields are the
-// exact values the host must write; the host must never increment or infer
-// either counter itself, which is what
-// ValidateCompleteEntryIntentDigest mechanically enforces.
-// TerminalCause reports how much of a run was observed before its entry
-// reached a terminal status. It is the second of two independent axes, and
-// keeping them apart is the whole of D-18: EntryStatus answers "what did this
-// entry come to", which the terminal intent can decide, while TerminalCause
-// answers "did anyone see it happen", which no intent can change.
+// D-18 的核心是保持两条轴分离：EntryStatus 回答“入口最终变成什么”，可由终态意图决定；
+// TerminalCause 回答“是否有人看到它发生”，任何意图都不能改变。
 //
-// Without it, an entry that ran and failed its assertions, an entry whose
-// browser could not be created, and an entry whose observer crashed all landed
-// as FAILED with no field able to separate them once persisted.
+// 没有该字段，运行后断言失败、浏览器无法创建以及观测器崩溃的入口都会落为 FAILED，持久化后无
+// 字段区分三者。
 type TerminalCause string
 
 const (
-	// TerminalCauseCompleted means the engine ran and reported a result. The
-	// result may be a failure; what makes it completed is that it was observed.
+	// TerminalCauseCompleted 表示引擎运行并报告结果；结果可以是失败，关键在于运行被观测到。
 	TerminalCauseCompleted TerminalCause = "COMPLETED"
-	// TerminalCauseNotStarted means the engine is known never to have begun — a
-	// stale fence, a refused authorization, a browser that could not be created.
+	// TerminalCauseNotStarted 表示已知引擎从未开始，例如 fence 过期、授权被拒或浏览器无法创建。
 	TerminalCauseNotStarted TerminalCause = "NOT_STARTED"
-	// TerminalCauseInterrupted means the run was never observed to completion.
-	// Recovery terminating an orphan RUNNING entry produces this; whether the
-	// engine actually finished is unknown and unknowable.
+	// TerminalCauseInterrupted 表示运行未被观测到完成；恢复终止孤立 RUNNING 入口时产生此值，
+	// 引擎是否实际完成未知且无法得知。
 	TerminalCauseInterrupted TerminalCause = "INTERRUPTED"
 )
 
+// EntryCompletionDecision 保存一次入口完成的完整终态答案及终态意图计数器 CAS 值。
 type EntryCompletionDecision struct {
 	EntryStatus domainexecution.EntryStatus
-	// TerminalCause travels with the status rather than being left for the host
-	// to derive from the command, because the host persists this struct verbatim
-	// as the authoritative terminal record. A field it had to recompute is a
-	// field two hosts could compute differently.
+	// TerminalCause 随状态传递，而不是留给宿主从命令推导，因为宿主会将此结构原样持久化为权威终态
+	// 记录。凡是需要宿主重新计算的字段，都可能被两个宿主计算出不同结果。
 	TerminalCause                 TerminalCause
 	CurrentIntent                 TerminalIntent
 	CurrentIntentRevision         int64
@@ -254,48 +220,31 @@ type EntryCompletionDecision struct {
 	NextCancellationGeneration    int64
 }
 
-// DecideEntryCompletion answers what terminal state one entry reached, and what
-// the instance's terminal-intent counters become.
+// DecideEntryCompletion 计算一个入口达到的终态，以及实例终态意图计数器应变为何值。
 //
-// It is a pure function of state and outcome: the same pair always yields the
-// same decision, so a host may call it standalone as a pre-check and get the
-// same answer the commit will use. It touches no port, takes no Context, and
-// owns no resources.
+// 它是状态与结果的纯函数：相同输入对始终产生相同决策，宿主可以独立调用作预检查，并获得提交时
+// 使用的同一答案。它不接触端口，不接收 Context，也不拥有资源。
 //
-// Every combination of engine outcome, terminal intent and starting status has
-// a determinate result or an explicit fault — there is no combination the host
-// is left to decide:
+// 引擎结果、终态意图和起始状态的每种组合都有确定结果或明确错误，宿主无需自行决定：
 //
-//   - A non-RUNNING entry is refused with CodeEntryCompletionNotRunning.
-//   - 裁决一：引擎跑完时事实压过意图。An engine that reached SUCCEEDED means the
-//     external side effects already landed — a form was submitted, an order was
-//     placed — and a cancel cannot roll those back. Recording CANCELED would
-//     contradict the evidence chain the same run produced. The entry is
-//     SUCCEEDED, and the intent still travels intact into the Next* fields so
-//     DecideAdvance stops the *next* entry, which is where a cancel actually
-//     takes effect.
-//   - Otherwise the intent names the terminal status: NONE→FAILED,
-//     CANCEL→CANCELED, ABORT→ABORTED. An engine CANCELED or NOT_STARTED under no
-//     intent is a FAILED entry, not a fault: the entry is already RUNNING, and
-//     refusing to give it a terminal state would strand it there with an
-//     unreleasable lease.
-//   - Recording and timeline outcomes never change the terminal status. A
-//     recorder that failed to stop degrades the evidence, not the run.
+//   - 非 RUNNING 入口以 CodeEntryCompletionNotRunning 拒绝。
+//   - 裁决一：引擎完成运行时，事实优先于意图。达到 SUCCEEDED 表示外部副作用已经发生——表单已提交、
+//     订单已下单——取消无法回滚这些副作用。记录 CANCELED 会与同一运行产生的证据链矛盾。入口
+//     记录为 SUCCEEDED，同时将意图完整带入 Next* 字段，使 DecideAdvance 停止下一个入口，取消
+//     才会在那里真正生效。
+//   - 其他情况由意图指定终态：NONE→FAILED、CANCEL→CANCELED、ABORT→ABORTED。无意图时引擎
+//     返回 CANCELED 或 NOT_STARTED 仍得到 FAILED，而不是错误：入口已经处于 RUNNING，拒绝给它
+//     终态会使其滞留并留下无法释放的租约。
+//   - 录制和时间线结果永远不改变终态。录制器停止失败会降低证据质量，而不是改变运行结果。
 //
-// NextIntent always equals CurrentIntent: completing an entry observes an
-// intent, it never changes one. NextIntentRevision always advances by exactly
-// one, so every completion writes a distinct value and a replayed commit can be
-// told apart from a fresh one. NextCancellationGeneration advances only when
-// the intent was actually carried out — that is, when the terminal status is
-// CANCELED or ABORTED — so a generation is never spent on an intent that lost
-// to a finished run, and a generation at MaxExpectedEntryCompletionRevision
-// blocks only the completions that would have had to advance it.
+// NextIntent 始终等于 CurrentIntent：完成入口只观测意图，不改变意图。NextIntentRevision 始终恰好
+// 递增一，使每次完成写入不同值，并可区分重放提交与新提交。NextCancellationGeneration 仅在意图
+// 实际执行时推进，即终态为 CANCELED 或 ABORTED 时；意图若因运行完成而未执行，generation 不会被
+// 消耗。达到 MaxExpectedEntryCompletionRevision 的 generation 仅阻止需要推进它的完成。
 //
-// Ordering: this decision must be reached, and committed through
-// EntryCompletionTransaction, before scheduling asks DecideAdvance whether the
-// next entry may run. DecideAdvance reads the counters this decision produces;
-// calling it first would read a pre-terminal state and let a canceled instance
-// start one more entry.
+// 顺序是：先得出本决策并通过 EntryCompletionTransaction 提交，调度再询问 DecideAdvance 是否可以
+// 运行下一个入口。DecideAdvance 读取本决策产生的计数器；若先调用它，会读取终态之前的状态，让已
+// 取消实例再启动一个入口。
 func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (EntryCompletionDecision, error) {
 	if err := state.Validate(); err != nil {
 		return EntryCompletionDecision{}, err
@@ -306,8 +255,7 @@ func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (E
 	if state.EntryStatus != domainexecution.EntryRunning {
 		return EntryCompletionDecision{}, entryCompletionNotRunningError()
 	}
-	// The intent revision advances on every completion, so it is always the
-	// decision's own successor that has to be representable.
+	// 每次完成都会推进意图修订，因此始终必须能表示决策自身的后继值。
 	if state.TerminalIntentRevision >= MaxExpectedEntryCompletionRevision {
 		return EntryCompletionDecision{}, entryCompletionRevisionExhaustedError()
 	}
@@ -315,10 +263,8 @@ func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (E
 	status := decideTerminalEntryStatus(state.TerminalIntent, outcome.Result.ExecutionOutcome)
 	nextGeneration := state.CancellationGeneration
 	if status == domainexecution.EntryCanceled || status == domainexecution.EntryAborted {
-		// Only a generation this decision actually spends needs a successor. A
-		// generation carried through unchanged has nothing to overflow, and
-		// refusing it would strand a finished entry in RUNNING with a lease
-		// nobody can release — the exact outcome this contract exists to prevent.
+		// 仅本决策实际消耗的 generation 需要后继值。原样传递的 generation 不会溢出；拒绝当前完成
+		// 会使已结束入口滞留在 RUNNING，并留下无人可释放的租约，这正是本契约要防止的结果。
 		if state.CancellationGeneration >= MaxExpectedEntryCompletionRevision {
 			return EntryCompletionDecision{}, entryCompletionRevisionExhaustedError()
 		}
@@ -336,10 +282,8 @@ func DecideEntryCompletion(state EntryCompletionState, outcome EngineOutcome) (E
 	}, nil
 }
 
-// terminalCauseOf reads the observation axis out of the engine outcome. It is
-// total over the validated vocabulary, and deliberately takes no intent: an
-// intent can change which terminal status an unfinished entry reaches, but
-// nothing about an intent changes whether the run was seen.
+// terminalCauseOf 从引擎结果读取观测轴。它覆盖已校验的完整词汇，且有意不接收意图：意图可以改变
+// 未完成入口达到的终态，但不能改变运行是否被观测到。
 func terminalCauseOf(executed engine.ExecutionOutcome) TerminalCause {
 	switch executed {
 	case engine.ExecutionNotStarted:
@@ -347,17 +291,14 @@ func terminalCauseOf(executed engine.ExecutionOutcome) TerminalCause {
 	case engine.ExecutionInterrupted:
 		return TerminalCauseInterrupted
 	default:
-		// SUCCEEDED, FAILED and CANCELED are all reports from a run that
-		// happened. The trailing case is exhaustive over the validated
-		// vocabulary rather than a catch-all: EngineOutcome.Validate has already
-		// refused anything outside it.
+		// SUCCEEDED、FAILED 和 CANCELED 都表示运行已发生。尾部分支覆盖已校验词汇，而不是吞掉未知值的
+		// catch-all：EngineOutcome.Validate 已拒绝词汇之外的值。
 		return TerminalCauseCompleted
 	}
 }
 
-// decideTerminalEntryStatus is total over the validated vocabulary: both
-// switches are exhaustive, and the trailing returns are unreachable rather than
-// catch-alls that would silently absorb a new engine constant.
+// decideTerminalEntryStatus 覆盖已校验词汇：两个 switch 均为穷尽分支，尾部返回是不可达路径，
+// 不会静默吸收新增的引擎常量。
 func decideTerminalEntryStatus(intent TerminalIntent, executed engine.ExecutionOutcome) domainexecution.EntryStatus {
 	if executed == engine.OutcomeSucceeded {
 		return domainexecution.EntrySucceeded
