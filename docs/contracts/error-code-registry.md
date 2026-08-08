@@ -1,34 +1,34 @@
-# v0.6 Fault Code Registry
+# 业务错误码注册表
 
-This registry defines the stable public error-code contract. A code is immutable once published: its owner, `Kind`, meaning, required safe detail schema, and retry meaning cannot change or be reused. `Message` is a safe English fallback, not an i18n key or a stable text protocol.
+本表定义当前稳定的公开业务错误码契约。错误码发布后不可修改、不可复用：所属上下文、`Kind`、含义、允许的安全详情结构和重试语义必须保持不变。`Message` 列按现行协议保留安全英文兜底文案；它不是 i18n key，也不是稳定的文本协议。
 
-## Registry rules
+## 注册规则
 
-- Code format: `UPPER_SNAKE_CASE`, with a bounded-context prefix.
-- `EXECUTION_*` owns node runtime, engine, scheduling, and execution-application failures.
-- Allowed parameters are fixed per code, lower-camel-case, locale-neutral, bounded, and never secrets, selectors, environment/parameter values, URLs, command payloads, stack traces, or causes.
-- Violations are allowed only on aggregate input codes and are ordered deterministically.
-- Violation reason codes are owned by the shared kernel and listed under "Violation codes". They are the only codes without a bounded-context prefix, and they may appear only as a `Violation` code, never as a top-level `Error` code.
-- Unregistered production fault codes, duplicate codes, cross-context prefixes, and public `errors.New` sentinels are contract violations.
-- When the guard in `architecture/fault_contract_guard_test.go` reports a Kind or message disagreement, **fix the code, never the published row**. The test cannot tell a wrong implementation from a rewritten protocol, and rewriting the row to match the code silently breaks every host already switching on it. A published code's Kind and meaning are immutable; if the implementation genuinely needs different behaviour, that is a new code, not an edited one.
+- 格式为带限界上下文前缀的 `UPPER_SNAKE_CASE`。
+- `EXECUTION_*` 负责 Node 运行时、执行引擎、调度和执行应用层的失败。
+- 每个错误码的允许参数固定为小驼峰、与区域无关且有界的字段；不得携带 secret、selector、环境/参数值、URL、命令载荷、堆栈或 cause。
+- 只有聚合输入校验错误允许携带 violation，且顺序必须确定。
+- 违规原因码属于共享内核，列在“字段违规码”中；它们是唯一没有上下文前缀的 code，只能作为 `Violation` code，不能作为顶层 `Error` code。
+- 生产代码中的未注册 code、重复 code、跨上下文前缀和公开 `errors.New` 哨兵均违反契约。
+- [`architecture/fault_contract_guard_test.go`](../../architecture/fault_contract_guard_test.go) 报告 Kind 或 message 不一致时，**先修代码，不修改已发布行**。若确需改变语义，新增错误码而不是改写原行。
 
-## Violation codes
+## 字段违规码
 
-Owned by `domain/fault` and shared by every context's aggregate validation envelope. A violation's `field` says *which* input failed; its code says *why*. The vocabulary stays closed and small on purpose: minting a code per failing field would multiply frontend i18n keys without adding meaning, which is exactly what the aggregate envelope exists to prevent.
+字段违规码由 `domain/fault` 所有，供所有上下文的聚合校验封套复用。`field` 说明哪个输入失败，code 说明失败原因。词表保持封闭且精简，不为每个字段单独创建 code。
 
-| Code | Kind of failure | Notes |
+| Code | 失败含义 | 说明 |
 |---|---|---|
 | `VALIDATION_FIELD_REQUIRED` | A mandatory input is absent or blank. | Remediation is to supply the field named by `field`. |
 | `VALIDATION_FIELD_INVALID` | A present input holds an unacceptable value. | Covers range, format, enum, and ordering rules. The rejected value stays private. |
 | `VALIDATION_FIELD_DUPLICATE` | An input repeats a value required to be unique. | `field` points at the later occurrence, not the first. The repeated value stays private. |
 | `VALIDATION_FIELD_MISMATCH` | An input contradicts the aggregate holding it. | Covers wrong owner, wrong parent, and policy/value contradictions. |
 
-- `field` is a logical, locale-neutral path matching `^[a-z][A-Za-z0-9.]{0,126}$`. It names the public contract vocabulary, not internal struct fields.
-- Collection indexes in `field` are **0-based** and address the collection the caller passed.
-- Violation `message` and `params` obey the same safety rules as top-level codes: no identities, keys, enum values, causes, or user input.
-- One envelope carries at most `fault.MaxViolations` violations. Past the cap the deterministic leading prefix is kept and the remainder dropped, so a consumer must not read the violation count as complete.
+- `field` 是符合 `^[a-z][A-Za-z0-9.]{0,126}$` 的逻辑路径，表示公开契约词汇，不表示内部 struct 字段。
+- `field` 中的集合索引从 **0** 开始，对应调用方传入的集合。
+- violation 的 `message` 和 `params` 也遵守顶层 code 的安全规则，不携带身份、键、枚举值、cause 或用户输入。
+- 一个封套最多携带 `fault.MaxViolations` 条 violation。超过上限时保留确定性前缀、丢弃其余项；消费方不得把数量视为完整清单。
 
-## Execution
+## 执行上下文错误码
 
 | Code | Kind | Safe message | Allowed params | Retry / notes |
 |---|---|---|---|---|
@@ -155,7 +155,7 @@ Owned by `domain/fault` and shared by every context's aggregate validation envel
 | `AUTOMATION_SAMPLING_PUBLICATION_ADAPTER_CONTRACT_VIOLATION` | `INTERNAL` | `sampling publication adapter returned an invalid outcome` | none | The adapter outcome is malformed; preserve its cause only for diagnostics and do not expose outcome, identity, digest, or payload details. |
 | `AUTOMATION_SAMPLING_PUBLICATION_AUTHORITY_CONFLICT` | `CONFLICT` | `sampling publication authority changed before the publication could be applied` | none | Re-read node authority before retrying; conflict preserves rollback and does not disclose publication or revision details. |
 
-## Sampling, evidence, fingerprint, interpolation, parameter
+## 采样、证据、指纹、插值与参数错误码
 
 | Code | Kind | Safe message | Allowed params / violations | Notes |
 |---|---|---|---|---|
@@ -195,13 +195,13 @@ Owned by `domain/fault` and shared by every context's aggregate validation envel
 | `INTERPOLATION_VARIABLE_UNDEFINED` | `NOT_FOUND` | `referenced variable is not defined` | none | Variable name and source expression remain private. |
 | `INTERPOLATION_EXPANSION_TOO_LARGE` | `RESOURCE_EXHAUSTED` | `expanded value exceeds the size limit` | none | One expansion exceeded `interpolation.MaxExpansionBytes`. `RESOURCE_EXHAUSTED` rather than `INVALID_ARGUMENT` because neither the template nor the variable is invalid on its own — only their product is, and the caller's remediation is a smaller value rather than a corrected expression. The template, the variable name, and the resolved value all stay private; the resolved value is the one most likely to carry a token or a URL. |
 
-These families are added only in the atomic bounded-context migration that introduces the corresponding producer. Every addition must include its `Kind`, fixed safe fallback message, allowed parameter/violation schema, retry behavior, public consumer, and any persistence mapping.
+新增错误码必须与对应生产方的边界变更原子提交，并同时补充 `Kind`、固定安全兜底文案、允许的参数/violation 结构、重试语义、公开消费者和持久化映射。
 
-## Contexts that deliberately own no code family
+## 不单独拥有错误码家族的上下文
 
 ### `domain/heal`
 
-`domain/heal` has no `HEAL_*` family, and its remaining internal bare errors are permitted rather than pending. The rule is the same one that sizes every other family: only a business failure that crosses the Core public boundary needs a registered code, and an internal invariant may stay an ordinary Go error.
+`domain/heal` 不拥有 `HEAL_*` 家族；其内部不跨越 Core 公开边界的普通 error 属于允许的实现错误。只有跨越 Core 公开边界的业务失败才需要注册 code。
 
 Verified reachability of its exported error surface:
 
@@ -213,23 +213,23 @@ Verified reachability of its exported error surface:
 | `ValidateSamples` | none |
 | `Thresholds.Validate`, `Weights.Validate` | none outside the package |
 
-Nothing reaches a host except through `domain/node`, which owns the `EXECUTION_*` family. Classification therefore belongs at the `domain/node` boundary, not to a family of its own — adding one would mean two codes for one failure and would push heal-internal vocabulary into the published contract.
+这些入口只经 `domain/node` 到达宿主；`domain/node` 负责 `EXECUTION_*` 家族。因此分类应位于 `domain/node` 边界，不另建 Heal 家族，避免同一失败出现两个 code。
 
-Two conditions keep that true, and both are load-bearing:
+以下两项边界约束保持该归属：
 
-- **`domain/node` must classify at its boundary. This now holds.** The four sites — `step.go:210` and `:216`, `validation.go:339` and `:353` — used to wrap heal failures as `fmt.Errorf("invalid heal decision: %w", err)` and `fmt.Errorf("assess heal decision: %w", err)`, uncoded wrappers that let a heal failure cross the public boundary with no code at all. All four now go through `classifyNodeFault` (`fault_classification.go:17`), which passes an already-coded cause through unchanged and otherwise lands on an `EXECUTION_*` code. With that condition met, the absence of a heal family is a decision rather than a gap.
-- **Heal text must stay free of observed values.** `domain/heal` echoes no selector, page URL, origin, or fingerprint value in any error. The single dynamic value it formats is `policy.MinimumMargin` (`assessment.go:45`), a caller-supplied configuration float rather than observed page content or user input.
+- **`domain/node` 在边界分类。** `step.go` 与 `validation.go` 的自愈失败统一经过 `classifyNodeFault`（[`fault_classification.go`](../../domain/node/fault_classification.go)），已有 code 原样透传，其余映射到 `EXECUTION_*`。
+- **Heal 文本不得包含观测值。** `domain/heal` 不回显 selector、页面 URL、origin 或 fingerprint；策略阈值属于调用方配置，不是页面内容。
 
-## Historical execution evidence mapping
+## 执行证据持久化要求
 
-Host persistence migration is required for values formerly recorded as node `ErrorKind`:
+宿主持久化执行事实时必须保存 `fault.Kind` 与 `fault.Code`，并保持以下当前分类语义：
 
-| v0.5 persisted kind | v0.6 kind | v0.6 code |
+| 事实场景 | Kind | code |
 |---|---|---|
-| `not_found` | `NOT_FOUND` | `EXECUTION_ELEMENT_NOT_FOUND` |
-| `timeout` | `DEADLINE_EXCEEDED` | `EXECUTION_OPERATION_TIMEOUT` |
-| `canceled` | `CANCELED` | `EXECUTION_OPERATION_CANCELED` |
-| `transient` | `UNAVAILABLE` | `EXECUTION_TRANSIENT_DRIVER` |
-| `unknown` / unclassified | `INTERNAL` | `EXECUTION_OPERATION_FAILED` |
+| 元素目标缺失 | `NOT_FOUND` | `EXECUTION_ELEMENT_NOT_FOUND` |
+| 节点操作超时 | `DEADLINE_EXCEEDED` | `EXECUTION_OPERATION_TIMEOUT` |
+| 节点操作被取消 | `CANCELED` | `EXECUTION_OPERATION_CANCELED` |
+| Driver 明确声明瞬态不可用 | `UNAVAILABLE` | `EXECUTION_TRANSIENT_DRIVER` |
+| 未分类节点操作失败 | `INTERNAL` | `EXECUTION_OPERATION_FAILED` |
 
-The Core writes only v0.6 `Kind + Code` facts after migration. SQLite/schema conversion or dual-read behavior belongs to the Host and must be independently verified there.
+Core 只定义当前 `Kind + Code` 事实；SQLite、schema 转换和兼容读取均属于宿主，必须由宿主单独验证。

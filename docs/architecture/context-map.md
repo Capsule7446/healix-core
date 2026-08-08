@@ -67,7 +67,7 @@ flowchart TB
 
 ## 一处刻意的前缀错位
 
-`SAMPLING_PUBLICATION_IDENTITY_CONFLICT`、`SAMPLING_PUBLICATION_AUTHORITY_INVALID` 与 `SAMPLING_PUBLICATION_COMMAND_INVALID` 由 `application/automation` 产出，却带 `SAMPLING_*` 前缀。这不是漏改：code 前缀标的是**消费方看到的业务上下文**，不是产出它的 Go 包。三行都在注册表里注明了该错位由 `v0.5-error-inventory.md:37` 授权。产出包与前缀不一致的情况仅此三处，其余一律对齐。
+`SAMPLING_PUBLICATION_IDENTITY_CONFLICT`、`SAMPLING_PUBLICATION_AUTHORITY_INVALID` 与 `SAMPLING_PUBLICATION_COMMAND_INVALID` 由 `application/automation` 产出，却带 `SAMPLING_*` 前缀。这是有意的契约：code 前缀表示消费方看到的业务上下文，不表示 Go 产出包；注册表中的三行记录了该归属。除此三项外，产出包与前缀保持一致。
 
 ## 禁止的捷径
 

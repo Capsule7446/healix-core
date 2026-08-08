@@ -2,13 +2,7 @@
 
 `healix-core` 是一个面向浏览器自动化产品的 Go 领域与执行内核。它把可发布的自动化资产、不可变执行计划、确定性节点运行、自愈决策和执行事实建模为与传输、数据库和浏览器实现无关的包，供 Desktop、CLI、CI Runner 或 Server 作为库嵌入。
 
-当前发布版本为 **v0.5.0**。公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。
-
-主干在 v0.5.0 之后仍有未发布的破坏性重命名（执行实例：`Run*` → `Instance*`；自动化：`TestTask`/`Workflow`/`Node` → `ExecutionFlow`/`FlowFragment`/`ElementTarget`）与业务错误码契约（`domain/fault`）。本文的代码示例描述**当前仓库树**，不是 v0.5.0 标签；按标签取用时请以该标签的源码为准。
-
-### v0.5.0
-
-此版本完成了执行模型与公开契约的收敛：以 `CompilePlan` 和 `RunProgram` 作为运行入口，并要求宿主在执行前验证 Claim/调度决定提供的完整执行身份。执行边界和宿主义务见下文的[端到端执行](#端到端执行)、[适配器必须保证什么](#adapter-必须保证什么)与[公开契约](docs/integration/public-contract.md)。
+当前代码基线为 **v0.8.1**，公开 API 仍处于 **v0**：代码可用且受测试约束，但尚未承诺 v1 兼容性。执行入口固定为 `CompilePlan` 与 `RunProgram`；业务失败统一通过 `domain/fault` 的错误码契约表达。
 
 ## 许可证
 
@@ -98,7 +92,7 @@ flowchart TB
 |---|---|
 | `domain/automation` | 版本化资产、Revision、发布快照、引用锁定、生命周期和文件夹树规则 |
 | `domain/sampling` | 交互式采样会话、capture 幂等、匹配和临时工作流 |
-| `domain/execution` | 封存的执行实例快照、调用作用域、Environment `Properties` 快照、执行实例/顶层执行项状态、预算与转换不变量；`domain/heal` 的决策在执行时归属 Execution |
+| `domain/execution` | 封存的执行实例快照、调用作用域、Environment `Variables` 快照、执行实例/顶层执行项状态、预算与转换不变量；`domain/heal` 的决策在执行时归属 Execution |
 | `domain/node` | 临时 `Program`/`Runtime` 执行模型、动作/等待/校验、重试、生命周期和运行端口 |
 | `domain/heal` | 无浏览器或 LLM 依赖的确定性重定位、评分、评估与候选证据 |
 | `domain/evidence` | 进度事实、终态事件、修复/校验观察和原子提交值语义 |
@@ -158,7 +152,7 @@ sequenceDiagram
 远端版本可用时：
 
 ```bash
-go get github.com/Capsule7446/healix-core@v0.5.0
+go get github.com/Capsule7446/healix-core@v0.8.1
 ```
 
 在相邻目录进行本地联调时，可在宿主 `go.mod` 中使用：
@@ -295,11 +289,11 @@ runResult, err := engine.RunProgram(ctx, entry, engine.Config{
 })
 ```
 
-宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`InstanceID + SnapshotDigest + EntryID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `InstanceSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.InstanceSnapshot`，因为除 Plan 中冻结的 flow fragment/element target/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Properties` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
+宿主必须先通过调度决定 entry 可运行，再执行对应 `CompiledEntry`；`CompilePlan` 本身不会领取任务或写数据库。`InstanceID + SnapshotDigest + EntryID + ClaimToken` 必须来自 Claim/调度决定等独立权威，不能从待执行 entry 反向复制。`RunProgram` 在访问运行端口前复核前三项与 entry 私有封印一致、要求 ClaimToken 非空，并通过必填的 `ExecutionAuthorityVerifier` 向领取权威验证完整四元身份仍然有效；非空 token 本身不构成授权证明。运行入口不暴露裸 `node.Program`。运行时参数不由 `Config` 提供，而是在编译时从不可变 `InstanceSnapshot` 的调用作用域与 Environment 数据生成。编译必须接收完整的不可变 `execution.InstanceSnapshot`，因为除 Plan 中冻结的 flow fragment/element target/reference 图外，编译器还要读取各调用路径冻结的参数值与 `parameter.Binding` 解析结果，并把冻结的 `Environment.Variables` 以 `env.` 前缀注入根调用作用域。只传 `snapshot.Plan()` 会丢失这些执行语义。
 
 ## 当前生命周期约束
 
-- Environment 是普通 Automation 资产；执行实例只冻结其 `Properties` 副本。Core 没有 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret-store 模型。
+- Environment 是普通 Automation 资产；当前执行实例快照冻结其类型化 `Variables` 副本。Core 没有 `CredentialReference`、`CredentialService`、`SecretProvider` 或 secret-store 模型。
 - `automation.ExecutionFlowVersion`（测试任务版本）只能由显式手工创作创建；Sampling 与 Heal 只发布各自产物，不会隐式发布新版本。
 - `sampling.UnpublishedFlowFragment` 是采样草稿/重写工作区，`sampling.Session` 是浏览器交互会话；二者不是别名，也不共享生命周期。
 - `evidence.HealObservation` 只记录观察，没有晋升状态；晋升是栅栏校验提交的结果。

@@ -84,16 +84,16 @@ flowchart BT
 
 封存快照与幂等记录的 digest 依赖一组域分隔 wire tag。改动其中任何一个都会静默作废全部已存 digest，且没有测试能自然发现 —— 摘要只会变成另一个同样合法的字符串。完整清单与已发生的一次失效见[摘要 wire tag 登记表](../contracts/digest-wire-tags.md)，由 [`digest_wire_tag_test.go`](../../architecture/digest_wire_tag_test.go) 守住。
 
-## 不得复活的旧边界
+## 执行入口与命名边界
 
-以下名字都已从代码中删除，并各有守卫防止它们回来。文档不得把它们描述成现行 API：
+当前执行 API 只允许以下入口和命名。架构守卫同时阻止文档和代码重新引入已禁止的第二套执行模型：
 
 | 旧名字 | 现行读法 | 守卫 |
 |---|---|---|
-| `domain/workspace` 包 | 该边界已不存在 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestWorkspacePackageIsRemoved` |
-| `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | `CompilePlan` 与 `RunProgram` 是仅有的两个执行入口 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |
-| `RunSnapshot`、`CreateRunCommand`/`CreateRunService`、`AbortRunService`、`RunReader` | `InstanceSnapshot`、`CreateInstanceCommand`/`CreateInstanceService`、`AbortInstanceService`，以及随 `Claim` 交出的快照 | 命名由 [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) 一族守住 |
-| 任何保留旧公开名的导出类型别名 | 直接替换，不设弃用窗口 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoExportedTypeAliasKeepsAnOldNameAlive` |
-| 任何承诺旧名字仍可用的弃用标记 | 替换本身就是迁移，不提供弃用窗口 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoDeprecationMarkersPromiseAnOldNameStillWorks` |
+| `domain/workspace` 包 | Core 不包含该领域包 | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestWorkspacePackageIsRemoved` |
+| `CompileRunSnapshot`、`RunCompiledEntry`、`RunCompiledEntryWithResult`、`RunCoordinator.Run` | 不属于当前 API；执行只能使用 `CompilePlan` 与 `RunProgram` | [`dependencies_test.go`](../../architecture/dependencies_test.go) · `TestEngineHasSingleCanonicalExecutionAPI` |
+| `RunSnapshot`、`CreateRunCommand`/`CreateRunService`、`AbortRunService`、`RunReader` | 当前使用 `InstanceSnapshot`、`CreateInstanceCommand`/`CreateInstanceService`、`AbortInstanceService`，快照随 `Claim` 交出 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · 命名边界测试 |
+| 保留旧公开名的导出类型别名 | 不允许；直接使用当前类型名 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoExportedTypeAliasKeepsAnOldNameAlive` |
+| 承诺旧名字仍可用的弃用标记 | 不允许；整体能力移交只能登记在退役契约中 | [`unified_language_boundary_test.go`](../../architecture/unified_language_boundary_test.go) · `TestNoDeprecationMarkersPromiseAnOldNameStillWorks` |
 
 `RootVersionID`、`CompileExecution`、封存的 Plan/Draft 主模型和凭据服务同样已从当前执行契约移除。

@@ -58,7 +58,7 @@ stateDiagram-v2
   interrupted --> [*]
 ```
 
-每个终态只有一个名字。`StatusCompleted` / `StatusFailed` 常量别名与 `Session.Complete` / `Session.Fail` 转发方法曾让 `Ended` / `Interrupted` 各自有两个公开名字，现已删除；`TestNoExportedConstAliasKeepsAnOldNameAlive` 与 `TestNoExportedMethodAliasKeepsAnOldNameAlive` 守住这两种形状，它们是原类型别名守卫看不见的。
+每个终态只有一个公开名字：`Ended` 与 `Interrupted`。常量和方法别名由统一语言边界测试禁止，调用方应直接使用 `Session.End` 与 `Session.Interrupt`。
 
 ## 失败语义
 
