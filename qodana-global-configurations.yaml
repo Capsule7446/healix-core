@@ -1,5 +1,0 @@
-configurations:
-  - id: healix_core
-    name: HealiX Core
-    description: HealiX Core 的 Qodana for Go 配置。
-    qodanaYaml: qodana.yaml
