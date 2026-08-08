@@ -59,3 +59,5 @@ jobs:
           github_action_config.auto_improve: 'false'
           github_action_config.handle_push_trigger: "true"
           pr_reviewer.incremental_review: "true"
+          config.max_model_tokens: "2000000"
+          config.custom_model_max_tokens: "2000000"
