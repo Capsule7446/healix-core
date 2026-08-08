@@ -1,7 +1,9 @@
 [config]
 model = "gpt-5.6-sol"
 fallback_models = ["gpt-5.5"]
-custom_model_max_tokens = 128000
+# PR Agent 单次审查上下文上限（2,000,000 tokens）。
+max_model_tokens = 2000000
+custom_model_max_tokens = 2000000
 response_language = "zh-CN"
 
 [pr_reviewer]
