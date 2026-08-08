@@ -14,25 +14,20 @@ import (
 	"github.com/Capsule7446/healix-core/domain/weburl"
 )
 
-// stepShapeBuilder accumulates the ordered violations for one workflow
-// snapshot's step tree. Every check that reaches an already-classified fault
-// from another context (interpolation, fingerprint, parameter) short-circuits
-// the walk and lets that fault propagate unchanged instead of being buried
-// under a generic violation: those contexts own their own contract, and a
-// caller fixing an interpolation failure should not have to unwrap a second
-// envelope to learn that. Every other internal shape check stays an ordinary
-// Go error and is discarded once recorded as a violation, matching the
-// discard pattern used across every other aggregate envelope in this
-// contract.
+// stepShapeBuilder 收集一个工作流快照步骤树的有序违规项。遇到插值、指纹或参数上下文
+// 已分类的 fault 时立即停止并原样传播；其他内部形状错误记录为通用违规，避免私有详情
+// 进入公开文本。
 type stepShapeBuilder struct {
 	violations []fault.Violation
 	classified error
 }
 
+// done 判断构建器是否已遇到分类错误或达到违规封套上限。
 func (b *stepShapeBuilder) done() bool {
 	return b.classified != nil || atCap(b.violations)
 }
 
+// violation 在构建器未结束时追加一个安全字段违规。
 func (b *stepShapeBuilder) violation(code fault.Code, field, message string) {
 	if b.done() {
 		return
@@ -40,10 +35,8 @@ func (b *stepShapeBuilder) violation(code fault.Code, field, message string) {
 	b.violations = append(b.violations, mustViolation(code, field, message))
 }
 
-// absorb records cause as the short-circuiting classified fault when cause is
-// already coded, and otherwise discards its detail in favor of one generic
-// violation. cause's own text may carry identities or user-supplied values —
-// discarding it is what keeps them out of public text.
+// absorb 遇到已编码 cause 时记录为短路分类错误，否则丢弃其详情并追加一个通用违规。
+// cause 文本可能携带身份或用户输入，丢弃它才能避免进入公开文本。
 func (b *stepShapeBuilder) absorb(cause error, code fault.Code, field, message string) {
 	if cause == nil || b.done() {
 		return
@@ -55,13 +48,9 @@ func (b *stepShapeBuilder) absorb(cause error, code fault.Code, field, message s
 	b.violation(code, field, message)
 }
 
-// Validate reports every step-shape failure through one aggregate envelope
-// carrying ordered violations, or propagates an already-classified fault
-// (interpolation, fingerprint, parameter) reached mid-walk unchanged. No step
-// identity, parameter name, or enum value reaches public text: every failing
-// check degrades into a generic violation at the recursive, unindexed "steps"
-// field, matching the existing precedent for recursive walks that have no
-// flat position to report.
+// Validate 通过一个携带有序违规项的聚合封套报告步骤形状失败，或原样传播遍历中遇到的
+// 插值、指纹和参数领域 fault。步骤身份、参数名和枚举值不会进入公开文本，递归检查统一
+// 降级到未索引的 steps 字段。
 func (w WorkflowSnapshot) Validate() error {
 	builder := &stepShapeBuilder{}
 	if strings.TrimSpace(w.FlowFragmentID) == "" || strings.TrimSpace(w.VersionID) == "" || (w.ID != "" && w.ID != w.FlowFragmentID) {
@@ -106,10 +95,12 @@ func (w WorkflowSnapshot) Validate() error {
 	return nil
 }
 
+// fieldIndex 将集合索引拼接为逻辑字段路径。
 func fieldIndex(prefix string, index int) string {
 	return prefix + "." + strconv.Itoa(index)
 }
 
+// validateStepsInto 递归校验步骤树，维护步骤 ID 唯一性并按根/子步骤上下文分派检查。
 func validateStepsInto(b *stepShapeBuilder, steps []Step, root bool, seen map[string]struct{}) {
 	for _, step := range steps {
 		if b.done() {
@@ -151,6 +142,7 @@ func validateStepsInto(b *stepShapeBuilder, steps []Step, root bool, seen map[st
 	}
 }
 
+// validateActionInto 校验动作步骤的配置互斥、动作种类、节点身份、值和导航 URL。
 func validateActionInto(b *stepShapeBuilder, s Step) {
 	if s.Validation != nil || s.ValidationGroup != nil || s.Reference != nil || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
 		b.violation(fault.CodeFieldInvalid, "steps", "an action step contains unsupported step configuration")
@@ -186,11 +178,8 @@ func validateActionInto(b *stepShapeBuilder, s Step) {
 	}
 }
 
-// validateSealedNavigationURL rejects control characters, disallows
-// interpolation inside the scheme or authority, and otherwise requires an
-// absolute HTTP(S) URL without embedded credentials. It returns the
-// interpolation package's own coded fault unwrapped so a caller does not have
-// to unwrap a second envelope to learn the expression was malformed.
+// validateSealedNavigationURL 拒绝控制字符和 scheme/authority 中的插值，并要求无凭据的
+// 绝对 HTTP(S) URL；插值包的已编码错误会原样返回，避免被第二层封套掩盖。
 func validateSealedNavigationURL(value string) error {
 	if strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		return errors.New("control characters are not allowed")
@@ -213,17 +202,15 @@ func validateSealedNavigationURL(value string) error {
 	for _, name := range names {
 		parseable = strings.ReplaceAll(parseable, "${"+name+"}", "placeholder")
 	}
-	// The host requirement used to be skipped whenever the URL contained any
-	// interpolation, which let `https:///${path}` through with no host at all
-	// while the same URL without the variable was refused. Interpolation is
-	// already banned in the authority above, so by this point the authority is
-	// literal in every candidate and its host can always be checked.
+	// scheme/authority 已禁止插值，因此此处候选 URL 的 authority 始终是字面值，可以统一
+	// 检查主机是否存在。
 	if rejection := weburl.Check(parseable); rejection != weburl.Accepted {
 		return fmt.Errorf("navigation URL rejected: %s", rejection)
 	}
 	return nil
 }
 
+// validateWaitInto 校验等待步骤的配置、等待种类、节点身份和时间范围。
 func validateWaitInto(b *stepShapeBuilder, s Step) {
 	element := s.WaitKind == "element" || s.WaitKind == "element_visible" || s.WaitKind == "element_invisible"
 	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.Value != "" || len(s.Values) != 0 || s.RepeatCount != 0 || s.Reference != nil || len(s.Children) != 0 || (!element && (s.ElementTargetID != "" || s.ElementTargetVersionID != "")) {
@@ -253,6 +240,7 @@ func validateWaitInto(b *stepShapeBuilder, s Step) {
 	}
 }
 
+// validateRepeatInto 校验重复步骤的配置互斥、次数上限和子步骤要求。
 func validateRepeatInto(b *stepShapeBuilder, s Step) {
 	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.Reference != nil {
 		b.violation(fault.CodeFieldInvalid, "steps", "a repeat step contains unsupported step configuration")
@@ -264,9 +252,8 @@ func validateRepeatInto(b *stepShapeBuilder, s Step) {
 	}
 }
 
-// validateReferenceInto validates a WORKFLOW_REF step's shape. Parameter
-// binding names are walked in sorted order rather than map order, because
-// violation order must be a function of the input alone.
+// validateReferenceInto 校验 WORKFLOW_REF 步骤形状，并按排序后的参数绑定名遍历，保证违规
+// 顺序只由输入决定。
 func validateReferenceInto(b *stepShapeBuilder, s Step) {
 	r := s.Reference
 	if s.Validation != nil || s.ValidationGroup != nil || s.Action != "" || s.ElementTargetID != "" || s.ElementTargetVersionID != "" || s.Value != "" || len(s.Values) != 0 || s.WaitKind != "" || s.WaitMS != 0 || s.RepeatCount != 0 || len(s.Children) != 0 {
@@ -299,6 +286,7 @@ func validateReferenceInto(b *stepShapeBuilder, s Step) {
 	}
 }
 
+// validateValidationStepInto 校验单项验证步骤及其作为根步骤或分组成员时的等待语义。
 func validateValidationStepInto(b *stepShapeBuilder, s Step, member bool) {
 	if s.Validation == nil {
 		b.violation(fault.CodeFieldRequired, "steps", "a validation step requires validation configuration")
@@ -313,6 +301,7 @@ func validateValidationStepInto(b *stepShapeBuilder, s Step, member bool) {
 	b.absorb(s.Validation.Validate(!member), fault.CodeFieldInvalid, "steps", "validation configuration is invalid")
 }
 
+// validateValidationGroupInto 校验验证组配置、分支唯一性、成员步骤和总步骤上限。
 func validateValidationGroupInto(b *stepShapeBuilder, s Step, seen map[string]struct{}) {
 	g := s.ValidationGroup
 	if g == nil {
@@ -365,14 +354,8 @@ func validateValidationGroupInto(b *stepShapeBuilder, s Step, seen map[string]st
 	}
 }
 
-// Validate stays an ordinary Go error: it is reached only as an internal
-// shape check, either absorbed generically by the step-shape envelope above
-// or discarded by a direct caller that only needs to know whether the
-// configuration is acceptable. It never echoes Kind, Expected, or Attribute:
-// Kind is a caller-supplied enum that may fall outside the closed set when
-// invalid, and Expected/Attribute may carry interpolated parameter values.
-// An interpolation failure is returned unwrapped so an already-classified
-// fault is never buried under a second one.
+// Validate 校验验证配置的种类、插值表达式、期望值、属性和等待窗口；不回显 Kind、Expected
+// 或 Attribute 的调用方内容，并原样返回插值包的已分类错误。
 func (v Validation) Validate(waitRequired bool) error {
 	if _, err := interpolation.Names(v.Expected); err != nil {
 		return err
@@ -426,6 +409,7 @@ func (v Validation) Validate(waitRequired bool) error {
 	return nil
 }
 
+// validateValidationWait 校验验证最大等待和稳定窗口的范围及先后关系。
 func validateValidationWait(maxWait, stability int) error {
 	if maxWait < validationMinWaitMS || maxWait > validationMaxWaitMS {
 		return errors.New("validation maximum wait is out of range")
