@@ -20,7 +20,9 @@ import (
 // Node 是 workflow 的 step 树的执行单元——一个封闭的判别联合：
 // *StepNode、*WaitNode、*RepeatNode、*WorkflowNode。
 type Node interface {
+	// ID 返回节点稳定 ID。
 	ID() string
+	// Run 在 Runtime 中执行节点并返回错误。
 	Run(ctx context.Context, rt *Runtime) error
 }
 
@@ -28,13 +30,20 @@ type Node interface {
 type ActionKind string
 
 const (
-	ActionClick    ActionKind = "click"
-	ActionInput    ActionKind = "input"
-	ActionSelect   ActionKind = "select" // 按可见文本选中 <select> 的 option
-	ActionHover    ActionKind = "hover"
+	// ActionClick 点击目标元素。
+	ActionClick ActionKind = "click"
+	// ActionInput 向目标元素输入文本。
+	ActionInput ActionKind = "input"
+	// ActionSelect 按可见文本选择一个或多个选项。
+	ActionSelect ActionKind = "select" // 按可见文本选中 <select> 的 option
+	// ActionHover 将鼠标移到目标元素上。
+	ActionHover ActionKind = "hover"
+	// ActionNavigate 导航到指定 URL，不需要元素目标。
 	ActionNavigate ActionKind = "navigate"
-	ActionPress    ActionKind = "press"
-	ActionNoop     ActionKind = "noop" // 只定位（+断言），不做交互
+	// ActionPress 向页面发送按键，不需要元素目标。
+	ActionPress ActionKind = "press"
+	// ActionNoop 只定位目标（并可执行断言），不产生交互。
+	ActionNoop ActionKind = "noop" // 只定位（+断言），不做交互
 	// ActionExtract 读取定位到的元素文本，存入 Scratchpad 中以 Value 命名的
 	// 变量，供后续 step 用 ${name} 引用——跨站点流程（A 站取单号、B 站处理）
 	// 的数据交接依赖它。
@@ -59,12 +68,11 @@ type StepNode struct {
 	Optional bool
 }
 
+// ID 返回步骤节点 ID。
 func (s *StepNode) ID() string { return s.NodeID }
 
-// validateNavigationURL keeps the shared rule in weburl and adds only the
-// message. The rejection reason is a closed vocabulary, so it is safe in the
-// private cause; the URL itself is not, which is why it is never echoed — the
-// previous version named the rejected scheme, and a scheme is caller input.
+// validateNavigationURL 使用 weburl 共享规则校验导航 URL，并将拒绝原因保留在私有上下文，
+// 不回显调用方提供的 URL。
 func validateNavigationURL(value string) error {
 	if rejection := weburl.Check(value); rejection != weburl.Accepted {
 		return fmt.Errorf("navigation URL rejected: %s", rejection)
@@ -72,6 +80,7 @@ func validateNavigationURL(value string) error {
 	return nil
 }
 
+// Run 按超时和阶段状态机执行动作步骤，支持插值、重试、自愈、观测和错误分类。
 func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	if err := rt.waitBeforeStep(ctx); err != nil {
 		return classifyNodeFault(err)
@@ -134,11 +143,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 		return s.finish(ctx, parentCtx, rt, execution)
 	}
 
-	// The overlay is resolved once, up front, so that every consumer below —
-	// the locate observation, the healer, and the staged decision — names the
-	// selector that is actually live for this spec. Locating resolves it
-	// internally either way; taking s.Target raw here would leave the recovery
-	// path reasoning about a selector an earlier heal already replaced.
+	// 预先解析 overlay，使定位观测、自愈和暂存决策都使用当前规格实际生效的选择器。
 	target := rt.effectiveSpec(s.Target)
 	healed := false
 	var el Element
@@ -151,7 +156,7 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	rt.observeOperationBestEffort(context.WithoutCancel(ctx), OperationObservation{InstanceID: rt.InstanceID, EntryID: rt.EntryID, Occurrence: rt.mustActiveOccurrence(s.NodeID), NodeID: s.NodeID, Operation: "locate", Selector: firstSelector(target), Healed: false, Attempt: locateAttempts, DurationMS: time.Since(locateStarted).Milliseconds(), Succeeded: err == nil, FaultKind: nodeFaultKind(err), FaultCode: nodeFaultCode(err)})
 	if err != nil {
 		if !isExclusiveElementNotFound(err) {
-			// Mirrors the navigate and press branches above, which already classify.
+			// 与 navigate 和 press 分支相同，驱动错误在此统一分类。
 			return s.fail(ctx, parentCtx, rt, execution, classifyNodeFault(err))
 		}
 		if s.Optional {
@@ -192,11 +197,8 @@ func (s *StepNode) Run(ctx context.Context, rt *Runtime) (runErr error) {
 	return s.finish(ctx, parentCtx, rt, execution)
 }
 
-// heal 在该 spec 当前生效的所有选择器都解析失败后被调用；调用方传入的 target
-// 已经套用过 overlay，因此这里看到的正是刚刚失效的那份选择器列表。它向纯算法
-// Healer 请求一个 Decision，无论结果如何都会把这次尝试记录为执行事实，并在出现
-// 可用候选时，把它提到选择器列表最前面，再通过 Driver 重新定位——
-// 这样调用方拿到的始终是一个普通的 Element。
+// heal 在当前规格所有选择器定位失败后请求纯算法 Healer，记录样本和决策；允许的候选会
+// 被提升到选择器列表首位、写入 overlay，并通过 Driver 重新定位后返回普通 Element。
 func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.ElementTargetSpec) (Element, error) {
 	snap, err := rt.Driver.Snapshot(ctx)
 	if err != nil {
@@ -264,6 +266,7 @@ func (s *StepNode) heal(ctx context.Context, rt *Runtime, target fingerprint.Ele
 	return el, nil
 }
 
+// firstSelector 返回规格选择器列表首项；列表为空时返回零值选择器。
 func firstSelector(spec fingerprint.ElementTargetSpec) fingerprint.Selector {
 	if len(spec.Selectors) == 0 {
 		return fingerprint.Selector{}
@@ -271,6 +274,7 @@ func firstSelector(spec fingerprint.ElementTargetSpec) fingerprint.Selector {
 	return spec.Selectors[0]
 }
 
+// applyAction 等待元素稳定后执行动作，并复制 select 值切片和写入 extract Scratchpad。
 func applyAction(ctx context.Context, rt *Runtime, el Element, a Action) error {
 	if err := el.WaitStable(ctx); err != nil {
 		return fmt.Errorf("wait stable: %w", err)
@@ -311,6 +315,7 @@ func applyAction(ctx context.Context, rt *Runtime, el Element, a Action) error {
 	}
 }
 
+// finish 将步骤迁移到成功阶段，并在迁移失败时走统一失败路径。
 func (s *StepNode) finish(ctx, parentCtx context.Context, rt *Runtime, execution *StepExecution) error {
 	if err := s.transition(ctx, rt, execution, PhaseSucceeded); err != nil {
 		return s.fail(ctx, parentCtx, rt, execution, classifyStepPhaseTransitionInvalid(err))
@@ -318,6 +323,7 @@ func (s *StepNode) finish(ctx, parentCtx context.Context, rt *Runtime, execution
 	return nil
 }
 
+// transition 校验步骤阶段、记录运行时事件并更新 StepExecution 的 Occurrence 和阶段。
 func (s *StepNode) transition(ctx context.Context, rt *Runtime, execution *StepExecution, next Phase) error {
 	if err := execution.CanTransition(next); err != nil {
 		return err
@@ -335,6 +341,7 @@ func (s *StepNode) transition(ctx context.Context, rt *Runtime, execution *StepE
 	return execution.Transition(next)
 }
 
+// fail 根据父上下文选择 FAILED/CANCELED 终态，记录终态事件并合并迁移错误。
 func (s *StepNode) fail(ctx, parentCtx context.Context, rt *Runtime, execution *StepExecution, cause error) error {
 	terminal := PhaseFailed
 	if parentCtx.Err() != nil {
@@ -352,8 +359,10 @@ func (s *StepNode) fail(ctx, parentCtx context.Context, rt *Runtime, execution *
 	return cause
 }
 
+// runtimeVariables 将插值变量解析到 Runtime 参数作用域和 Scratchpad。
 type runtimeVariables struct{ rt *Runtime }
 
+// Variable 解析 params.* 参数、普通参数或 Scratchpad 字符串值。
 func (v runtimeVariables) Variable(name string) (string, bool) {
 	parameterName := name
 	if strings.HasPrefix(name, "params.") {
