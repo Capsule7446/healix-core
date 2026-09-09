@@ -50,7 +50,22 @@ func (p Poller) Run(ctx context.Context, timeout time.Duration, condition func(c
 			if fault.IsCode(err, CodeElementNotFound) || isExclusiveTransientDriverFault(err) {
 				lastErr = err
 			} else {
-				return err
+				_, classified := fault.CodeOf(err)
+				if classified || pollCtx.Err() == nil || !errors.Is(err, pollCtx.Err()) {
+					return err
+				}
+				// A read can observe Done before the loop reaches its select.
+				// Preserve the read cause while applying the same timeout policy.
+				if ctx.Err() != nil {
+					cause := errors.Join(err, ctx.Err())
+					kind, code, message := fault.Canceled, CodeCanceled, "node operation was canceled"
+					if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+						kind, code, message = fault.DeadlineExceeded, CodeTimeout, "node operation timed out"
+					}
+					return fmt.Errorf("poll canceled: %w", mustWrapNodeFault(cause, kind, code, message))
+				}
+				cause := errors.Join(lastErr, err, pollCtx.Err())
+				return fmt.Errorf("poll timeout after %s: %w", timeout, mustWrapNodeFault(cause, fault.DeadlineExceeded, CodeTimeout, "node operation timed out"))
 			}
 		}
 		select {

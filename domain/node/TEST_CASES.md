@@ -197,6 +197,11 @@
 | `TestValidationNodeRunDependencyAndLifecycleFailureMatrix` | `Validation Node Run Dependency And Lifecycle Failure Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/node/public_run_branch_matrix_test.go`](../../domain/node/public_run_branch_matrix_test.go) · `TestValidationNodeRunDependencyAndLifecycleFailureMatrix` |
 | `TestValidationGroupNodeRunDependencyAndLifecycleFailureMatrix` | `Validation Group Node Run Dependency And Lifecycle Failure Matrix`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/node/public_run_branch_matrix_test.go`](../../domain/node/public_run_branch_matrix_test.go) · `TestValidationGroupNodeRunDependencyAndLifecycleFailureMatrix` |
 | `TestWorkflowCallCarriesEnvironmentValuesThroughPublicNestedScopes` | `Workflow Call Carries Environment Values Through Public Nested Scopes`；表驱动子案例（如存在）覆盖该函数中声明的输入、状态与边界。 | 由测试断言验证返回值、错误分类、状态变更、所有权或副作用。 | [`domain/node/public_run_branch_matrix_test.go`](../../domain/node/public_run_branch_matrix_test.go) · `TestWorkflowCallCarriesEnvironmentValuesThroughPublicNestedScopes` |
+| `TestValidationFinalKeepsLastSuccessfulRead` | 读取在自身超时处失败；覆盖标量、集合顺序，以及随后成功读取空值。 | 唯一终态保留最后可用值；有效空值覆盖旧值，超时错误链保留 deadline。 | [`validation_terminal_test.go`](validation_terminal_test.go) · `TestValidationFinalKeepsLastSuccessfulRead` |
+| `TestValidationFinalKeepsActualWhenParentStops` | 父 context 主动取消或提前到达 deadline。 | 唯一终态保留实际值并标记 canceled；返回原有取消或超时错误码。 | [`validation_terminal_test.go`](validation_terminal_test.go) · `TestValidationFinalKeepsActualWhenParentStops` |
+| `TestValidationFinalKeepsActualAfterIndependentReadError` | 成功读取后出现独立驱动错误。 | 保留实际值和原始 cause，终态为 system_error。 | [`validation_terminal_test.go`](validation_terminal_test.go) · `TestValidationFinalKeepsActualAfterIndependentReadError` |
+| `TestValidationFinalKeepsActualAfterComparisonError` | text_matches 和 value_matches 使用非法正则，元素已读取非空值。 | 比较错误的终态仍保留已读实际值。 | [`validation_terminal_test.go`](validation_terminal_test.go) · `TestValidationFinalKeepsActualAfterComparisonError` |
+| `TestValidationFinalPreservesIndependentContextFailure` | 父 context 仍有效，驱动返回独立 deadline、取消或已分类的 deadline。 | 保留错误因果链与 system_error 终态，不冒充校验超时或父取消。 | [`validation_terminal_test.go`](validation_terminal_test.go) · `TestValidationFinalPreservesIndependentContextFailure` |
 
 ## Cross-cutting / Conformance Cases
 
@@ -207,4 +212,3 @@
 1. 新增或删除 `Test…` 函数时，必须同步更新本表；表驱动新增子案例要更新相应行的边界描述。
 2. 新增公开 domain API 或 application use case 时，必须先添加公开入口清单行和至少一条可执行测试证据。
 3. 文档不替代测试；冲突时以 Go 测试断言和领域契约为准。
-
