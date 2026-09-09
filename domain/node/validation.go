@@ -131,8 +131,10 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 	pollErr := rt.poller().Run(parent, maxWait, func(pollCtx context.Context) (bool, error) {
 		var actualValues []string
 		ok, actual, err := v.evaluateCollect(pollCtx, rt, &actualValues)
-		lastActual = actual
-		lastActualValues = append(lastActualValues[:0], actualValues...)
+		if err == nil || actual != "" || actualValues != nil {
+			lastActual = actual
+			lastActualValues = append(lastActualValues[:0], actualValues...)
+		}
 		if err != nil {
 			if recordErr := observations.record(pollCtx, rt, v, false, actual, actualValues, "system_error", false); recordErr != nil {
 				return false, recordErr
@@ -155,9 +157,12 @@ func (v *ValidationNode) waitStable(parent context.Context, rt *Runtime) error {
 		return false, nil
 	})
 	if pollErr != nil {
-		reason := "timeout"
-		if !fault.IsCode(pollErr, CodeTimeout) {
-			reason = "system_error"
+		reason := "system_error"
+		if fault.IsCode(pollErr, CodeTimeout) {
+			reason = "timeout"
+		}
+		if parent.Err() != nil && errors.Is(pollErr, parent.Err()) {
+			reason = "canceled"
 		}
 		if err := observations.record(context.WithoutCancel(parent), rt, v, false, lastActual, lastActualValues, reason, true); err != nil {
 			return err
